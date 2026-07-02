@@ -204,20 +204,9 @@
   </div>
 </div>
 
-<script>
-function toggleChart() {
-  const container = document.getElementById('chart-container');
-  const btn = document.getElementById('chart-toggle-btn');
-  if (container.style.height === '220px') {
-    container.style.height = '600px';
-    btn.textContent = '⛶ Collapse';
-  } else {
-    container.style.height = '220px';
-    btn.textContent = '⛶ Expand';
-  }
-}
-</script>
-</div>  <div class="section-title">Key Levels</div>
+
+</div> 
+  <div class="section-title">Key Levels</div>
   <div class="grid-2">
     <div class="levels-card">
       <div class="resistance-title">🔴 Resistance</div>
@@ -376,5 +365,18 @@ function toggleChart() {
   </div>
 
 </div>
+  <script>
+function toggleChart() {
+  const container = document.getElementById('chart-container');
+  const btn = document.getElementById('chart-toggle-btn');
+  if (container.style.height === '220px') {
+    container.style.height = '600px';
+    btn.textContent = '⛶ Collapse';
+  } else {
+    container.style.height = '220px';
+    btn.textContent = '⛶ Expand';
+  }
+}
+</script>
 </body>
 </html>
