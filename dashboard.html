@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Brief Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0c14;
+    --surface: #13141f;
+    --border: #1e2035;
+    --text: #e2e4ef;
+    --muted: #6b7280;
+    --bull: #00c896;
+    --bear: #e8754a;
+    --neutral: #f5a623;
+    --accent: #7b6ef6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 6px solid var(--neutral);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .updated { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .alignment { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  .composite-row { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  .composite-badge {
+    display: inline-block; padding: 6px 14px; border-radius: 20px;
+    font-weight: 700; font-size: 14px; background: rgba(245,166,35,0.15); color: var(--neutral);
+    border: 1px solid var(--neutral);
+  }
+  .confidence { color: var(--muted); font-size: 13px; }
+  .price-row { margin-top: 14px; font-size: 28px; font-weight: 700; }
+  .price-change { font-size: 15px; font-weight: 500; margin-left: 12px; }
+  .up { color: var(--bull); } .down { color: var(--bear); }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+  }
+  .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .card .value { font-size: 20px; font-weight: 700; }
+  .card .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  .section-title {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin: 28px 0 12px;
+  }
+
+  .levels-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .levels-card .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .levels-card .row:last-child { border-bottom: none; }
+  .resistance-title { color: var(--bear); font-weight: 700; margin-bottom: 8px; }
+  .support-title { color: var(--bull); font-weight: 700; margin-bottom: 8px; }
+
+  .lens-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 10px; display: flex; gap: 14px; align-items: flex-start;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+  .dot.bull { background: var(--bull); }
+  .dot.bear { background: var(--bear); }
+  .dot.neutral { background: var(--neutral); }
+  .lens-body { flex: 1; }
+  .lens-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .lens-name { font-weight: 700; font-size: 15px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .badge-weight { background: rgba(123,110,246,0.15); color: var(--accent); border: 1px solid var(--accent); }
+  .badge-bear-lens { background: rgba(232,117,74,0.15); color: var(--bear); border: 1px solid var(--bear); }
+  .badge-alert { background: rgba(245,166,35,0.15); color: var(--neutral); border: 1px solid var(--neutral); }
+  .signal-tag { margin-left: auto; font-weight: 700; font-size: 13px; }
+  .signal-tag.bull { color: var(--bull); } .signal-tag.bear { color: var(--bear); } .signal-tag.neutral { color: var(--neutral); }
+  .lens-finding { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  .lens-delta { font-size: 12px; color: var(--muted); }
+
+  .critical-card {
+    background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--bear);
+    border-radius: 10px; padding: 16px; margin-bottom: 10px;
+  }
+  .critical-card.bull-flag { border-left-color: var(--bull); }
+  .critical-type { font-size: 12px; font-weight: 700; color: var(--neutral); margin-bottom: 6px; text-transform: uppercase; }
+  .critical-text { font-size: 14px; margin-bottom: 6px; }
+  .critical-source { font-size: 12px; color: var(--muted); }
+
+  .watchlist { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .watchlist ul { margin: 0; padding-left: 18px; }
+  .watchlist li { font-size: 14px; margin-bottom: 10px; }
+  .watchlist li:last-child { margin-bottom: 0; }
+
+  .bottom-line { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; font-size: 15px; line-height: 1.7; }
+
+  .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="updated">Last updated: Wednesday, July 1, 2026 at 09:58 PM CT</div>
+    <div class="alignment">🔴 BEAR ALIGNMENT 4/8 &nbsp;|&nbsp; 🟡 NEUTRAL 2/8 &nbsp;|&nbsp; 🟢 BULL 2/8</div>
+    <div class="composite-row">
+      <span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span>
+      <span class="confidence">Confidence: LOW</span>
+    </div>
+    <div class="price-row">
+      $59,178 <span class="price-change down">24hr ~-2.68%*</span> <span class="price-change down">7day -6.65%*</span>
+    </div>
+    <div class="sub" style="margin-top:6px;">*conflicting sources — see brief for detail. New 652-day low ($57,950) printed intraday, recovered by evening.</div>
+  </div>
+
+  <div class="section-title">Snapshot</div>
+  <div class="grid">
+    <div class="card">
+      <div class="label">24hr Range</div>
+      <div class="value">$57,950–$59,754</div>
+      <div class="sub">200-day MA ~$61,181 · 🔴 Below MA</div>
+    </div>
+    <div class="card">
+      <div class="label">Fear &amp; Greed Index <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a></div>
+      <div class="value" style="color:var(--bear);">11 — Extreme Fear</div>
+      <div class="sub">Down from 15 · nearing &lt;10 threshold</div>
+    </div>
+    <div class="card">
+      <div class="label">ETF Flows (7d) <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a></div>
+      <div class="value" style="color:var(--bear);">-$2.06B</div>
+      <div class="sub">June total: -$4.51B (record)</div>
+    </div>
+    <div class="card">
+      <div class="label">DXY <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a></div>
+      <div class="value">101.40</div>
+      <div class="sub">+2.19% month · dollar strength continues</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a></div>
+      <div class="value" style="color:var(--bull);">~$54,000</div>
+      <div class="sub">BTC ~9.6% above ⚠️ stale</div>
+    </div>
+    <div class="card">
+      <div class="label">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a></div>
+      <div class="value" style="color:var(--bull);">~0.6</div>
+      <div class="sub">Below 0.7 — capitulation, historically bullish</div>
+    </div>
+    <div class="card">
+      <div class="label">Whale Accumulation</div>
+      <div class="value" style="color:var(--bull);">🟢 Strong</div>
+      <div class="sub">270K BTC/30d — top 1-3% historical pace</div>
+    </div>
+    <div class="card">
+      <div class="label">Miner Production Cost</div>
+      <div class="value" style="color:var(--bear);">~$78,000</div>
+      <div class="sub">vs $59,178 spot — miners underwater</div>
+    </div>
+  </div>
+
+  <div class="section-title">Key Levels</div>
+  <div class="grid-2">
+    <div class="levels-card">
+      <div class="resistance-title">🔴 Resistance</div>
+      <div class="row"><span>Near-term</span><span>$60.8K</span></div>
+      <div class="row"><span>20-day EMA</span><span>$62.5K</span></div>
+      <div class="row"><span>Longer MAs</span><span>$65.2K – $65.6K</span></div>
+    </div>
+    <div class="levels-card">
+      <div class="support-title">🟢 Support</div>
+      <div class="row"><span>Whale floor</span><span>$58K</span></div>
+      <div class="row"><span>Next</span><span>$57K → $55K</span></div>
+      <div class="row"><span>Brandt target</span><span>$53K</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">Cycle Timing &amp; Macro</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="label">Villaverde Cycle Low Target</div>
+      <div class="value">July 10, 2026</div>
+      <div class="sub">9 days · JpM2 <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a> sideways rounded bottom</div>
+      <div class="label" style="margin-top:12px;">Brandt Bottom Call</div>
+      <div class="value">Sep–Oct 2026</div>
+      <div class="sub">~71 days · $60-64K flagged as retest zone</div>
+    </div>
+    <div class="card">
+      <div class="label">Fed Stance</div>
+      <div class="value">Hawkish</div>
+      <div class="sub">3.50–3.75% · Warsh: inflation "too high", no July hint</div>
+      <div class="label" style="margin-top:12px;">BTC Dominance <a href="https://rdwills02.github.io/BTC_Brief/">→ Glossary</a></div>
+      <div class="value">~55.2–55.6%</div>
+      <div class="sub">Down from 57.86%</div>
+    </div>
+  </div>
+
+  <div class="section-title">Lens Scorecard</div>
+
+  <div class="lens-card">
+    <div class="dot bear"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">1. Halving / Cycle</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">27 months post-halving, no surge; miner capitulation ongoing; production cost ~$78K vs $59,178 spot.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot bear"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">2. Macro / Liquidity</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">Fed hawkish, no dovish signal; DXY 101.40 extending advance; ETF June outflows confirmed record -$4.51B.</div>
+      <div class="lens-delta">vs Prior: 📉 Worse — ETF record confirmed larger than estimated</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot neutral"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">3. Adoption / Reserve</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">CLARITY Act ethics talks collapsed; odds 47-48%, roughly flat but structurally weaker.</div>
+      <div class="lens-delta">vs Prior: ➡️ No signal change</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot bull"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">4. Wright</span><span class="signal-tag bull">🟢 BULLISH</span><span class="badge badge-alert">⚡ upgraded</span></div>
+      <div class="lens-finding">Miner capitulation historically precedes positive 180-day returns 77% of the time (+~2,400bps); whale accumulation at historic pace.</div>
+      <div class="lens-delta">vs Prior: 📈 Improved — upgraded Neutral → Bullish</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot bear"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">5. Fogle Technical</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">New 652-day low ($57,950) printed intraday; below all key MAs; dominance declined to ~55.2-55.6%.</div>
+      <div class="lens-delta">vs Prior: 📉 Slightly worse</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot neutral"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">6. Villaverde Cycles</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">July 10 target 9 days out; JpM2 sideways rounded bottom thesis unchanged.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot bull"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bull">🟢 BULLISH</span><span class="badge badge-alert">⚡ hard rule</span></div>
+      <div class="lens-finding">LTH SOPR ~0.6 (&lt;0.7), HODL LTH% 79% (&gt;75%), whale accumulation top 1-3% historically — all three hard-rule conditions met.</div>
+      <div class="lens-delta">vs Prior: 📈 Improved — flips Neutral → Bullish under hard rule</div>
+    </div>
+  </div>
+
+  <div class="lens-card">
+    <div class="dot bear"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">8. Brandt Classical</span><span class="badge badge-bear-lens">Bear lens</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">Descending channel + Expanding Triangle intact; $53-55K target; Sep-Oct low; $60-64K flagged as retest zone.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
+
+  <div class="section-title">⚡ Critical Developments</div>
+
+  <div class="critical-card">
+    <div class="critical-type">Record — New Cycle Low</div>
+    <div class="critical-text">BTC printed $57,950 intraday July 1 — lowest level in 652 days — before recovering above $58K-$59K.</div>
+    <div class="critical-source">Source: Yahoo Finance, July 1, 2026</div>
+  </div>
+
+  <div class="critical-card">
+    <div class="critical-type">Record — ETF Outflow Streak</div>
+    <div class="critical-text">June ETF outflows confirmed at -$4.51B, worst month ever, beating the prior record by 29%. IBIT logged a 9th straight outflow day.</div>
+    <div class="critical-source">Source: The Block, July 1, 2026</div>
+  </div>
+
+  <div class="critical-card bull-flag">
+    <div class="critical-type">Scoring Rule — Woo On-Chain Flips Bullish</div>
+    <div class="critical-text">LTH SOPR &lt;0.7, HODL LTH% &gt;75%, and top-tier whale accumulation together trigger the hard rule — Woo lens (2x weight) moves to BULLISH.</div>
+    <div class="critical-source">Source: DeepBlueAlpha / SpotedCrypto, June-July 2026</div>
+  </div>
+
+  <div class="critical-card">
+    <div class="critical-type">Regulatory — CLARITY Act Ethics Talks Collapse</div>
+    <div class="critical-text">Bipartisan ethics negotiations broke down; impeachment floated as a remedy and rejected. Odds ~47-48%, ~8 weeks of Senate floor time left.</div>
+    <div class="critical-source">Source: PredictionNews, June 30-July 1, 2026</div>
+  </div>
+
+  <div class="section-title">Watch List</div>
+  <div class="watchlist">
+    <ul>
+      <li>⚡ $58K whale floor — a daily close above $60K would be the first real structural positive sign</li>
+      <li>⚡ July 10 Villaverde cycle low — 9 days out, watch for a confirmed reversal candle</li>
+      <li>ETF flows — needs a full net-positive week to begin resolving the macro/on-chain tension</li>
+      <li>CLARITY Act — vote, delay, or ethics breakthrough would be the next major catalyst</li>
+      <li>MVRV Z-Score / Realized Price / CVDD Floor — all stale this run; fresh prints would firm up the Woo lens</li>
+    </ul>
+  </div>
+
+  <div class="section-title">Bottom Line</div>
+  <div class="bottom-line">
+    BTC $59,178 — printed a new 652-day low at $57,950 intraday before clawing back above $58K-$59K by evening. The composite moves from BEARISH to NEUTRAL at LOW confidence, driven by the Woo On-Chain lens (2x weight) flipping bullish under the project's hard rule — LTH SOPR at 0.6, LTH supply at 79%, and whale accumulation at a top-1-to-3% historical pace all confirmed — plus a Wright lens upgrade on fresh contrarian data. Macro/Liquidity (also 2x weight) got worse: June's ETF outflows were confirmed at a record -$4.51B and DXY extended its advance. The result is a genuine 5-5 weighted tie between deteriorating price/macro structure and strengthening on-chain accumulation. Hold current positioning, watch the $58K floor and the July 10 Villaverde window, and treat a $60K+ reclaim on volume as the signal that would tip this toward BULLISH.
+  </div>
+
+  <div class="footer">
+    Finance Agent V3 · Last updated: Wednesday, July 1, 2026 at 09:58 PM CT<br>
+    Glossary: <a href="https://rdwills02.github.io/BTC_Brief/">https://rdwills02.github.io/BTC_Brief/</a> ·
+    Dashboard: <a href="https://rdwills02.github.io/BTC_Brief/dashboard.html">https://rdwills02.github.io/BTC_Brief/dashboard.html</a>
+  </div>
+
+</div>
+</body>
+</html>
