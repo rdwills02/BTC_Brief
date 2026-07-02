@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Portfolio Calculator</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0b0c14;
+  --surface: #13141f;
+  --surface2: #1a1b2a;
+  --border: #1e2035;
+  --border2: #2a2b3d;
+  --text: #e2e4ef;
+  --text2: #9da3b4;
+  --muted: #6b7280;
+  --bull: #00c896;
+  --bull-bg: rgba(0,200,150,0.1);
+  --bull-border: rgba(0,200,150,0.25);
+  --bear: #e8754a;
+  --bear-bg: rgba(232,117,74,0.1);
+  --bear-border: rgba(232,117,74,0.25);
+  --neut: #f5a623;
+  --neut-bg: rgba(245,166,35,0.08);
+  --accent: #7b6ef6;
+  --accent-bg: rgba(123,110,246,0.12);
+  --accent-border: rgba(123,110,246,0.3);
+  --gold: #f5c842;
+  --gold-bg: rgba(245,200,66,0.1);
+  --platinum: #a8b4c8;
+  --platinum-bg: rgba(168,180,200,0.1);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* NAV */
+.nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-links { display: flex; gap: 16px; }
+.nav-link {
+  font-size: 12px;
+  color: var(--text2);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  transition: all 0.15s;
+}
+.nav-link:hover { color: var(--text); border-color: var(--accent); background: var(--accent-bg); }
+
+.nav-title { font-size: 14px; font-weight: 600; color: var(--text); }
+
+.live-price-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.price-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--bull);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* LAYOUT */
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+.grid-main { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+
+@media (max-width: 800px) {
+  .grid-main { grid-template-columns: 1fr; }
+  .container { padding: 16px; }
+}
+
+/* CARDS */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+/* INPUTS */
+.input-group { margin-bottom: 12px; }
+.input-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 5px;
+  letter-spacing: 0.04em;
+}
+
+input[type="number"], input[type="text"] {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+input:focus { border-color: var(--accent); }
+input::placeholder { color: var(--muted); }
+
+.input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* LOT ROWS */
+.lot-row {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.lot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.lot-label { font-size: 10px; font-weight: 600; color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase; }
+.lot-value { font-size: 11px; color: var(--text2); }
+
+.lot-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+.lot-remove:hover { color: var(--bear); }
+
+/* BUTTONS */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.btn-accent { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+.btn-accent:hover { background: rgba(123,110,246,0.2); }
+.btn-ghost { background: var(--surface2); color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { color: var(--text); border-color: var(--border); }
+.btn-full { width: 100%; justify-content: center; margin-top: 4px; }
+
+/* DIVIDER */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* SUMMARY STATS */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-item { background: var(--surface2); border-radius: 6px; padding: 10px 12px; }
+.stat-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; letter-spacing: 0.04em; }
+.stat-value { font-size: 18px; font-weight: 600; }
+.stat-sub { font-size: 10px; color: var(--text2); margin-top: 2px; }
+.bull-text { color: var(--bull); }
+.bear-text { color: var(--bear); }
+.neut-text { color: var(--neut); }
+.accent-text { color: var(--accent); }
+.gold-text { color: var(--gold); }
+.platinum-text { color: var(--platinum); }
+
+/* PRICE SCALE */
+.scale-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.scale-controls label { font-size: 11px; color: var(--muted); }
+
+.increment-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text2);
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.increment-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.custom-price-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.custom-price-wrap input {
+  width: 110px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* SCALE TABLE */
+.scale-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.scale-table th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+.scale-table th:first-child { text-align: left; }
+.scale-table td {
+  padding: 7px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.scale-table td:first-child { text-align: left; }
+.scale-table tr:last-child td { border-bottom: none; }
+
+.scale-table tr.row-current { background: var(--accent-bg); }
+.scale-table tr.row-current td { color: var(--accent); font-weight: 600; }
+.scale-table tr.row-basis { background: var(--neut-bg); }
+.scale-table tr.row-bull { background: var(--bull-bg); }
+.scale-table tr.row-double { background: var(--gold-bg); }
+.scale-table tr.row-five { background: var(--platinum-bg); }
+.scale-table tr.row-bear { background: var(--bear-bg); }
+
+.price-marker {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.marker-current { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+.marker-basis { background: var(--neut-bg); color: var(--neut); border: 1px solid rgba(245,166,35,0.3); }
+.marker-double { background: var(--gold-bg); color: var(--gold); border: 1px solid rgba(245,200,66,0.3); }
+.marker-five { background: var(--platinum-bg); color: var(--platinum); border: 1px solid rgba(168,180,200,0.3); }
+
+/* SCENARIOS */
+.scenario-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.scenario-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.scenario-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.scenario-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.scenario-row:last-child { border-bottom: none; }
+.scenario-period { color: var(--text2); }
+.scenario-target { font-weight: 600; }
+.scenario-value { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+/* CARD REWARDS */
+.rewards-result {
+  background: var(--surface2);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* TAX TOGGLE */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.toggle-label { font-size: 11px; color: var(--text2); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-links">
+    <a href="https://rdwills02.github.io/BTC_Brief/" class="nav-link">← Dashboard</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank" class="nav-link">Full Brief ↗</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank" class="nav-link">Glossary ↗</a>
+  </div>
+  <span class="nav-title">BTC Portfolio Calculator</span>
+  <div class="live-price-badge">
+    <div class="price-dot"></div>
+    <span id="nav-price">Loading…</span>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="grid-main">
+
+    <!-- LEFT COLUMN: INPUTS -->
+    <div>
+
+      <!-- SIMPLE MODE -->
+      <div class="card">
+        <div class="card-title">Your Stack</div>
+
+        <div class="input-group">
+          <label class="input-label">Total BTC quantity</label>
+          <input type="number" id="simple-qty" placeholder="e.g. 1.5" step="any" oninput="calculate()">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Blended cost basis ($ per BTC)</label>
+          <input type="number" id="simple-basis" placeholder="e.g. 45000" step="any" oninput="calculate()">
+        </div>
+
+        <div class="divider">or add individual lots</div>
+
+        <div id="lots-container"></div>
+
+        <button class="btn btn-ghost btn-full" onclick="addLot()">+ Add lot</button>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="card">
+        <div class="card-title">Settings</div>
+
+        <div class="input-group">
+          <div class="toggle-row">
+            <label class="input-label" style="margin:0;">Show after-tax values</label>
+            <input type="checkbox" id="show-tax" onchange="calculate()" checked>
+          </div>
+          <input type="number" id="tax-rate" value="20" min="0" max="50" step="1" oninput="calculate()" placeholder="Tax rate %">
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;">% long-term capital gains rate</div>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Monthly card spend ($) — for rewards tracker</label>
+          <input type="number" id="monthly-spend" placeholder="e.g. 8000" step="any" oninput="calculate()">
+        </div>
+      </div>
+
+      <!-- PORTFOLIO SUMMARY -->
+      <div class="card" id="summary-card">
+        <div class="card-title">Current Position</div>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <div class="stat-label">Live BTC price</div>
+            <div class="stat-value accent-text" id="stat-price">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Portfolio value</div>
+            <div class="stat-value" id="stat-value">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total BTC</div>
+            <div class="stat-value" id="stat-qty">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Blended basis</div>
+            <div class="stat-value neut-text" id="stat-basis">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Unrealized gain $</div>
+            <div class="stat-value" id="stat-gain-dollar">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Unrealized gain %</div>
+            <div class="stat-value" id="stat-gain-pct">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Break-even price</div>
+            <div class="stat-value neut-text" id="stat-breakeven">—</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">2× at price</div>
+            <div class="stat-value gold-text" id="stat-double">—</div>
+          </div>
+        </div>
+
+        <!-- CARD REWARDS -->
+        <div id="rewards-section" style="display:none;margin-top:14px;">
+          <div class="divider">Coinbase card rewards</div>
+          <div class="rewards-result">
+            <div class="stat-grid">
+              <div class="stat-item">
+                <div class="stat-label">BTC earned / month</div>
+                <div class="stat-value bull-text" id="rewards-btc">—</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">Value at current price</div>
+                <div class="stat-value" id="rewards-value">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: SCALE + SCENARIOS -->
+    <div>
+
+      <!-- PRICE SCALE -->
+      <div class="card">
+        <div class="section-title">Price Scale</div>
+
+        <div class="scale-controls">
+          <label>Step:</label>
+          <button class="increment-btn" onclick="setIncrement(1000)">$1K</button>
+          <button class="increment-btn" onclick="setIncrement(2500)">$2.5K</button>
+          <button class="increment-btn active" onclick="setIncrement(5000)">$5K</button>
+          <button class="increment-btn" onclick="setIncrement(10000)">$10K</button>
+          <button class="increment-btn" onclick="setIncrement(25000)">$25K</button>
+          <button class="increment-btn" onclick="setIncrement(50000)">$50K</button>
+          <div class="custom-price-wrap">
+            <label style="font-size:11px;color:var(--muted);white-space:nowrap;">Center on:</label>
+            <input type="number" id="custom-center" placeholder="price" step="any" oninput="calculate()">
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table class="scale-table" id="scale-table">
+            <thead>
+              <tr>
+                <th>BTC Price</th>
+                <th>Portfolio Value</th>
+                <th>Gain / Loss $</th>
+                <th>Gain / Loss %</th>
+                <th id="tax-header">After Tax</th>
+              </tr>
+            </thead>
+            <tbody id="scale-body">
+              <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Enter your stack to see the price scale</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SCENARIOS -->
+      <div class="card">
+        <div class="section-title">Scenario Projections</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:14px;">Targets editable — update when framework changes.</p>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em;">Base case</div>
+            <input type="number" id="s-base-1" placeholder="1yr target" oninput="calculate()" placeholder="1yr">
+            <input type="number" id="s-base-3" placeholder="3yr target" oninput="calculate()" placeholder="3yr" style="margin-top:4px;">
+            <input type="number" id="s-base-5" placeholder="5yr target" oninput="calculate()" placeholder="5yr" style="margin-top:4px;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em;">Bull case</div>
+            <input type="number" id="s-bull-1" placeholder="1yr target" oninput="calculate()" placeholder="1yr">
+            <input type="number" id="s-bull-3" placeholder="3yr target" oninput="calculate()" placeholder="3yr" style="margin-top:4px;">
+            <input type="number" id="s-bull-5" placeholder="5yr target" oninput="calculate()" placeholder="5yr" style="margin-top:4px;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em;">Maximalist</div>
+            <input type="number" id="s-max-1" placeholder="1yr target" oninput="calculate()" placeholder="1yr">
+            <input type="number" id="s-max-3" placeholder="5yr target" oninput="calculate()" placeholder="3yr" style="margin-top:4px;">
+            <input type="number" id="s-max-5" placeholder="5yr target" oninput="calculate()" placeholder="5yr" style="margin-top:4px;">
+          </div>
+        </div>
+
+        <div class="scenario-grid" id="scenario-output">
+          <div class="scenario-card">
+            <div class="scenario-label" style="color:var(--text2);">Base case</div>
+            <div style="color:var(--muted);font-size:11px;">Enter your stack to see projections</div>
+          </div>
+          <div class="scenario-card">
+            <div class="scenario-label" style="color:var(--bull);">Bull case</div>
+            <div style="color:var(--muted);font-size:11px;">Enter your stack to see projections</div>
+          </div>
+          <div class="scenario-card">
+            <div class="scenario-label" style="color:var(--gold);">Maximalist</div>
+            <div style="color:var(--muted);font-size:11px;">Enter your stack to see projections</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────
+let livePrice = null;
+let increment = 5000;
+let lotCount = 0;
+
+// ── LIVE PRICE ─────────────────────────────────────────────────────
+async function fetchPrice() {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+    const data = await res.json();
+    livePrice = data.bitcoin.usd;
+    document.getElementById('nav-price').textContent = '$' + livePrice.toLocaleString();
+    document.getElementById('stat-price').textContent = '$' + livePrice.toLocaleString();
+    calculate();
+  } catch(e) {
+    document.getElementById('nav-price').textContent = 'Price unavailable';
+  }
+}
+
+fetchPrice();
+setInterval(fetchPrice, 30000);
+
+// ── LOT MANAGEMENT ─────────────────────────────────────────────────
+function addLot() {
+  lotCount++;
+  const id = lotCount;
+  const container = document.getElementById('lots-container');
+  const div = document.createElement('div');
+  div.className = 'lot-row';
+  div.id = 'lot-' + id;
+  div.innerHTML = `
+    <div class="lot-header">
+      <span class="lot-label">Lot ${id}</span>
+      <span class="lot-value" id="lot-val-${id}">—</span>
+      <button class="lot-remove" onclick="removeLot(${id})">×</button>
+    </div>
+    <div class="input-row">
+      <div>
+        <label class="input-label">Quantity (BTC)</label>
+        <input type="number" id="lot-qty-${id}" placeholder="0.0" step="any" oninput="calculate()">
+      </div>
+      <div>
+        <label class="input-label">Cost basis ($/BTC)</label>
+        <input type="number" id="lot-cost-${id}" placeholder="0" step="any" oninput="calculate()">
+      </div>
+    </div>
+  `;
+  container.appendChild(div);
+  calculate();
+}
+
+function removeLot(id) {
+  const el = document.getElementById('lot-' + id);
+  if (el) el.remove();
+  calculate();
+}
+
+function getLots() {
+  const lots = [];
+  document.querySelectorAll('.lot-row').forEach(row => {
+    const id = row.id.replace('lot-', '');
+    const qty = parseFloat(document.getElementById('lot-qty-' + id)?.value) || 0;
+    const cost = parseFloat(document.getElementById('lot-cost-' + id)?.value) || 0;
+    if (qty > 0) lots.push({ id, qty, cost });
+  });
+  return lots;
+}
+
+// ── STACK CALCULATION ──────────────────────────────────────────────
+function getStack() {
+  const lots = getLots();
+  if (lots.length > 0) {
+    const totalQty = lots.reduce((s, l) => s + l.qty, 0);
+    const totalCost = lots.reduce((s, l) => s + (l.qty * l.cost), 0);
+    const blendedBasis = totalCost / totalQty;
+    // Update lot value labels
+    lots.forEach(l => {
+      const el = document.getElementById('lot-val-' + l.id);
+      if (el && livePrice) {
+        const val = l.qty * livePrice;
+        const gain = val - (l.qty * l.cost);
+        el.textContent = '$' + val.toLocaleString(undefined, {maximumFractionDigits:0}) +
+          ' (' + (gain >= 0 ? '+' : '') + '$' + gain.toLocaleString(undefined, {maximumFractionDigits:0}) + ')';
+        el.style.color = gain >= 0 ? 'var(--bull)' : 'var(--bear)';
+      }
+    });
+    return { qty: totalQty, basis: blendedBasis, valid: totalQty > 0 };
+  }
+  // Simple mode
+  const qty = parseFloat(document.getElementById('simple-qty').value) || 0;
+  const basis = parseFloat(document.getElementById('simple-basis').value) || 0;
+  return { qty, basis, valid: qty > 0 };
+}
+
+// ── FORMAT HELPERS ─────────────────────────────────────────────────
+const fmt = (n) => '$' + Math.round(n).toLocaleString();
+const fmtBTC = (n) => n.toFixed(6) + ' BTC';
+const pct = (n) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+
+// ── MAIN CALCULATE ─────────────────────────────────────────────────
+function calculate() {
+  const stack = getStack();
+  const price = livePrice || 0;
+  const taxRate = (parseFloat(document.getElementById('tax-rate').value) || 0) / 100;
+  const showTax = document.getElementById('show-tax').checked;
+  const spend = parseFloat(document.getElementById('monthly-spend').value) || 0;
+
+  document.getElementById('tax-header').style.display = showTax ? '' : 'none';
+  document.querySelectorAll('.scale-table td:nth-child(5)').forEach(td => {
+    td.style.display = showTax ? '' : 'none';
+  });
+
+  if (!stack.valid) {
+    document.getElementById('scale-body').innerHTML =
+      '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">Enter your stack to see the price scale</td></tr>';
+    renderScenarios(null, null, taxRate, showTax);
+    return;
+  }
+
+  const { qty, basis } = stack;
+  const costTotal = qty * basis;
+  const currentValue = qty * price;
+  const gainDollar = currentValue - costTotal;
+  const gainPct = basis > 0 ? ((price - basis) / basis) * 100 : 0;
+  const afterTax = gainDollar > 0 ? currentValue - (gainDollar * taxRate) : currentValue;
+  const doublePrice = basis * 2;
+  const fivePrice = basis * 5;
+
+  // Update summary stats
+  document.getElementById('stat-qty').textContent = qty.toFixed(8);
+  document.getElementById('stat-basis').textContent = basis > 0 ? fmt(basis) : '—';
+  document.getElementById('stat-value').textContent = price > 0 ? fmt(currentValue) : '—';
+  document.getElementById('stat-breakeven').textContent = basis > 0 ? fmt(basis) : '—';
+  document.getElementById('stat-double').textContent = basis > 0 ? fmt(doublePrice) : '—';
+
+  const gainEl = document.getElementById('stat-gain-dollar');
+  const pctEl = document.getElementById('stat-gain-pct');
+  if (price > 0 && basis > 0) {
+    gainEl.textContent = (gainDollar >= 0 ? '+' : '') + fmt(gainDollar);
+    gainEl.className = 'stat-value ' + (gainDollar >= 0 ? 'bull-text' : 'bear-text');
+    pctEl.textContent = pct(gainPct);
+    pctEl.className = 'stat-value ' + (gainPct >= 0 ? 'bull-text' : 'bear-text');
+  }
+
+  // Card rewards
+  if (spend > 0 && price > 0) {
+    document.getElementById('rewards-section').style.display = '';
+    const monthlyBTC = (spend * 0.03) / price;
+    const monthlyValue = monthlyBTC * price;
+    document.getElementById('rewards-btc').textContent = monthlyBTC.toFixed(6) + ' BTC';
+    document.getElementById('rewards-value').textContent = fmt(monthlyValue) + '/mo';
+  } else {
+    document.getElementById('rewards-section').style.display = 'none';
+  }
+
+  // Build price scale
+  const center = parseFloat(document.getElementById('custom-center').value) || price;
+  const rows = 12;
+  const prices = [];
+  for (let i = -rows; i <= rows; i++) {
+    prices.push(Math.round(center + (i * increment)));
+  }
+
+  const tbody = document.getElementById('scale-body');
+  tbody.innerHTML = '';
+
+  prices.forEach(p => {
+    if (p <= 0) return;
+    const val = qty * p;
+    const g = val - costTotal;
+    const gp = basis > 0 ? ((p - basis) / basis) * 100 : 0;
+    const at = g > 0 ? val - (g * taxRate) : val;
+
+    const isCurrent = Math.abs(p - price) < increment * 0.5;
+    const isBasis = basis > 0 && Math.abs(p - basis) < increment * 0.5;
+    const isDouble = basis > 0 && Math.abs(p - doublePrice) < increment * 0.5;
+    const isFive = basis > 0 && Math.abs(p - fivePrice) < increment * 0.5;
+    const isAbove = p > basis;
+
+    let rowClass = '';
+    if (isCurrent) rowClass = 'row-current';
+    else if (isDouble) rowClass = 'row-double';
+    else if (isFive) rowClass = 'row-five';
+    else if (isBasis) rowClass = 'row-basis';
+    else if (isAbove && basis > 0) rowClass = 'row-bull';
+    else if (!isAbove && basis > 0) rowClass = 'row-bear';
+
+    let marker = '';
+    if (isCurrent) marker = '<span class="price-marker marker-current">NOW</span>';
+    else if (isDouble) marker = '<span class="price-marker marker-double">2×</span>';
+    else if (isFive) marker = '<span class="price-marker marker-five">5×</span>';
+    else if (isBasis) marker = '<span class="price-marker marker-basis">BASIS</span>';
+
+    const gainColor = g >= 0 ? 'var(--bull)' : 'var(--bear)';
+
+    const tr = document.createElement('tr');
+    tr.className = rowClass;
+    tr.innerHTML = `
+      <td><strong>${fmt(p)}</strong>${marker}</td>
+      <td>${fmt(val)}</td>
+      <td style="color:${gainColor}">${g >= 0 ? '+' : ''}${fmt(g)}</td>
+      <td style="color:${gainColor}">${pct(gp)}</td>
+      <td style="display:${showTax ? '' : 'none'}">${fmt(at)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  renderScenarios(qty, costTotal, taxRate, showTax);
+}
+
+// ── SCENARIOS ──────────────────────────────────────────────────────
+function renderScenarios(qty, costTotal, taxRate, showTax) {
+  const container = document.getElementById('scenario-output');
+
+  if (!qty) {
+    container.innerHTML = `
+      <div class="scenario-card"><div class="scenario-label" style="color:var(--text2);">Base case</div><div style="color:var(--muted);font-size:11px;">Enter your stack</div></div>
+      <div class="scenario-card"><div class="scenario-label" style="color:var(--bull);">Bull case</div><div style="color:var(--muted);font-size:11px;">Enter your stack</div></div>
+      <div class="scenario-card"><div class="scenario-label" style="color:var(--gold);">Maximalist</div><div style="color:var(--muted);font-size:11px;">Enter your stack</div></div>
+    `;
+    return;
+  }
+
+  const scenarios = [
+    {
+      label: 'Base case', color: 'var(--text2)',
+      targets: [
+        { period: '1 year', price: parseFloat(document.getElementById('s-base-1').value) || 0 },
+        { period: '3 years', price: parseFloat(document.getElementById('s-base-3').value) || 0 },
+        { period: '5 years', price: parseFloat(document.getElementById('s-base-5').value) || 0 },
+      ]
+    },
+    {
+      label: 'Bull case', color: 'var(--bull)',
+      targets: [
+        { period: '1 year', price: parseFloat(document.getElementById('s-bull-1').value) || 0 },
+        { period: '3 years', price: parseFloat(document.getElementById('s-bull-3').value) || 0 },
+        { period: '5 years', price: parseFloat(document.getElementById('s-bull-5').value) || 0 },
+      ]
+    },
+    {
+      label: 'Maximalist', color: 'var(--gold)',
+      targets: [
+        { period: '1 year', price: parseFloat(document.getElementById('s-max-1').value) || 0 },
+        { period: '3 years', price: parseFloat(document.getElementById('s-max-3').value) || 0 },
+        { period: '5 years', price: parseFloat(document.getElementById('s-max-5').value) || 0 },
+      ]
+    }
+  ];
+
+  container.innerHTML = scenarios.map(s => {
+    const rows = s.targets.map(t => {
+      const val = qty * t.price;
+      const gain = val - costTotal;
+      const at = gain > 0 ? val - (gain * taxRate) : val;
+      const gainColor = gain >= 0 ? 'var(--bull)' : 'var(--bear)';
+      return `
+        <div class="scenario-row">
+          <div>
+            <div class="scenario-period">${t.period}</div>
+            <div style="font-size:11px;color:var(--muted);">${fmt(t.price)}/BTC</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="scenario-target" style="color:${gainColor}">${fmt(val)}</div>
+            <div class="scenario-value" style="color:${gainColor}">${gain >= 0 ? '+' : ''}${fmt(gain)}${showTax ? ' · ' + fmt(at) + ' after tax' : ''}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    return `<div class="scenario-card"><div class="scenario-label" style="color:${s.color}">${s.label}</div>${rows}</div>`;
+  }).join('');
+}
+
+// ── INCREMENT ──────────────────────────────────────────────────────
+function setIncrement(val) {
+  increment = val;
+  document.querySelectorAll('.increment-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.includes(val >= 1000 ? (val/1000) + 'K' : val));
+  });
+  calculate();
+}
+</script>
+
+</body>
+</html>
