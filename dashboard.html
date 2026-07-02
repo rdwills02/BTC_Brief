@@ -177,33 +177,34 @@
     </div>
   </div>
 
-<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px;margin-bottom:20px;">
+<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px;margin-bottom:20px;max-width:100%;overflow:hidden;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">LIVE CHART — BTCUSD</div>
     <button onclick="toggleChart()" id="chart-toggle-btn" style="font-size:10px;font-weight:600;padding:3px 10px;border-radius:4px;background:rgba(123,110,246,0.15);color:#7b6ef6;border:1px solid rgba(123,110,246,0.3);cursor:pointer;">⛶ Expand</button>
   </div>
-  <div id="chart-container" class="tradingview-widget-container" style="height:220px;transition:height 0.3s ease;">
-    <div class="tradingview-widget-container__widget" style="height:100%;width:100%;"></div>
-    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
-    {
-      "autosize": true,
-      "symbol": "BITSTAMP:BTCUSD",
-      "interval": "D",
-      "timezone": "America/Chicago",
-      "theme": "dark",
-      "style": "1",
-      "locale": "en",
-      "backgroundColor": "#0b0c14",
-      "gridColor": "#1e2035",
-      "hide_top_toolbar": false,
-      "hide_legend": false,
-      "save_image": false,
-      "studies": ["MASimple@tv-basicstudies"]
-    }
-    </script>
+  <div id="chart-container" style="height:220px;width:100%;overflow:hidden;transition:height 0.3s ease;">
+    <div class="tradingview-widget-container" style="height:100%;width:100%;">
+      <div class="tradingview-widget-container__widget" style="height:100%;width:100%;"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+      {
+        "autosize": true,
+        "symbol": "BITSTAMP:BTCUSD",
+        "interval": "D",
+        "timezone": "America/Chicago",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "backgroundColor": "#0b0c14",
+        "gridColor": "#1e2035",
+        "hide_top_toolbar": false,
+        "hide_legend": false,
+        "save_image": false,
+        "studies": ["MASimple@tv-basicstudies"]
+      }
+      </script>
+    </div>
   </div>
 </div>
-
 
 </div> 
   <div class="section-title">Key Levels</div>
