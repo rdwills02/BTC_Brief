@@ -29,6 +29,18 @@
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
+  .test-banner {
+    background: rgba(245,166,35,0.12);
+    border: 1px solid var(--neutral);
+    color: var(--neutral);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
   .header {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -36,8 +48,18 @@
     border-radius: 10px;
     padding: 24px;
     margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
   }
-  .navlink { text-align: right; font-size: 13px; margin-bottom: 10px; }
+  .header-main { flex: 1; min-width: 280px; }
+  .full-brief-link {
+    font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 8px;
+    background: rgba(123,110,246,0.15); color: var(--accent); border: 1px solid var(--accent);
+    height: fit-content;
+  }
   .updated { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .alignment { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
   .composite-row { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
@@ -100,7 +122,6 @@
     border-radius: 10px; padding: 16px; margin-bottom: 10px;
   }
   .critical-card.bull-flag { border-left-color: var(--bull); }
-  .critical-card.neutral-flag { border-left-color: var(--neutral); }
   .critical-type { font-size: 12px; font-weight: 700; color: var(--neutral); margin-bottom: 6px; text-transform: uppercase; }
   .critical-text { font-size: 14px; margin-bottom: 6px; }
   .critical-source { font-size: 12px; color: var(--muted); }
@@ -119,19 +140,22 @@
 <body>
 <div class="container">
 
-  <div class="navlink"><a href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief →</a></div>
+  <div class="test-banner">⚠️ TEST RUN — Data from Thursday, July 2, 2026 at 08:00 AM CT — Not a live pull. All data is from the prior brief run.</div>
 
   <div class="header">
-    <div class="updated">Last updated: Thursday, July 2, 2026 at 08:00 AM CT</div>
-    <div class="alignment">🟡 NEUTRAL ALIGNMENT 4/8 &nbsp;|&nbsp; 🟢 BULLISH 2/8 &nbsp;|&nbsp; 🔴 BEARISH 2/8</div>
-    <div class="composite-row">
-      <span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span>
-      <span class="confidence">Confidence: MEDIUM</span>
+    <div class="header-main">
+      <div class="updated">Last updated: Thursday, July 2, 2026 at 08:00 AM CT</div>
+      <div class="alignment">🟡 NEUTRAL ALIGNMENT 4/8 &nbsp;|&nbsp; 🟢 BULLISH 2/8 &nbsp;|&nbsp; 🔴 BEARISH 2/8</div>
+      <div class="composite-row">
+        <span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span>
+        <span class="confidence">Confidence: MEDIUM</span>
+      </div>
+      <div class="price-row">
+        $61,100 <span class="price-change up">📈 24hr +4.5%</span> <span class="price-change">7day ❓ N/A</span>
+      </div>
+      <div class="sub" style="margin-top:6px;">Testing the 200-day MA after Fed Chair Warsh's dovish Sintra comments; reclaimed $60K intraday.</div>
     </div>
-    <div class="price-row">
-      $61,100 <span class="price-change up">24hr +4.5%</span> <span class="price-change up">7day ❓ n/a</span>
-    </div>
-    <div class="sub" style="margin-top:6px;">Reclaimed $60K and testing the 200-day MA after Fed Chair Warsh's dovish "inflation risks have come down" comments at the ECB Sintra forum.</div>
+    <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief →</a>
   </div>
 
   <div class="section-title">Snapshot</div>
@@ -139,44 +163,44 @@
     <div class="card">
       <div class="label">24hr Range</div>
       <div class="value">$60,000–$61,100+</div>
-      <div class="sub">200-day MA ~$61,181 · 🔍 Testing from below</div>
+      <div class="sub">200-day MA ~$61,181 ⚠️ stale · 🔍 Testing from below</div>
     </div>
     <div class="card">
-      <div class="label">Fear &amp; Greed Index <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="label">Fear &amp; Greed Index <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div>
       <div class="value" style="color:var(--neutral);">36 — Fear</div>
-      <div class="sub">Sharp jump from 11 (Extreme Fear) this morning</div>
+      <div class="sub">Up sharply from 11 (Extreme Fear) this morning</div>
     </div>
     <div class="card">
-      <div class="label">ETF Flows (7d) <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="label">ETF Flows (7d) <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div>
       <div class="value" style="color:var(--bear);">-$2.06B</div>
-      <div class="sub">June total: -$4.51B (record) · July 1 unposted</div>
+      <div class="sub">June total: -$4.51B (record) ⚠️ July 1 unposted</div>
     </div>
     <div class="card">
-      <div class="label">DXY <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="label">DXY <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div>
       <div class="value">~101.1</div>
-      <div class="sub">Softening — dollar slid on Warsh's dovish comments</div>
+      <div class="sub">Softening — dollar slid on Warsh comments</div>
     </div>
   </div>
 
   <div class="grid">
     <div class="card">
-      <div class="label">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="label">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div>
       <div class="value" style="color:var(--bull);">~$54,000</div>
-      <div class="sub">BTC ~13% above ⚠️ stale</div>
+      <div class="sub">BTC ~13% above ⚠️ stale (mid-June est.)</div>
     </div>
     <div class="card">
-      <div class="label">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="label">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div>
       <div class="value" style="color:var(--bull);">~0.6</div>
-      <div class="sub">⚠️ 5 briefs stale — below 0.7 nominally</div>
+      <div class="sub">Below 0.7 — capitulation ⚠️ stale (5 briefs)</div>
     </div>
     <div class="card">
       <div class="label">Whale Accumulation</div>
       <div class="value" style="color:var(--neutral);">🟡 Mixed</div>
-      <div class="sub">LTH turning positive; largest whales still neutral</div>
+      <div class="sub">LTH net +50-100K BTC/30d; top cohort neutral</div>
     </div>
     <div class="card">
       <div class="label">Miner Production Cost</div>
-      <div class="value" style="color:var(--bear);">~$78–80K</div>
+      <div class="value" style="color:var(--bear);">~$78-80K</div>
       <div class="sub">vs $61,100 spot — miners still underwater</div>
     </div>
   </div>
@@ -220,9 +244,9 @@
     </div>
     <div class="levels-card">
       <div class="support-title">🟢 Support</div>
-      <div class="row"><span>Newly reclaimed</span><span>$60K</span></div>
-      <div class="row"><span>Whale floor</span><span>$58K</span></div>
-      <div class="row"><span>Brandt target</span><span>$53K–55K</span></div>
+      <div class="row"><span>Reclaimed</span><span>$60K</span></div>
+      <div class="row"><span>Whale floor</span><span>$58K → $57K</span></div>
+      <div class="row"><span>Brandt target</span><span>$53-55K</span></div>
     </div>
   </div>
 
@@ -231,18 +255,18 @@
     <div class="card">
       <div class="label">Villaverde Cycle Low Target</div>
       <div class="value">July 10, 2026</div>
-      <div class="sub">8 days · JpM2 <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> sideways rounded bottom</div>
-      <div class="label" style="margin-top:12px;">Brandt Bottom Call</div>
+      <div class="sub">8 days · JpM2 <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a> sideways rounded bottom</div>
+      <div class="label" style="margin-top:12px;">Brandt Investable Low</div>
       <div class="value">Sep–Oct 2026</div>
-      <div class="sub">Cantor Fitzgerald independently converges on Oct 2026</div>
+      <div class="sub">~70 days · Cantor Fitzgerald converges on Oct 2026</div>
     </div>
     <div class="card">
       <div class="label">Fed Stance</div>
-      <div class="value" style="color:var(--neutral);">Dovish Pivot</div>
-      <div class="sub">Warsh: "inflation risks have come down" (Sintra, July 1)</div>
-      <div class="label" style="margin-top:12px;">BTC Dominance <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
-      <div class="value">~55.5–55.6%</div>
-      <div class="sub">Roughly steady</div>
+      <div class="value">Dovish pivot</div>
+      <div class="sub">Warsh: "inflation risks have come down" (Sintra, July 1); 3.50-3.75%; June dot plot still hawkish</div>
+      <div class="label" style="margin-top:12px;">BTC Dominance <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div>
+      <div class="value">~55.5-55.6%</div>
+      <div class="sub">Steady</div>
     </div>
   </div>
 
@@ -252,8 +276,8 @@
     <div class="dot bear"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">1. Halving / Cycle</span><span class="signal-tag bear">🔴 BEARISH</span></div>
-      <div class="lens-finding">27 months post-halving, no surge; hashrate down 23% from October peak; production cost ~$78-80K vs $61,100 spot — gap narrowing but still wide.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change</div>
+      <div class="lens-finding">27 months post-halving, no surge; hashrate down 23% from Oct 2025 peak; production cost ~$78-80K vs $61,100 spot.</div>
+      <div class="lens-delta">vs Prior: ➡️ No signal change — underwater gap narrowed slightly, not enough to flip</div>
     </div>
   </div>
 
@@ -261,8 +285,8 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">2. Macro / Liquidity</span><span class="badge badge-weight">2× weight</span><span class="signal-tag neutral">🟡 NEUTRAL</span><span class="badge badge-alert">⚡ upgraded</span></div>
-      <div class="lens-finding">Fed Chair Warsh's dovish Sintra comments offset by record June ETF outflows and a still-hawkish June dot plot; genuinely mixed but net improved.</div>
-      <div class="lens-delta">vs Prior: 📈 Improved — upgraded Bearish → Neutral</div>
+      <div class="lens-finding">Fed Chair Warsh's dovish Sintra comments mark first softening since hawkish June dot plot; DXY softened, gold rallied. Offsetting: June ETF outflow record (-$4.51B) stands, dot plot itself still hawkish.</div>
+      <div class="lens-delta">vs Prior: 📈 Improved — upgraded Bearish → Neutral on the Warsh pivot</div>
     </div>
   </div>
 
@@ -270,8 +294,8 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">3. Adoption / Reserve</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
-      <div class="lens-finding">CLARITY Act odds flat at 47-48%; Metaplanet bought another $170M BTC (43,000 BTC treasury), offsetting the still-open Strategy sale-framework tail risk.</div>
-      <div class="lens-delta">vs Prior: ➡️ No signal change</div>
+      <div class="lens-finding">CLARITY Act odds unchanged 47-48%; Metaplanet bought another $170M BTC, treasury now 43,000 BTC.</div>
+      <div class="lens-delta">vs Prior: ➡️ No signal change — Metaplanet buy a mild positive offset</div>
     </div>
   </div>
 
@@ -279,8 +303,8 @@
     <div class="dot bull"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">4. Wright</span><span class="signal-tag bull">🟢 BULLISH</span></div>
-      <div class="lens-finding">Contrarian thesis reinforced — Glassnode confirms LTHs flipping from distribution to accumulation, consistent with historical pre-recovery behavior.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change</div>
+      <div class="lens-finding">Contrarian miner-capitulation thesis reinforced by Glassnode LTH reversal to net accumulation; negative hashrate growth has preceded positive 180-day returns 77% of the time historically.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change — stays Bullish, reinforced by fresh data</div>
     </div>
   </div>
 
@@ -288,8 +312,8 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">5. Fogle Technical</span><span class="signal-tag neutral">🟡 NEUTRAL</span><span class="badge badge-alert">⚡ upgraded</span></div>
-      <div class="lens-finding">BTC reclaimed $60K and is testing the 200-day MA (~$61,181) from below for the first time this cycle; needs a confirmed close above.</div>
-      <div class="lens-delta">vs Prior: 📈 Improved — upgraded Bearish → Neutral</div>
+      <div class="lens-finding">BTC reclaimed $60K and is testing the 200-day MA (~$61,181) from below for the first time since falling under it; Dominance steady ~55.5-55.6%.</div>
+      <div class="lens-delta">vs Prior: 📈 Improved — upgraded Bearish → Neutral; needs confirmed close above for Bullish</div>
     </div>
   </div>
 
@@ -297,17 +321,17 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">6. Villaverde Cycles</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
-      <div class="lens-finding">July 10 target 8 days out; Cantor Fitzgerald's new Oct 2026 bottom note converges with Brandt but diverges further from Villaverde's earlier window.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change</div>
+      <div class="lens-finding">July 10 target 8 days out; JpM2 sideways rounded bottom unchanged. Cantor Fitzgerald's new Oct 2026 bottom note converges with Brandt but diverges from Villaverde's earlier target.</div>
+      <div class="lens-delta">vs Prior: ➡️ No signal change — divergence with other analysts widens</div>
     </div>
   </div>
 
   <div class="lens-card">
     <div class="dot bull"></div>
     <div class="lens-body">
-      <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bull">🟢 BULLISH</span><span class="badge badge-alert">⚡ data conflict</span></div>
-      <div class="lens-finding">Fresh Glassnode data disputes the hard rule's whale-accumulation leg — largest whales (10K+ BTC) read neutral, not top-decile, vs the "top 1-3%" figure carried in prior briefs. Lens stays Bullish on judgment (SOPR + HODL + LTH reversal), hard rule not mechanically triggered.</div>
-      <div class="lens-delta">vs Prior: 📉 Hard-rule status downgraded — stays Bullish on judgment, reduced confidence</div>
+      <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bull">🟢 BULLISH</span><span class="badge badge-alert">⚡ hard-rule disputed</span></div>
+      <div class="lens-finding">LTH SOPR ~0.6 (stale), HODL LTH% 78-79%; fresh Glassnode data shows LTH net accumulation reversal but largest whale cohort (10,000+ BTC) reads neutral — disputes the top-1-3% hard-rule leg. Lens stays Bullish on judgment, not mechanical trigger.</div>
+      <div class="lens-delta">vs Prior: 📉 Hard-rule status downgraded — stays Bullish on judgment, reduced confidence on this leg</div>
     </div>
   </div>
 
@@ -315,8 +339,8 @@
     <div class="dot bear"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">8. Brandt Classical</span><span class="badge badge-bear-lens">Bear lens</span><span class="signal-tag bear">🔴 BEARISH</span></div>
-      <div class="lens-finding">Descending channel + Expanding Triangle intact; $53-55K target; Sep-Oct low; no fresh Brandt statement, but Cantor's independent Oct 2026 call converges with this thesis.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change</div>
+      <div class="lens-finding">Descending channel + Expanding Triangle intact; $53-55K measured target; Sep-Oct 2026 investable low; Cantor Fitzgerald's independent Oct 2026 call provides outside convergence.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change — pattern, target, timeline all held</div>
     </div>
   </div>
 
@@ -324,36 +348,36 @@
 
   <div class="critical-card bull-flag">
     <div class="critical-type">Macro Regime Change — Fed Chair Warsh Dovish Pivot</div>
-    <div class="critical-text">Warsh told the ECB's Sintra forum "inflation risks have come down" — the first dovish comment since June's hawkish dot plot. BTC reclaimed $60K and rallied to $61,100+ (+4.5% 24hr); dollar slid, gold rallied. Friday's jobs report is the next swing factor.</div>
+    <div class="critical-text">At the ECB's Sintra forum, Fed Chair Warsh said "inflation risks have come down" — first dovish comment since the hawkish June dot plot. BTC reclaimed $60K, rallied to $61,100+ (+4.5% 24hr); dollar slid, gold rallied above $4,060/oz.</div>
     <div class="critical-source">Source: CoinDesk, July 2, 2026</div>
   </div>
 
-  <div class="critical-card neutral-flag">
-    <div class="critical-type">Data Conflict — Woo On-Chain Whale-Accumulation Hard Rule Disputed</div>
-    <div class="critical-text">Fresh Glassnode data shows LTHs flipping to net accumulation, but the largest whale cohort (10,000+ BTC) reads neutral — not top-decile — conflicting with the "top 1-3%" figure carried in prior briefs from weaker secondary sources. More conservative Glassnode reading now governs; hard rule not mechanically triggered.</div>
-    <div class="critical-source">Source: Glassnode via CoinDesk, July 2, 2026</div>
+  <div class="critical-card">
+    <div class="critical-type">Data Conflict — Woo On-Chain Whale-Accumulation Leg Disputed</div>
+    <div class="critical-text">Fresh Glassnode data shows LTHs flipped to net accumulation (+50-100K BTC/30d), but the largest whale cohort (10,000+ BTC) still reads neutral — conflicting with the "top 1-3% historical pace" figure carried in prior briefs from lower-tier sources. More conservative Glassnode reading governs.</div>
+    <div class="critical-source">Source: CoinDesk (Glassnode), July 2, 2026</div>
   </div>
 
   <div class="section-title">Watch List</div>
   <div class="watchlist">
     <ul>
       <li>⚡ 200-day MA (~$61.2K) — a confirmed daily close above on volume would be the first reclaim this cycle</li>
-      <li>⚡ Friday's June jobs report — soft print extends the rally, strong print revives hawkish risk</li>
-      <li>⚡ July 10 Villaverde cycle low — 8 days out; Cantor's new note adds another voice favoring a later bottom</li>
-      <li>Fresh primary-source LTH SOPR / MVRV Z-Score print — current SOPR figure is now 5 briefs stale</li>
+      <li>⚡ Friday's June jobs report — soft print extends rally; strong print hands the Fed cover to stay restrictive</li>
+      <li>⚡ July 10 Villaverde cycle low — 8 days out; watch for a confirmed reversal candle</li>
+      <li>Fresh primary-source LTH SOPR / MVRV Z-Score print — current SOPR figure is 5 briefs stale</li>
       <li>ETF flows — July 1 daily figure still unposted; a net-positive week would firm up the Macro lens</li>
     </ul>
   </div>
 
   <div class="section-title">Bottom Line</div>
   <div class="bottom-line">
-    BTC $61,100 — up 4.5% in 24 hours and testing the 200-day MA after Fed Chair Kevin Warsh told the ECB's Sintra forum that "inflation risks have come down." The reaction was broad: BTC reclaimed $60,000, the dollar slid, gold rallied. That catalyst upgraded two lenses at once — Macro/Liquidity (2x weight) and Fogle Technical both move from Bearish to Neutral — and the composite improves to NEUTRAL at MEDIUM confidence, up from LOW. Woo On-Chain (also 2x weight) stays Bullish, but fresh Glassnode data disputes its hard-rule whale-accumulation leg, so the lens now rests on judgment rather than a mechanical trigger. The two lenses still bearish — Halving/Cycle and Brandt Classical — are structural theses unmoved by a single day's price action. Watch for a confirmed daily close above the 200-day MA (~$61.2K) as the clearest bullish trigger, and Friday's jobs report as the next swing factor.
+    BTC $61,100 — up 4.5% in 24 hours and testing the 200-day MA after Fed Chair Warsh's dovish Sintra comments. Macro/Liquidity and Fogle Technical (2x-weight and technical lenses) both upgrade Bearish → Neutral, lifting the composite to NEUTRAL at MEDIUM confidence, up from LOW. Woo On-Chain stays Bullish but its hard-rule mechanism took a hit — fresh Glassnode data disputes the whale-accumulation leg, so the lens now rests on judgment rather than a mechanical trigger. Halving/Cycle and Brandt Classical remain the structural bearish counterweight, unmoved by a single day's rally. Watch for a confirmed daily close above the 200-day MA (~$61.2K) as the clearest bullish trigger, and Friday's jobs report as the next swing factor.
   </div>
 
   <div class="footer">
     Finance Agent V3 · Last updated: Thursday, July 2, 2026 at 08:00 AM CT<br>
     Glossary: <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">https://rdwills02.github.io/BTC_Brief/glossary.html</a> ·
-    Full Brief: <a href="https://rdwills02.github.io/BTC_Brief/brief.html">https://rdwills02.github.io/BTC_Brief/brief.html</a>
+    Dashboard: <a href="https://rdwills02.github.io/BTC_Brief/">https://rdwills02.github.io/BTC_Brief/</a>
   </div>
 
 </div>
