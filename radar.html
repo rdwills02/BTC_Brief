@@ -238,7 +238,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────
 const CG = 'https://api.coingecko.com/api/v3';
-const REFRESH_MS = 10 * 60 * 1000; // 10 min to be gentle on rate limits
+const REFRESH_MS = 15 * 60 * 1000; // 15 min between auto-refreshes
 const PIVOT_LB = 5;
 const MIN_TOUCHES = 3;
 const TOUCH_TOL = 0.025;
@@ -278,11 +278,17 @@ function setStatus(state,text){
 }
 
 // ── COINGECKO API ─────────────────────────────────────────────────
-async function cgFetch(path){
-  const r=await fetch(`${CG}${path}`);
-  if(r.status===429){await sleep(60000);return cgFetch(path);}
-  if(!r.ok)return null;
-  return r.json();
+async function cgFetch(path, retries=3){
+  try{
+    const r=await fetch(`${CG}${path}`);
+    if(r.status===429){
+      if(retries<=0)return null;
+      await sleep(15000); // wait 15s then retry
+      return cgFetch(path, retries-1);
+    }
+    if(!r.ok)return null;
+    return r.json();
+  }catch(e){return null;}
 }
 
 // Get top 100 non-stable alts by market cap
@@ -474,7 +480,7 @@ async function runScan(){
     const r=await scanCoin(coins[i]);
     if(r)results.push(r);
     setStatus('scanning',`${i+1}/${coins.length} scanned · ${results.length} channels found`);
-    if(i<coins.length-1)await sleep(2100); // 2.1s between calls = ~28/min safely under 30/min limit
+    if(i<coins.length-1)await sleep(3000); // 3s between calls = 20/min well under 30/min limit
   }
 
   results.sort((a,b)=>b.score-a.score);
