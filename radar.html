@@ -316,6 +316,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 </div>
 
 <script>
+
 // ── CONFIG ────────────────────────────────────────────────────────
 const CG_BASE    = 'https://api.coingecko.com/api/v3';
 const CG_KEY     = 'CG-YJMCUm9ZMwMfq8YuXac6RZ8P'; // ← paste your Demo key here
@@ -798,16 +799,6 @@ function buildChart(r){
   new ResizeObserver(entries=>{for(const e of entries)chart.applyOptions({width:e.contentRect.width,height:e.contentRect.height});}).observe(container);
 }
 
-window.addEventListener('load',()=>{
-
-  updatePublishBtn();
-  setStatus('scanning','Starting…');
-  runScan();
-});
-</script>
-
-
-<script>
 // ── GITHUB PUBLISH ────────────────────────────────────────────────
 const GITHUB_REPO = 'rdwills02/BTC_Brief';
 const GITHUB_FILE = 'radar-report.html';
@@ -901,6 +892,12 @@ Check your GitHub token has repo scope.');
     btn.textContent='⬆ Publish Report'; btn.disabled=false;
   }
 }
+
+window.addEventListener('load',()=>{
+  updatePublishBtn();
+  setStatus('scanning','Starting…');
+  runScan();
+});
 </script>
 
 </body>
