@@ -583,7 +583,7 @@ function renderTable() {
     var posLbl=r.position<=0.33?'Lower':r.position<=0.66?'Mid':'Upper';
     var cc=r.change24h>=0?'up':'dn';
     var scls=r.slope>0.05?'sp':r.slope<-0.05?'sn':'sf';
-    var tvUrl='https://www.tradingview.com/chart/?symbol=BINANCE:'+r.symbol+'USDT&interval=D';
+    var tvUrl='https://www.tradingview.com/chart/?symbol=COINBASE:'+r.symbol+'USD&interval=D';
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
@@ -679,7 +679,7 @@ function buildReportHTML(data) {
     var posLbl = r.position<=0.33?'Lower third (near support)':r.position<=0.66?'Middle of channel':'Upper third (near resistance)';
     var slopeColor = r.slope>0.05?'#00c896':r.slope<-0.05?'#e8754a':'#6b7280';
     var chType = r.isFlat?'Flat channel':r.slope>=0?'Ascending channel':'Descending channel';
-    var tvUrl = 'https://www.tradingview.com/chart/?symbol=BINANCE:'+r.symbol+'USDT&interval=D';
+    var tvUrl='https://www.tradingview.com/chart/?symbol=COINBASE:'+r.symbol+'USD&interval=D';
     var invPct = ((r.invalidation-r.price)/r.price*100).toFixed(1);
     return '<div class="radar-card" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
