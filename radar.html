@@ -146,6 +146,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* TOKEN MODAL */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:500;display:none;align-items:center;justify-content:center}
+.modal-overlay.visible{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;width:420px;max-width:90vw}
+.modal-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px}
+.modal-sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6}
+.modal input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;margin-bottom:10px}
+.modal input:focus{border-color:var(--accent)}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end}
+.publish-status{font-size:11px;color:var(--muted);margin-left:8px}
 </style>
 </head>
 <body>
@@ -166,6 +177,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <span class="last-update" id="last-update"></span>
     <button class="btn btn-accent" onclick="toggleDiag()">⚗ Diagnostics</button>
     <button class="btn btn-ghost" onclick="runScan()" id="refresh-btn">↻ Refresh</button>
+    <button class="btn btn-ghost" onclick="showTokenSetup()" id="token-btn" title="GitHub token settings">⚙ GitHub</button>
+    <button class="btn btn-accent" onclick="publishReport()" id="publish-btn" style="display:none">⬆ Publish Report</button>
   </div>
 </header>
 
@@ -600,6 +613,7 @@ async function runScan(){
   renderDiag();
   setStatus('live',`${allResults.length} channels · ${coins.length} scanned`);
   document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();
+  updatePublishBtn();
   btn.disabled=false; btn.textContent='↻ Refresh';
   scanning=false;
   if(refreshTimer)clearTimeout(refreshTimer);
@@ -794,6 +808,131 @@ function buildChart(r){
 }
 
 window.addEventListener('load',()=>{setStatus('scanning','Starting…');runScan();});
+</script>
+
+<!-- TOKEN SETUP MODAL -->
+<div class="modal-overlay" id="token-modal">
+  <div class="modal">
+    <div class="modal-title">GitHub Token Setup</div>
+    <div class="modal-sub">Your Personal Access Token is stored only in this browser — never in the code or on GitHub. Required to publish radar-report.html after each scan.<br><br>Create one at: github.com/settings/tokens → Generate new token (classic) → select <strong>repo</strong> scope only.</div>
+    <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeTokenModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveToken()">Save Token</button>
+      <button class="btn btn-ghost" onclick="clearToken()" style="color:var(--bear)">Clear</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── GITHUB PUBLISH ────────────────────────────────────────────────
+const GITHUB_REPO = 'rdwills02/BTC_Brief';
+const GITHUB_FILE = 'radar-report.html';
+const GITHUB_API  = 'https://api.github.com';
+
+function getToken(){ return localStorage.getItem('gh_token_radar'); }
+function showTokenSetup(){
+  const t=getToken();
+  if(t)document.getElementById('token-input').value=t;
+  document.getElementById('token-modal').classList.add('visible');
+}
+function closeTokenModal(){ document.getElementById('token-modal').classList.remove('visible'); }
+function saveToken(){
+  const t=document.getElementById('token-input').value.trim();
+  if(t){ localStorage.setItem('gh_token_radar',t); closeTokenModal(); updatePublishBtn(); }
+}
+function clearToken(){
+  localStorage.removeItem('gh_token_radar');
+  document.getElementById('token-input').value='';
+  closeTokenModal(); updatePublishBtn();
+}
+function updatePublishBtn(){
+  const btn=document.getElementById('publish-btn');
+  if(getToken()&&allResults.length>0){ btn.style.display=''; }
+  else{ btn.style.display='none'; }
+}
+
+async function publishReport(){
+  const token=getToken();
+  if(!token){ showTokenSetup(); return; }
+  if(!allResults.length){ alert('No scan results to publish. Run a scan first.'); return; }
+
+  const btn=document.getElementById('publish-btn');
+  btn.disabled=true; btn.textContent='⬆ Publishing…';
+
+  try{
+    // Build REPORT_DATA object
+    const reportData={
+      timestamp: new Date().toLocaleString('en-US',{timeZone:'America/Chicago',month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})+' CT',
+      scanned: 100,
+      btcPrice: null,
+      btcChange: null,
+      candidates: allResults.map(r=>({
+        symbol:r.symbol, name:r.name, price:r.price, change24h:r.change24h,
+        score:r.score, supportTouches:r.supportTouches, resTouches:r.resTouches,
+        containment:r.containment, slope:r.slope, position:r.position,
+        supportNow:r.supportNow, resistNow:r.resistNow, invalidation:r.invalidation,
+        channelH:r.channelH, firstIdx:r.firstIdx, lastIdx:r.lastIdx,
+        isAscending:r.isAscending, isFlat:r.isFlat, explanation:r.explanation
+      }))
+    };
+
+    // Fetch BTC price for report header
+    try{
+      const btcR=await fetch(`${CG_BASE}/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true`,{headers:{'x-cg-demo-api-key':CG_KEY}});
+      if(btcR.ok){const btcD=await btcR.json();reportData.btcPrice=btcD.bitcoin.usd;reportData.btcChange=btcD.bitcoin.usd_24h_change;}
+    }catch{}
+
+    // Get current file SHA (needed for update)
+    const shaRes=await fetch(`${GITHUB_API}/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`,{
+      headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github.v3+json'}
+    });
+
+    let sha=null;
+    if(shaRes.ok){ const shaData=await shaRes.json(); sha=shaData.sha; }
+
+    // Fetch current radar-report.html template
+    const tplRes=await fetch(`https://rdwills02.github.io/BTC_Brief/radar-report.html?cb=${Date.now()}`);
+    let template=await tplRes.text();
+
+    // Inject REPORT_DATA
+    template=template.replace(
+      'const REPORT_DATA = null; // AGENT_INJECT_REPORT_DATA',
+      `const REPORT_DATA = ${JSON.stringify(reportData,null,2)};`
+    );
+
+    // Push to GitHub
+    const body={
+      message:`Channel Radar Report — ${reportData.timestamp}`,
+      content:btoa(unescape(encodeURIComponent(template))),
+      sha:sha||undefined
+    };
+    if(!sha)delete body.sha;
+
+    const pushRes=await fetch(`${GITHUB_API}/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`,{
+      method:'PUT',
+      headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+
+    if(pushRes.ok){
+      btn.textContent='✓ Published';
+      btn.style.background='rgba(0,200,150,0.15)';
+      btn.style.color='var(--bull)';
+      btn.style.borderColor='rgba(0,200,150,0.3)';
+      setTimeout(()=>{btn.textContent='⬆ Publish Report';btn.style.background='';btn.style.color='';btn.style.borderColor='';btn.disabled=false;},3000);
+    } else {
+      const err=await pushRes.json();
+      alert('Publish failed: '+(err.message||pushRes.status)+'
+
+Check your GitHub token has repo scope.');
+      btn.textContent='⬆ Publish Report'; btn.disabled=false;
+    }
+  }catch(e){
+    alert('Publish error: '+e.message);
+    btn.textContent='⬆ Publish Report'; btn.disabled=false;
+  }
+}
 </script>
 </body>
 </html>
