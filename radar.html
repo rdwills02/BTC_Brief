@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Altcoin Channel Radar v1</title>
+<title>Altcoin Channel Radar</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -143,14 +143,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
   <div class="header-right">
     <span class="last-update" id="last-update"></span>
-    <button class="btn btn-accent" id="diag-btn">Diagnostics</button>
+    <button class="btn btn-accent" id="diag-btn">Scan Details</button>
     <button class="btn btn-publish" id="publish-btn" style="display:none">Publish Report</button>
     <button class="btn btn-ghost" id="refresh-btn">Refresh</button>
   </div>
 </header>
 
 <div class="diag-panel" id="diag-panel">
-  <div class="diag-title">Scan Funnel</div>
+  <div class="diag-title">Scan Details — live updating</div>
   <div class="diag-grid" id="diag-grid"></div>
   <div class="diag-funnel" id="diag-funnel"></div>
 </div>
@@ -254,7 +254,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 </div>
 
 <script>
-// CONFIG
+// CONFIG - replace YOUR_API_KEY_HERE with your CoinGecko Demo API key
 var CG_BASE = 'https://api.coingecko.com/api/v3';
 var CG_KEY = 'CG-YJMCUm9ZMwMfq8YuXac6RZ8P';
 var REFRESH_MS = 24 * 60 * 60 * 1000;
@@ -278,18 +278,17 @@ var refreshTimer = null;
 var scanning = false;
 var diag = {universe:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
 
-// HELPERS
 function fmt(n,d) { d=d||2; return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function fmtP(n) { return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%'; }
 function clamp(v,a,b) { return Math.max(a,Math.min(b,v)); }
 function sleep(ms) { return new Promise(function(r){setTimeout(r,ms);}); }
 
 function getBucket(s) {
-  if(s>=90) return {label:'High',cls:'bh',fcls:'a-high'};
-  if(s>=75) return {label:'Probable',cls:'bp',fcls:'a-probable'};
-  if(s>=60) return {label:'Emerging',cls:'be',fcls:'a-emerging'};
-  if(s>=40) return {label:'Watch',cls:'bw',fcls:'a-watch'};
-  return {label:'Weak',cls:'',fcls:''};
+  if(s>=90) return {label:'High',cls:'bh'};
+  if(s>=75) return {label:'Probable',cls:'bp'};
+  if(s>=60) return {label:'Emerging',cls:'be'};
+  if(s>=40) return {label:'Watch',cls:'bw'};
+  return {label:'Weak',cls:''};
 }
 function scoreColor(s) {
   if(s>=90) return 'var(--high)';
@@ -304,7 +303,6 @@ function setStatus(state, text) {
 }
 function getToken() { return localStorage.getItem('gh_token_radar'); }
 
-// COINGECKO
 async function cgFetch(path, retries) {
   retries = retries === undefined ? 3 : retries;
   try {
@@ -343,7 +341,6 @@ async function fetchOHLC(cgId) {
   return data.map(function(c) { return {time:Math.floor(c[0]/1000),open:c[1],high:c[2],low:c[3],close:c[4]}; });
 }
 
-// PIVOTS
 function findPivots(candles) {
   var highs=[], lows=[];
   for(var i=PIVOT_LB; i<candles.length-PIVOT_LB; i++) {
@@ -361,12 +358,11 @@ function findPivots(candles) {
 
 function railAt(slope, intercept, idx) { return slope*idx+intercept; }
 
-// CHANNEL DETECTION
 function detectChannel(candles) {
   if(!candles || candles.length < 30) return null;
   var p = findPivots(candles);
   var highs = p.highs, lows = p.lows;
-  if(lows.length < 2 || highs.length < 1) return null;
+  if(lows.length < 3 || highs.length < 1) return null;
   var n = candles.length;
   var best = null;
 
@@ -423,8 +419,9 @@ function detectChannel(candles) {
       if(containment < 55) continue;
       diag.containment++;
 
-      var slopePct = (slope / Math.abs(railAt(slope,intercept,firstIdx)||1)) * 100;
       if(position > 0.75) continue;
+
+      var slopePct = (slope / Math.abs(railAt(slope,intercept,firstIdx)||1)) * 100;
       var invalidation = supNow * (1-TOUCH_TOL);
 
       var score = 0;
@@ -436,7 +433,6 @@ function detectChannel(candles) {
       else { score += Math.max(0, 8-(sa*3)); }
       score += position<=0.33?10:position<=0.5?6:position<=0.66?3:0;
       score += Math.min(6, winCandles.length/20);
-      if(position > 0.9) score -= 8;
       if(sa > 5) score -= 10;
       if(slope < 0) score -= 5;
       score = Math.round(clamp(score,0,100));
@@ -460,10 +456,9 @@ function detectChannel(candles) {
 function buildExpl(r, name) {
   var pos = r.position<=0.33?'lower third (near support)':r.position<=0.66?'middle of channel':'upper third (near resistance)';
   var sl = r.isFlat?'flat':r.slope>0?'ascending':'descending';
-  return name+' shows a '+sl+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. Price is in the '+pos+'. '+(r.position<=0.33&&r.slope>=0?"Near support in ascending channel may offer favorable risk/reward. Validate with Brett indicators in TradingView.":"Consider waiting for a pullback toward support before entry.");
+  return name+' shows a '+sl+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. Price is in the '+pos+'. '+(r.position<=0.33&&r.slope>=0?'Near support in ascending channel may offer favorable risk/reward. Validate with Brett indicators in TradingView.':'Consider waiting for a pullback toward support before entry.');
 }
 
-// SCAN
 async function scanCoin(coin) {
   var ohlc = await fetchOHLC(coin.id);
   if(!ohlc) return null;
@@ -517,15 +512,14 @@ async function runScan() {
   refreshTimer = setTimeout(runScan, REFRESH_MS);
 }
 
-// DIAGNOSTICS
 function renderDiag() {
   var items = [
     {label:'Universe',value:diag.universe,c:'var(--text)'},
     {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
     {label:'Rail pairs',value:diag.railPairs,c:'var(--text2)'},
     {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
-    {label:'2+ touches',value:diag.touches,c:'var(--neut)'},
-    {label:'Contain 30%+',value:diag.containment,c:'var(--neut)'},
+    {label:'3+ touches',value:diag.touches,c:'var(--neut)'},
+    {label:'Contain 55%+',value:diag.containment,c:'var(--neut)'},
     {label:'Scored',value:diag.scoreOk,c:'var(--probable)'},
     {label:'Candidates',value:diag.candidates,c:'var(--high)'}
   ];
@@ -537,7 +531,6 @@ function renderDiag() {
   }).join(' -> ');
 }
 
-// FILTERS
 function getThresh() {
   return {
     minTouches: parseInt(document.getElementById('t-touches').value),
@@ -581,7 +574,7 @@ function sortFiltered() {
 function renderTable() {
   var tbody = document.getElementById('table-body');
   if(!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="10"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check diagnostics.</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
     return;
   }
   tbody.innerHTML = filtered.map(function(r) {
@@ -606,7 +599,6 @@ function renderTable() {
   }).join('');
 }
 
-// DETAIL PANEL
 function openDetail(r) {
   document.getElementById('detail-panel').style.display='flex';
   document.getElementById('layout').classList.add('open');
@@ -648,7 +640,6 @@ function closePanel() {
   if(detailChart){detailChart.remove();detailChart=null;}
 }
 
-// CHART
 function buildChart(r) {
   var container=document.getElementById('detail-chart');
   container.innerHTML='';
@@ -676,10 +667,11 @@ function buildChart(r) {
   new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++)chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});}).observe(container);
 }
 
-// PUBLISH
 function buildReportHTML(data) {
   var ts = data.timestamp;
   var cands = data.candidates;
+  var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
+  var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
   var rows = cands.map(function(r) {
     var bk = r.score>=90?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'};
     var sc = r.score>=90?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
@@ -689,9 +681,7 @@ function buildReportHTML(data) {
     var chType = r.isFlat?'Flat channel':r.slope>=0?'Ascending channel':'Descending channel';
     var tvUrl = 'https://www.tradingview.com/chart/?symbol=BINANCE:'+r.symbol+'USDT&interval=D';
     var invPct = ((r.invalidation-r.price)/r.price*100).toFixed(1);
-    var fmt = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
-    var fmtP = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
-   return '<div class="radar-card" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
+    return '<div class="radar-card" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
         '<div style="display:flex;align-items:center;gap:10px">'+
           '<div style="width:32px;height:32px;border-radius:50%;background:#20223a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#7b6ef6">'+r.symbol.substring(0,3)+'</div>'+
@@ -703,21 +693,21 @@ function buildReportHTML(data) {
         '</div>'+
       '</div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">'+
-        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:600">'+fmt(r.price,4)+'</div><div style="font-size:10px;color:'+(r.change24h>=0?'#00c896':'#e8754a')+'">'+fmtP(r.change24h)+' 24h</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:600">'+fmt2(r.price,4)+'</div><div style="font-size:10px;color:'+(r.change24h>=0?'#00c896':'#e8754a')+'">'+fmtP2(r.change24h)+' 24h</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">S Touches</div><div style="font-size:13px;font-weight:600;color:#00c896">'+r.supportTouches+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">R Touches</div><div style="font-size:13px;font-weight:600">'+r.resTouches+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Containment</div><div style="font-size:13px;font-weight:600;color:'+(r.containment>75?'#00c896':'#f5a623')+'">'+r.containment+'%</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Slope/bar</div><div style="font-size:13px;font-weight:600;color:'+slopeColor+'">'+(r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
       '</div>'+
       '<div style="margin-bottom:12px">'+
-        '<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-bottom:4px"><span>Support '+fmt(r.supportNow,4)+'</span><span style="color:#7b6ef6;font-weight:600">'+posLbl+'</span><span>Resistance '+fmt(r.resistNow,4)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-bottom:4px"><span>Support '+fmt2(r.supportNow,4)+'</span><span style="color:#7b6ef6;font-weight:600">'+posLbl+'</span><span>Resistance '+fmt2(r.resistNow,4)+'</span></div>'+
         '<div style="height:6px;background:#2a2b3d;border-radius:3px;position:relative"><div style="position:absolute;top:-3px;width:2px;height:12px;background:#7b6ef6;border-radius:1px;transform:translateX(-50%);left:'+pw+'%"></div></div>'+
-        '<div style="font-size:10px;color:#7b6ef6;margin-top:4px">'+fmt(r.price,4)+' current</div>'+
+        '<div style="font-size:10px;color:#7b6ef6;margin-top:4px">'+fmt2(r.price,4)+' current</div>'+
       '</div>'+
       '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6;margin-bottom:12px">'+r.explanation+'</div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
         '<a href="'+tvUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(123,110,246,.12);color:#7b6ef6;border:1px solid rgba(123,110,246,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in TradingView - apply Brett indicators</a>'+
-        '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(232,117,74,.1);border:1px solid rgba(232,117,74,.25);border-radius:6px;font-size:11px;color:#e8754a;font-weight:600">Invalidation: '+fmt(r.invalidation,4)+' ('+invPct+'%)</div>'+
+        '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(232,117,74,.1);border:1px solid rgba(232,117,74,.25);border-radius:6px;font-size:11px;color:#e8754a;font-weight:600">Invalidation: '+fmt2(r.invalidation,4)+' ('+invPct+'%)</div>'+
       '</div>'+
     '</div>';
   }).join('');
@@ -725,8 +715,6 @@ function buildReportHTML(data) {
   var highCount = cands.filter(function(c){return c.score>=90;}).length;
   var probCount = cands.filter(function(c){return c.score>=75&&c.score<90;}).length;
   var lowerThird = cands.filter(function(c){return c.position<=0.33&&c.slope>=0;}).length;
-  var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
-  var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
 
   return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Channel Radar Report</title></head>'+
   '<body style="background:#0b0c14;color:#e2e4ef;font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;margin:0">'+
@@ -739,16 +727,16 @@ function buildReportHTML(data) {
     '</div>'+
   '</div>'+
   '<div style="max-width:900px;margin:0 auto;padding:28px 24px">'+
-'<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">'+
-'<span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Filter by score:</span>'+
-'<select id="score-filter" onchange="filterCards()" style="background:#13141f;border:1px solid #2a2b3d;border-radius:6px;padding:4px 10px;color:#9da3b4;font-size:12px;font-family:inherit;outline:none;cursor:pointer">'+
-'<option value="0">All scores</option>'+
-'<option value="75">75+ Probable</option>'+
-'<option value="60">60+ Emerging</option>'+
-'<option value="40">40+ Watch</option>'+
-'</select>'+
-'<span id="filter-count" style="font-size:11px;color:#6b7280"></span>'+
-'</div>'+
+  '<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">'+
+    '<span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Filter by score:</span>'+
+    '<select id="score-filter" style="background:#13141f;border:1px solid #2a2b3d;border-radius:6px;padding:4px 10px;color:#9da3b4;font-size:12px;font-family:inherit;outline:none;cursor:pointer">'+
+      '<option value="0">All scores</option>'+
+      '<option value="75">75+ Probable</option>'+
+      '<option value="60">60+ Emerging</option>'+
+      '<option value="40">40+ Watch</option>'+
+    '</select>'+
+    '<span id="filter-count" style="font-size:11px;color:#6b7280"></span>'+
+  '</div>'+
     '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #7b6ef6">'+
       '<div style="font-size:18px;font-weight:700;margin-bottom:4px">Altcoin Channel Radar</div>'+
       '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">Generated: '+ts+' - '+data.scanned+' coins scanned - '+cands.length+' channels found'+(data.btcPrice?' - BTC '+fmt2(data.btcPrice)+' ('+fmtP2(data.btcChange)+' 24h)':'')+'</div>'+
@@ -761,21 +749,22 @@ function buildReportHTML(data) {
       '<span>Finance Agent V3 - Channel Radar - '+ts+'</span>'+
       '<div style="display:flex;gap:16px"><a href="https://rdwills02.github.io/BTC_Brief/" style="color:#7b6ef6;text-decoration:none">Dashboard</a><a href="https://rdwills02.github.io/BTC_Brief/glossary.html" style="color:#7b6ef6;text-decoration:none">Glossary</a></div>'+
     '</div>'+
- '</div>'+
-'<script>'+
-'function filterCards(){'+
-'var min=parseInt(document.getElementById("score-filter").value)||0;'+
-'var cards=document.querySelectorAll(".radar-card");'+
-'var shown=0;'+
-'cards.forEach(function(c){'+
-'var score=parseInt(c.dataset.score);'+
-'if(score>=min){c.style.display="";shown++;}else{c.style.display="none";}'+
-'});'+
-'document.getElementById("filter-count").textContent=shown+" of "+cards.length+" candidates";'+
-'}'+
-'filterCards();'+
-'</script>'+
-'</body></html>';
+  '</div>'+
+  '<script>'+
+  'function filterCards(){'+
+    'var min=parseInt(document.getElementById("score-filter").value)||0;'+
+    'var cards=document.querySelectorAll(".radar-card");'+
+    'var shown=0;'+
+    'cards.forEach(function(c){'+
+      'var score=parseInt(c.dataset.score);'+
+      'if(score>=min){c.style.display="";shown++;}else{c.style.display="none";}'+
+    '});'+
+    'document.getElementById("filter-count").textContent=shown+" of "+cards.length+" candidates";'+
+  '}'+
+  'document.getElementById("score-filter").addEventListener("change",filterCards);'+
+  'filterCards();'+
+  '<\/script>'+
+  '</body></html>';
 }
 
 async function publishReport() {
@@ -821,7 +810,6 @@ async function publishReport() {
   }
 }
 
-// WIRE UP EVENTS
 window.addEventListener('load', function() {
   document.getElementById('diag-btn').addEventListener('click', function() {
     var p=document.getElementById('diag-panel');
