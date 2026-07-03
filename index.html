@@ -1,10 +1,10 @@
-&lt;!DOCTYPE html&gt;
-&lt;html lang="en"&gt;
-&lt;head&gt;
-&lt;meta charset="UTF-8"&gt;
-&lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
-&lt;title&gt;BTC Brief Dashboard&lt;/title&gt;
-&lt;style&gt;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Brief Dashboard</title>
+<style>
   :root {
     --bg: #0b0c14;
     --surface: #13141f;
@@ -29,6 +29,12 @@
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
+  .topnav { position: relative; display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 4px 0 16px; }
+  .full-brief-link {
+    position: relative; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px;
+    background: rgba(123,110,246,0.12); color: var(--accent); border: 1px solid rgba(123,110,246,0.35);
+  }
+
   .header {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -36,12 +42,6 @@
     border-radius: 10px;
     padding: 24px;
     margin-bottom: 20px;
-    position: relative;
-  }
-  .full-brief-link {
-    position: absolute; top: 24px; right: 24px;
-    font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px;
-    background: rgba(123,110,246,0.15); color: var(--accent); border: 1px solid var(--accent);
   }
   .updated { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .alignment { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
@@ -118,82 +118,85 @@
 
   .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); }
   .footer a { color: var(--muted); }
-&lt;/style&gt;
-&lt;/head&gt;
-&lt;body&gt;
-&lt;div class="container"&gt;
+</style>
+</head>
+<body>
+<div class="container">
 
-  &lt;div class="header"&gt;
-    &lt;a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank"&gt;Full Brief →&lt;/a&gt;
-    &lt;a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank" style="right:140px;"&gt;Calculator ↗&lt;/a&gt;
-    &lt;div class="updated"&gt;Last updated: Thursday, July 2, 2026 at 07:50 PM CT&lt;/div&gt;
-    &lt;div class="alignment"&gt;🟡 NEUTRAL ALIGNMENT 4/8 &amp;nbsp;|&amp;nbsp; 🟢 BULLISH 2/8 &amp;nbsp;|&amp;nbsp; 🔴 BEARISH 2/8&lt;/div&gt;
-    &lt;div class="composite-row"&gt;
-      &lt;span class="composite-badge"&gt;⚡ COMPOSITE: NEUTRAL&lt;/span&gt;
-      &lt;span class="confidence"&gt;Confidence: MEDIUM&lt;/span&gt;
-    &lt;/div&gt;
-    &lt;div class="price-row"&gt;
-      $61,472 &lt;span class="price-change up"&gt;24hr +2.4%&lt;/span&gt; &lt;span class="price-change up"&gt;7day +3.73%&lt;/span&gt;
-    &lt;/div&gt;
-    &lt;div class="sub" style="margin-top:6px;"&gt;Weak June jobs report (57K vs 110-115K expected) drove a fresh July intraday high of $62,038-$62,060 before BTC settled near $61,472.&lt;/div&gt;
-  &lt;/div&gt;
+  <div class="topnav">
+    <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank" style="right:140px;">Calculator ↗</a>
+    <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief →</a>
+  </div>
 
-  &lt;div class="section-title"&gt;Snapshot&lt;/div&gt;
-  &lt;div class="grid"&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;24hr Range&lt;/div&gt;
-      &lt;div class="value"&gt;$58,200–$62,060&lt;/div&gt;
-      &lt;div class="sub"&gt;200-day MA ~$61,181 · 🟢 Cleared intraday&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;Fear &amp;amp; Greed Index &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt;&lt;/div&gt;
-      &lt;div class="value" style="color:var(--bear);"&gt;19 — Extreme Fear&lt;/div&gt;
-      &lt;div class="sub"&gt;Down from 36 this morning — diverges from price&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;ETF Flows (7d) &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt;&lt;/div&gt;
-      &lt;div class="value" style="color:var(--bear);"&gt;-$1.89B&lt;/div&gt;
-      &lt;div class="sub"&gt;July 1: -$296.0M · June total -$4.51B&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;DXY &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt;&lt;/div&gt;
-      &lt;div class="value"&gt;~100.74&lt;/div&gt;
-      &lt;div class="sub"&gt;Declining further post jobs-miss&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="header">
+    <div class="updated">Last updated: Thursday, July 2, 2026 at 07:50 PM CT</div>
+    <div class="alignment">🟡 NEUTRAL ALIGNMENT 4/8 &nbsp;|&nbsp; 🟢 BULLISH 2/8 &nbsp;|&nbsp; 🔴 BEARISH 2/8</div>
+    <div class="composite-row">
+      <span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span>
+      <span class="confidence">Confidence: MEDIUM</span>
+    </div>
+    <div class="price-row">
+      $61,472 <span class="price-change up">24hr +2.4%</span> <span class="price-change up">7day +3.73%</span>
+    </div>
+    <div class="sub" style="margin-top:6px;">Weak June jobs report (57K vs 110-115K expected) drove a fresh July intraday high of $62,038-$62,060 before BTC settled near $61,472.</div>
+  </div>
 
-  &lt;div class="grid"&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;Realized Price &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt;&lt;/div&gt;
-      &lt;div class="value" style="color:var(--bull);"&gt;~$54,000&lt;/div&gt;
-      &lt;div class="sub"&gt;BTC ~13.8% above ⚠️ stale&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;LTH SOPR &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt;&lt;/div&gt;
-      &lt;div class="value" style="color:var(--bull);"&gt;~0.6&lt;/div&gt;
-      &lt;div class="sub"&gt;Below 0.7 — capitulation ⚠️ 6 briefs stale&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;Whale Accumulation&lt;/div&gt;
-      &lt;div class="value" style="color:var(--neutral);"&gt;🟡 Mixed&lt;/div&gt;
-      &lt;div class="sub"&gt;LTH accumulating; top cohort still neutral&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;Miner Production Cost&lt;/div&gt;
-      &lt;div class="value" style="color:var(--bear);"&gt;~$78,000&lt;/div&gt;
-      &lt;div class="sub"&gt;vs $61,472 spot — miners ~21% underwater&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="section-title">Snapshot</div>
+  <div class="grid">
+    <div class="card">
+      <div class="label">24hr Range</div>
+      <div class="value">$58,200–$62,060</div>
+      <div class="sub">200-day MA ~$61,181 · 🟢 Cleared intraday</div>
+    </div>
+    <div class="card">
+      <div class="label">Fear &amp; Greed Index <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="value" style="color:var(--bear);">19 — Extreme Fear</div>
+      <div class="sub">Down from 36 this morning — diverges from price</div>
+    </div>
+    <div class="card">
+      <div class="label">ETF Flows (7d) <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="value" style="color:var(--bear);">-$1.89B</div>
+      <div class="sub">July 1: -$296.0M · June total -$4.51B</div>
+    </div>
+    <div class="card">
+      <div class="label">DXY <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="value">~100.74</div>
+      <div class="sub">Declining further post jobs-miss</div>
+    </div>
+  </div>
 
-&lt;div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px;margin-bottom:20px;max-width:100%;overflow:hidden;"&gt;
-  &lt;div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"&gt;
-    &lt;div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;"&gt;LIVE CHART — BTCUSD&lt;/div&gt;
-    &lt;button onclick="toggleChart()" id="chart-toggle-btn" style="font-size:10px;font-weight:600;padding:3px 10px;border-radius:4px;background:rgba(123,110,246,0.15);color:#7b6ef6;border:1px solid rgba(123,110,246,0.3);cursor:pointer;"&gt;⛶ Expand&lt;/button&gt;
-  &lt;/div&gt;
-  &lt;div id="chart-container" style="height:220px;width:100%;overflow:hidden;transition:height 0.3s ease;"&gt;
-    &lt;div class="tradingview-widget-container" style="height:100%;width:100%;"&gt;
-      &lt;div class="tradingview-widget-container__widget" style="height:100%;width:100%;"&gt;&lt;/div&gt;
-      &lt;script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async&gt;
+  <div class="grid">
+    <div class="card">
+      <div class="label">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="value" style="color:var(--bull);">~$54,000</div>
+      <div class="sub">BTC ~13.8% above ⚠️ stale</div>
+    </div>
+    <div class="card">
+      <div class="label">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="value" style="color:var(--bull);">~0.6</div>
+      <div class="sub">Below 0.7 — capitulation ⚠️ 6 briefs stale</div>
+    </div>
+    <div class="card">
+      <div class="label">Whale Accumulation</div>
+      <div class="value" style="color:var(--neutral);">🟡 Mixed</div>
+      <div class="sub">LTH accumulating; top cohort still neutral</div>
+    </div>
+    <div class="card">
+      <div class="label">Miner Production Cost</div>
+      <div class="value" style="color:var(--bear);">~$78,000</div>
+      <div class="sub">vs $61,472 spot — miners ~21% underwater</div>
+    </div>
+  </div>
+
+<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px;margin-bottom:20px;max-width:100%;overflow:hidden;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">LIVE CHART — BTCUSD</div>
+    <button onclick="toggleChart()" id="chart-toggle-btn" style="font-size:10px;font-weight:600;padding:3px 10px;border-radius:4px;background:rgba(123,110,246,0.15);color:#7b6ef6;border:1px solid rgba(123,110,246,0.3);cursor:pointer;">⛶ Expand</button>
+  </div>
+  <div id="chart-container" style="height:220px;width:100%;overflow:hidden;transition:height 0.3s ease;">
+    <div class="tradingview-widget-container" style="height:100%;width:100%;">
+      <div class="tradingview-widget-container__widget" style="height:100%;width:100%;"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
       {
         "autosize": true,
         "symbol": "BITSTAMP:BTCUSD",
@@ -209,154 +212,153 @@
         "save_image": false,
         "studies": ["MASimple@tv-basicstudies"]
       }
-      &lt;/script&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
-&lt;/div&gt;
+      </script>
+    </div>
+  </div>
+</div>
 
-  &lt;div class="section-title"&gt;Key Levels&lt;/div&gt;
-  &lt;div class="grid-2"&gt;
-    &lt;div class="levels-card"&gt;
-      &lt;div class="resistance-title"&gt;🔴 Resistance&lt;/div&gt;
-      &lt;div class="row"&gt;&lt;span&gt;50% Fib&lt;/span&gt;&lt;span&gt;$62.5K&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="row"&gt;&lt;span&gt;61.8% Fib&lt;/span&gt;&lt;span&gt;$63.7K&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="row"&gt;&lt;span&gt;Longer MAs&lt;/span&gt;&lt;span&gt;$65.2K – $65.6K&lt;/span&gt;&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="levels-card"&gt;
-      &lt;div class="support-title"&gt;🟢 Support&lt;/div&gt;
-      &lt;div class="row"&gt;&lt;span&gt;38.2% Fib&lt;/span&gt;&lt;span&gt;$61.4K&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="row"&gt;&lt;span&gt;Whale floor&lt;/span&gt;&lt;span&gt;$58K&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="row"&gt;&lt;span&gt;Brandt target&lt;/span&gt;&lt;span&gt;$53K – $55K&lt;/span&gt;&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="section-title">Key Levels</div>
+  <div class="grid-2">
+    <div class="levels-card">
+      <div class="resistance-title">🔴 Resistance</div>
+      <div class="row"><span>50% Fib</span><span>$62.5K</span></div>
+      <div class="row"><span>61.8% Fib</span><span>$63.7K</span></div>
+      <div class="row"><span>Longer MAs</span><span>$65.2K – $65.6K</span></div>
+    </div>
+    <div class="levels-card">
+      <div class="support-title">🟢 Support</div>
+      <div class="row"><span>38.2% Fib</span><span>$61.4K</span></div>
+      <div class="row"><span>Whale floor</span><span>$58K</span></div>
+      <div class="row"><span>Brandt target</span><span>$53K – $55K</span></div>
+    </div>
+  </div>
 
-  &lt;div class="section-title"&gt;Cycle Timing &amp;amp; Macro&lt;/div&gt;
-  &lt;div class="grid-2"&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;Villaverde Cycle Low Target&lt;/div&gt;
-      &lt;div class="value"&gt;July 10, 2026&lt;/div&gt;
-      &lt;div class="sub"&gt;8 days · JpM2 &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt; sideways rounded bottom&lt;/div&gt;
-      &lt;div class="label" style="margin-top:12px;"&gt;Brandt Bottom Call&lt;/div&gt;
-      &lt;div class="value"&gt;Sep–Oct 2026&lt;/div&gt;
-      &lt;div class="sub"&gt;~70 days · $53-55K measured target&lt;/div&gt;
-    &lt;/div&gt;
-    &lt;div class="card"&gt;
-      &lt;div class="label"&gt;Fed Stance&lt;/div&gt;
-      &lt;div class="value"&gt;Dovish-leaning&lt;/div&gt;
-      &lt;div class="sub"&gt;FedWatch 80.2% odds of July 29 hold; June jobs miss (57K)&lt;/div&gt;
-      &lt;div class="label" style="margin-top:12px;"&gt;BTC Dominance &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;→ Glossary&lt;/a&gt;&lt;/div&gt;
-      &lt;div class="value"&gt;~55.5%&lt;/div&gt;
-      &lt;div class="sub"&gt;Unchanged this run&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="section-title">Cycle Timing &amp; Macro</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="label">Villaverde Cycle Low Target</div>
+      <div class="value">July 10, 2026</div>
+      <div class="sub">8 days · JpM2 <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> sideways rounded bottom</div>
+      <div class="label" style="margin-top:12px;">Brandt Bottom Call</div>
+      <div class="value">Sep–Oct 2026</div>
+      <div class="sub">~70 days · $53-55K measured target</div>
+    </div>
+    <div class="card">
+      <div class="label">Fed Stance</div>
+      <div class="value">Dovish-leaning</div>
+      <div class="sub">FedWatch 80.2% odds of July 29 hold; June jobs miss (57K)</div>
+      <div class="label" style="margin-top:12px;">BTC Dominance <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
+      <div class="value">~55.5%</div>
+      <div class="sub">Unchanged this run</div>
+    </div>
+  </div>
 
-  &lt;div class="section-title"&gt;Lens Scorecard&lt;/div&gt;
+  <div class="section-title">Lens Scorecard</div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot bear"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;1. Halving / Cycle&lt;/span&gt;&lt;span class="signal-tag bear"&gt;🔴 BEARISH&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;27 months post-halving, no surge; hashrate down 23% from Oct 2025 peak; production cost ~$78K vs $61,472 spot — miners ~21.2% underwater.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: ➡️ No change&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot bear"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">1. Halving / Cycle</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">27 months post-halving, no surge; hashrate down 23% from Oct 2025 peak; production cost ~$78K vs $61,472 spot — miners ~21.2% underwater.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot neutral"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;2. Macro / Liquidity&lt;/span&gt;&lt;span class="badge badge-weight"&gt;2× weight&lt;/span&gt;&lt;span class="signal-tag neutral"&gt;🟡 NEUTRAL&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;Jobs miss (57K vs 110-115K) reinforces Warsh's dovish Sintra comments; FedWatch hold odds 80.2%; DXY ~100.74; ETF outflow streak persists at 10 days.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: 📈 Improved within Neutral&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot neutral"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">2. Macro / Liquidity</span><span class="badge badge-weight">2× weight</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">Jobs miss (57K vs 110-115K) reinforces Warsh's dovish Sintra comments; FedWatch hold odds 80.2%; DXY ~100.74; ETF outflow streak persists at 10 days.</div>
+      <div class="lens-delta">vs Prior: 📈 Improved within Neutral</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot neutral"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;3. Adoption / Reserve&lt;/span&gt;&lt;span class="signal-tag neutral"&gt;🟡 NEUTRAL&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;CLARITY Act odds 47-48%, ethics talks still collapsed; Metaplanet treasury unchanged at 43,000 BTC.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: ➡️ No change&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot neutral"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">3. Adoption / Reserve</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">CLARITY Act odds 47-48%, ethics talks still collapsed; Metaplanet treasury unchanged at 43,000 BTC.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot bull"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;4. Wright&lt;/span&gt;&lt;span class="signal-tag bull"&gt;🟢 BULLISH&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;Contrarian capitulation/LTH-reversal thesis intact; negative 90-day hashrate growth has preceded positive 180-day returns 77% of the time.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: ➡️ No change&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot bull"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">4. Wright</span><span class="signal-tag bull">🟢 BULLISH</span></div>
+      <div class="lens-finding">Contrarian capitulation/LTH-reversal thesis intact; negative 90-day hashrate growth has preceded positive 180-day returns 77% of the time.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot neutral"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;5. Fogle Technical&lt;/span&gt;&lt;span class="signal-tag neutral"&gt;🟡 NEUTRAL&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;Intraday breakout above the 200-day MA to $62,038-$62,060; MACD bullish crossover; Supertrend bullish (~$58,541); needs a confirmed close above $62.5K.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: 📈 Improved within Neutral&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot neutral"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">5. Fogle Technical</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">Intraday breakout above the 200-day MA to $62,038-$62,060; MACD bullish crossover; Supertrend bullish (~$58,541); needs a confirmed close above $62.5K.</div>
+      <div class="lens-delta">vs Prior: 📈 Improved within Neutral</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot neutral"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;6. Villaverde Cycles&lt;/span&gt;&lt;span class="signal-tag neutral"&gt;🟡 NEUTRAL&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;July 10 target 8 days out; JpM2 sideways rounded bottom thesis unchanged.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: ➡️ No change&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot neutral"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">6. Villaverde Cycles</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">July 10 target 8 days out; JpM2 sideways rounded bottom thesis unchanged.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot bull"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;7. Woo On-Chain&lt;/span&gt;&lt;span class="badge badge-weight"&gt;2× weight&lt;/span&gt;&lt;span class="signal-tag bull"&gt;🟢 BULLISH&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;LTH SOPR ~0.6, HODL LTH% ~78%, fresh CVDD print $44,586 (BTC ~38% above floor); whale-cohort hard rule still not mechanically triggered — bullish on judgment.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: 📈 Slightly improved — fresher CVDD print&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot bull"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bull">🟢 BULLISH</span></div>
+      <div class="lens-finding">LTH SOPR ~0.6, HODL LTH% ~78%, fresh CVDD print $44,586 (BTC ~38% above floor); whale-cohort hard rule still not mechanically triggered — bullish on judgment.</div>
+      <div class="lens-delta">vs Prior: 📈 Slightly improved — fresher CVDD print</div>
+    </div>
+  </div>
 
-  &lt;div class="lens-card"&gt;
-    &lt;div class="dot bear"&gt;&lt;/div&gt;
-    &lt;div class="lens-body"&gt;
-      &lt;div class="lens-title-row"&gt;&lt;span class="lens-name"&gt;8. Brandt Classical&lt;/span&gt;&lt;span class="badge badge-bear-lens"&gt;Bear lens&lt;/span&gt;&lt;span class="signal-tag bear"&gt;🔴 BEARISH&lt;/span&gt;&lt;/div&gt;
-      &lt;div class="lens-finding"&gt;Descending channel + Expanding Triangle intact; $53-55K target; Sep-Oct 2026 low; no fresh statement this run.&lt;/div&gt;
-      &lt;div class="lens-delta"&gt;vs Prior: ➡️ No change&lt;/div&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
+  <div class="lens-card">
+    <div class="dot bear"></div>
+    <div class="lens-body">
+      <div class="lens-title-row"><span class="lens-name">8. Brandt Classical</span><span class="badge badge-bear-lens">Bear lens</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">Descending channel + Expanding Triangle intact; $53-55K target; Sep-Oct 2026 low; no fresh statement this run.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change</div>
+    </div>
+  </div>
 
-  &lt;div class="section-title"&gt;⚡ Critical Developments&lt;/div&gt;
+  <div class="section-title">⚡ Critical Developments</div>
 
-  &lt;div class="critical-card"&gt;
-    &lt;div class="critical-type"&gt;Macro Regime Change — Weak June Jobs Report&lt;/div&gt;
-    &lt;div class="critical-text"&gt;June nonfarm payrolls came in at just 57,000 vs. 110,000-115,000 expected; CME FedWatch hold odds for July 29 jumped to 80.2%; DXY extended its slide to ~100.74. Drove BTC to a fresh July intraday high of $62,038-$62,060.&lt;/div&gt;
-    &lt;div class="critical-source"&gt;Source: BLS, crypto.news — July 2, 2026&lt;/div&gt;
-  &lt;/div&gt;
+  <div class="critical-card">
+    <div class="critical-type">Macro Regime Change — Weak June Jobs Report</div>
+    <div class="critical-text">June nonfarm payrolls came in at just 57,000 vs. 110,000-115,000 expected; CME FedWatch hold odds for July 29 jumped to 80.2%; DXY extended its slide to ~100.74. Drove BTC to a fresh July intraday high of $62,038-$62,060.</div>
+    <div class="critical-source">Source: BLS, crypto.news — July 2, 2026</div>
+  </div>
 
-  &lt;div class="section-title"&gt;Watch List&lt;/div&gt;
-  &lt;div class="watchlist"&gt;
-    &lt;ul&gt;
-      &lt;li&gt;⚡ $62.5K — the level analysts flag as the structural-break trigger; a confirmed daily close above would likely earn Fogle Technical a Bullish upgrade&lt;/li&gt;
-      &lt;li&gt;⚡ July 10 Villaverde cycle low — 8 days out&lt;/li&gt;
-      &lt;li&gt;Fear &amp;amp; Greed's divergence from price (19 vs. rallying BTC) — watch which side gives&lt;/li&gt;
-      &lt;li&gt;ETF outflow streak (now 10 days) — needs to break for the Macro lens to firm further&lt;/li&gt;
-      &lt;li&gt;July 29 FOMC meeting — 80.2% odds of a hold; a hawkish surprise is the clearest path back toward Bearish&lt;/li&gt;
-    &lt;/ul&gt;
-  &lt;/div&gt;
+  <div class="section-title">Watch List</div>
+  <div class="watchlist">
+    <ul>
+      <li>⚡ $62.5K — the level analysts flag as the structural-break trigger; a confirmed daily close above would likely earn Fogle Technical a Bullish upgrade</li>
+      <li>⚡ July 10 Villaverde cycle low — 8 days out</li>
+      <li>Fear &amp; Greed's divergence from price (19 vs. rallying BTC) — watch which side gives</li>
+      <li>ETF outflow streak (now 10 days) — needs to break for the Macro lens to firm further</li>
+      <li>July 29 FOMC meeting — 80.2% odds of a hold; a hawkish surprise is the clearest path back toward Bearish</li>
+    </ul>
+  </div>
 
-  &lt;div class="section-title"&gt;Bottom Line&lt;/div&gt;
-  &lt;div class="bottom-line"&gt;
-    BTC $61,472 — up a modest 0.6% since this morning's brief, but that understates a much larger intraday round trip. A weak June jobs report (57K vs. 110-115K expected) landed as a second dovish catalyst on top of Warsh's Sintra comments, pushing BTC to a fresh July high of $62,038-$62,060 before it settled back. None of that flipped any of the 8 lenses — composite holds NEUTRAL/MEDIUM, identical to this morning, with Macro and Fogle Technical both firming within Neutral. One anomaly worth watching: Fear &amp;amp; Greed fell to 19 even as price rallied. Watch for a confirmed close above $62.5K as the next bullish trigger, and the July 29 FOMC meeting as the next major catalyst.
-  &lt;/div&gt;
+  <div class="section-title">Bottom Line</div>
+  <div class="bottom-line">
+    BTC $61,472 — up a modest 0.6% since this morning's brief, but that understates a much larger intraday round trip. A weak June jobs report (57K vs. 110-115K expected) landed as a second dovish catalyst on top of Warsh's Sintra comments, pushing BTC to a fresh July high of $62,038-$62,060 before it settled back. None of that flipped any of the 8 lenses — composite holds NEUTRAL/MEDIUM, identical to this morning, with Macro and Fogle Technical both firming within Neutral. One anomaly worth watching: Fear &amp; Greed fell to 19 even as price rallied. Watch for a confirmed close above $62.5K as the next bullish trigger, and the July 29 FOMC meeting as the next major catalyst.
+  </div>
 
-  &lt;div class="footer"&gt;
-    Finance Agent V3 · Last updated: Thursday, July 2, 2026 at 07:50 PM CT&lt;br&gt;
-    &lt;a href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank"&gt;Calculator →&lt;/a&gt;
-    Glossary: &lt;a href="https://rdwills02.github.io/BTC_Brief/glossary.html"&gt;https://rdwills02.github.io/BTC_Brief/glossary.html&lt;/a&gt; ·
-    Full Brief: &lt;a href="https://rdwills02.github.io/BTC_Brief/brief.html"&gt;https://rdwills02.github.io/BTC_Brief/brief.html&lt;/a&gt;
-  &lt;/div&gt;
+  <div class="footer">
+    Finance Agent V3 · Last updated: Thursday, July 2, 2026 at 07:50 PM CT<br>
+    Glossary: <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">https://rdwills02.github.io/BTC_Brief/glossary.html</a> ·
+    Calculator: <a href="https://rdwills02.github.io/BTC_Brief/calculator.html">https://rdwills02.github.io/BTC_Brief/calculator.html</a>
+  </div>
 
-&lt;/div&gt;
-  &lt;script&gt;
+</div>
+  <script>
 function toggleChart() {
   const container = document.getElementById('chart-container');
   const btn = document.getElementById('chart-toggle-btn');
@@ -368,6 +370,6 @@ function toggleChart() {
     btn.textContent = '⛶ Expand';
   }
 }
-&lt;/script&gt;
-&lt;/body&gt;
-&lt;/html&gt;
+</script>
+</body>
+</html>
