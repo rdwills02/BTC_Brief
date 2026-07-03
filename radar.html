@@ -15,6 +15,8 @@
   --high:#00c896;--probable:#7b6ef6;--emerging:#f5a623;--watch:#e8754a;
 }
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden}
+
+/* HEADER */
 .header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
 .logo{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
 .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:logopulse 3s ease-in-out infinite}
@@ -30,6 +32,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .btn-ghost:hover{color:var(--text);border-color:var(--accent)}
 .btn-accent{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
 .last-update{font-size:11px;color:var(--muted)}
+
+/* DIAGNOSTICS */
 .diag-panel{background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 20px;display:none}
 .diag-panel.visible{display:block}
 .diag-title{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
@@ -38,11 +42,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .diag-label{font-size:10px;color:var(--muted);margin-bottom:3px}
 .diag-value{font-size:20px;font-weight:700}
 .diag-funnel{font-size:11px;color:var(--muted);line-height:1.8}
-.layout{display:grid;grid-template-columns:1fr;height:calc(100vh - 52px);transition:grid-template-columns 0.3s ease}
-.layout.panel-open{grid-template-columns:1fr 460px}
-.main-panel{display:flex;flex-direction:column;overflow:hidden}
+
+/* FILTERS */
 .filters{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface)}
-.filter-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase}
+.filter-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap}
 .bucket-filter{display:flex;gap:3px}
 .bucket-btn{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);font-family:inherit;transition:all 0.15s}
 .bucket-btn.active-all{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
@@ -50,9 +53,24 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .bucket-btn.active-probable{background:rgba(123,110,246,0.15);color:var(--probable);border-color:rgba(123,110,246,0.3)}
 .bucket-btn.active-emerging{background:rgba(245,166,35,0.12);color:var(--emerging);border-color:rgba(245,166,35,0.3)}
 .bucket-btn.active-watch{background:rgba(232,117,74,0.12);color:var(--watch);border-color:rgba(232,117,74,0.3)}
-.tf-select{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;color:var(--text2);font-size:12px;font-family:inherit;outline:none;cursor:pointer}
-.sort-select{margin-left:auto}
+
+/* THRESHOLD CONTROLS */
+.threshold-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.thresh-group{display:flex;align-items:center;gap:6px}
+.thresh-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap}
+.thresh-select{background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;color:var(--text2);font-size:11px;font-family:inherit;outline:none;cursor:pointer}
+.thresh-select:focus{border-color:var(--accent)}
+.thresh-toggle{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer}
+.thresh-toggle input{cursor:pointer;accent-color:var(--accent)}
+.sort-select{margin-left:auto;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;color:var(--text2);font-size:12px;font-family:inherit;outline:none;cursor:pointer}
 .scan-count{font-size:11px;color:var(--muted)}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:1fr;height:calc(100vh - 114px);transition:grid-template-columns 0.3s ease}
+.layout.panel-open{grid-template-columns:1fr 460px}
+.main-panel{display:flex;flex-direction:column;overflow:hidden}
+
+/* TABLE */
 .table-wrap{flex:1;overflow-y:auto}
 .radar-table{width:100%;border-collapse:collapse}
 .radar-table th{position:sticky;top:0;background:var(--surface);font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
@@ -80,6 +98,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tv-link{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--accent);text-decoration:none;padding:3px 7px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-bg);transition:all 0.15s}
 .tv-link:hover{background:rgba(123,110,246,0.2)}
 .up{color:var(--bull)}.dn{color:var(--bear)}
+.slope-pos{color:var(--bull)}.slope-neg{color:var(--bear)}.slope-flat{color:var(--muted)}
+
+/* DETAIL PANEL */
 .detail-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .detail-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .detail-coin{display:flex;align-items:center;gap:10px}
@@ -114,17 +135,21 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .inv-sub{font-size:10px;color:var(--muted);margin-top:1px}
 .tv-btn-lg{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border);border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:all 0.15s;font-family:inherit;cursor:pointer}
 .tv-btn-lg:hover{background:rgba(123,110,246,0.2)}
+
+/* STATES */
 .state-view{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:var(--muted)}
 .spinner{width:30px;height:30px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .state-title{font-size:14px;font-weight:600;color:var(--text2)}
 .state-sub{font-size:12px;text-align:center;max-width:320px;line-height:1.6}
+
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 </style>
 </head>
 <body>
+
 <header class="header">
   <div style="display:flex;align-items:center;gap:16px">
     <div class="logo"><div class="logo-dot"></div>Channel Radar</div>
@@ -140,32 +165,80 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </header>
 
+<!-- DIAGNOSTICS -->
 <div class="diag-panel" id="diag-panel">
-  <div class="diag-title">Scan Funnel — where candidates pass or fail</div>
+  <div class="diag-title">Scan Funnel — live updating</div>
   <div class="diag-grid" id="diag-grid"></div>
   <div class="diag-funnel" id="diag-funnel"></div>
 </div>
 
+<!-- FILTERS -->
+<div class="filters">
+  <span class="filter-label">Bucket</span>
+  <div class="bucket-filter">
+    <button class="bucket-btn active-all" onclick="filterBucket('all',this)">All</button>
+    <button class="bucket-btn" onclick="filterBucket('high',this)">High 90+</button>
+    <button class="bucket-btn" onclick="filterBucket('probable',this)">Probable 75+</button>
+    <button class="bucket-btn" onclick="filterBucket('emerging',this)">Emerging 60+</button>
+    <button class="bucket-btn" onclick="filterBucket('watch',this)">Watch 40+</button>
+  </div>
+  <select class="sort-select" id="sort-select" onchange="sortResults()">
+    <option value="score">Sort: Score</option>
+    <option value="position">Sort: Position (lower first)</option>
+    <option value="slope">Sort: Slope</option>
+    <option value="supportTouches">Sort: Touches</option>
+    <option value="containment">Sort: Containment</option>
+  </select>
+  <span class="scan-count" id="scan-count"></span>
+</div>
+
+<!-- THRESHOLD CONTROLS -->
+<div class="threshold-bar">
+  <span class="filter-label">Thresholds</span>
+  <div class="thresh-group">
+    <span class="thresh-label">Min touches</span>
+    <select class="thresh-select" id="thresh-touches" onchange="applyFilters()">
+      <option value="2">2+</option>
+      <option value="3" selected>3+</option>
+      <option value="4">4+</option>
+      <option value="5">5+</option>
+    </select>
+  </div>
+  <div class="thresh-group">
+    <span class="thresh-label">Min contain</span>
+    <select class="thresh-select" id="thresh-contain" onchange="applyFilters()">
+      <option value="0">Any</option>
+      <option value="40">40%+</option>
+      <option value="50" selected>50%+</option>
+      <option value="60">60%+</option>
+      <option value="70">70%+</option>
+    </select>
+  </div>
+  <div class="thresh-group">
+    <span class="thresh-label">Slope</span>
+    <select class="thresh-select" id="thresh-slope" onchange="applyFilters()">
+      <option value="any">Any</option>
+      <option value="positive" selected>Positive only</option>
+      <option value="flat">Flat or positive (≥-0.1%)</option>
+    </select>
+  </div>
+  <div class="thresh-group">
+    <span class="thresh-label">Min score</span>
+    <select class="thresh-select" id="thresh-score" onchange="applyFilters()">
+      <option value="0">Off</option>
+      <option value="40" selected>40+</option>
+      <option value="60">60+</option>
+      <option value="75">75+</option>
+    </select>
+  </div>
+  <label class="thresh-toggle">
+    <input type="checkbox" id="show-rejected" onchange="applyFilters()">
+    Show all (incl. rejected)
+  </label>
+</div>
+
 <div class="layout" id="layout">
   <div class="main-panel">
-    <div class="filters">
-      <span class="filter-label">Bucket</span>
-      <div class="bucket-filter">
-        <button class="bucket-btn active-all" onclick="filterBucket('all',this)">All</button>
-        <button class="bucket-btn" onclick="filterBucket('high',this)">High 90+</button>
-        <button class="bucket-btn" onclick="filterBucket('probable',this)">Probable 75+</button>
-        <button class="bucket-btn" onclick="filterBucket('emerging',this)">Emerging 60+</button>
-        <button class="bucket-btn" onclick="filterBucket('watch',this)">Watch 40+</button>
-      </div>
-      <select class="tf-select sort-select" id="sort-select" onchange="sortResults()">
-        <option value="score">Sort: Score</option>
-        <option value="position">Sort: Position (lower first)</option>
-        <option value="slope">Sort: Slope</option>
-        <option value="supportTouches">Sort: Touches</option>
-        <option value="containment">Sort: Containment</option>
-      </select>
-      <span class="scan-count" id="scan-count"></span>
-    </div>
     <div class="table-wrap">
       <table class="radar-table">
         <thead><tr>
@@ -177,7 +250,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <tr><td colspan="10"><div class="state-view">
             <div class="spinner"></div>
             <div class="state-title">Building universe…</div>
-            <div class="state-sub">Fetching live top 100 alts from CoinGecko, then scanning for ascending channels. This takes 3-4 minutes on first run.</div>
+            <div class="state-sub">Fetching top 100 alts from CoinGecko then scanning for channels. Takes ~5 minutes.</div>
           </div></td></tr>
         </tbody>
       </table>
@@ -212,7 +285,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="detail-section">
         <div class="ds-title">Channel Position</div>
         <div class="channel-viz">
-          <div class="ch-labels"><span>Support rail</span><span id="dp-pos-label" style="color:var(--accent);font-weight:600"></span><span>Resistance rail</span></div>
+          <div class="ch-labels"><span>Support</span><span id="dp-pos-label" style="color:var(--accent);font-weight:600"></span><span>Resistance</span></div>
           <div class="ch-bar-wrap"><div class="ch-bar-fill" id="dp-pos-bar"></div></div>
           <div class="ch-prices"><span id="dp-sup-p"></span><span style="color:var(--accent);font-weight:600" id="dp-cur-p"></span><span id="dp-res-p"></span></div>
         </div>
@@ -237,40 +310,44 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────
-const CG = 'https://api.coingecko.com/api/v3';
-const REFRESH_MS = 15 * 60 * 1000; // 15 min between auto-refreshes
-const PIVOT_LB = 5;
-const MIN_TOUCHES = 3;
-const TOUCH_TOL = 0.025;
-const MIN_CONTAIN = 50;
-const MIN_SCORE = 40;
+const CG_BASE    = 'https://pro-api.coingecko.com/api/v1';
+const CG_KEY     = 'CG-YJMCUm9ZMwMfq8YuXac6RZ8P'; // ← paste your Demo key here
+const REFRESH_MS = 15 * 60 * 1000;
+const PIVOT_LB   = 3;   // reduced from 5 — catches more pivots
+const TOUCH_TOL  = 0.025;
 
-// Stablecoins to exclude
-const STABLES = new Set(['usdt','usdc','busd','dai','tusd','fdusd','usdp','frax','lusd','usdd','eurs','usdn']);
+// Comprehensive stablecoin exclusion list
+const STABLES = new Set([
+  'usdt','usdc','busd','dai','tusd','fdusd','usdp','frax','lusd','usdd',
+  'eurs','usdn','usdg','usdf','bfusd','usd+','gusd','husd','susd','cusd',
+  'usdk','usdx','usdj','musd','ousd','nusd','usdq','usd','pyusd','usde',
+  'usd0','usds','ausd','eurc','eurt','eur','gbpt','xaut','paxg','wbtc'
+]);
 
 // ── STATE ─────────────────────────────────────────────────────────
-let results=[], filtered=[], sortCol='score', sortDir=-1;
+let allResults=[], filtered=[], sortCol='score', sortDir=-1;
 let activeFilter='all', selectedKey=null, detailChart=null, refreshTimer=null, scanning=false;
-let diag={universe:0,ohlcOk:0,pivotOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+let diag={universe:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
 
 // ── HELPERS ───────────────────────────────────────────────────────
-const fmt=(n,d=2)=>n==null?'—':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
-const fmtP=(n)=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const fmt   = (n,d=2)=>n==null?'—':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtP  = (n)=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
 
 function getBucket(s){
   if(s>=90)return{label:'High',cls:'bucket-high'};
   if(s>=75)return{label:'Probable',cls:'bucket-probable'};
   if(s>=60)return{label:'Emerging',cls:'bucket-emerging'};
   if(s>=40)return{label:'Watch',cls:'bucket-watch'};
-  return{label:'Reject',cls:''};
+  return{label:'Weak',cls:''};
 }
 function scoreColor(s){
   if(s>=90)return'var(--high)';
   if(s>=75)return'var(--probable)';
   if(s>=60)return'var(--emerging)';
-  return'var(--watch)';
+  if(s>=40)return'var(--watch)';
+  return'var(--muted)';
 }
 function setStatus(state,text){
   document.getElementById('status-dot').className='status-dot'+(state==='scanning'?' scanning':state==='error'?' error':'');
@@ -280,39 +357,41 @@ function setStatus(state,text){
 // ── COINGECKO API ─────────────────────────────────────────────────
 async function cgFetch(path, retries=3){
   try{
-    const r=await fetch(`${CG}${path}`);
+    const headers={'x-cg-demo-api-key':CG_KEY};
+    const r=await fetch(`${CG_BASE}${path}`,{headers});
     if(r.status===429){
       if(retries<=0)return null;
-      await sleep(15000); // wait 15s then retry
-      return cgFetch(path, retries-1);
+      await sleep(15000);
+      return cgFetch(path,retries-1);
     }
     if(!r.ok)return null;
     return r.json();
   }catch(e){return null;}
 }
 
-// Get top 100 non-stable alts by market cap
 async function buildUniverse(){
   const data=await cgFetch('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false&price_change_percentage=24h');
   if(!data)return[];
-  const alts=data
-    .filter(c=>!STABLES.has(c.symbol.toLowerCase())&&c.symbol.toLowerCase()!=='btc'&&c.symbol.toLowerCase()!=='wbtc')
-    .slice(0,100);
+  const alts=data.filter(c=>{
+    const sym=c.symbol.toLowerCase();
+    const name=c.name.toLowerCase();
+    if(STABLES.has(sym))return false;
+    if(sym==='btc'||sym==='wbtc')return false;
+    // Additional stable detection by name patterns
+    if(name.includes('usd')||name.includes('dollar')||name.includes('tether')||name.includes('stablecoin'))return false;
+    // Filter by price — genuine alts are usually above $0.0001
+    if(c.current_price<0.00001)return false;
+    return true;
+  }).slice(0,100);
   diag.universe=alts.length;
   return alts;
 }
 
-// Fetch OHLC — CoinGecko returns [timestamp, open, high, low, close]
-// For days=365, auto-granularity gives daily candles
 async function fetchOHLC(cgId){
+  // days=365 with daily interval gives ~365 daily candles
   const data=await cgFetch(`/coins/${cgId}/ohlc?vs_currency=usd&days=365`);
-  if(!data||!Array.isArray(data)||data.length<60)return null;
-  // Convert to {time, open, high, low, close} — time in seconds
-  return data.map(c=>({
-    time:Math.floor(c[0]/1000),
-    open:c[1], high:c[2], low:c[3], close:c[4],
-    volume:0 // CoinGecko OHLC endpoint doesn't include volume
-  }));
+  if(!data||!Array.isArray(data)||data.length<30)return null;
+  return data.map(c=>({time:Math.floor(c[0]/1000),open:c[1],high:c[2],low:c[3],close:c[4]}));
 }
 
 // ── PIVOT DETECTION ───────────────────────────────────────────────
@@ -333,35 +412,37 @@ function findPivots(candles){
 
 function railAt(slope,intercept,idx){return slope*idx+intercept;}
 
-// ── CHANNEL DETECTION — pair-based ───────────────────────────────
+// ── CHANNEL DETECTION ─────────────────────────────────────────────
 function detectChannel(candles){
-  if(!candles||candles.length<60)return null;
+  if(!candles||candles.length<30)return null;
   const{highs,lows}=findPivots(candles);
-  if(lows.length<MIN_TOUCHES)return null;
-  diag.pivotOk++;
+  if(lows.length<2||highs.length<1)return null;
 
   const n=candles.length;
   let best=null;
 
+  // Try ALL pairs of pivot lows as candidate support rails
   for(let a=0;a<lows.length-1;a++){
     for(let b=a+1;b<lows.length;b++){
       const p1=lows[a],p2=lows[b];
       const idxDelta=p2.idx-p1.idx;
-      if(idxDelta<5)continue;
+      if(idxDelta<3)continue;
       diag.railPairs++;
 
       const slope=(p2.price-p1.price)/idxDelta;
-      if(slope<=0)continue;
-      diag.posSlope++;
+      // No hard slope rejection — score it instead
+      // Only reject extremely steep negative slopes
+      if(slope<-0.05*p1.price/idxDelta)continue; // reject > ~5% drop per bar
+      if(slope>=0)diag.posSlope++;
 
       const intercept=p1.price-slope*p1.idx;
 
-      // Count all pivot lows within tolerance
+      // Count all pivot lows within tolerance of this rail
       const supTouches=lows.filter(l=>{
         const expected=railAt(slope,intercept,l.idx);
         return Math.abs(l.price-expected)/expected<=TOUCH_TOL;
       });
-      if(supTouches.length<MIN_TOUCHES)continue;
+      if(supTouches.length<2)continue; // minimum 2 touches to form a line
       diag.touches++;
 
       const firstIdx=Math.min(...supTouches.map(l=>l.idx));
@@ -369,7 +450,7 @@ function detectChannel(candles){
       const relevantHighs=highs.filter(h=>h.idx>=firstIdx);
       if(!relevantHighs.length)continue;
 
-      // Channel height = median offset from highs to support rail
+      // Channel height = median offset (robust to outliers)
       const offsets=relevantHighs
         .map(h=>h.price-railAt(slope,intercept,h.idx))
         .filter(o=>o>0).sort((a,b)=>a-b);
@@ -383,6 +464,7 @@ function detectChannel(candles){
         return Math.abs(h.price-expected)/expected<=TOUCH_TOL;
       });
 
+      // Current rail prices
       const supNow=railAt(slope,intercept,lastIdx);
       const resNow=supNow+channelH;
       const curPrice=candles[lastIdx].close;
@@ -398,33 +480,57 @@ function detectChannel(candles){
         if(c.low>=s*(1-TOUCH_TOL)&&c.high<=r*(1+TOUCH_TOL))inside++;
       });
       const containment=(inside/winCandles.length)*100;
-      if(containment<MIN_CONTAIN)continue;
+      if(containment<30)continue; // very loose hard floor — thresholds handle the rest
       diag.containment++;
 
-      const slopePct=(slope/railAt(slope,intercept,firstIdx))*100;
+      const slopePct=(slope/Math.abs(railAt(slope,intercept,firstIdx)||1))*100;
       const invalidation=supNow*(1-TOUCH_TOL);
 
-      // Score
+      // ── SCORING ──────────────────────────────────────────────────
       let score=0;
-      score+=Math.min(25,supTouches.length*7);
+
+      // Support touches (max 25)
+      score+=Math.min(25,supTouches.length*8);
+
+      // Resistance touches (max 15)
       score+=Math.min(15,resTouches.length*6);
-      score+=(containment/100)*18;
+
+      // Containment (max 20)
+      score+=(containment/100)*20;
+
+      // Slope quality (max 15)
+      // Positive and moderate = best, flat = ok, negative = penalty
       const sa=Math.abs(slopePct);
-      score+=sa>=0.05&&sa<=3?14:sa<0.05?2:Math.max(0,14-(sa-3)*3);
+      if(slope>=0){
+        score+=sa>=0.05&&sa<=3?15:sa<0.05?8:Math.max(0,15-(sa-3)*3);
+      } else {
+        // Negative slope — score based on how negative
+        score+=Math.max(0,8-(sa*3)); // loses points fast for negative slope
+      }
+
+      // Position (max 10) — lower third is best setup
       score+=position<=0.33?10:position<=0.5?6:position<=0.66?3:0;
-      score+=Math.min(6,winCandles.length/20);
-      if(position>0.9)score-=8;
-      if(sa>5)score-=10;
+
+      // Channel age (max 7)
+      score+=Math.min(7,winCandles.length/20);
+
+      // Penalties
+      if(position>0.9)score-=8; // overextension
+      if(sa>5)score-=10;        // parabolic
+      if(slope<0)score-=5;      // additional penalty for descending
+
       score=Math.round(clamp(score,0,100));
-      if(score<MIN_SCORE)continue;
       diag.scoreOk++;
 
       if(!best||score>best.score){
-        best={score,supportTouches:supTouches.length,resTouches:resTouches.length,
+        best={
+          score,supportTouches:supTouches.length,resTouches:resTouches.length,
           containment:Math.round(containment),slope:slopePct,position,
           supportNow:supNow,resistNow:resNow,invalidation,channelH,
           candles:candles.slice(-150),pivotLows:supTouches,
-          supSlope:slope,supIntercept:intercept,firstIdx,lastIdx};
+          supSlope:slope,supIntercept:intercept,firstIdx,lastIdx,
+          isAscending:slope>=0,isFlat:Math.abs(slopePct)<0.1
+        };
       }
     }
   }
@@ -433,28 +539,27 @@ function detectChannel(candles){
 
 function buildExplanation(r,name){
   const pos=r.position<=0.33?'lower third — near support (potential entry zone)':r.position<=0.66?'middle of channel':'upper third — approaching resistance';
-  const sl=Math.abs(r.slope)<0.1?'very shallow':Math.abs(r.slope)<0.5?'gentle':Math.abs(r.slope)<1.5?'moderate':'steep';
-  return`${name} shows an ascending channel on the daily timeframe with ${r.supportTouches} confirmed support touches and ${r.resTouches} resistance touches within a ${TOUCH_TOL*100}% tolerance band. Containment is ${r.containment}% — ${r.containment>75?'strong':'moderate'} channel structure. The ${sl} slope of ${r.slope.toFixed(3)}%/bar suggests ${Math.abs(r.slope)<0.1?'a tight base':Math.abs(r.slope)<0.5?'slow accumulation':Math.abs(r.slope)<1.5?'healthy bullish momentum':'aggressive uptrend — watch for overextension'}. Price is currently in the ${pos}. ${r.position<=0.33?"Positioning near support may offer a favorable risk/reward — validate with Brett's indicators in TradingView before acting.":"Consider waiting for a pullback toward support before entry."}`;
+  const slopeDesc=r.isFlat?'flat (consolidation)':r.slope>0?`ascending +${r.slope.toFixed(3)}%/bar`:`descending ${r.slope.toFixed(3)}%/bar`;
+  const quality=r.containment>75?'strong':'moderate';
+  return`${name} shows a ${slopeDesc} channel on the daily timeframe with ${r.supportTouches} support touches and ${r.resTouches} resistance touches (${TOUCH_TOL*100}% tolerance). Containment is ${r.containment}% — ${quality} channel structure. Price is in the ${pos}. ${r.position<=0.33&&r.slope>=0?"Near-support positioning in an ascending channel may offer favorable risk/reward — validate with Brett's indicators in TradingView.":r.slope<0?"Descending channel — consider waiting for a trend reversal before entry.":"Consider waiting for a pullback toward support before entry."}`;
 }
 
 // ── SCAN ──────────────────────────────────────────────────────────
 async function scanCoin(coin){
-  diag.ohlcOk; // will increment below
   const ohlc=await fetchOHLC(coin.id);
   if(!ohlc)return null;
   diag.ohlcOk++;
 
   const ch=detectChannel(ohlc);
   if(!ch)return null;
-
   diag.candidates++;
+
   return{
     symbol:coin.symbol.toUpperCase(),
     name:coin.name,
     cgId:coin.id,
     price:coin.current_price,
-    change24h:coin.price_change_percentage_24h,
-    timeframe:'1D',
+    change24h:coin.price_change_percentage_24h||0,
     explanation:buildExplanation(ch,coin.name),
     ...ch
   };
@@ -463,30 +568,33 @@ async function scanCoin(coin){
 async function runScan(){
   if(scanning)return;
   scanning=true;
-  diag={universe:0,ohlcOk:0,pivotOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+  diag={universe:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
   const btn=document.getElementById('refresh-btn');
   btn.disabled=true; btn.textContent='↻ Scanning…';
   setStatus('scanning','Fetching top 100 altcoins…');
-  results=[];
+  allResults=[];
 
   const coins=await buildUniverse();
-  if(!coins.length){setStatus('error','Failed to fetch universe');btn.disabled=false;btn.textContent='↻ Refresh';scanning=false;return;}
-
-  setStatus('scanning',`Scanning ${coins.length} coins — takes 3-4 minutes…`);
-
-  // Scan one at a time with 2 second delay to respect CoinGecko rate limits
-  // 30 calls/min keyless = 2 seconds between calls
-  for(let i=0;i<coins.length;i++){
-    const r=await scanCoin(coins[i]);
-    if(r)results.push(r);
-    setStatus('scanning',`${i+1}/${coins.length} scanned · ${results.length} channels found`);
-    if(i<coins.length-1)await sleep(3000); // 3s between calls = 20/min well under 30/min limit
+  if(!coins.length){
+    setStatus('error','Failed to fetch universe — check API key');
+    btn.disabled=false; btn.textContent='↻ Refresh';
+    scanning=false; return;
   }
 
-  results.sort((a,b)=>b.score-a.score);
+  setStatus('scanning',`Scanning ${coins.length} coins…`);
+
+  for(let i=0;i<coins.length;i++){
+    const r=await scanCoin(coins[i]);
+    if(r)allResults.push(r);
+    setStatus('scanning',`${i+1}/${coins.length} scanned · ${allResults.length} channels found`);
+    if(document.getElementById('diag-panel').classList.contains('visible'))renderDiag();
+    if(i<coins.length-1)await sleep(700); // ~85/min — well under 100/min with Demo key
+  }
+
+  allResults.sort((a,b)=>b.score-a.score);
   applyFilters();
   renderDiag();
-  setStatus('live',`${results.length} channels found · ${coins.length} coins scanned`);
+  setStatus('live',`${allResults.length} channels · ${coins.length} scanned`);
   document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();
   btn.disabled=false; btn.textContent='↻ Refresh';
   scanning=false;
@@ -498,14 +606,13 @@ async function runScan(){
 function renderDiag(){
   const items=[
     {label:'Universe (top 100 alts)',value:diag.universe,c:'var(--text)'},
-    {label:'OHLC data loaded',value:diag.ohlcOk,c:'var(--bull)'},
-    {label:'Enough pivots (3+)',value:diag.pivotOk,c:'var(--neut)'},
+    {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
     {label:'Rail pairs tried',value:diag.railPairs,c:'var(--text2)'},
     {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
-    {label:'3+ support touches',value:diag.touches,c:'var(--neut)'},
-    {label:'Containment ≥50%',value:diag.containment,c:'var(--neut)'},
-    {label:'Score ≥40',value:diag.scoreOk,c:'var(--probable)'},
-    {label:'Final candidates',value:diag.candidates,c:'var(--high)'},
+    {label:'2+ support touches',value:diag.touches,c:'var(--neut)'},
+    {label:'Containment ≥30%',value:diag.containment,c:'var(--neut)'},
+    {label:'Scored',value:diag.scoreOk,c:'var(--probable)'},
+    {label:'Raw candidates',value:diag.candidates,c:'var(--high)'},
   ];
   document.getElementById('diag-grid').innerHTML=items.map(i=>`
     <div class="diag-item"><div class="diag-label">${i.label}</div><div class="diag-value" style="color:${i.c}">${i.value}</div></div>`).join('');
@@ -520,9 +627,27 @@ function toggleDiag(){
   if(p.classList.contains('visible'))renderDiag();
 }
 
-// ── FILTERS & RENDER ──────────────────────────────────────────────
+// ── FILTERS ───────────────────────────────────────────────────────
+function getThresholds(){
+  return{
+    minTouches:parseInt(document.getElementById('thresh-touches').value),
+    minContain:parseInt(document.getElementById('thresh-contain').value),
+    slopeMode:document.getElementById('thresh-slope').value,
+    minScore:parseInt(document.getElementById('thresh-score').value),
+    showAll:document.getElementById('show-rejected').checked
+  };
+}
+
 function applyFilters(){
-  filtered=results.filter(r=>{
+  const t=getThresholds();
+  filtered=allResults.filter(r=>{
+    if(!t.showAll){
+      if(r.supportTouches<t.minTouches)return false;
+      if(r.containment<t.minContain)return false;
+      if(t.slopeMode==='positive'&&r.slope<0)return false;
+      if(t.slopeMode==='flat'&&r.slope<-0.1)return false;
+      if(r.score<t.minScore)return false;
+    }
     if(activeFilter==='high'&&r.score<90)return false;
     if(activeFilter==='probable'&&(r.score<75||r.score>=90))return false;
     if(activeFilter==='emerging'&&(r.score<60||r.score>=75))return false;
@@ -530,7 +655,7 @@ function applyFilters(){
     return true;
   });
   sortFiltered(); renderTable();
-  document.getElementById('scan-count').textContent=`${filtered.length} of ${results.length}`;
+  document.getElementById('scan-count').textContent=`${filtered.length} of ${allResults.length}`;
 }
 
 function filterBucket(b,btn){
@@ -543,7 +668,7 @@ function filterBucket(b,btn){
 function sortFiltered(){
   filtered.sort((a,b)=>{
     let av=a[sortCol],bv=b[sortCol];
-    if(sortCol==='position'){return av-bv;}
+    if(sortCol==='position')return av-bv;
     if(typeof av==='string')return sortDir*av.localeCompare(bv);
     return sortDir*((av||0)-(bv||0));
   });
@@ -559,8 +684,8 @@ function renderTable(){
   const tbody=document.getElementById('table-body');
   if(!filtered.length){
     tbody.innerHTML=`<tr><td colspan="10"><div class="state-view">
-      <div class="state-title">No channels found</div>
-      <div class="state-sub">Click ⚗ Diagnostics to see the scan funnel. Current market may have few clean ascending channels on daily timeframe.</div>
+      <div class="state-title">No channels match current filters</div>
+      <div class="state-sub">Try loosening thresholds — reduce min touches, containment, or enable "Show all". Open ⚗ Diagnostics to see the scan funnel.</div>
     </div></td></tr>`;
     return;
   }
@@ -570,16 +695,16 @@ function renderTable(){
     const pw=Math.round(r.position*100);
     const posLbl=r.position<=0.33?'⬇ Lower':r.position<=0.66?'↔ Mid':'⬆ Upper';
     const cc=r.change24h>=0?'up':'dn';
+    const slopeCls=r.slope>0.05?'slope-pos':r.slope<-0.05?'slope-neg':'slope-flat';
     const tvUrl=`https://www.tradingview.com/chart/?symbol=BINANCE:${r.symbol}USDT&interval=D`;
-    const key=r.symbol;
-    return`<tr onclick="selectRow('${r.symbol}')" class="${selectedKey===key?'selected':''}" data-key="${key}">
+    return`<tr onclick="selectRow('${r.symbol}')" class="${selectedKey===r.symbol?'selected':''}" data-key="${r.symbol}">
       <td><div class="coin-cell"><div class="coin-icon">${r.symbol.substring(0,3)}</div><div><div class="coin-name">${r.symbol}</div><div class="coin-sub">${r.name}</div></div></div></td>
       <td><div class="score-cell"><span style="font-weight:700;color:${sc};min-width:26px">${r.score}</span><div class="score-bar-wrap"><div class="score-bar" style="width:${r.score}%;background:${sc}"></div></div></div></td>
       <td><span class="bucket-badge ${bk.cls}">${bk.label}</span></td>
       <td style="color:var(--bull)">${r.supportTouches}</td>
       <td style="color:var(--text2)">${r.resTouches}</td>
       <td style="color:${r.containment>75?'var(--bull)':'var(--text2)'}">${r.containment}%</td>
-      <td style="color:var(--bull)">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</td>
+      <td class="${slopeCls}">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</td>
       <td><div class="pos-wrap"><div class="pos-bar-outer"><div class="pos-marker" style="left:${pw}%"></div></div><span style="font-size:11px;color:var(--text2)">${posLbl}</span></div></td>
       <td class="${cc}">${fmtP(r.change24h)}</td>
       <td><a class="tv-link" href="${tvUrl}" target="_blank" onclick="event.stopPropagation()">TV ↗</a></td>
@@ -605,13 +730,13 @@ function openDetail(r){
   document.getElementById('dp-score').textContent=r.score;
   document.getElementById('dp-score').style.color=sc;
   document.getElementById('dp-bucket-badge').innerHTML=`<span class="bucket-badge ${bk.cls}">${bk.label}</span>`;
-  document.getElementById('dp-tf-label').textContent='Daily timeframe · '+r.name;
+  document.getElementById('dp-tf-label').textContent='Daily · '+r.name+(r.isFlat?' · Flat channel':r.slope>=0?' · Ascending channel':' · Descending channel');
   document.getElementById('dp-score-grid').innerHTML=`
     <div class="score-item"><div class="si-label">Support touches</div><div class="si-value" style="color:var(--bull)">${r.supportTouches}</div></div>
     <div class="score-item"><div class="si-label">Resistance touches</div><div class="si-value">${r.resTouches}</div></div>
     <div class="score-item"><div class="si-label">Containment</div><div class="si-value" style="color:${r.containment>75?'var(--bull)':'var(--neut)'}">${r.containment}%</div></div>
-    <div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:var(--bull)">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</div></div>
-    <div class="score-item"><div class="si-label">Channel age (bars)</div><div class="si-value">${r.lastIdx-r.firstIdx}</div></div>
+    <div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:${r.slope>=0?'var(--bull)':'var(--bear)'}">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</div></div>
+    <div class="score-item"><div class="si-label">Channel age</div><div class="si-value">${r.lastIdx-r.firstIdx} bars</div></div>
     <div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:${sc}">${r.score}/100</div></div>`;
   const pw=Math.round(r.position*100);
   document.getElementById('dp-pos-label').textContent=r.position<=0.33?'⬇ Lower third':r.position<=0.66?'↔ Middle':'⬆ Upper third';
@@ -649,29 +774,19 @@ function buildChart(r){
     timeScale:{borderColor:'#1e2035',timeVisible:true},
   });
   detailChart=chart;
-
   const cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
   cs.setData(r.candles);
-
   const n=r.candles.length;
   const startCI=r.lastIdx-(n-1);
   const supData=r.candles.map((c,i)=>({time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)}));
   const resData=r.candles.map((c,i)=>({time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)+r.channelH}));
-
   chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:true,title:'Support'}).setData(supData);
   chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:true,title:'Resistance'}).setData(resData);
-  chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Invalidation'})
-    .setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
-
-  const markers=r.pivotLows.filter(p=>r.candles.some(c=>c.time===p.time))
-    .map(p=>({time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1}))
-    .sort((a,b)=>a.time-b.time);
+  chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
+  const markers=r.pivotLows.filter(p=>r.candles.some(c=>c.time===p.time)).map(p=>({time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1})).sort((a,b)=>a.time-b.time);
   if(markers.length)cs.setMarkers(markers);
-
   chart.timeScale().fitContent();
-  new ResizeObserver(entries=>{
-    for(const e of entries)chart.applyOptions({width:e.contentRect.width,height:e.contentRect.height});
-  }).observe(container);
+  new ResizeObserver(entries=>{for(const e of entries)chart.applyOptions({width:e.contentRect.width,height:e.contentRect.height});}).observe(container);
 }
 
 window.addEventListener('load',()=>{setStatus('scanning','Starting…');runScan();});
