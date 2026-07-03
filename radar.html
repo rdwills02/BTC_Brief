@@ -387,7 +387,7 @@ function detectChannel(candles) {
         var exp = railAt(slope,intercept,l.idx);
         return Math.abs(l.price-exp)/exp <= TOUCH_TOL;
       });
-      if(supTouches.length < 2) continue;
+      if(supTouches.length < 3) continue;
       diag.touches++;
 
       var firstIdx = Math.min.apply(null, supTouches.map(function(l){return l.idx;}));
@@ -420,10 +420,11 @@ function detectChannel(candles) {
         if(winCandles[i].low >= s*(1-TOUCH_TOL) && winCandles[i].high <= r*(1+TOUCH_TOL)) inside++;
       }
       var containment = (inside/winCandles.length)*100;
-      if(containment < 30) continue;
+      if(containment < 55) continue;
       diag.containment++;
 
       var slopePct = (slope / Math.abs(railAt(slope,intercept,firstIdx)||1)) * 100;
+      if(position > 0.75) continue;
       var invalidation = supNow * (1-TOUCH_TOL);
 
       var score = 0;
