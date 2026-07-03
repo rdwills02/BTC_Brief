@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Channel Radar Report</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0c14;--surface:#13141f;--surface2:#1a1b2a;--surface3:#20223a;
+  --border:#1e2035;--border2:#2a2b3d;--text:#e2e4ef;--text2:#9da3b4;--muted:#6b7280;
+  --bull:#00c896;--bull-bg:rgba(0,200,150,0.1);--bear:#e8754a;--bear-bg:rgba(232,117,74,0.1);
+  --neut:#f5a623;--accent:#7b6ef6;--accent-bg:rgba(123,110,246,0.12);--accent-border:rgba(123,110,246,0.3);
+  --high:#00c896;--probable:#7b6ef6;--emerging:#f5a623;--watch:#e8754a;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;min-height:100vh}
+
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.nav-links{display:flex;gap:8px}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);transition:all 0.15s}
+.nav-link:hover{color:var(--text);border-color:var(--accent)}
+.nav-link.accent{color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+
+.container{max-width:900px;margin:0 auto;padding:28px 24px}
+
+.report-header{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid var(--accent)}
+.report-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px}
+.report-meta{font-size:12px;color:var(--muted)}
+.report-summary{font-size:13px;color:var(--text2);margin-top:10px;line-height:1.6}
+
+.section-label{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+.candidate-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 18px;margin-bottom:10px;transition:border-color 0.15s}
+.candidate-card:hover{border-color:var(--border2)}
+.candidate-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.candidate-left{display:flex;align-items:center;gap:10px}
+.coin-icon{width:32px;height:32px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--accent);flex-shrink:0}
+.coin-symbol{font-size:16px;font-weight:700}
+.coin-name{font-size:11px;color:var(--muted);margin-top:1px}
+.candidate-right{display:flex;align-items:center;gap:10px}
+
+.score-badge{font-size:22px;font-weight:700;line-height:1}
+.bucket-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:0.04em;text-transform:uppercase}
+.bucket-high{background:rgba(0,200,150,0.15);color:var(--high)}
+.bucket-probable{background:rgba(123,110,246,0.15);color:var(--probable)}
+.bucket-emerging{background:rgba(245,166,35,0.12);color:var(--emerging)}
+.bucket-watch{background:rgba(232,117,74,0.12);color:var(--watch)}
+
+.candidate-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.stat-item{background:var(--surface2);border-radius:6px;padding:8px 10px}
+.stat-label{font-size:10px;color:var(--muted);margin-bottom:2px}
+.stat-value{font-size:13px;font-weight:600}
+
+.pos-bar-wrap{height:6px;background:var(--border2);border-radius:3px;position:relative;margin:6px 0}
+.pos-marker{position:absolute;top:-3px;width:2px;height:12px;background:var(--accent);border-radius:1px;transform:translateX(-50%)}
+.pos-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+
+.analysis{font-size:12px;color:var(--text2);line-height:1.6;background:var(--surface2);border-radius:6px;padding:10px 12px;border-left:3px solid var(--accent);margin-bottom:12px}
+
+.tv-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;transition:all 0.15s}
+.tv-btn:hover{background:rgba(123,110,246,0.2)}
+
+.inv-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--bear-bg);border:1px solid rgba(232,117,74,0.25);border-radius:6px;font-size:11px;color:var(--bear);font-weight:600}
+
+.empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:8px}
+.empty-sub{font-size:13px;line-height:1.6}
+
+.footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted)}
+.footer a{color:var(--accent);text-decoration:none}
+
+.disclaimer{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-top:20px;font-size:11px;color:var(--muted);line-height:1.6;border-left:3px solid var(--neut)}
+
+.up{color:var(--bull)}.dn{color:var(--bear)}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="logo"><div class="logo-dot"></div>Channel Radar Report</div>
+  </div>
+  <div class="nav-links">
+    <a href="https://rdwills02.github.io/BTC_Brief/" class="nav-link">Dashboard ↗</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" class="nav-link accent">⬡ Methodology ↗</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" class="nav-link">Glossary ↗</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="report-header">
+    <div class="report-title">Altcoin Channel Radar — Weekly Report</div>
+    <div class="report-meta" id="report-meta">Loading report data…</div>
+    <div class="report-summary" id="report-summary"></div>
+  </div>
+
+  <div class="section-label">Channel Candidates — Ranked by Score</div>
+  <div id="candidates-container">
+    <div class="empty-state">
+      <div class="state-view" style="height:auto;padding:40px 0">
+        <div class="empty-title">Loading report…</div>
+        <div class="empty-sub">If this message persists, the report has not yet been generated.<br>Check back after the next scheduled scan.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    ⚠ This report is generated by an automated channel detection algorithm scanning the top 100 altcoins by market cap on the daily timeframe. It is a discovery tool only — not a trade recommendation. All candidates require manual validation in TradingView using Brett Fogle's proprietary indicators before any trading decision. Past channel formations do not guarantee future performance. <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar">Learn more about the methodology →</a>
+  </div>
+
+  <div class="footer">
+    <span id="footer-timestamp"></span>
+    <div style="display:flex;gap:16px">
+      <a href="https://rdwills02.github.io/BTC_Brief/">Dashboard</a>
+      <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">Glossary</a>
+      <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar">Methodology</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── REPORT DATA ───────────────────────────────────────────────────
+// This section is populated by the Channel Radar agent after each scan.
+// The agent replaces REPORT_DATA with actual JSON results before pushing to GitHub.
+
+const REPORT_DATA = null; // AGENT_INJECT_REPORT_DATA
+
+// ── RENDER ────────────────────────────────────────────────────────
+function getBucket(s){
+  if(s>=90)return{label:'High',cls:'bucket-high'};
+  if(s>=75)return{label:'Probable',cls:'bucket-probable'};
+  if(s>=60)return{label:'Emerging',cls:'bucket-emerging'};
+  if(s>=40)return{label:'Watch',cls:'bucket-watch'};
+  return{label:'Weak',cls:''};
+}
+function scoreColor(s){
+  if(s>=90)return'var(--high)';
+  if(s>=75)return'var(--probable)';
+  if(s>=60)return'var(--emerging)';
+  return'var(--watch)';
+}
+const fmt=(n,d=2)=>n==null?'—':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtP=(n)=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
+
+function render(){
+  if(!REPORT_DATA){
+    document.getElementById('report-meta').textContent='No report data available yet — check back after the next scan.';
+    return;
+  }
+
+  const{timestamp,scanned,candidates,btcPrice,btcChange}=REPORT_DATA;
+
+  document.getElementById('report-meta').textContent=
+    `Generated: ${timestamp} · ${scanned} coins scanned · ${candidates.length} channels found · BTC ${fmt(btcPrice)} (${fmtP(btcChange)} 24h)`;
+
+  const highCount=candidates.filter(c=>c.score>=90).length;
+  const probCount=candidates.filter(c=>c.score>=75&&c.score<90).length;
+  const lowerThird=candidates.filter(c=>c.position<=0.33&&c.slope>=0).length;
+
+  document.getElementById('report-summary').textContent=
+    `This scan found ${candidates.length} channel candidates across the top ${scanned} altcoins by market cap. ${highCount} high-confidence, ${probCount} probable. ${lowerThird} candidate${lowerThird!==1?'s are':'is'} currently in the lower third of an ascending channel — the optimal entry zone. All candidates should be validated in TradingView with Brett Fogle's indicators before acting.`;
+
+  document.getElementById('footer-timestamp').textContent=`Finance Agent V3 · Channel Radar · ${timestamp}`;
+
+  const container=document.getElementById('candidates-container');
+
+  if(!candidates.length){
+    container.innerHTML=`<div class="empty-state"><div class="empty-title">No channels found in this scan</div><div class="empty-sub">Current market conditions may have few clean channel formations.<br>Try loosening filters or check back after the next scan.</div></div>`;
+    return;
+  }
+
+  container.innerHTML=candidates.map(r=>{
+    const bk=getBucket(r.score);
+    const sc=scoreColor(r.score);
+    const pw=Math.round(r.position*100);
+    const posLbl=r.position<=0.33?'⬇ Lower third (near support)':r.position<=0.66?'↔ Middle of channel':'⬆ Upper third (near resistance)';
+    const cc=r.change24h>=0?'up':'dn';
+    const slopeColor=r.slope>=0.05?'var(--bull)':r.slope<-0.05?'var(--bear)':'var(--muted)';
+    const channelType=Math.abs(r.slope)<0.1?'Flat channel':r.slope>=0?'Ascending channel':'Descending channel';
+    const tvUrl=`https://www.tradingview.com/chart/?symbol=BINANCE:${r.symbol}USDT&interval=D`;
+    const invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
+
+    return`<div class="candidate-card">
+      <div class="candidate-header">
+        <div class="candidate-left">
+          <div class="coin-icon">${r.symbol.substring(0,3)}</div>
+          <div>
+            <div class="coin-symbol">${r.symbol}</div>
+            <div class="coin-name">${r.name} · Daily · ${channelType}</div>
+          </div>
+        </div>
+        <div class="candidate-right">
+          <div>
+            <div class="score-badge" style="color:${sc}">${r.score}</div>
+            <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:2px">/ 100</div>
+          </div>
+          <span class="bucket-badge ${bk.cls}">${bk.label}</span>
+        </div>
+      </div>
+
+      <div class="candidate-stats">
+        <div class="stat-item">
+          <div class="stat-label">Price</div>
+          <div class="stat-value">${fmt(r.price,4)}</div>
+          <div style="font-size:10px" class="${cc}">${fmtP(r.change24h)} 24h</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">S Touches</div>
+          <div class="stat-value" style="color:var(--bull)">${r.supportTouches}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">R Touches</div>
+          <div class="stat-value">${r.resTouches}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Containment</div>
+          <div class="stat-value" style="color:${r.containment>75?'var(--bull)':'var(--neut)'}">${r.containment}%</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Slope/bar</div>
+          <div class="stat-value" style="color:${slopeColor}">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div class="pos-labels"><span>Support ${fmt(r.supportNow,4)}</span><span style="color:var(--accent);font-weight:600">${posLbl}</span><span>Resistance ${fmt(r.resistNow,4)}</span></div>
+        <div class="pos-bar-wrap"><div class="pos-marker" style="left:${pw}%"></div></div>
+        <div class="pos-labels"><span style="color:var(--accent)">${fmt(r.price,4)} current</span></div>
+      </div>
+
+      <div class="analysis">${r.explanation}</div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <a class="tv-btn" href="${tvUrl}" target="_blank">Open in TradingView — apply Brett's indicators ↗</a>
+        <div class="inv-badge">⚠ Invalidation: ${fmt(r.invalidation,4)} (${invPct}%)</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+render();
+</script>
+</body>
+</html>
