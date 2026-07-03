@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Altcoin Channel Radar V1</title>
+<title>Altcoin Channel Radar</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -153,6 +153,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <header class="header">
   <div style="display:flex;align-items:center;gap:16px">
     <div class="logo"><div class="logo-dot"></div>Channel Radar</div>
+    <div style="display:flex;gap:8px;">
+      <a href="https://rdwills02.github.io/BTC_Brief/" target="_blank" style="font-size:11px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2)">Dashboard ↗</a>
+      <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-bg)">⬡ Methodology ↗</a>
+    </div>
     <div class="scan-status">
       <div class="status-dot" id="status-dot"></div>
       <span id="status-text">Initializing…</span>
@@ -312,7 +316,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 // ── CONFIG ────────────────────────────────────────────────────────
 const CG_BASE    = 'https://api.coingecko.com/api/v3';
 const CG_KEY     = 'CG-YJMCUm9ZMwMfq8YuXac6RZ8P'; // ← paste your Demo key here
-const REFRESH_MS = 15 * 60 * 1000;
+const REFRESH_MS = 24 * 60 * 60 * 1000; // 24 hours — channels form over days not minutes
 const PIVOT_LB   = 3;   // reduced from 5 — catches more pivots
 const TOUCH_TOL  = 0.025;
 
