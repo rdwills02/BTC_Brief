@@ -739,6 +739,16 @@ function buildReportHTML(data) {
     '</div>'+
   '</div>'+
   '<div style="max-width:900px;margin:0 auto;padding:28px 24px">'+
+'<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">'+
+'<span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Filter by score:</span>'+
+'<select id="score-filter" onchange="filterCards()" style="background:#13141f;border:1px solid #2a2b3d;border-radius:6px;padding:4px 10px;color:#9da3b4;font-size:12px;font-family:inherit;outline:none;cursor:pointer">'+
+'<option value="0">All scores</option>'+
+'<option value="75">75+ Probable</option>'+
+'<option value="60">60+ Emerging</option>'+
+'<option value="40">40+ Watch</option>'+
+'</select>'+
+'<span id="filter-count" style="font-size:11px;color:#6b7280"></span>'+
+'</div>'+
     '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #7b6ef6">'+
       '<div style="font-size:18px;font-weight:700;margin-bottom:4px">Altcoin Channel Radar</div>'+
       '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">Generated: '+ts+' - '+data.scanned+' coins scanned - '+cands.length+' channels found'+(data.btcPrice?' - BTC '+fmt2(data.btcPrice)+' ('+fmtP2(data.btcChange)+' 24h)':'')+'</div>'+
