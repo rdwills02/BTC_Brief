@@ -3,123 +3,152 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Altcoin Channel Radar v1</title>
-  <!-- force pages rebuild -->
+<title>Altcoin Channel Radar</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --bg: #0b0c14; --surface: #13141f; --surface2: #1a1b2a; --surface3: #20223a;
-  --border: #1e2035; --border2: #2a2b3d; --text: #e2e4ef; --text2: #9da3b4; --muted: #6b7280;
-  --bull: #00c896; --bull-bg: rgba(0,200,150,0.1); --bull-border: rgba(0,200,150,0.25);
-  --bear: #e8754a; --bear-bg: rgba(232,117,74,0.1); --bear-border: rgba(232,117,74,0.25);
-  --neut: #f5a623; --accent: #7b6ef6; --accent-bg: rgba(123,110,246,0.12); --accent-border: rgba(123,110,246,0.3);
-  --high: #00c896; --probable: #7b6ef6; --emerging: #f5a623; --watch: #e8754a;
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0c14;--surface:#13141f;--surface2:#1a1b2a;--surface3:#20223a;
+  --border:#1e2035;--border2:#2a2b3d;--text:#e2e4ef;--text2:#9da3b4;--muted:#6b7280;
+  --bull:#00c896;--bull-bg:rgba(0,200,150,0.1);--bull-border:rgba(0,200,150,0.25);
+  --bear:#e8754a;--bear-bg:rgba(232,117,74,0.1);--bear-border:rgba(232,117,74,0.25);
+  --neut:#f5a623;--accent:#7b6ef6;--accent-bg:rgba(123,110,246,0.12);--accent-border:rgba(123,110,246,0.3);
+  --high:#00c896;--probable:#7b6ef6;--emerging:#f5a623;--watch:#e8754a;
 }
-body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif; font-size:13px; line-height:1.5; min-height:100vh; overflow-x:hidden; }
-.header { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; height:52px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:200; }
-.header-left { display:flex; align-items:center; gap:16px; }
-.logo { font-size:14px; font-weight:700; color:var(--text); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px; }
-.logo-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); }
-.scan-status { font-size:11px; color:var(--muted); display:flex; align-items:center; gap:6px; }
-.status-dot { width:6px; height:6px; border-radius:50%; background:var(--bull); }
-.status-dot.scanning { animation:pulse 1s infinite; background:var(--neut); }
-.status-dot.error { background:var(--bear); }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-.header-right { display:flex; align-items:center; gap:10px; }
-.btn { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:none; font-family:inherit; transition:all 0.15s; }
-.btn-ghost { background:var(--surface2); color:var(--text2); border:1px solid var(--border2); }
-.btn-ghost:hover { color:var(--text); border-color:var(--accent); }
-.last-update { font-size:11px; color:var(--muted); }
-.layout { display:grid; grid-template-columns:1fr; height:calc(100vh - 52px); transition:grid-template-columns 0.3s ease; }
-.layout.panel-open { grid-template-columns:1fr 480px; }
-.main-panel { display:flex; flex-direction:column; overflow:hidden; }
-.filters { padding:12px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface); }
-.filter-label { font-size:10px; color:var(--muted); font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
-.bucket-filter { display:flex; gap:4px; }
-.bucket-btn { padding:4px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid var(--border2); background:var(--surface2); color:var(--muted); font-family:inherit; transition:all 0.15s; }
-.bucket-btn.active-all { background:var(--accent-bg); color:var(--accent); border-color:var(--accent-border); }
-.bucket-btn.active-high { background:rgba(0,200,150,0.15); color:var(--high); border-color:rgba(0,200,150,0.3); }
-.bucket-btn.active-probable { background:rgba(123,110,246,0.15); color:var(--probable); border-color:rgba(123,110,246,0.3); }
-.bucket-btn.active-emerging { background:rgba(245,166,35,0.12); color:var(--emerging); border-color:rgba(245,166,35,0.3); }
-.bucket-btn.active-watch { background:rgba(232,117,74,0.12); color:var(--watch); border-color:rgba(232,117,74,0.3); }
-.tf-select { background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:4px 10px; color:var(--text2); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
-.sort-select { margin-left:auto; }
-.scan-count { font-size:11px; color:var(--muted); margin-left:4px; }
-.table-wrap { flex:1; overflow-y:auto; }
-.radar-table { width:100%; border-collapse:collapse; }
-.radar-table th { position:sticky; top:0; background:var(--surface); font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); padding:10px 14px; text-align:left; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; white-space:nowrap; }
-.radar-table th:hover { color:var(--text2); }
-.radar-table td { padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
-.radar-table tr { cursor:pointer; transition:background 0.1s; }
-.radar-table tr:hover td { background:var(--surface2); }
-.radar-table tr.selected td { background:var(--surface3); border-left:2px solid var(--accent); }
-.radar-table tr.selected td:first-child { padding-left:12px; }
-.coin-cell { display:flex; align-items:center; gap:10px; }
-.coin-icon { width:28px; height:28px; border-radius:50%; background:var(--surface3); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:var(--accent); flex-shrink:0; }
-.coin-name { font-weight:600; font-size:13px; }
-.coin-sub { font-size:10px; color:var(--muted); margin-top:1px; }
-.score-cell { display:flex; align-items:center; gap:8px; }
-.score-bar-wrap { width:50px; height:4px; background:var(--border2); border-radius:2px; overflow:hidden; }
-.score-bar { height:100%; border-radius:2px; }
-.bucket-badge { font-size:9px; font-weight:700; padding:2px 7px; border-radius:3px; letter-spacing:0.04em; text-transform:uppercase; }
-.bucket-high { background:rgba(0,200,150,0.15); color:var(--high); }
-.bucket-probable { background:rgba(123,110,246,0.15); color:var(--probable); }
-.bucket-emerging { background:rgba(245,166,35,0.12); color:var(--emerging); }
-.bucket-watch { background:rgba(232,117,74,0.12); color:var(--watch); }
-.tf-badge { font-size:10px; font-weight:600; padding:2px 6px; border-radius:3px; background:var(--surface3); color:var(--text2); }
-.pos-bar-wrap { width:60px; height:6px; background:var(--border2); border-radius:3px; position:relative; overflow:visible; }
-.pos-bar { height:100%; border-radius:3px; background:var(--bull-bg); }
-.pos-marker { position:absolute; top:-3px; width:2px; height:12px; background:var(--accent); border-radius:1px; transform:translateX(-50%); }
-.tv-link { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; color:var(--accent); text-decoration:none; padding:3px 8px; border-radius:4px; border:1px solid var(--accent-border); background:var(--accent-bg); transition:all 0.15s; }
-.tv-link:hover { background:rgba(123,110,246,0.2); }
-.up { color:var(--bull); } .dn { color:var(--bear); } .na { color:var(--muted); }
-.detail-panel { background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-.detail-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-.detail-coin { display:flex; align-items:center; gap:10px; }
-.detail-symbol { font-size:18px; font-weight:700; }
-.detail-price { font-size:13px; color:var(--text2); margin-top:2px; }
-.close-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:20px; line-height:1; padding:4px; transition:color 0.15s; }
-.close-btn:hover { color:var(--text); }
-.detail-body { flex:1; overflow-y:auto; }
-.chart-wrap { height:280px; position:relative; background:var(--bg); border-bottom:1px solid var(--border); }
-#detail-chart { width:100%; height:100%; }
-.chart-label { position:absolute; top:8px; left:10px; font-size:10px; font-weight:600; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; pointer-events:none; z-index:10; }
-.detail-section { padding:16px 20px; border-bottom:1px solid var(--border); }
-.detail-section:last-child { border-bottom:none; }
-.detail-section-title { font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
-.score-display { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-.score-big { font-size:36px; font-weight:700; line-height:1; }
-.score-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-.score-item { background:var(--surface2); border-radius:6px; padding:8px 10px; }
-.score-item-label { font-size:10px; color:var(--muted); margin-bottom:2px; }
-.score-item-value { font-size:14px; font-weight:600; }
-.channel-viz { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; }
-.channel-bar-wrap { position:relative; height:24px; background:var(--surface2); border-radius:4px; overflow:hidden; margin:8px 0; }
-.channel-bar-fill { position:absolute; top:0; left:0; bottom:0; border-right:2px solid var(--bull); transition:width 0.5s ease; background:rgba(0,200,150,0.08); }
-.channel-labels { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
-.explanation { font-size:12px; color:var(--text2); line-height:1.6; background:var(--surface2); border-radius:6px; padding:10px 12px; border-left:3px solid var(--accent); }
-.invalidation-box { display:flex; align-items:center; justify-content:space-between; background:var(--bear-bg); border:1px solid var(--bear-border); border-radius:6px; padding:10px 14px; }
-.inv-label { font-size:11px; color:var(--muted); }
-.inv-value { font-size:16px; font-weight:700; color:var(--bear); }
-.inv-sub { font-size:10px; color:var(--muted); margin-top:1px; }
-.tv-btn-large { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px; background:var(--accent-bg); color:var(--accent); border:1px solid var(--accent-border); border-radius:8px; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.15s; cursor:pointer; font-family:inherit; }
-.tv-btn-large:hover { background:rgba(123,110,246,0.2); }
-.state-view { display:flex; flex-direction:column; align-items:center; justify-content:center; height:300px; gap:12px; color:var(--muted); }
-.spinner { width:32px; height:32px; border:2px solid var(--border2); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
-.state-title { font-size:14px; font-weight:600; color:var(--text2); }
-.state-sub { font-size:12px; }
-::-webkit-scrollbar { width:6px; height:6px; }
-::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
-::-webkit-scrollbar-thumb:hover { background:var(--muted); }
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden}
+
+/* HEADER */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.logo{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:logopulse 3s ease-in-out infinite}
+@keyframes logopulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.scan-status{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--bull);flex-shrink:0}
+.status-dot.scanning{animation:pulse 1s infinite;background:var(--neut)}
+.status-dot.error{background:var(--bear)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.header-right{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all 0.15s}
+.btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.btn-accent{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
+.btn-accent:hover{background:rgba(123,110,246,0.2)}
+.last-update{font-size:11px;color:var(--muted)}
+
+/* DIAGNOSTICS */
+.diag-panel{background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 20px;display:none}
+.diag-panel.visible{display:block}
+.diag-title{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.diag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:10px}
+.diag-item{background:var(--surface2);border-radius:6px;padding:8px 12px}
+.diag-label{font-size:10px;color:var(--muted);margin-bottom:3px}
+.diag-value{font-size:20px;font-weight:700}
+.diag-funnel{font-size:11px;color:var(--muted);line-height:1.8}
+.diag-funnel span{margin:0 3px}
+.diag-arrow{color:var(--border2)}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:1fr;height:calc(100vh - 52px);transition:grid-template-columns 0.3s ease}
+.layout.panel-open{grid-template-columns:1fr 460px}
+.main-panel{display:flex;flex-direction:column;overflow:hidden}
+
+/* FILTERS */
+.filters{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface)}
+.filter-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase}
+.bucket-filter{display:flex;gap:3px}
+.bucket-btn{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);font-family:inherit;transition:all 0.15s}
+.bucket-btn.active-all{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
+.bucket-btn.active-high{background:rgba(0,200,150,0.15);color:var(--high);border-color:rgba(0,200,150,0.3)}
+.bucket-btn.active-probable{background:rgba(123,110,246,0.15);color:var(--probable);border-color:rgba(123,110,246,0.3)}
+.bucket-btn.active-emerging{background:rgba(245,166,35,0.12);color:var(--emerging);border-color:rgba(245,166,35,0.3)}
+.bucket-btn.active-watch{background:rgba(232,117,74,0.12);color:var(--watch);border-color:rgba(232,117,74,0.3)}
+.tf-select{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;color:var(--text2);font-size:12px;font-family:inherit;outline:none;cursor:pointer}
+.sort-select{margin-left:auto}
+.scan-count{font-size:11px;color:var(--muted)}
+
+/* TABLE */
+.table-wrap{flex:1;overflow-y:auto}
+.radar-table{width:100%;border-collapse:collapse}
+.radar-table th{position:sticky;top:0;background:var(--surface);font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
+.radar-table th:hover{color:var(--text2)}
+.radar-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.radar-table tr{cursor:pointer;transition:background 0.1s}
+.radar-table tr:hover td{background:var(--surface2)}
+.radar-table tr.selected td{background:var(--surface3);border-left:2px solid var(--accent)}
+.radar-table tr.selected td:first-child{padding-left:10px}
+.coin-cell{display:flex;align-items:center;gap:8px}
+.coin-icon{width:26px;height:26px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--accent);flex-shrink:0}
+.coin-name{font-weight:600;font-size:13px}
+.coin-sub{font-size:10px;color:var(--muted)}
+.score-cell{display:flex;align-items:center;gap:7px}
+.score-bar-wrap{width:44px;height:4px;background:var(--border2);border-radius:2px;overflow:hidden}
+.score-bar{height:100%;border-radius:2px}
+.bucket-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:0.04em;text-transform:uppercase}
+.bucket-high{background:rgba(0,200,150,0.15);color:var(--high)}
+.bucket-probable{background:rgba(123,110,246,0.15);color:var(--probable)}
+.bucket-emerging{background:rgba(245,166,35,0.12);color:var(--emerging)}
+.bucket-watch{background:rgba(232,117,74,0.12);color:var(--watch)}
+.tf-badge{font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:var(--surface3);color:var(--text2)}
+.pos-wrap{display:flex;align-items:center;gap:7px}
+.pos-bar-outer{width:54px;height:6px;background:var(--border2);border-radius:3px;position:relative}
+.pos-marker{position:absolute;top:-3px;width:2px;height:12px;background:var(--accent);border-radius:1px;transform:translateX(-50%)}
+.tv-link{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--accent);text-decoration:none;padding:3px 7px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-bg);transition:all 0.15s}
+.tv-link:hover{background:rgba(123,110,246,0.2)}
+.up{color:var(--bull)}.dn{color:var(--bear)}
+
+/* DETAIL PANEL */
+.detail-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.detail-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.detail-coin{display:flex;align-items:center;gap:10px}
+.detail-symbol{font-size:17px;font-weight:700}
+.detail-price{font-size:12px;color:var(--text2);margin-top:2px}
+.close-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:4px}
+.close-btn:hover{color:var(--text)}
+.detail-body{flex:1;overflow-y:auto}
+.chart-wrap{height:260px;position:relative;background:var(--bg);border-bottom:1px solid var(--border)}
+#detail-chart{width:100%;height:100%}
+.chart-legend{position:absolute;top:8px;left:10px;font-size:10px;color:var(--muted);z-index:10;pointer-events:none;display:flex;gap:12px}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:10px;height:2px;border-radius:1px}
+.detail-section{padding:14px 18px;border-bottom:1px solid var(--border)}
+.detail-section:last-child{border-bottom:none}
+.ds-title{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.score-display{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.score-big{font-size:34px;font-weight:700;line-height:1}
+.score-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.score-item{background:var(--surface2);border-radius:6px;padding:8px 10px}
+.si-label{font-size:10px;color:var(--muted);margin-bottom:2px}
+.si-value{font-size:14px;font-weight:600}
+.channel-viz{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px}
+.ch-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px}
+.ch-bar-wrap{height:20px;background:var(--surface2);border-radius:4px;position:relative;overflow:hidden}
+.ch-bar-fill{position:absolute;top:0;left:0;bottom:0;border-right:2px solid var(--bull);background:rgba(0,200,150,0.06)}
+.ch-prices{display:flex;justify-content:space-between;font-size:10px;margin-top:6px}
+.explanation{font-size:12px;color:var(--text2);line-height:1.6;background:var(--surface2);border-radius:6px;padding:10px 12px;border-left:3px solid var(--accent)}
+.inv-box{display:flex;align-items:center;justify-content:space-between;background:var(--bear-bg);border:1px solid var(--bear-border);border-radius:6px;padding:10px 14px}
+.inv-label{font-size:11px;color:var(--muted)}
+.inv-value{font-size:15px;font-weight:700;color:var(--bear)}
+.inv-sub{font-size:10px;color:var(--muted);margin-top:1px}
+.tv-btn-lg{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border);border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:all 0.15s;font-family:inherit;cursor:pointer}
+.tv-btn-lg:hover{background:rgba(123,110,246,0.2)}
+
+/* STATES */
+.state-view{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:var(--muted)}
+.spinner{width:30px;height:30px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-title{font-size:14px;font-weight:600;color:var(--text2)}
+.state-sub{font-size:12px;text-align:center;max-width:320px;line-height:1.6}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 </style>
 </head>
 <body>
 
 <header class="header">
-  <div class="header-left">
+  <div style="display:flex;align-items:center;gap:16px">
     <div class="logo"><div class="logo-dot"></div>Channel Radar</div>
     <div class="scan-status">
       <div class="status-dot" id="status-dot"></div>
@@ -128,9 +157,16 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
   </div>
   <div class="header-right">
     <span class="last-update" id="last-update"></span>
+    <button class="btn btn-accent" onclick="toggleDiag()">⚗ Diagnostics</button>
     <button class="btn btn-ghost" onclick="runScan()" id="refresh-btn">↻ Refresh</button>
   </div>
 </header>
+
+<div class="diag-panel" id="diag-panel">
+  <div class="diag-title">Scan Funnel — where candidates pass or fail</div>
+  <div class="diag-grid" id="diag-grid"></div>
+  <div class="diag-funnel" id="diag-funnel"></div>
+</div>
 
 <div class="layout" id="layout">
   <div class="main-panel">
@@ -143,7 +179,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
         <button class="bucket-btn" onclick="filterBucket('emerging',this)">Emerging 60+</button>
         <button class="bucket-btn" onclick="filterBucket('watch',this)">Watch 40+</button>
       </div>
-      <span class="filter-label" style="margin-left:8px;">TF</span>
+      <span class="filter-label" style="margin-left:6px">TF</span>
       <select class="tf-select" id="tf-select" onchange="applyFilters()">
         <option value="all">All</option>
         <option value="1D">Daily</option>
@@ -151,10 +187,11 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
       </select>
       <select class="tf-select sort-select" id="sort-select" onchange="sortResults()">
         <option value="score">Sort: Score</option>
-        <option value="position">Sort: Position (lower)</option>
+        <option value="position">Sort: Position (lower first)</option>
         <option value="slope">Sort: Slope</option>
         <option value="supportTouches">Sort: Touches</option>
         <option value="containment">Sort: Containment</option>
+        <option value="rsVsBtc">Sort: RS vs BTC</option>
       </select>
       <span class="scan-count" id="scan-count"></span>
     </div>
@@ -163,16 +200,20 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
         <thead><tr>
           <th>Coin</th><th>Score</th><th>Bucket</th><th>TF</th>
           <th>S Touches</th><th>R Touches</th><th>Contain</th>
-          <th>Slope</th><th>Position</th><th>24h</th><th>TV</th>
+          <th>Slope/bar</th><th>Position</th><th>RS/BTC</th><th>24h</th><th>TV</th>
         </tr></thead>
         <tbody id="table-body">
-          <tr><td colspan="11"><div class="state-view"><div class="spinner"></div><div class="state-title">Scanning channels…</div><div class="state-sub">Fetching top 100 assets from Binance</div></div></td></tr>
+          <tr><td colspan="12"><div class="state-view">
+            <div class="spinner"></div>
+            <div class="state-title">Building universe…</div>
+            <div class="state-sub">Fetching live top 150 coins from CoinGecko, filtering stablecoins, validating Binance pairs</div>
+          </div></td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <div class="detail-panel" id="detail-panel" style="display:none;">
+  <div class="detail-panel" id="detail-panel" style="display:none">
     <div class="detail-header">
       <div class="detail-coin">
         <div class="coin-icon" id="dp-icon"></div>
@@ -185,67 +226,77 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
     </div>
     <div class="detail-body">
       <div class="chart-wrap">
-        <div class="chart-label" id="dp-chart-label"></div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--bull)"></div><span>Support</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--bear)"></div><span>Resistance</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(232,117,74,0.4)"></div><span>Invalidation</span></div>
+        </div>
         <div id="detail-chart"></div>
       </div>
       <div class="detail-section">
-        <div class="detail-section-title">Channel Score</div>
+        <div class="ds-title">Channel Score</div>
         <div class="score-display">
           <div class="score-big" id="dp-score"></div>
-          <div><div id="dp-bucket-badge"></div><div style="font-size:11px;color:var(--muted);margin-top:4px;" id="dp-tf-label"></div></div>
+          <div><div id="dp-bucket-badge"></div><div style="font-size:11px;color:var(--muted);margin-top:4px" id="dp-tf-label"></div></div>
         </div>
         <div class="score-grid" id="dp-score-grid"></div>
       </div>
       <div class="detail-section">
-        <div class="detail-section-title">Channel Position</div>
+        <div class="ds-title">Channel Position</div>
         <div class="channel-viz">
-          <div class="channel-labels"><span>Support rail</span><span id="dp-pos-label"></span><span>Resistance rail</span></div>
-          <div class="channel-bar-wrap"><div class="channel-bar-fill" id="dp-pos-bar"></div></div>
-          <div class="channel-labels"><span id="dp-sup-price"></span><span style="color:var(--accent);font-weight:600;" id="dp-cur-price"></span><span id="dp-res-price"></span></div>
+          <div class="ch-labels"><span>Support rail</span><span id="dp-pos-label" style="color:var(--accent);font-weight:600"></span><span>Resistance rail</span></div>
+          <div class="ch-bar-wrap"><div class="ch-bar-fill" id="dp-pos-bar"></div></div>
+          <div class="ch-prices"><span id="dp-sup-p"></span><span style="color:var(--accent);font-weight:600" id="dp-cur-p"></span><span id="dp-res-p"></span></div>
         </div>
       </div>
       <div class="detail-section">
-        <div class="detail-section-title">Analysis</div>
+        <div class="ds-title">Analysis</div>
         <div class="explanation" id="dp-explanation"></div>
       </div>
       <div class="detail-section">
-        <div class="detail-section-title">Invalidation Level</div>
-        <div class="invalidation-box">
-          <div><div class="inv-label">Channel breaks below</div><div class="inv-value" id="dp-inv"></div><div class="inv-sub" id="dp-inv-pct"></div></div>
-          <div style="font-size:24px;">⚠</div>
+        <div class="ds-title">Invalidation Level</div>
+        <div class="inv-box">
+          <div>
+            <div class="inv-label">Channel breaks below</div>
+            <div class="inv-value" id="dp-inv"></div>
+            <div class="inv-sub" id="dp-inv-pct"></div>
+          </div>
+          <div style="font-size:22px">⚠</div>
         </div>
       </div>
       <div class="detail-section">
-        <a class="tv-btn-large" id="dp-tv-link" href="#" target="_blank">Open in TradingView — apply Brett's indicators ↗</a>
+        <a class="tv-btn-lg" id="dp-tv-link" href="#" target="_blank">Open in TradingView — apply Brett's indicators ↗</a>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-const BINANCE = 'https://api.binance.com/api/v3';
-const REFRESH_MS = 5 * 60 * 1000;
-const PIVOT_LB = 5;
+// ── CONFIG ────────────────────────────────────────────────────────────
+const BINANCE     = 'https://api.binance.com/api/v3';
+const CG          = 'https://api.coingecko.com/api/v3';
+const REFRESH_MS  = 5 * 60 * 1000;
+const PIVOT_LB    = 5;
 const MIN_TOUCHES = 3;
+const TOUCH_TOL   = 0.025;   // 2.5% band for rail touches
+const MIN_CONTAIN = 50;       // lowered from 55
+const MIN_SCORE   = 40;
+const DAILY_LIMIT = 500;      // ~2 years daily
+const H4_LIMIT    = 1000;     // ~167 days 4H
 
-const UNIVERSE = [
-  'ETH','BNB','SOL','XRP','ADA','AVAX','DOT','LINK','MATIC','UNI',
-  'ATOM','LTC','ETC','XLM','ALGO','VET','FIL','THETA','TRX','NEAR',
-  'ICP','SAND','MANA','AXS','CRV','AAVE','COMP','SNX','MKR','YFI',
-  'SUSHI','1INCH','ENJ','CHZ','ZIL','ONE','HBAR','EGLD','KAVA','CELO',
-  'FTM','FLOW','GALA','IMX','LRC','BAT','ZRX','OMG','SKL','STORJ',
-  'DYDX','ANKR','CELR','CTSI','DENT','ENS','FLUX','GRT','HOT','INJ',
-  'IOTA','JASMY','MASK','MINA','OCEAN','ONT','OP','PEOPLE','QTUM',
-  'REN','ROSE','SCRT','SFP','SLP','STG','STMX','SXP','TOMO','TWT',
-  'WAVES','WRX','XEM','XTZ','YGG','ZEC','ZEN','ALPHA','BADGER',
-  'BAND','BEL','BURGER','C98','CVP','DEGO','FIDA','FOR','HARD','IDEX'
-];
+// Stablecoins to filter out
+const STABLES = new Set(['USDT','USDC','BUSD','DAI','TUSD','FDUSD','USDP','GUSD','FRAX','LUSD','SUSD','USDD','EURS','XSGD','UST','USTC','USDN','TRIBE','FEI']);
 
-let results=[], filtered=[], activeFilter='all', sortCol='score', sortDir=-1, selectedKey=null, detailChart=null, refreshTimer=null, scanning=false;
+// ── STATE ─────────────────────────────────────────────────────────────
+let results=[], filtered=[], universe=[], btcChange30d=0;
+let activeFilter='all', sortCol='score', sortDir=-1;
+let selectedKey=null, detailChart=null, refreshTimer=null, scanning=false;
+let diag={universe:0,binancePairs:0,tickers:0,dailyOk:0,h4Ok:0,pivotOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
 
-const fmt=(n,d=2)=>n==null?'—':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
-const fmtPct=(n)=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+// ── HELPERS ───────────────────────────────────────────────────────────
+const fmt  = (n,d=2) => n==null ? '—' : '$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtP = (n)     => n==null ? '—' : (n>=0?'+':'')+n.toFixed(2)+'%';
+const clamp= (v,a,b) => Math.max(a,Math.min(b,v));
 
 function getBucket(s){
   if(s>=90)return{label:'High',cls:'bucket-high'};
@@ -254,25 +305,75 @@ function getBucket(s){
   if(s>=40)return{label:'Watch',cls:'bucket-watch'};
   return{label:'Reject',cls:''};
 }
-
 function scoreColor(s){
   if(s>=90)return'var(--high)';
   if(s>=75)return'var(--probable)';
   if(s>=60)return'var(--emerging)';
   return'var(--watch)';
 }
-
 function setStatus(state,text){
-  const d=document.getElementById('status-dot');
-  d.className='status-dot'+(state==='scanning'?' scanning':state==='error'?' error':'');
+  document.getElementById('status-dot').className='status-dot'+(state==='scanning'?' scanning':state==='error'?' error':'');
   document.getElementById('status-text').textContent=text;
 }
 
+// ── UNIVERSE: live top 150 from CoinGecko ────────────────────────────
+async function buildUniverse(){
+  try{
+    const url=`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false`;
+    const r=await fetch(url);
+    if(!r.ok)throw 0;
+    const coins=await r.json();
+    // Filter stables and BTC, keep top 100 alts by market cap
+    const alts=coins
+      .filter(c=>!STABLES.has(c.symbol.toUpperCase())&&c.symbol.toUpperCase()!=='BTC'&&c.symbol.toUpperCase()!=='WBTC')
+      .slice(0,100)
+      .map(c=>({symbol:c.symbol.toUpperCase(),name:c.name,change30d:c.price_change_percentage_30d_in_currency||0}));
+    diag.universe=alts.length;
+    return alts;
+  }catch(e){
+    console.warn('CoinGecko failed, using fallback universe');
+    // Fallback — known good current symbols
+    const fallback=['ETH','BNB','SOL','XRP','ADA','AVAX','DOT','LINK','POL','UNI','ATOM','LTC','ETC','XLM','ALGO','VET','FIL','TRX','NEAR','ICP','SAND','MANA','AXS','CRV','AAVE','COMP','SNX','MKR','SUSHI','ENJ','CHZ','ZIL','ONE','HBAR','EGLD','KAVA','CELO','FLOW','GALA','IMX','LRC','BAT','ZRX','SKL','DYDX','ANKR','CTSI','ENS','FLUX','GRT','HOT','INJ','IOTA','JASMY','MASK','MINA','OCEAN','ONT','OP','QTUM','ROSE','STG','TWT','XTZ','ZEC','1INCH','ARB','BLUR','CFX','GMX','ID','MAGIC','ORDI','PENDLE','PYTH','SEI','SUI','TIA','WLD'];
+    diag.universe=fallback.length;
+    return fallback.map(s=>({symbol:s,name:s,change30d:0}));
+  }
+}
+
+// ── VALIDATE BINANCE PAIRS ────────────────────────────────────────────
+async function getValidBinancePairs(symbols){
+  try{
+    const r=await fetch(`${BINANCE}/exchangeInfo`);
+    if(!r.ok)throw 0;
+    const d=await r.json();
+    const pairs=new Set(d.symbols.filter(s=>s.quoteAsset==='USDT'&&s.status==='TRADING').map(s=>s.baseAsset));
+    const valid=symbols.filter(s=>pairs.has(s.symbol));
+    diag.binancePairs=valid.length;
+    return valid;
+  }catch{
+    // If exchangeInfo fails just try all
+    diag.binancePairs=symbols.length;
+    return symbols;
+  }
+}
+
+// ── FETCH BTC 30d CHANGE for RS calculation ───────────────────────────
+async function fetchBtcChange(){
+  try{
+    const r=await fetch(`${BINANCE}/ticker/24hr?symbol=BTCUSDT`);
+    if(!r.ok)throw 0;
+    const d=await r.json();
+    btcChange30d=+d.priceChangePercent; // using 24h as proxy
+    return btcChange30d;
+  }catch{return 0;}
+}
+
+// ── DATA FETCHING ─────────────────────────────────────────────────────
 async function fetchKlines(sym,interval,limit){
   try{
     const r=await fetch(`${BINANCE}/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`);
-    if(!r.ok)throw 0;
+    if(!r.ok)return null;
     const d=await r.json();
+    if(!Array.isArray(d)||d.length<50)return null;
     return d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}));
   }catch{return null;}
 }
@@ -280,12 +381,13 @@ async function fetchKlines(sym,interval,limit){
 async function fetchTicker(sym){
   try{
     const r=await fetch(`${BINANCE}/ticker/24hr?symbol=${sym}USDT`);
-    if(!r.ok)throw 0;
+    if(!r.ok)return null;
     const d=await r.json();
     return{price:+d.lastPrice,change24h:+d.priceChangePercent,volume:+d.quoteVolume};
   }catch{return null;}
 }
 
+// ── PIVOT DETECTION ───────────────────────────────────────────────────
 function findPivots(candles){
   const highs=[],lows=[];
   for(let i=PIVOT_LB;i<candles.length-PIVOT_LB;i++){
@@ -301,144 +403,247 @@ function findPivots(candles){
   return{highs,lows};
 }
 
-function linReg(pts){
-  const n=pts.length;
-  if(n<2)return null;
-  let sx=0,sy=0,sxy=0,sx2=0;
-  pts.forEach(p=>{sx+=p.x;sy+=p.y;sxy+=p.x*p.y;sx2+=p.x*p.x;});
-  const den=n*sx2-sx*sx;
-  if(Math.abs(den)<1e-10)return null;
-  const slope=(n*sxy-sx*sy)/den;
-  const intercept=(sy-slope*sx)/n;
-  return{slope,intercept};
-}
+// ── RAIL MATH — uses actual candle indices ────────────────────────────
+function railAt(slope,intercept,idx){return slope*idx+intercept;}
 
-function detectChannel(candles,tf){
+// ── CHANNEL DETECTION — pair-based rail search ────────────────────────
+function detectChannel(candles){
   if(!candles||candles.length<60)return null;
   const{highs,lows}=findPivots(candles);
   if(lows.length<MIN_TOUCHES)return null;
+  diag.pivotOk++;
 
-  // Find higher lows for ascending structure
-  const sortedLows=[...lows].sort((a,b)=>a.idx-b.idx);
-  let higherLows=[];
-  for(const l of sortedLows){
-    if(!higherLows.length||l.price>higherLows[higherLows.length-1].price)higherLows.push(l);
+  const n=candles.length;
+  let best=null;
+
+  // Try ALL pairs of pivot lows as candidate support rails
+  for(let a=0;a<lows.length-1;a++){
+    for(let b=a+1;b<lows.length;b++){
+      const p1=lows[a],p2=lows[b];
+      const idxDelta=p2.idx-p1.idx;
+      if(idxDelta<5)continue; // need meaningful separation
+      diag.railPairs++;
+
+      const slope=(p2.price-p1.price)/idxDelta;
+      if(slope<=0)continue; // ascending only
+      diag.posSlope++;
+
+      const intercept=p1.price-slope*p1.idx;
+
+      // Count ALL pivot lows within tolerance of this rail
+      const supTouches=lows.filter(l=>{
+        const expected=railAt(slope,intercept,l.idx);
+        return Math.abs(l.price-expected)/expected<=TOUCH_TOL;
+      });
+      if(supTouches.length<MIN_TOUCHES)continue;
+      diag.touches++;
+
+      const firstIdx=Math.min(...supTouches.map(l=>l.idx));
+      const lastIdx=n-1;
+      const relevantHighs=highs.filter(h=>h.idx>=firstIdx);
+      if(!relevantHighs.length)continue;
+
+      // Channel height = MEDIAN offset from highs to support rail (robust to outliers)
+      const offsets=relevantHighs
+        .map(h=>h.price-railAt(slope,intercept,h.idx))
+        .filter(o=>o>0)
+        .sort((a,b)=>a-b);
+      if(!offsets.length)continue;
+      const channelH=offsets[Math.floor(offsets.length/2)];
+      if(channelH<=0)continue;
+
+      // Count resistance touches
+      const resTouches=relevantHighs.filter(h=>{
+        const expected=railAt(slope,intercept,h.idx)+channelH;
+        return Math.abs(h.price-expected)/expected<=TOUCH_TOL;
+      });
+
+      // Current rail prices
+      const supNow=railAt(slope,intercept,lastIdx);
+      const resNow=supNow+channelH;
+      const curPrice=candles[lastIdx].close;
+      const position=clamp((curPrice-supNow)/channelH,0,1);
+
+      // Containment — from first support touch
+      const winCandles=candles.slice(firstIdx);
+      let inside=0;
+      winCandles.forEach((c,i)=>{
+        const ci=firstIdx+i;
+        const s=railAt(slope,intercept,ci);
+        const r2=s+channelH;
+        if(c.low>=s*(1-TOUCH_TOL)&&c.high<=r2*(1+TOUCH_TOL))inside++;
+      });
+      const containment=(inside/winCandles.length)*100;
+      if(containment<MIN_CONTAIN)continue;
+      diag.containment++;
+
+      // Slope as % per bar (relative to start of channel)
+      const slopePct=(slope/railAt(slope,intercept,firstIdx))*100;
+      const invalidation=supNow*(1-TOUCH_TOL);
+
+      // ── SCORE ─────────────────────────────────────────────────────
+      let score=0;
+      score+=Math.min(25,supTouches.length*7);          // support touches max 25
+      score+=Math.min(15,resTouches.length*6);           // resistance touches max 15
+      score+=(containment/100)*18;                        // containment max 18
+      const sa=Math.abs(slopePct);
+      score+=sa>=0.05&&sa<=3?14:sa<0.05?2:Math.max(0,14-(sa-3)*3); // slope max 14
+      score+=position<=0.33?10:position<=0.5?6:position<=0.66?3:0;  // position max 10
+      // Volume confirmation
+      const rv=candles.slice(-20).reduce((s,c)=>s+c.volume,0)/20;
+      const bv=candles.slice(Math.max(0,firstIdx-50),Math.max(1,firstIdx)).reduce((s,c)=>s+c.volume,0)/Math.max(1,firstIdx-Math.max(0,firstIdx-50))||rv;
+      score+=rv>bv*1.2?8:rv>bv*0.8?5:2;                // volume max 8
+      score+=Math.min(6,winCandles.length/20);            // channel age max 6
+      if(position>0.9)score-=8;                           // overextension penalty
+      if(sa>5)score-=10;                                  // parabolic penalty
+      score=Math.round(clamp(score,0,100));
+
+      if(score<MIN_SCORE)continue;
+      diag.scoreOk++;
+
+      if(!best||score>best.score){
+        best={score,supportTouches:supTouches.length,resTouches:resTouches.length,
+          containment:Math.round(containment),slope:slopePct,position,
+          supportNow:supNow,resistNow:resNow,invalidation,channelH,
+          candles:candles.slice(-150),pivotLows:supTouches,pivotHighs:resTouches,
+          supSlope:slope,supIntercept:intercept,firstIdx,lastIdx};
+      }
+    }
   }
-  if(higherLows.length<MIN_TOUCHES)return null;
-
-  // Fit support line
-  const lowPts=higherLows.map((l,i)=>({x:i,y:l.price,idx:l.idx,time:l.time}));
-  const sup=linReg(lowPts);
-  if(!sup||sup.slope<=0)return null;
-
-  const firstIdx=higherLows[0].idx;
-  const lastIdx=candles.length-1;
-  const idxRange=Math.max(1,lastIdx-firstIdx);
-  const hlCount=higherLows.length;
-
-  // Channel height from pivot highs
-  const cHighs=highs.filter(h=>h.idx>=firstIdx);
-  if(!cHighs.length)return null;
-
-  const offsets=cHighs.map(h=>{
-    const nx=(h.idx-firstIdx)/idxRange*(hlCount-1);
-    return h.price-(sup.slope*nx+sup.intercept);
-  }).filter(o=>o>0);
-
-  if(!offsets.length)return null;
-  const channelH=offsets.reduce((s,v)=>s+v,0)/offsets.length;
-  if(channelH<=0)return null;
-
-  // Current rail prices
-  const curNX=(lastIdx-firstIdx)/idxRange*(hlCount-1);
-  const supNow=sup.slope*curNX+sup.intercept;
-  const resNow=supNow+channelH;
-  const curPrice=candles[lastIdx].close;
-  const position=clamp((curPrice-supNow)/channelH,0,1);
-
-  // Containment
-  const win=candles.slice(firstIdx);
-  let inside=0;
-  win.forEach((c,i)=>{
-    const nx=i/(win.length-1)*(hlCount-1);
-    const s=sup.slope*nx+sup.intercept;
-    const r=s+channelH;
-    if(c.low>=s*0.995&&c.high<=r*1.005)inside++;
-  });
-  const containment=(inside/win.length)*100;
-  if(containment<55)return null;
-
-  // Resistance touches
-  const resTouches=cHighs.filter(h=>{
-    const nx=(h.idx-firstIdx)/idxRange*(hlCount-1);
-    const s=sup.slope*nx+sup.intercept;
-    const r=s+channelH;
-    return Math.abs(h.price-r)/r<0.02;
-  }).length;
-
-  const slopePct=(sup.slope/sup.intercept)*100;
-  const invalidation=supNow*0.98;
-
-  // Score
-  let score=0;
-  score+=Math.min(25,higherLows.length*7);
-  score+=Math.min(15,resTouches*6);
-  score+=(containment/100)*20;
-  const sa=Math.abs(slopePct);
-  score+=sa>=0.3&&sa<=2?15:sa<0.3?5:Math.max(0,15-(sa-2)*5);
-  score+=position<=0.33?10:position<=0.5?6:position<=0.66?3:0;
-  const rv=candles.slice(-20).reduce((s,c)=>s+c.volume,0)/20;
-  const bv=candles.slice(-100,-20).reduce((s,c)=>s+c.volume,0)/80;
-  score+=rv>bv*1.2?10:rv>bv*0.8?6:2;
-  score+=Math.min(5,win.length/20);
-  if(position>0.9)score-=10;
-  score=Math.round(clamp(score,0,100));
-  if(score<40)return null;
-
-  return{score,supportTouches:higherLows.length,resTouches,containment:Math.round(containment),slope:slopePct,position,supportNow:supNow,resistNow:resNow,invalidation,channelH,candles:candles.slice(-120),pivotLows:higherLows,pivotHighs:cHighs,supLine:sup,firstIdx,idxRange,hlCount};
+  return best;
 }
 
+// ── EXPLANATION ───────────────────────────────────────────────────────
 function buildExplanation(r,sym,tf){
-  const pos=r.position<=0.33?'lower third (potential entry zone)':r.position<=0.66?'middle of channel':'upper third (near resistance)';
-  const sl=r.slope<0.5?'gentle':r.slope<1.5?'moderate':'steep';
-  return`${sym} is forming an ascending channel on the ${tf} timeframe with ${r.supportTouches} confirmed support touches and ${r.resTouches} resistance touches. Channel containment is ${r.containment}%, indicating ${r.containment>75?'strong':'moderate'} price discipline. The ${sl} upward slope of ${r.slope.toFixed(2)}%/bar suggests ${r.slope<0.5?'a consolidation structure':'steady bullish momentum'}. Price is currently in the ${pos}. ${r.position<=0.33?"This positioning near channel support may offer a favorable risk/reward setup — validate with Brett's indicators in TradingView.":"Wait for a pullback toward support before considering entry."}`;
+  const pos=r.position<=0.33?'lower third — near support (potential entry zone)':r.position<=0.66?'middle of the channel':'upper third — approaching resistance';
+  const sl=Math.abs(r.slope)<0.1?'very shallow':Math.abs(r.slope)<0.5?'gentle':Math.abs(r.slope)<1.5?'moderate':'steep';
+  const rs=r.rsVsBtc>5?'outperforming BTC significantly':r.rsVsBtc>0?'outperforming BTC':r.rsVsBtc>-5?'underperforming BTC slightly':'underperforming BTC';
+  return `${sym} shows an ascending channel on the ${tf} timeframe with ${r.supportTouches} support touches and ${r.resTouches} resistance touches within a ${TOUCH_TOL*100}% tolerance band. Containment is ${r.containment}% (${r.containment>75?'strong':'moderate'} channel structure). The ${sl} slope of ${r.slope.toFixed(3)}%/bar indicates ${Math.abs(r.slope)<0.1?'a tight base':Math.abs(r.slope)<0.5?'slow steady accumulation':Math.abs(r.slope)<1.5?'healthy bullish momentum':'aggressive uptrend — watch for overextension'}. Price is in the ${pos}. RS vs BTC (24h): ${rs}. ${r.position<=0.33?"Positioning near support may offer a favorable risk/reward — validate with Brett's indicators in TradingView before acting.":"Consider waiting for a pullback toward support before entry."}`;
 }
 
-async function scanAsset(sym){
-  const[ticker,daily,h4]=await Promise.all([fetchTicker(sym),fetchKlines(sym,'1d',365),fetchKlines(sym,'4h',500)]);
+// ── SCAN SINGLE ASSET ─────────────────────────────────────────────────
+async function scanAsset(coin){
+  const sym=coin.symbol;
+  const[ticker,daily,h4]=await Promise.all([
+    fetchTicker(sym),
+    fetchKlines(sym,'1d',DAILY_LIMIT),
+    fetchKlines(sym,'4h',H4_LIMIT)
+  ]);
+
+  if(ticker)diag.tickers++;
+  if(daily)diag.dailyOk++;
+  if(h4)diag.h4Ok++;
   if(!ticker||!daily)return null;
+
+  // RS vs BTC: coin 24h change minus BTC 24h change
+  const rsVsBtc=ticker.change24h-btcChange30d;
+
   const out=[];
-  const dc=detectChannel(daily,'1D');
-  if(dc)out.push({symbol:sym,timeframe:'1D',price:ticker.price,change24h:ticker.change24h,explanation:buildExplanation(dc,sym,'1D'),...dc});
-  if(h4){const hc=detectChannel(h4,'4H');if(hc)out.push({symbol:sym,timeframe:'4H',price:ticker.price,change24h:ticker.change24h,explanation:buildExplanation(hc,sym,'4H'),...hc});}
+  const dc=detectChannel(daily);
+  if(dc){
+    diag.candidates++;
+    out.push({symbol:sym,name:coin.name,timeframe:'1D',price:ticker.price,change24h:ticker.change24h,rsVsBtc,
+      explanation:buildExplanation({...dc,rsVsBtc},sym,'1D'),...dc});
+  }
+  if(h4){
+    const hc=detectChannel(h4);
+    if(hc){
+      diag.candidates++;
+      out.push({symbol:sym,name:coin.name,timeframe:'4H',price:ticker.price,change24h:ticker.change24h,rsVsBtc,
+        explanation:buildExplanation({...hc,rsVsBtc},sym,'4H'),...hc});
+    }
+  }
   return out.length?out:null;
 }
 
+// ── DIAGNOSTICS ───────────────────────────────────────────────────────
+function resetDiag(){
+  diag={universe:0,binancePairs:0,tickers:0,dailyOk:0,h4Ok:0,pivotOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+}
+
+function renderDiag(){
+  const items=[
+    {label:'Universe (CoinGecko top alts)',value:diag.universe,c:'var(--text)'},
+    {label:'Valid Binance USDT pairs',value:diag.binancePairs,c:'var(--bull)'},
+    {label:'Tickers loaded',value:diag.tickers,c:'var(--bull)'},
+    {label:'Daily candles loaded',value:diag.dailyOk,c:'var(--bull)'},
+    {label:'4H candles loaded',value:diag.h4Ok,c:'var(--bull)'},
+    {label:'Enough pivots (3+)',value:diag.pivotOk,c:'var(--neut)'},
+    {label:'Rail pairs tried',value:diag.railPairs,c:'var(--text2)'},
+    {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
+    {label:'3+ support touches',value:diag.touches,c:'var(--neut)'},
+    {label:'Containment ≥50%',value:diag.containment,c:'var(--neut)'},
+    {label:'Score ≥40',value:diag.scoreOk,c:'var(--probable)'},
+    {label:'Final candidates',value:diag.candidates,c:'var(--high)'},
+  ];
+  document.getElementById('diag-grid').innerHTML=items.map(i=>`
+    <div class="diag-item">
+      <div class="diag-label">${i.label}</div>
+      <div class="diag-value" style="color:${i.c}">${i.value}</div>
+    </div>`).join('');
+
+  document.getElementById('diag-funnel').innerHTML=
+    '<strong style="color:var(--accent)">Funnel:</strong> '+
+    items.map(i=>`<span style="color:${i.c};font-weight:600">${i.value}</span> <span style="color:var(--muted);font-size:10px">${i.label}</span>`).join('<span class="diag-arrow"> → </span>');
+}
+
+function toggleDiag(){
+  const p=document.getElementById('diag-panel');
+  p.classList.toggle('visible');
+  if(p.classList.contains('visible'))renderDiag();
+}
+
+// ── MAIN SCAN ─────────────────────────────────────────────────────────
 async function runScan(){
   if(scanning)return;
   scanning=true;
+  resetDiag();
   const btn=document.getElementById('refresh-btn');
   btn.disabled=true; btn.textContent='↻ Scanning…';
-  setStatus('scanning',`Scanning ${UNIVERSE.length} assets…`);
+  setStatus('scanning','Building universe from CoinGecko…');
   results=[];
-  const BATCH=5;
-  for(let i=0;i<UNIVERSE.length;i+=BATCH){
-    const batch=UNIVERSE.slice(i,i+BATCH);
-    const br=await Promise.all(batch.map(s=>scanAsset(s)));
+
+  // Step 1: Get live top 100 alts
+  const coins=await buildUniverse();
+  setStatus('scanning',`${coins.length} alts found — validating Binance pairs…`);
+
+  // Step 2: Validate Binance pairs
+  const validCoins=await getValidBinancePairs(coins);
+  setStatus('scanning',`${validCoins.length} valid pairs — fetching BTC baseline…`);
+
+  // Step 3: Fetch BTC change for RS calc
+  await fetchBtcChange();
+
+  // Step 4: Scan in batches with rate limit protection
+  setStatus('scanning',`Scanning ${validCoins.length} assets…`);
+  const BATCH=4;
+  const DELAY=400;
+
+  for(let i=0;i<validCoins.length;i+=BATCH){
+    const batch=validCoins.slice(i,i+BATCH);
+    const br=await Promise.all(batch.map(c=>scanAsset(c)));
     br.forEach(r=>{if(r)results.push(...r);});
-    setStatus('scanning',`Scanning… ${Math.min(i+BATCH,UNIVERSE.length)}/${UNIVERSE.length}`);
-    if(i+BATCH<UNIVERSE.length)await new Promise(r=>setTimeout(r,250));
+    setStatus('scanning',`${Math.min(i+BATCH,validCoins.length)}/${validCoins.length} scanned · ${results.length} channels found`);
+    if(i+BATCH<validCoins.length)await new Promise(r=>setTimeout(r,DELAY));
   }
+
   results.sort((a,b)=>b.score-a.score);
   applyFilters();
-  setStatus('live',`${results.length} channels found`);
+  renderDiag();
+
+  const diagPanel=document.getElementById('diag-panel');
+  if(diagPanel.classList.contains('visible'))renderDiag();
+
+  setStatus('live',`${results.length} channels · ${diag.binancePairs} assets scanned`);
   document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();
   btn.disabled=false; btn.textContent='↻ Refresh';
   scanning=false;
+
   if(refreshTimer)clearTimeout(refreshTimer);
   refreshTimer=setTimeout(runScan,REFRESH_MS);
 }
 
+// ── FILTERS & RENDER ──────────────────────────────────────────────────
 function applyFilters(){
   const tf=document.getElementById('tf-select').value;
   filtered=results.filter(r=>{
@@ -463,6 +668,7 @@ function filterBucket(b,btn){
 function sortFiltered(){
   filtered.sort((a,b)=>{
     let av=a[sortCol],bv=b[sortCol];
+    if(sortCol==='position'){av=a.position;bv=b.position;return av-bv;}
     if(typeof av==='string')return sortDir*av.localeCompare(bv);
     return sortDir*((av||0)-(bv||0));
   });
@@ -477,7 +683,10 @@ function sortResults(){
 function renderTable(){
   const tbody=document.getElementById('table-body');
   if(!filtered.length){
-    tbody.innerHTML=`<tr><td colspan="11"><div class="state-view"><div class="state-title">No channels found</div><div class="state-sub">Adjust filters or wait for next scan</div></div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="12"><div class="state-view">
+      <div class="state-title">No channels found</div>
+      <div class="state-sub">Click ⚗ Diagnostics to see the scan funnel and identify which filter is rejecting candidates. Current market conditions may have few clean ascending channels.</div>
+    </div></td></tr>`;
     return;
   }
   tbody.innerHTML=filtered.map(r=>{
@@ -486,24 +695,27 @@ function renderTable(){
     const pw=Math.round(r.position*100);
     const posLbl=r.position<=0.33?'⬇ Lower':r.position<=0.66?'↔ Mid':'⬆ Upper';
     const cc=r.change24h>=0?'up':'dn';
+    const rsc=r.rsVsBtc>=0?'up':'dn';
     const tvUrl=`https://www.tradingview.com/chart/?symbol=BINANCE:${r.symbol}USDT&interval=${r.timeframe==='1D'?'D':'240'}`;
     const key=r.symbol+r.timeframe;
     return`<tr onclick="selectRow('${r.symbol}','${r.timeframe}')" class="${selectedKey===key?'selected':''}" data-key="${key}">
-      <td><div class="coin-cell"><div class="coin-icon">${r.symbol.substring(0,3)}</div><div><div class="coin-name">${r.symbol}</div><div class="coin-sub">${r.timeframe}</div></div></div></td>
-      <td><div class="score-cell"><span style="font-weight:700;color:${sc};min-width:28px">${r.score}</span><div class="score-bar-wrap"><div class="score-bar" style="width:${r.score}%;background:${sc}"></div></div></div></td>
+      <td><div class="coin-cell"><div class="coin-icon">${r.symbol.substring(0,3)}</div><div><div class="coin-name">${r.symbol}</div><div class="coin-sub">${r.name||r.timeframe}</div></div></div></td>
+      <td><div class="score-cell"><span style="font-weight:700;color:${sc};min-width:26px">${r.score}</span><div class="score-bar-wrap"><div class="score-bar" style="width:${r.score}%;background:${sc}"></div></div></div></td>
       <td><span class="bucket-badge ${bk.cls}">${bk.label}</span></td>
       <td><span class="tf-badge">${r.timeframe}</span></td>
       <td style="color:var(--bull)">${r.supportTouches}</td>
       <td style="color:var(--text2)">${r.resTouches}</td>
       <td style="color:${r.containment>75?'var(--bull)':'var(--text2)'}">${r.containment}%</td>
-      <td style="color:var(--bull)">+${r.slope.toFixed(2)}%</td>
-      <td><div style="display:flex;align-items:center;gap:8px;"><div class="pos-bar-wrap"><div class="pos-bar" style="width:100%"></div><div class="pos-marker" style="left:${pw}%"></div></div><span style="font-size:11px;color:var(--text2);white-space:nowrap">${posLbl}</span></div></td>
-      <td class="${cc}">${fmtPct(r.change24h)}</td>
+      <td style="color:var(--bull)">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</td>
+      <td><div class="pos-wrap"><div class="pos-bar-outer"><div class="pos-marker" style="left:${pw}%"></div></div><span style="font-size:11px;color:var(--text2)">${posLbl}</span></div></td>
+      <td class="${rsc}">${fmtP(r.rsVsBtc)}</td>
+      <td class="${cc}">${fmtP(r.change24h)}</td>
       <td><a class="tv-link" href="${tvUrl}" target="_blank" onclick="event.stopPropagation()">TV ↗</a></td>
     </tr>`;
   }).join('');
 }
 
+// ── DETAIL PANEL ──────────────────────────────────────────────────────
 function selectRow(sym,tf){
   const key=sym+tf;
   selectedKey=key;
@@ -517,32 +729,30 @@ function openDetail(r){
   document.getElementById('layout').classList.add('panel-open');
   document.getElementById('dp-icon').textContent=r.symbol.substring(0,3);
   document.getElementById('dp-symbol').textContent=r.symbol;
-  document.getElementById('dp-price').textContent=fmt(r.price,4)+'  ·  '+fmtPct(r.change24h);
-  document.getElementById('dp-chart-label').textContent=`${r.symbol}/USDT · ${r.timeframe} · Channel`;
-  const sc=scoreColor(r.score);
-  const bk=getBucket(r.score);
+  document.getElementById('dp-price').textContent=fmt(r.price,4)+'  ·  '+fmtP(r.change24h)+'  ·  RS '+fmtP(r.rsVsBtc);
+  const sc=scoreColor(r.score),bk=getBucket(r.score);
   document.getElementById('dp-score').textContent=r.score;
   document.getElementById('dp-score').style.color=sc;
   document.getElementById('dp-bucket-badge').innerHTML=`<span class="bucket-badge ${bk.cls}">${bk.label}</span>`;
-  document.getElementById('dp-tf-label').textContent=r.timeframe+' timeframe';
+  document.getElementById('dp-tf-label').textContent=r.timeframe+' timeframe · '+r.name;
   document.getElementById('dp-score-grid').innerHTML=`
-    <div class="score-item"><div class="score-item-label">Support touches</div><div class="score-item-value" style="color:var(--bull)">${r.supportTouches}</div></div>
-    <div class="score-item"><div class="score-item-label">Resistance touches</div><div class="score-item-value">${r.resTouches}</div></div>
-    <div class="score-item"><div class="score-item-label">Containment</div><div class="score-item-value" style="color:${r.containment>75?'var(--bull)':'var(--neut)'}">${r.containment}%</div></div>
-    <div class="score-item"><div class="score-item-label">Slope</div><div class="score-item-value" style="color:var(--bull)">+${r.slope.toFixed(2)}%/bar</div></div>`;
+    <div class="score-item"><div class="si-label">Support touches</div><div class="si-value" style="color:var(--bull)">${r.supportTouches}</div></div>
+    <div class="score-item"><div class="si-label">Resistance touches</div><div class="si-value">${r.resTouches}</div></div>
+    <div class="score-item"><div class="si-label">Containment</div><div class="si-value" style="color:${r.containment>75?'var(--bull)':'var(--neut)'}">${r.containment}%</div></div>
+    <div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:var(--bull)">${r.slope>=0?'+':''}${r.slope.toFixed(3)}%</div></div>
+    <div class="score-item"><div class="si-label">RS vs BTC (24h)</div><div class="si-value" style="color:${r.rsVsBtc>=0?'var(--bull)':'var(--bear)'}">${fmtP(r.rsVsBtc)}</div></div>
+    <div class="score-item"><div class="si-label">Channel age (bars)</div><div class="si-value">${r.lastIdx-r.firstIdx}</div></div>`;
   const pw=Math.round(r.position*100);
-  const pl=r.position<=0.33?'⬇ Lower third':r.position<=0.66?'↔ Middle':'⬆ Upper third';
-  document.getElementById('dp-pos-label').textContent=pl;
+  document.getElementById('dp-pos-label').textContent=r.position<=0.33?'⬇ Lower third':r.position<=0.66?'↔ Middle':'⬆ Upper third';
   document.getElementById('dp-pos-bar').style.width=pw+'%';
-  document.getElementById('dp-sup-price').textContent=fmt(r.supportNow,4);
-  document.getElementById('dp-cur-price').textContent=fmt(r.price,4);
-  document.getElementById('dp-res-price').textContent=fmt(r.resistNow,4);
+  document.getElementById('dp-sup-p').textContent=fmt(r.supportNow,4);
+  document.getElementById('dp-cur-p').textContent=fmt(r.price,4);
+  document.getElementById('dp-res-p').textContent=fmt(r.resistNow,4);
   document.getElementById('dp-explanation').textContent=r.explanation;
   const invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
   document.getElementById('dp-inv').textContent=fmt(r.invalidation,4);
-  document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
-  const tvUrl=`https://www.tradingview.com/chart/?symbol=BINANCE:${r.symbol}USDT&interval=${r.timeframe==='1D'?'D':'240'}`;
-  document.getElementById('dp-tv-link').href=tvUrl;
+  document.getElementById('dp-inv-pct').textContent=invPct+'% from current price';
+  document.getElementById('dp-tv-link').href=`https://www.tradingview.com/chart/?symbol=BINANCE:${r.symbol}USDT&interval=${r.timeframe==='1D'?'D':'240'}`;
   buildChart(r);
 }
 
@@ -554,12 +764,13 @@ function closePanel(){
   if(detailChart){detailChart.remove();detailChart=null;}
 }
 
+// ── CHART ─────────────────────────────────────────────────────────────
 function buildChart(r){
   const container=document.getElementById('detail-chart');
   container.innerHTML='';
   if(detailChart){detailChart.remove();detailChart=null;}
   const chart=LightweightCharts.createChart(container,{
-    width:container.clientWidth, height:container.clientHeight,
+    width:container.clientWidth,height:container.clientHeight,
     layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},
     grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},
     crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
@@ -571,29 +782,33 @@ function buildChart(r){
   const cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
   cs.setData(r.candles);
 
+  // Rail lines using actual candle indices
   const n=r.candles.length;
-  const hlc=r.hlCount;
-
-  const supData=r.candles.map((c,i)=>({time:c.time,value:r.supLine.slope*(i/(n-1))*(hlc-1)+r.supLine.intercept}));
-  const resData=r.candles.map((c,i)=>({time:c.time,value:r.supLine.slope*(i/(n-1))*(hlc-1)+r.supLine.intercept+r.channelH}));
+  const startCI=r.lastIdx-(n-1);
+  const supData=r.candles.map((c,i)=>({time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)}));
+  const resData=r.candles.map((c,i)=>({time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)+r.channelH}));
 
   const ss=chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:true,title:'Support'});
   ss.setData(supData);
-  const rs=chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:true,title:'Resistance'});
-  rs.setData(resData);
-  const is=chart.addLineSeries({color:'#e8754a',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Invalidation'});
+  const rs2=chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:true,title:'Resistance'});
+  rs2.setData(resData);
+  const is=chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Invalidation'});
   is.setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
 
-  const markers=r.pivotLows.filter(p=>r.candles.find(c=>c.time===p.time)).map(p=>({time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1}));
+  // Support touch markers
+  const markers=r.pivotLows
+    .filter(p=>r.candles.some(c=>c.time===p.time))
+    .map(p=>({time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1}))
+    .sort((a,b)=>a.time-b.time);
   if(markers.length)cs.setMarkers(markers);
-  chart.timeScale().fitContent();
 
+  chart.timeScale().fitContent();
   new ResizeObserver(entries=>{
     for(const e of entries)chart.applyOptions({width:e.contentRect.width,height:e.contentRect.height});
   }).observe(container);
 }
 
-window.addEventListener('load',()=>{setStatus('scanning','Starting scan…');runScan();});
+window.addEventListener('load',()=>{setStatus('scanning','Starting…');runScan();});
 </script>
 </body>
 </html>
