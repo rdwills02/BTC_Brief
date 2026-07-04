@@ -1,0 +1,44 @@
+name: Channel Radar Daily Capture
+
+on:
+  schedule:
+    # 00:30 UTC daily — shortly after daily candle close, off the exact hour to avoid
+    # GitHub's high-demand scheduling delays. Cron is ALWAYS UTC.
+    - cron: '30 0 * * *'
+  workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab
+
+permissions:
+  contents: write          # lets the built-in GITHUB_TOKEN commit captured data
+
+concurrency:
+  group: radar-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'   # Node 20 has global fetch built in
+
+      - name: Run capture
+        env:
+          CG_KEY: ${{ secrets.CG_KEY }}
+        run: node capture.js
+
+      - name: Commit captured data
+        run: |
+          git config user.name  "radar-capture-bot"
+          git config user.email "actions@github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No new data to commit."
+          else
+            git commit -m "Daily capture — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
