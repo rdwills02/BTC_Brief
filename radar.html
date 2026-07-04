@@ -52,6 +52,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .bbtn.a-emerging{background:rgba(245,166,35,.12);color:var(--emerging);border-color:rgba(245,166,35,.3)}
 .bbtn.a-watch{background:rgba(232,117,74,.12);color:var(--watch);border-color:rgba(232,117,74,.3)}
 .thresh-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.sincelast-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sl-chip{display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;margin-right:5px}
+.sl-drop{background:rgba(232,117,74,.12);color:var(--bear)}
+.sl-add{background:rgba(0,200,150,.12);color:var(--bull)}
 .tgroup{display:flex;align-items:center;gap:5px}
 .tlabel{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
 .tsel{background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;color:var(--text2);font-size:11px;font-family:inherit;outline:none;cursor:pointer}
@@ -193,6 +197,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </label>
 </div>
 
+<div class="sincelast-bar" id="sincelast-bar" style="display:none">
+  <span class="filter-label">Since Last Scan</span>
+  <span id="sincelast-content"></span>
+</div>
+
 <div class="layout" id="layout">
   <div class="main-panel">
     <div class="table-wrap">
@@ -245,10 +254,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
       <div class="ds"><div class="ds-title">Analysis</div><div class="expl" id="dp-expl"></div></div>
       <div class="ds">
+        <div class="ds-title">Confluence Signals (from daily OHLC)</div>
+        <div id="dp-confluence"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Proprietary Brett indicators (ERI, TSI, RSI Pro, Buy Blocks, Order Blocks, Dynamic ATR) are not computable from public OHLC — confirm those in TradingView.</div>
+      </div>
+      <div class="ds">
         <div class="ds-title">Invalidation</div>
         <div class="inv-box"><div><div class="inv-label">Channel breaks below</div><div class="inv-value" id="dp-inv"></div><div class="inv-sub" id="dp-inv-pct"></div></div><div style="font-size:22px">!</div></div>
       </div>
-      <div class="ds"><a class="tv-btn-lg" id="dp-tv" href="#" target="_blank">Open in TradingView - apply Brett indicators</a></div>
+      <div class="ds"><a class="tv-btn-lg" id="dp-tv" href="#" target="_blank">Open in TradingView - apply Brett indicators</a><a class="tv-btn-lg" id="dp-cg" href="#" target="_blank" style="margin-top:8px;background:rgba(0,200,150,.1);color:var(--bull);border-color:rgba(0,200,150,.3)">View on CoinGecko</a></div>
     </div>
   </div>
 </div>
@@ -264,7 +278,33 @@ var GITHUB_REPO = 'rdwills02/BTC_Brief';
 var GITHUB_FILE = 'radar-report.html';
 var GITHUB_API = 'https://api.github.com';
 
-var STABLES = ['usdt','usdc','busd','dai','tusd','fdusd','usdp','frax','lusd','usdd','eurs','usdn','usdg','usdf','bfusd','pyusd','usde','usds','ausd','eurc','paxg','xaut','wbtc'];
+var STABLES = ['usdt','usdc','busd','dai','tusd','fdusd','usdp','frax','lusd','usdd','eurs','usdn','usdg','usdf','bfusd','pyusd','usde','usds','ausd','eurc','paxg','xaut','wbtc','gho','jst','rai','lunc','ylds','sta','stable'];
+
+// Category-based exclusion (2-call approach). These are CoinGecko category slugs.
+// 'exchange-based-tokens' and 'real-world-assets-rwa' were removed 2026-07-03: verified
+// live that they catch legitimate top-100 alts (BNB, XLM, LINK, CRO, UNI, JUP, ALGO,
+// XDC, QNT, ONDO, INJ) alongside the actual noise (WBT, GT, LEO). Those categories are
+// too broad on CoinGecko's side to use as a blanket filter. Genuine single-exchange
+// tokens and other confirmed noise are excluded by symbol below instead (EXCLUDE_SYMBOLS),
+// based on Ryan's manual coin audit from the 2026-07-03 session.
+var CATEGORY_EXCLUDE = ['stablecoins','wrapped-tokens'];
+
+// Manually-vetted noise symbols (confirmed not real/tradeable alts, or single-exchange
+// utility tokens) from the 2026-07-03 coin audit. Lowercase, matched after zero-width
+// char stripping. Keep appending here as new noise is confirmed — do NOT reintroduce
+// broad category exclusion for these.
+var EXCLUDE_SYMBOLS = ['a7a5','prime','fig','figr_heloc','leo','ren','wbt','u','lin','ond','bdx','ava','mor','nea','cak','das','gra','m','nig','nex','has','gt','alg','pum'];
+
+// Strips zero-width / invisible unicode chars that can be used to dodge name-based
+// filtering (e.g. a coin named "Stable" with ZWSPs embedded, cgId stable-2, score 95
+// on the 2026-07-03 verify run — passed every text filter until this was added).
+function normalizeStr(s) {
+  // Strips zero-width space/joiner/non-joiner (U+200B-200D), word joiner (U+2060),
+  // BOM (U+FEFF), LTR/RTL marks (U+200E/F), and bidi embedding/override chars
+  // (U+202A-202E) before matching. Added 2026-07-03 after a coin named with
+  // embedded ZWSPs ("Stable", cgId stable-2) scored 95 and dodged every text filter.
+  return (s||'').replace(/[​‌‍⁠﻿‎‏‪-‮]/g,'').trim().toLowerCase();
+}
 
 // STATE
 var allResults = [];
@@ -276,12 +316,120 @@ var selectedKey = null;
 var detailChart = null;
 var refreshTimer = null;
 var scanning = false;
-var diag = {universe:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+// Computed once per scan in runScan() from radar.html's own localStorage history (see
+// computeScanDiff below). publishReport() reuses THIS same object for the pushed
+// report's diff bar instead of independently re-deriving it from GitHub - single
+// source of truth, computed once, used in both places.
+var lastScanDiff = {hasPrevious:false, dropped:[], added:[]};
+
+// TV link fallback chain: Kraken primary, Coinbase secondary, Binance last resort.
+// Verified live 2026-07-03: 4/34 candidates (DEXE, BSV, KITE, GRAM) had no Kraken pair
+// and showed "This symbol doesn't exist" in TradingView. Coinbase covered KITE.
+// Binance.com's public API is geo-blocked for US IPs (confirmed while building this -
+// api.binance.com fetch fails from a US network), so the Binance tier is NOT live-
+// verified, just used as an unverified last resort for the rare remainder (DEXE/BSV/GRAM-type).
+var KRAKEN_PAIRS = null;
+var COINBASE_PAIRS = null;
+
+async function fetchTVFallbackSets() {
+  KRAKEN_PAIRS = new Set();
+  COINBASE_PAIRS = new Set();
+  try {
+    var r1 = await fetch('https://api.kraken.com/0/public/AssetPairs');
+    if(r1.ok) {
+      var d1 = await r1.json();
+      var pairs = (d1 && d1.result) || {};
+      for(var k in pairs) { if(pairs[k].altname) KRAKEN_PAIRS.add(pairs[k].altname.toUpperCase()); }
+    }
+  } catch(e) {}
+  try {
+    var r2 = await fetch('https://api.exchange.coinbase.com/products');
+    if(r2.ok) {
+      var d2 = await r2.json();
+      if(Array.isArray(d2)) d2.forEach(function(p){ if(p.id) COINBASE_PAIRS.add(p.id.toUpperCase()); });
+    }
+  } catch(e) {}
+}
+
+function tvLink(symbol) {
+  if(KRAKEN_PAIRS && KRAKEN_PAIRS.has(symbol+'USD')) return {exchange:'KRAKEN', pair:symbol+'USD'};
+  if(COINBASE_PAIRS && COINBASE_PAIRS.has(symbol+'-USD')) return {exchange:'COINBASE', pair:symbol+'-USD'};
+  return {exchange:'BINANCE', pair:symbol+'USDT'};
+}
 
 function fmt(n,d) { d=d||2; return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function fmtP(n) { return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%'; }
 function clamp(v,a,b) { return Math.max(a,Math.min(b,v)); }
 function sleep(ms) { return new Promise(function(r){setTimeout(r,ms);}); }
+
+// --- Confluence signals (all computed from daily OHLC we already fetch) ---
+function emaLast(vals, period) {
+  if(!vals.length) return null;
+  var k = 2/(period+1), e = vals[0];
+  for(var i=1;i<vals.length;i++) e = vals[i]*k + e*(1-k);
+  return e;
+}
+function emaState(candles) {
+  var closes = candles.map(function(c){return c.close;});
+  var last = closes[closes.length-1];
+  var e21 = emaLast(closes,21), e50 = emaLast(closes,50);
+  var state, pts;
+  // EMA bonus halved 2026-07-03: live verify run showed 15/34 candidates (44%) landing
+  // in High+Probable buckets, most of them 'above_both'. Original 10/8/5 pts was tuned
+  // before this bonus existed and was inflating too many coins across bucket boundaries.
+  // NOTE: Brett's checklist criterion "price above 21/50 EMA" specifies +10/+8/+5 - this
+  // 5/4/2 halving is a DELIBERATE, Ryan-approved deviation from that spec (2026-07-03),
+  // made specifically to fix the bucket inflation. Do not "correct" this back to 10/8/5
+  // without re-checking bucket distribution on a larger sample first.
+  if(last>e50 && last>e21) { state='above_both'; pts=(e21>=e50)?5:4; }
+  else if(last>e50)        { state='above_50';   pts=2; }
+  else                     { state='below';      pts=0; }
+  return {state:state, pts:pts, e21:e21, e50:e50};
+}
+function bb3Reversion(candles) {
+  // Pushed below the lower 3-std Bollinger Band in the last ~5 bars, now retraced back inside.
+  var n = candles.length; if(n < 21) return false;
+  function lowerAt(i) {
+    var sum=0; for(var j=i-19;j<=i;j++) sum+=candles[j].close;
+    var mean=sum/20, v=0;
+    for(var j=i-19;j<=i;j++){ var d=candles[j].close-mean; v+=d*d; }
+    return mean - 3*Math.sqrt(v/20);
+  }
+  var cur=n-1;
+  if(candles[cur].close < lowerAt(cur)) return false; // still below band, not retraced yet
+  var start=Math.max(20, cur-4);
+  for(var i=cur;i>=start;i--){ if(candles[i].low < lowerAt(i)) return true; }
+  return false;
+}
+function bullEngulfing(candles) {
+  var n=candles.length; if(n<2) return false;
+  var a=candles[n-2], b=candles[n-1];
+  return (a.close<a.open) && (b.close>b.open) && (b.close>=a.open) && (b.open<=a.close);
+}
+function threeInsideUp(candles) {
+  var n=candles.length; if(n<3) return false;
+  var c1=candles[n-3], c2=candles[n-2], c3=candles[n-1];
+  var c1Bear = c1.close<c1.open;
+  var c2Bull = c2.close>c2.open;
+  var c2Inside = Math.max(c2.open,c2.close)<=c1.open && Math.min(c2.open,c2.close)>=c1.close;
+  var c3Up = c3.close>c2.close;
+  return c1Bear && c2Bull && c2Inside && c3Up;
+}
+function confluenceList(r) {
+  var b=[];
+  if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)'});
+  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)'});
+  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  return b;
+}
+function confluenceHTML(r) {
+  var b=confluenceList(r);
+  if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
+  return b.map(function(x){return '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px">'+x.t+'</span>';}).join('');
+}
 
 function getBucket(s) {
   if(s>=90) return {label:'High',cls:'bh'};
@@ -303,6 +451,45 @@ function setStatus(state, text) {
 }
 function getToken() { return localStorage.getItem('gh_token_radar'); }
 
+// Since-last-scan tracking, local to radar.html only. Deliberately independent of
+// radar-report.html/GitHub - radar.html is the source of truth Ryan actually uses, and
+// must never read from or depend on the report it hands off to other people. History is
+// kept entirely in this browser's localStorage.
+var SCAN_HISTORY_KEY = 'radar_scan_history';
+function getPrevScanHistory() {
+  try {
+    var raw = localStorage.getItem(SCAN_HISTORY_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) { return null; }
+}
+function saveScanHistory(results) {
+  try {
+    var minimal = {timestamp: Date.now(), candidates: results.map(function(r){ return {symbol:r.symbol, name:r.name, score:r.score}; })};
+    localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify(minimal));
+  } catch(e) {}
+}
+function computeScanDiff(prev, current) {
+  if(!prev || !prev.candidates) return {hasPrevious:false, dropped:[], added:[]};
+  var currSymbols = current.map(function(c){return c.symbol;});
+  var prevSymbols = prev.candidates.map(function(c){return c.symbol;});
+  return {
+    hasPrevious: true,
+    dropped: prev.candidates.filter(function(p){return currSymbols.indexOf(p.symbol)<0;}),
+    added: current.filter(function(c){return prevSymbols.indexOf(c.symbol)<0;}).map(function(c){return {symbol:c.symbol,name:c.name,score:c.score};})
+  };
+}
+function renderSinceLastScan(diff) {
+  var bar = document.getElementById('sincelast-bar');
+  if(!diff.hasPrevious) { bar.style.display='none'; return; }
+  var dropHTML = diff.dropped.length ? diff.dropped.map(function(d){return '<span class="sl-chip sl-drop">'+d.symbol+'</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
+  var addHTML = diff.added.length ? diff.added.map(function(a){return '<span class="sl-chip sl-add">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
+  document.getElementById('sincelast-content').innerHTML =
+    '<span style="color:var(--text2);margin-right:6px">Dropped ('+diff.dropped.length+', channel no longer tradable):</span>'+dropHTML+
+    '<span style="color:var(--text2);margin:0 6px 0 14px">Added ('+diff.added.length+'):</span>'+addHTML;
+  bar.style.display='flex';
+}
+
 async function cgFetch(path, retries) {
   retries = retries === undefined ? 3 : retries;
   try {
@@ -319,16 +506,64 @@ async function cgFetch(path, retries) {
   } catch(e) { return null; }
 }
 
+async function fetchExcludedIds() {
+  // 2 category-filtered market calls -> set of coin ids to exclude.
+  var excluded = {};
+  for(var i=0;i<CATEGORY_EXCLUDE.length;i++) {
+    var d = await cgFetch('/coins/markets?vs_currency=usd&category='+CATEGORY_EXCLUDE[i]+'&per_page=250&page=1&sparkline=false');
+    if(d && Array.isArray(d)) {
+      for(var j=0;j<d.length;j++){ if(!excluded[d[j].id]) excluded[d[j].id]=CATEGORY_EXCLUDE[i]; }
+    }
+    await sleep(700);
+  }
+  return excluded;
+}
+
+// Display category badges (radar-report cards + detail panel). Same technique as
+// fetchExcludedIds: one /coins/markets?category=X call per slug, build a coinId->label
+// map. First matching slug in the array wins (a coin can be in many CoinGecko
+// categories - this picks one representative label, not an exhaustive list).
+// Slugs verified live 2026-07-03 against CoinGecko's category list.
+// Order matters: first match wins, and most coins are tagged 'layer-1' by CoinGecko
+// even when a more specific/interesting label applies (e.g. Monero is tagged both
+// 'layer-1' and 'privacy-coins' - verified live 2026-07-03). Specific categories are
+// listed first so they win over the generic layer-1/layer-2 catch-alls.
+var DISPLAY_CATEGORIES = [
+  {slug:'privacy-coins', label:'Privacy Coin'},
+  {slug:'meme-token', label:'Meme'},
+  {slug:'decentralized-finance-defi', label:'DeFi'},
+  {slug:'artificial-intelligence', label:'AI'},
+  {slug:'oracle', label:'Oracle'},
+  {slug:'layer-2', label:'Layer 2'},
+  {slug:'layer-1', label:'Layer 1'}
+];
+var CATEGORY_LABELS = {};
+
+async function fetchDisplayCategories() {
+  CATEGORY_LABELS = {};
+  for(var i=0;i<DISPLAY_CATEGORIES.length;i++) {
+    var d = await cgFetch('/coins/markets?vs_currency=usd&category='+DISPLAY_CATEGORIES[i].slug+'&per_page=250&page=1&sparkline=false');
+    if(d && Array.isArray(d)) {
+      for(var j=0;j<d.length;j++){ if(!CATEGORY_LABELS[d[j].id]) CATEGORY_LABELS[d[j].id]=DISPLAY_CATEGORIES[i].label; }
+    }
+    await sleep(700);
+  }
+}
+
 async function buildUniverse() {
-  var data = await cgFetch('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false&price_change_percentage=24h');
+  var excluded = await fetchExcludedIds();
+  var data = await cgFetch('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1&sparkline=false&price_change_percentage=24h');
   if(!data) return [];
   var alts = data.filter(function(c) {
-    var sym = c.symbol.toLowerCase();
-    var name = c.name.toLowerCase();
+    var sym = normalizeStr(c.symbol);
+    var name = normalizeStr(c.name);
     if(STABLES.indexOf(sym) >= 0) return false;
+    if(EXCLUDE_SYMBOLS.indexOf(sym) >= 0) return false;
     if(sym === 'btc' || sym === 'wbtc') return false;
     if(name.indexOf('usd') >= 0 || name.indexOf('dollar') >= 0) return false;
     if(c.current_price < 0.00001) return false;
+    if((c.total_volume||0) < 5000000) { diag.volExcluded++; return false; }
+    if(excluded[c.id]) { diag.catExcluded++; return false; }
     return true;
   }).slice(0,100);
   diag.universe = alts.length;
@@ -365,6 +600,10 @@ function detectChannel(candles) {
   if(lows.length < 3 || highs.length < 1) return null;
   var n = candles.length;
   var best = null;
+
+  // Confluence signals are properties of the coin (not the rail pair): compute once.
+  var ema = emaState(candles);
+  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles)};
 
   for(var a=0; a<lows.length-1; a++) {
     for(var b=a+1; b<lows.length; b++) {
@@ -435,6 +674,7 @@ function detectChannel(candles) {
       score += Math.min(6, winCandles.length/20);
       if(sa > 5) score -= 10;
       if(slope < 0) score -= 5;
+      score += ema.pts; // EMA 21/50 confluence: +10/+8 above both, +5 above 50 only, 0 below
       score = Math.round(clamp(score,0,100));
       diag.scoreOk++;
 
@@ -445,7 +685,9 @@ function detectChannel(candles) {
           supportNow:supNow, resistNow:resNow, invalidation:invalidation, channelH:channelH,
           candles:candles.slice(-150), pivotLows:supTouches,
           supSlope:slope, supIntercept:intercept, firstIdx:firstIdx, lastIdx:lastIdx,
-          isAscending:slope>=0, isFlat:Math.abs(slopePct)<0.1
+          isAscending:slope>=0, isFlat:Math.abs(slopePct)<0.1,
+          emaState:ema.state, ema21:ema.e21, ema50:ema.e50, emaPts:ema.pts,
+          bb3:conf.bb3, bullEngulf:conf.bullEngulf, threeInsideUp:conf.threeInsideUp
         };
       }
     }
@@ -472,19 +714,27 @@ async function scanCoin(coin) {
   ch.price = coin.current_price;
   ch.change24h = coin.price_change_percentage_24h || 0;
   ch.explanation = buildExpl(ch, coin.name);
+  var tv = tvLink(ch.symbol);
+  ch.tvExchange = tv.exchange;
+  ch.tvPair = tv.pair;
+  ch.category = CATEGORY_LABELS[coin.id] || null;
   return ch;
 }
 
 async function runScan() {
   if(scanning) return;
   scanning = true;
-  diag = {universe:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+  diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
   var btn = document.getElementById('refresh-btn');
   btn.disabled = true; btn.textContent = 'Scanning...';
   document.getElementById('publish-btn').style.display = 'none';
   setStatus('scanning', 'Fetching top 100 alts...');
   allResults = [];
 
+  // fetchTVFallbackSets hits Kraken/Coinbase (no CoinGecko rate-limit impact), so it
+  // runs alongside fetchDisplayCategories. buildUniverse (which does its own CoinGecko
+  // category calls internally) waits until after, to avoid bursting the CG rate limit.
+  await Promise.all([fetchTVFallbackSets(), fetchDisplayCategories()]);
   var coins = await buildUniverse();
   if(!coins.length) {
     setStatus('error', 'Failed to fetch universe - check API key');
@@ -501,6 +751,9 @@ async function runScan() {
   }
 
   allResults.sort(function(a,b){return b.score-a.score;});
+  lastScanDiff = computeScanDiff(getPrevScanHistory(), allResults);
+  renderSinceLastScan(lastScanDiff);
+  saveScanHistory(allResults);
   applyFilters();
   renderDiag();
   setStatus('live', allResults.length+' channels - '+coins.length+' scanned');
@@ -515,6 +768,8 @@ async function runScan() {
 function renderDiag() {
   var items = [
     {label:'Universe',value:diag.universe,c:'var(--text)'},
+    {label:'Vol filtered',value:diag.volExcluded,c:'var(--bear)'},
+    {label:'Category excl',value:diag.catExcluded,c:'var(--bear)'},
     {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
     {label:'Rail pairs',value:diag.railPairs,c:'var(--text2)'},
     {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
@@ -583,7 +838,7 @@ function renderTable() {
     var posLbl=r.position<=0.33?'Lower':r.position<=0.66?'Mid':'Upper';
     var cc=r.change24h>=0?'up':'dn';
     var scls=r.slope>0.05?'sp':r.slope<-0.05?'sn':'sf';
-    var tvUrl='https://www.tradingview.com/chart/?symbol=COINBASE:'+r.symbol+'USD&interval=D';
+    var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
@@ -608,7 +863,7 @@ function openDetail(r) {
   var sc=scoreColor(r.score), bk=getBucket(r.score);
   document.getElementById('dp-score').textContent=r.score;
   document.getElementById('dp-score').style.color=sc;
-  document.getElementById('dp-badge').innerHTML='<span class="bbadge '+bk.cls+'">'+bk.label+'</span>';
+  document.getElementById('dp-badge').innerHTML='<span class="bbadge '+bk.cls+'">'+bk.label+'</span>'+(r.category?' <span class="bbadge" style="background:rgba(157,163,180,.12);color:var(--text2)">'+r.category+'</span>':'');
   document.getElementById('dp-tf').textContent='Daily - '+r.name;
   document.getElementById('dp-score-grid').innerHTML=
     '<div class="score-item"><div class="si-label">Support touches</div><div class="si-value" style="color:var(--bull)">'+r.supportTouches+'</div></div>'+
@@ -616,6 +871,7 @@ function openDetail(r) {
     '<div class="score-item"><div class="si-label">Containment</div><div class="si-value" style="color:'+(r.containment>75?'var(--bull)':'var(--neut)')+'">'+r.containment+'%</div></div>'+
     '<div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:'+(r.slope>=0?'var(--bull)':'var(--bear)')+'">'+( r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
     '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+
+    '<div class="score-item"><div class="si-label">Price vs EMA</div><div class="si-value" style="color:'+(r.emaState==='above_both'?'var(--bull)':r.emaState==='above_50'?'var(--neut)':'var(--bear)')+'">'+(r.emaState==='above_both'?'Above 21 & 50':r.emaState==='above_50'?'Above 50':'Below 50')+'</div></div>'+
     '<div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:'+sc+'">'+r.score+'/100</div></div>';
   var pw=Math.round(r.position*100);
   document.getElementById('dp-pos-label').textContent=r.position<=0.33?'Lower third':r.position<=0.66?'Middle':'Upper third';
@@ -627,7 +883,9 @@ function openDetail(r) {
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
   document.getElementById('dp-inv').textContent=fmt(r.invalidation,4);
   document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
-  document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol=BINANCE:'+r.symbol+'USDT&interval=D';
+  document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
+  document.getElementById('dp-cg').href='https://www.coingecko.com/en/coins/'+r.cgId;
+  document.getElementById('dp-confluence').innerHTML=confluenceHTML(r);
   buildChart(r);
 }
 
@@ -679,7 +937,8 @@ function buildReportHTML(data) {
     var posLbl = r.position<=0.33?'Lower third (near support)':r.position<=0.66?'Middle of channel':'Upper third (near resistance)';
     var slopeColor = r.slope>0.05?'#00c896':r.slope<-0.05?'#e8754a':'#6b7280';
     var chType = r.isFlat?'Flat channel':r.slope>=0?'Ascending channel':'Descending channel';
-    var tvUrl='https://www.tradingview.com/chart/?symbol=COINBASE:'+r.symbol+'USD&interval=D';
+    var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
+    var cgUrl='https://www.coingecko.com/en/coins/'+r.cgId;
     var invPct = ((r.invalidation-r.price)/r.price*100).toFixed(1);
     return '<div class="radar-card" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
@@ -688,6 +947,7 @@ function buildReportHTML(data) {
           '<div><div style="font-size:16px;font-weight:700">'+r.symbol+'</div><div style="font-size:11px;color:#6b7280">'+r.name+' - Daily - '+chType+'</div></div>'+
         '</div>'+
         '<div style="display:flex;align-items:center;gap:10px">'+
+          (r.category?'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(157,163,180,.12);color:#9da3b4;border:1px solid rgba(157,163,180,.25)">'+r.category+'</span>':'')+
           '<div style="font-size:22px;font-weight:700;color:'+sc+'">'+r.score+'</div>'+
           '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+bk.c+';color:'+bk.tc+'">'+bk.l+'</span>'+
         '</div>'+
@@ -705,8 +965,13 @@ function buildReportHTML(data) {
         '<div style="font-size:10px;color:#7b6ef6;margin-top:4px">'+fmt2(r.price,4)+' current</div>'+
       '</div>'+
       '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6;margin-bottom:12px">'+r.explanation+'</div>'+
+      '<div style="margin-bottom:12px">'+
+        '<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Confluence (daily OHLC)</div>'+
+        confluenceHTML(r)+
+      '</div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
         '<a href="'+tvUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(123,110,246,.12);color:#7b6ef6;border:1px solid rgba(123,110,246,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in TradingView - apply Brett indicators</a>'+
+        '<a href="'+cgUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(0,200,150,.1);color:#00c896;border:1px solid rgba(0,200,150,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">View on CoinGecko</a>'+
         '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(232,117,74,.1);border:1px solid rgba(232,117,74,.25);border-radius:6px;font-size:11px;color:#e8754a;font-weight:600">Invalidation: '+fmt2(r.invalidation,4)+' ('+invPct+'%)</div>'+
       '</div>'+
     '</div>';
@@ -715,6 +980,26 @@ function buildReportHTML(data) {
   var highCount = cands.filter(function(c){return c.score>=90;}).length;
   var probCount = cands.filter(function(c){return c.score>=75&&c.score<90;}).length;
   var lowerThird = cands.filter(function(c){return c.position<=0.33&&c.slope>=0;}).length;
+
+  // Since-last-scan diff bar: dropped candidates (channel no longer tradable - fell out
+  // of position/containment/touches/etc since the last run) vs newly added ones.
+  // data.hasPrevious/data.dropped/data.added are NOT computed here or independently
+  // re-derived from GitHub - publishReport() passes through radar.html's own
+  // `lastScanDiff` (computed once per scan against radar.html's localStorage history).
+  // Single source of truth. Skipped entirely if radar.html has no prior scan in its
+  // local history yet (e.g. first run ever, or localStorage was cleared).
+  var diffBar = '';
+  if(data.hasPrevious) {
+    var dropped = data.dropped || [];
+    var added = data.added || [];
+    var droppedHTML = dropped.length ? dropped.map(function(d){return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(232,117,74,.12);color:#e8754a;font-size:11px;font-weight:600">'+d.symbol+'</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
+    var addedHTML = added.length ? added.map(function(a){return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(0,200,150,.12);color:#00c896;font-size:11px;font-weight:600">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
+    diffBar = '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:16px 20px;margin-bottom:20px">'+
+      '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:10px">Since Last Scan</div>'+
+      '<div style="margin-bottom:10px"><span style="font-size:11px;color:#9da3b4;font-weight:600">Dropped out ('+dropped.length+' - channel no longer tradable):</span><div style="margin-top:4px">'+droppedHTML+'</div></div>'+
+      '<div><span style="font-size:11px;color:#9da3b4;font-weight:600">Newly added ('+added.length+'):</span><div style="margin-top:4px">'+addedHTML+'</div></div>'+
+    '</div>';
+  }
 
   return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Channel Radar Report</title></head>'+
   '<body style="background:#0b0c14;color:#e2e4ef;font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;margin:0">'+
@@ -742,6 +1027,7 @@ function buildReportHTML(data) {
       '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">Generated: '+ts+' - '+data.scanned+' coins scanned - '+cands.length+' channels found'+(data.btcPrice?' - BTC '+fmt2(data.btcPrice)+' ('+fmtP2(data.btcChange)+' 24h)':'')+'</div>'+
       '<div style="font-size:13px;color:#9da3b4;line-height:1.6">'+cands.length+' channel candidates found. '+highCount+' high-confidence, '+probCount+' probable. '+lowerThird+' candidate'+(lowerThird!==1?'s':'')+' in the lower third of an ascending channel. Validate all candidates in TradingView with Brett Fogle indicators before acting.</div>'+
     '</div>'+
+    diffBar+
     '<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid #1e2035">Channel Candidates - Ranked by Score</div>'+
     rows+
     '<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px 18px;margin-top:20px;font-size:11px;color:#6b7280;line-height:1.6;border-left:3px solid #f5a623">This report is generated by an automated channel detection algorithm. It is a discovery tool only - not a trade recommendation. All candidates require manual validation in TradingView using Brett Fogle indicators. <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" style="color:#7b6ef6">Learn more about the methodology</a></div>'+
@@ -750,6 +1036,7 @@ function buildReportHTML(data) {
       '<div style="display:flex;gap:16px"><a href="https://rdwills02.github.io/BTC_Brief/" style="color:#7b6ef6;text-decoration:none">Dashboard</a><a href="https://rdwills02.github.io/BTC_Brief/glossary.html" style="color:#7b6ef6;text-decoration:none">Glossary</a></div>'+
     '</div>'+
   '</div>'+
+  '<script type="application/json" id="report-data">'+JSON.stringify({timestamp:ts,scanned:data.scanned,candidates:cands.map(function(c){return {symbol:c.symbol,name:c.name,score:c.score};})}).replace(/</g,'\\u003c')+'<\/script>'+
   '<script>'+
   'function filterCards(){'+
     'var min=parseInt(document.getElementById("score-filter").value)||0;'+
@@ -781,8 +1068,15 @@ async function publishReport() {
       btcPrice: null,
       btcChange: null,
       candidates: allResults.map(function(r) {
-        return {symbol:r.symbol,name:r.name,price:r.price,change24h:r.change24h,score:r.score,supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,explanation:r.explanation};
-      })
+        return {symbol:r.symbol,name:r.name,cgId:r.cgId,price:r.price,change24h:r.change24h,score:r.score,supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category};
+      }),
+      // Reuse the diff radar.html already computed this scan (from its own localStorage
+      // history - see lastScanDiff/computeScanDiff) instead of independently re-deriving
+      // it by fetching and parsing GitHub's copy of the previous report. Single source
+      // of truth, computed once in runScan(), used for both the live bar and the report.
+      hasPrevious: lastScanDiff.hasPrevious,
+      dropped: lastScanDiff.dropped,
+      added: lastScanDiff.added
     };
     try {
       var btcR = await fetch(CG_BASE+'/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&x_cg_demo_api_key='+CG_KEY);
@@ -790,7 +1084,7 @@ async function publishReport() {
     } catch(e){}
     var shaRes = await fetch(GITHUB_API+'/repos/'+GITHUB_REPO+'/contents/'+GITHUB_FILE, {headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github.v3+json'}});
     var sha = null;
-    if(shaRes.ok){var shaData=await shaRes.json();sha=shaData.sha;}
+    if(shaRes.ok){ var shaData=await shaRes.json(); sha=shaData.sha; }
     var html = buildReportHTML(reportData);
     var bodyObj = {message:'Channel Radar Report - '+ts,content:btoa(unescape(encodeURIComponent(html)))};
     if(sha) bodyObj.sha = sha;
