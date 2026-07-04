@@ -33,6 +33,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--bull);flex-shrink:0}
 .status-dot.scanning{animation:pulse 1s infinite;background:var(--neut)}
 .status-dot.error{background:var(--bear)}
+.status-dot.idle{background:var(--muted)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .diag-panel{background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 20px;display:none}
 .diag-panel.visible{display:block}
@@ -52,6 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .bbtn.a-emerging{background:rgba(245,166,35,.12);color:var(--emerging);border-color:rgba(245,166,35,.3)}
 .bbtn.a-watch{background:rgba(232,117,74,.12);color:var(--watch);border-color:rgba(232,117,74,.3)}
 .thresh-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.cached-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:rgba(245,166,35,.08);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sincelast-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sl-chip{display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;margin-right:5px}
 .sl-drop{background:rgba(232,117,74,.12);color:var(--bear)}
@@ -197,6 +199,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </label>
 </div>
 
+<div class="cached-bar" id="cached-bar" style="display:none">
+  <span class="filter-label" style="color:var(--neut)">Cached</span>
+  <span id="cached-bar-text"></span>
+</div>
+
 <div class="sincelast-bar" id="sincelast-bar" style="display:none">
   <span class="filter-label">Since Last Scan</span>
   <span id="sincelast-content"></span>
@@ -271,7 +278,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 // CONFIG - replace YOUR_API_KEY_HERE with your CoinGecko Demo API key
 var CG_BASE = 'https://api.coingecko.com/api/v3';
 var CG_KEY = 'CG-YJMCUm9ZMwMfq8YuXac6RZ8P';
-var REFRESH_MS = 24 * 60 * 60 * 1000;
 var PIVOT_LB = 3;
 var TOUCH_TOL = 0.025;
 var GITHUB_REPO = 'rdwills02/BTC_Brief';
@@ -314,7 +320,6 @@ var sortCol = 'score';
 var sortDir = -1;
 var selectedKey = null;
 var detailChart = null;
-var refreshTimer = null;
 var scanning = false;
 var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
 // Computed once per scan in runScan() from radar.html's own localStorage history (see
@@ -446,7 +451,7 @@ function scoreColor(s) {
 }
 function setStatus(state, text) {
   var d = document.getElementById('status-dot');
-  d.className = 'status-dot' + (state==='scanning'?' scanning':state==='error'?' error':'');
+  d.className = 'status-dot' + (state==='scanning'?' scanning':state==='error'?' error':state==='idle'?' idle':'');
   document.getElementById('status-text').textContent = text;
 }
 function getToken() { return localStorage.getItem('gh_token_radar'); }
@@ -456,6 +461,19 @@ function getToken() { return localStorage.getItem('gh_token_radar'); }
 // must never read from or depend on the report it hands off to other people. History is
 // kept entirely in this browser's localStorage.
 var SCAN_HISTORY_KEY = 'radar_scan_history';
+
+// Shared shape for the localStorage cache (this key) AND the candidates pushed to
+// radar-report.html - kept identical so both stay in sync automatically. Excludes
+// chart-only geometry (candles/pivotLows/supSlope/supIntercept) to keep the cache well
+// under 5MB. Detail charts require a fresh in-session scan - see openDetail().
+function toLightCandidate(r) {
+  return {symbol:r.symbol,name:r.name,cgId:r.cgId,price:r.price,change24h:r.change24h,score:r.score,
+    supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,
+    position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,
+    channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,
+    explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,
+    threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category};
+}
 function getPrevScanHistory() {
   try {
     var raw = localStorage.getItem(SCAN_HISTORY_KEY);
@@ -465,8 +483,11 @@ function getPrevScanHistory() {
 }
 function saveScanHistory(results) {
   try {
-    var minimal = {timestamp: Date.now(), candidates: results.map(function(r){ return {symbol:r.symbol, name:r.name, score:r.score}; })};
-    localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify(minimal));
+    localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      candidates: results.map(toLightCandidate),
+      diag: diag
+    }));
   } catch(e) {}
 }
 function computeScanDiff(prev, current) {
@@ -796,11 +817,10 @@ async function runScan() {
   renderDiag();
   setStatus('live', allResults.length+' channels - '+coins.length+' scanned');
   document.getElementById('last-update').textContent = 'Updated '+new Date().toLocaleTimeString();
+  document.getElementById('cached-bar').style.display = 'none';
   btn.disabled=false; btn.textContent='Refresh';
   scanning=false;
   if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
-  if(refreshTimer) clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(runScan, REFRESH_MS);
 }
 
 function renderDiag() {
@@ -923,7 +943,15 @@ function openDetail(r) {
   document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
   document.getElementById('dp-cg').href='https://www.coingecko.com/en/coins/'+r.cgId;
   document.getElementById('dp-confluence').innerHTML=confluenceHTML(r);
-  buildChart(r);
+  if(r.candles) {
+    buildChart(r);
+  } else {
+    // Cached candidate - chart-only geometry (candles/pivotLows/supSlope/supIntercept)
+    // isn't retained in the localStorage cache to keep it small. Re-run a scan this
+    // session to view the chart, per Ryan's 2026-07-03 call to keep the cache lean.
+    if(detailChart){detailChart.remove();detailChart=null;}
+    document.getElementById('detail-chart').innerHTML = '<div class="state-view" style="height:100%"><div class="state-title">No chart for cached data</div><div class="state-sub">Run scan for a fresh session to view this coin\'s chart.</div></div>';
+  }
 }
 
 function closePanel() {
@@ -1125,9 +1153,7 @@ async function publishReport() {
       scanned: 100,
       btcPrice: null,
       btcChange: null,
-      candidates: allResults.map(function(r) {
-        return {symbol:r.symbol,name:r.name,cgId:r.cgId,price:r.price,change24h:r.change24h,score:r.score,supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category};
-      }),
+      candidates: allResults.map(toLightCandidate),
       // Reuse the diff radar.html already computed this scan (from its own localStorage
       // history - see lastScanDiff/computeScanDiff) instead of independently re-deriving
       // it by fetching and parsing GitHub's copy of the previous report. Single source
@@ -1197,9 +1223,29 @@ window.addEventListener('load', function() {
     var r = filtered.find(function(x){return x.symbol===key;});
     if(r) openDetail(r);
   });
-  setStatus('scanning', 'Starting...');
-  runScan();
+  loadCachedOrResting();
 });
+
+// On load: render the last cached scan with zero API calls, or a resting "ready" state
+// if there's no history yet. Scanning only ever happens on an explicit Refresh click -
+// see runScan(). This avoids burning CoinGecko's rate limit (and losing chart-only data
+// on browser close/computer reset) just from opening or reloading the tab.
+function loadCachedOrResting() {
+  var prev = getPrevScanHistory();
+  if(!prev || !prev.candidates || !prev.candidates.length) {
+    setStatus('idle', 'Ready - click Run scan');
+    document.getElementById('table-body').innerHTML = '<tr><td colspan="10"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Run scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
+    return;
+  }
+  allResults = prev.candidates;
+  if(prev.diag) diag = prev.diag;
+  applyFilters();
+  setStatus('idle', 'Showing cached results');
+  document.getElementById('last-update').textContent = 'Last scanned ' + new Date(prev.timestamp).toLocaleString();
+  document.getElementById('cached-bar-text').innerHTML = 'Showing results from <strong>'+new Date(prev.timestamp).toLocaleString()+'</strong> - click Run scan for live data.';
+  document.getElementById('cached-bar').style.display = 'flex';
+  if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
+}
 
 function setFilter(f) {
   activeFilter = f;
