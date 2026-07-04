@@ -316,7 +316,7 @@ var selectedKey = null;
 var detailChart = null;
 var refreshTimer = null;
 var scanning = false;
-var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
 // Computed once per scan in runScan() from radar.html's own localStorage history (see
 // computeScanDiff below). publishReport() reuses THIS same object for the pushed
 // report's diff bar instead of independently re-deriving it from GitHub - single
@@ -483,11 +483,27 @@ function renderSinceLastScan(diff) {
   var bar = document.getElementById('sincelast-bar');
   if(!diff.hasPrevious) { bar.style.display='none'; return; }
   var dropHTML = diff.dropped.length ? diff.dropped.map(function(d){return '<span class="sl-chip sl-drop">'+d.symbol+'</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
-  var addHTML = diff.added.length ? diff.added.map(function(a){return '<span class="sl-chip sl-add">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
+  var addHTML = diff.added.length ? diff.added.map(function(a){return '<span class="sl-chip sl-add" data-symbol="'+a.symbol+'" style="cursor:pointer" title="Jump to '+a.symbol+'">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
   document.getElementById('sincelast-content').innerHTML =
     '<span style="color:var(--text2);margin-right:6px">Dropped ('+diff.dropped.length+', channel no longer tradable):</span>'+dropHTML+
     '<span style="color:var(--text2);margin:0 6px 0 14px">Added ('+diff.added.length+'):</span>'+addHTML;
   bar.style.display='flex';
+}
+
+// Clicking an "Added" chip in the Since Last Scan bar jumps to that coin's row/card:
+// forces filters open (all-bucket, show-all) so the row is guaranteed visible regardless
+// of current filter state, scrolls it into view, highlights it, and opens its detail panel.
+function jumpToAddedCoin(symbol) {
+  var r = allResults.find(function(x){return x.symbol===symbol;});
+  if(!r) return;
+  setFilter('all');
+  var sa = document.getElementById('show-all');
+  if(!sa.checked) { sa.checked = true; applyFilters(); }
+  var tr = document.querySelector('.radar-table tr[data-key="'+symbol+'"]');
+  if(tr) tr.scrollIntoView({block:'center', behavior:'smooth'});
+  selectedKey = symbol;
+  document.querySelectorAll('.radar-table tr').forEach(function(row){row.classList.toggle('selected', row.dataset.key===symbol);});
+  openDetail(r);
 }
 
 async function cgFetch(path, retries) {
@@ -557,13 +573,16 @@ async function buildUniverse() {
   var alts = data.filter(function(c) {
     var sym = normalizeStr(c.symbol);
     var name = normalizeStr(c.name);
+    // Category check runs first (reordered 2026-07-03) so diag.catExcluded reflects the
+    // true count of category-tagged coins instead of being shadowed by STABLES/name/volume
+    // checks that previously ran first and claimed the same coins first.
+    if(excluded[c.id]) { diag.catExcluded++; return false; }
     if(STABLES.indexOf(sym) >= 0) return false;
     if(EXCLUDE_SYMBOLS.indexOf(sym) >= 0) return false;
     if(sym === 'btc' || sym === 'wbtc') return false;
     if(name.indexOf('usd') >= 0 || name.indexOf('dollar') >= 0) return false;
     if(c.current_price < 0.00001) return false;
     if((c.total_volume||0) < 5000000) { diag.volExcluded++; return false; }
-    if(excluded[c.id]) { diag.catExcluded++; return false; }
     return true;
   }).slice(0,100);
   diag.universe = alts.length;
@@ -605,16 +624,24 @@ function detectChannel(candles) {
   var ema = emaState(candles);
   var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles)};
 
+  // Per-coin flags, not per-rail-pair counts. detectChannel() tests every pair of low
+  // pivots as a candidate rail - a single coin can produce dozens of pair-evaluations,
+  // so counting every pair (as this used to) inflates these numbers far past the coin
+  // count and makes them meaningless as a funnel. Each flag flips true the first time
+  // ANY pair for THIS coin reaches that stage, and is counted into diag exactly once
+  // (see bottom of this function) - directly comparable to Universe/OHLC Loaded/Candidates.
+  var hadRailPair=false, hadPosSlope=false, had3Touches=false, hadContainment=false;
+
   for(var a=0; a<lows.length-1; a++) {
     for(var b=a+1; b<lows.length; b++) {
       var p1=lows[a], p2=lows[b];
       var idxDelta = p2.idx - p1.idx;
       if(idxDelta < 3) continue;
-      diag.railPairs++;
+      hadRailPair = true;
 
       var slope = (p2.price - p1.price) / idxDelta;
       if(slope < -0.05 * p1.price / idxDelta) continue;
-      if(slope >= 0) diag.posSlope++;
+      if(slope >= 0) hadPosSlope = true;
 
       var intercept = p1.price - slope * p1.idx;
 
@@ -623,7 +650,7 @@ function detectChannel(candles) {
         return Math.abs(l.price-exp)/exp <= TOUCH_TOL;
       });
       if(supTouches.length < 3) continue;
-      diag.touches++;
+      had3Touches = true;
 
       var firstIdx = Math.min.apply(null, supTouches.map(function(l){return l.idx;}));
       var lastIdx = n-1;
@@ -656,7 +683,7 @@ function detectChannel(candles) {
       }
       var containment = (inside/winCandles.length)*100;
       if(containment < 55) continue;
-      diag.containment++;
+      hadContainment = true;
 
       if(position > 0.75) continue;
 
@@ -676,7 +703,11 @@ function detectChannel(candles) {
       if(slope < 0) score -= 5;
       score += ema.pts; // EMA 21/50 confluence: +10/+8 above both, +5 above 50 only, 0 below
       score = Math.round(clamp(score,0,100));
-      diag.scoreOk++;
+      // NOTE: no per-coin "scored" counter here - a coin only reaches this line at all
+      // if some pair passed every gate through position, which is exactly the condition
+      // for `best` to get set below. A per-coin "scored" count would be mathematically
+      // identical to Candidates (diag.candidates, incremented in scanCoin) every time -
+      // pure duplication, so it's intentionally not tracked separately.
 
       if(!best || score > best.score) {
         best = {
@@ -692,6 +723,13 @@ function detectChannel(candles) {
       }
     }
   }
+
+  // Count this coin exactly once into each stage it reached, based on the flags above.
+  if(hadRailPair) diag.railPairs++;
+  if(hadPosSlope) diag.posSlope++;
+  if(had3Touches) diag.touches++;
+  if(hadContainment) diag.containment++;
+
   return best;
 }
 
@@ -724,7 +762,7 @@ async function scanCoin(coin) {
 async function runScan() {
   if(scanning) return;
   scanning = true;
-  diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+  diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
   var btn = document.getElementById('refresh-btn');
   btn.disabled = true; btn.textContent = 'Scanning...';
   document.getElementById('publish-btn').style.display = 'none';
@@ -768,14 +806,13 @@ async function runScan() {
 function renderDiag() {
   var items = [
     {label:'Universe',value:diag.universe,c:'var(--text)'},
-    {label:'Vol filtered',value:diag.volExcluded,c:'var(--bear)'},
+    {label:'Coins Excluded (low 24h volume)',value:diag.volExcluded,c:'var(--bear)'},
     {label:'Category excl',value:diag.catExcluded,c:'var(--bear)'},
     {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
     {label:'Rail pairs',value:diag.railPairs,c:'var(--text2)'},
     {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
     {label:'3+ touches',value:diag.touches,c:'var(--neut)'},
     {label:'Contain 55%+',value:diag.containment,c:'var(--neut)'},
-    {label:'Scored',value:diag.scoreOk,c:'var(--probable)'},
     {label:'Candidates',value:diag.candidates,c:'var(--high)'}
   ];
   document.getElementById('diag-grid').innerHTML = items.map(function(i) {
@@ -940,7 +977,7 @@ function buildReportHTML(data) {
     var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
     var cgUrl='https://www.coingecko.com/en/coins/'+r.cgId;
     var invPct = ((r.invalidation-r.price)/r.price*100).toFixed(1);
-    return '<div class="radar-card" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
+    return '<div class="radar-card" id="card-'+r.symbol+'" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
         '<div style="display:flex;align-items:center;gap:10px">'+
           '<div style="width:32px;height:32px;border-radius:50%;background:#20223a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#7b6ef6">'+r.symbol.substring(0,3)+'</div>'+
@@ -993,11 +1030,13 @@ function buildReportHTML(data) {
     var dropped = data.dropped || [];
     var added = data.added || [];
     var droppedHTML = dropped.length ? dropped.map(function(d){return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(232,117,74,.12);color:#e8754a;font-size:11px;font-weight:600">'+d.symbol+'</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
-    var addedHTML = added.length ? added.map(function(a){return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(0,200,150,.12);color:#00c896;font-size:11px;font-weight:600">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
+    // Added chips are clickable: data-symbol + jump-card class let the script block below
+    // scroll to and highlight that coin's card further down the same static page.
+    var addedHTML = added.length ? added.map(function(a){return '<span class="jump-card" data-symbol="'+a.symbol+'" style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(0,200,150,.12);color:#00c896;font-size:11px;font-weight:600;cursor:pointer" title="Jump to '+a.symbol+'">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
     diffBar = '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:16px 20px;margin-bottom:20px">'+
       '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:10px">Since Last Scan</div>'+
       '<div style="margin-bottom:10px"><span style="font-size:11px;color:#9da3b4;font-weight:600">Dropped out ('+dropped.length+' - channel no longer tradable):</span><div style="margin-top:4px">'+droppedHTML+'</div></div>'+
-      '<div><span style="font-size:11px;color:#9da3b4;font-weight:600">Newly added ('+added.length+'):</span><div style="margin-top:4px">'+addedHTML+'</div></div>'+
+      '<div><span style="font-size:11px;color:#9da3b4;font-weight:600">Newly added ('+added.length+'):</span><div style="margin-top:4px" id="added-chip-wrap">'+addedHTML+'</div></div>'+
     '</div>';
   }
 
@@ -1050,6 +1089,25 @@ function buildReportHTML(data) {
   '}'+
   'document.getElementById("score-filter").addEventListener("change",filterCards);'+
   'filterCards();'+
+  // Clicking an "Added" chip in the Since Last Scan bar jumps to that coin's card below:
+  // resets the score filter to "All scores" so the card is guaranteed visible regardless
+  // of the reader's current filter, scrolls to it, and briefly highlights it.
+  'function jumpToCard(symbol){'+
+    'var card=document.getElementById("card-"+symbol);'+
+    'if(!card) return;'+
+    'var sel=document.getElementById("score-filter");'+
+    'if(sel.value!=="0"){sel.value="0";filterCards();}'+
+    'card.scrollIntoView({block:"center",behavior:"smooth"});'+
+    'var prevBorder=card.style.border;'+
+    'card.style.border="1px solid #7b6ef6";'+
+    'card.style.boxShadow="0 0 0 3px rgba(123,110,246,.25)";'+
+    'setTimeout(function(){card.style.border=prevBorder;card.style.boxShadow="";},2000);'+
+  '}'+
+  'var addedWrap=document.getElementById("added-chip-wrap");'+
+  'if(addedWrap){addedWrap.addEventListener("click",function(e){'+
+    'var chip=e.target.closest(".jump-card");'+
+    'if(chip&&chip.dataset.symbol) jumpToCard(chip.dataset.symbol);'+
+  '});}'+
   '<\/script>'+
   '</body></html>';
 }
@@ -1126,6 +1184,10 @@ window.addEventListener('load', function() {
   document.getElementById('fb-probable').addEventListener('click', function() { setFilter('probable'); });
   document.getElementById('fb-emerging').addEventListener('click', function() { setFilter('emerging'); });
   document.getElementById('fb-watch').addEventListener('click', function() { setFilter('watch'); });
+  document.getElementById('sincelast-content').addEventListener('click', function(e) {
+    var chip = e.target.closest('.sl-add');
+    if(chip && chip.dataset.symbol) jumpToAddedCoin(chip.dataset.symbol);
+  });
   document.getElementById('table-body').addEventListener('click', function(e) {
     var tr = e.target.closest('tr');
     if(!tr || !tr.dataset.key) return;
