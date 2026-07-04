@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Altcoin Channel Radar</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0c14;--surface:#13141f;--surface2:#1a1b2a;--surface3:#20223a;
+  --border:#1e2035;--border2:#2a2b3d;--text:#e2e4ef;--text2:#9da3b4;--muted:#6b7280;
+  --bull:#00c896;--bear:#e8754a;--bear-bg:rgba(232,117,74,0.1);
+  --neut:#f5a623;--accent:#7b6ef6;--accent-bg:rgba(123,110,246,0.12);--accent-border:rgba(123,110,246,0.3);
+  --high:#00c896;--probable:#7b6ef6;--emerging:#f5a623;--watch:#e8754a;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden}
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.logo{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:lp 3s ease-in-out infinite}
+@keyframes lp{0%,100%{opacity:1}50%{opacity:.5}}
+.nav-links{display:flex;gap:8px}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2)}
+.nav-link.accent{color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+.header-right{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
+.btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.btn-accent{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
+.btn-publish{background:rgba(0,200,150,.15);color:var(--bull);border:1px solid rgba(0,200,150,.3)}
+.last-update{font-size:11px;color:var(--muted)}
+.scan-status{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--bull);flex-shrink:0}
+.status-dot.scanning{animation:pulse 1s infinite;background:var(--neut)}
+.status-dot.error{background:var(--bear)}
+.status-dot.idle{background:var(--muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.diag-panel{background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 20px;display:none}
+.diag-panel.visible{display:block}
+.diag-title{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.diag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:10px}
+.diag-item{background:var(--surface2);border-radius:6px;padding:8px 12px}
+.diag-label{font-size:10px;color:var(--muted);margin-bottom:3px}
+.diag-value{font-size:20px;font-weight:700}
+.diag-funnel{font-size:11px;color:var(--muted);line-height:1.8}
+.filters{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface)}
+.filter-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.bucket-filter{display:flex;gap:3px}
+.bbtn{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);font-family:inherit;transition:all .15s}
+.bbtn.a-all{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
+.bbtn.a-high{background:rgba(0,200,150,.15);color:var(--high);border-color:rgba(0,200,150,.3)}
+.bbtn.a-probable{background:rgba(123,110,246,.15);color:var(--probable);border-color:rgba(123,110,246,.3)}
+.bbtn.a-emerging{background:rgba(245,166,35,.12);color:var(--emerging);border-color:rgba(245,166,35,.3)}
+.bbtn.a-watch{background:rgba(232,117,74,.12);color:var(--watch);border-color:rgba(232,117,74,.3)}
+.thresh-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.cached-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:rgba(245,166,35,.08);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sincelast-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sl-chip{display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;margin-right:5px}
+.sl-drop{background:rgba(232,117,74,.12);color:var(--bear)}
+.sl-add{background:rgba(0,200,150,.12);color:var(--bull)}
+.tgroup{display:flex;align-items:center;gap:5px}
+.tlabel{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.tsel{background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;color:var(--text2);font-size:11px;font-family:inherit;outline:none;cursor:pointer}
+.sort-sel{margin-left:auto;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;color:var(--text2);font-size:12px;font-family:inherit;outline:none;cursor:pointer}
+.scan-count{font-size:11px;color:var(--muted)}
+.layout{display:grid;grid-template-columns:1fr;height:calc(100vh - 116px);transition:grid-template-columns .3s ease}
+.layout.open{grid-template-columns:1fr 460px}
+.main-panel{display:flex;flex-direction:column;overflow:hidden}
+.table-wrap{flex:1;overflow-y:auto}
+.radar-table{width:100%;border-collapse:collapse}
+.radar-table th{position:sticky;top:0;background:var(--surface);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
+.radar-table th:hover{color:var(--text2)}
+.radar-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.radar-table tr{cursor:pointer;transition:background .1s}
+.radar-table tr:hover td{background:var(--surface2)}
+.radar-table tr.selected td{background:var(--surface3);border-left:2px solid var(--accent)}
+.radar-table tr.selected td:first-child{padding-left:10px}
+.coin-cell{display:flex;align-items:center;gap:8px}
+.coin-icon{width:26px;height:26px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--accent);flex-shrink:0}
+.coin-name{font-weight:600;font-size:13px}
+.coin-sub{font-size:10px;color:var(--muted)}
+.score-cell{display:flex;align-items:center;gap:7px}
+.score-bar-wrap{width:44px;height:4px;background:var(--border2);border-radius:2px;overflow:hidden}
+.score-bar{height:100%;border-radius:2px}
+.bbadge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.04em;text-transform:uppercase}
+.bh{background:rgba(0,200,150,.15);color:var(--high)}
+.bp{background:rgba(123,110,246,.15);color:var(--probable)}
+.be{background:rgba(245,166,35,.12);color:var(--emerging)}
+.bw{background:rgba(232,117,74,.12);color:var(--watch)}
+.pos-wrap{display:flex;align-items:center;gap:7px}
+.pos-bar-outer{width:54px;height:6px;background:var(--border2);border-radius:3px;position:relative}
+.pos-marker{position:absolute;top:-3px;width:2px;height:12px;background:var(--accent);border-radius:1px;transform:translateX(-50%)}
+.tv-link{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--accent);text-decoration:none;padding:3px 7px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-bg)}
+.up{color:var(--bull)}.dn{color:var(--bear)}.sp{color:var(--bull)}.sn{color:var(--bear)}.sf{color:var(--muted)}
+.detail-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.detail-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.detail-coin{display:flex;align-items:center;gap:10px}
+.detail-symbol{font-size:17px;font-weight:700}
+.detail-price{font-size:12px;color:var(--text2);margin-top:2px}
+.close-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:4px}
+.close-btn:hover{color:var(--text)}
+.detail-body{flex:1;overflow-y:auto}
+.chart-wrap{height:260px;position:relative;background:var(--bg);border-bottom:1px solid var(--border);transition:height .15s ease}
+.chart-wrap.expanded{height:560px}
+.chart-expand-btn{position:absolute;top:8px;right:8px;z-index:5;background:rgba(30,32,53,.85);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}
+.chart-expand-btn:hover{color:var(--text);border-color:#7b6ef6}
+#detail-chart{width:100%;height:100%}
+.chart-legend{position:absolute;top:8px;left:10px;font-size:10px;color:var(--muted);z-index:10;pointer-events:none;display:flex;gap:12px}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:10px;height:2px;border-radius:1px}
+.ds{padding:14px 18px;border-bottom:1px solid var(--border)}
+.ds:last-child{border-bottom:none}
+.ds-title{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.score-display{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.score-big{font-size:34px;font-weight:700;line-height:1}
+.score-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.score-item{background:var(--surface2);border-radius:6px;padding:8px 10px}
+.si-label{font-size:10px;color:var(--muted);margin-bottom:2px}
+.si-value{font-size:14px;font-weight:600}
+.ch-viz{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px}
+.ch-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px}
+.ch-bar-wrap{height:20px;background:var(--surface2);border-radius:4px;position:relative;overflow:hidden}
+.ch-bar-fill{position:absolute;top:0;left:0;bottom:0;border-right:2px solid var(--bull);background:rgba(0,200,150,.06)}
+.ch-prices{display:flex;justify-content:space-between;font-size:10px;margin-top:6px}
+.expl{font-size:12px;color:var(--text2);line-height:1.6;background:var(--surface2);border-radius:6px;padding:10px 12px;border-left:3px solid var(--accent)}
+.inv-box{display:flex;align-items:center;justify-content:space-between;background:var(--bear-bg);border:1px solid rgba(232,117,74,.25);border-radius:6px;padding:10px 14px}
+.inv-label{font-size:11px;color:var(--muted)}
+.inv-value{font-size:15px;font-weight:700;color:var(--bear)}
+.inv-sub{font-size:10px;color:var(--muted);margin-top:1px}
+.tv-btn-lg{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border);border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:all .15s;font-family:inherit;cursor:pointer}
+.tv-btn-lg:hover{background:rgba(123,110,246,.2)}
+.state-view{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:var(--muted)}
+.spinner{width:30px;height:30px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-title{font-size:14px;font-weight:600;color:var(--text2)}
+.state-sub{font-size:12px;text-align:center;max-width:320px;line-height:1.6}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="logo"><div class="logo-dot"></div>Channel Radar</div>
+    <div class="scan-status"><div class="status-dot" id="status-dot"></div><span id="status-text">Initializing...</span></div>
+  </div>
+  <div class="nav-links">
+    <a href="https://rdwills02.github.io/BTC_Brief/" class="nav-link">Dashboard</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" class="nav-link accent">Methodology</a>
+  </div>
+  <div class="header-right">
+    <span class="last-update" id="last-update"></span>
+    <button class="btn btn-accent" id="diag-btn">Scan Details</button>
+    <button class="btn btn-publish" id="publish-btn" style="display:none">Publish Report</button>
+    <button class="btn btn-ghost" id="refresh-btn">Refresh</button>
+  </div>
+</header>
+
+<div class="diag-panel" id="diag-panel">
+  <div class="diag-title">Scan Details — live updating</div>
+  <div class="diag-grid" id="diag-grid"></div>
+  <div class="diag-funnel" id="diag-funnel"></div>
+</div>
+
+<div class="filters">
+  <span class="filter-label">Bucket</span>
+  <div class="bucket-filter">
+    <button class="bbtn a-all" id="fb-all">All</button>
+    <button class="bbtn" id="fb-high">High 90+</button>
+    <button class="bbtn" id="fb-probable">Probable 75+</button>
+    <button class="bbtn" id="fb-emerging">Emerging 60+</button>
+    <button class="bbtn" id="fb-watch">Watch 40+</button>
+  </div>
+  <select class="sort-sel" id="sort-sel">
+    <option value="score">Sort: Score</option>
+    <option value="position">Sort: Position (lower first)</option>
+    <option value="slope">Sort: Slope</option>
+    <option value="supportTouches">Sort: Touches</option>
+    <option value="containment">Sort: Containment</option>
+  </select>
+  <span class="scan-count" id="scan-count"></span>
+</div>
+
+<div class="thresh-bar">
+  <span class="filter-label">Thresholds</span>
+  <div class="tgroup"><span class="tlabel">Min touches</span>
+    <select class="tsel" id="t-touches"><option value="2">2+</option><option value="3" selected>3+</option><option value="4">4+</option></select>
+  </div>
+  <div class="tgroup"><span class="tlabel">Min contain</span>
+    <select class="tsel" id="t-contain"><option value="0">Any</option><option value="40">40%+</option><option value="50" selected>50%+</option><option value="60">60%+</option><option value="70">70%+</option></select>
+  </div>
+  <div class="tgroup"><span class="tlabel">Slope</span>
+    <select class="tsel" id="t-slope"><option value="any">Any</option><option value="positive" selected>Positive only</option><option value="flat">Flat or positive</option></select>
+  </div>
+  <div class="tgroup"><span class="tlabel">Min score</span>
+    <select class="tsel" id="t-score"><option value="0">Off</option><option value="40" selected>40+</option><option value="60">60+</option><option value="75">75+</option></select>
+  </div>
+  <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
+    <input type="checkbox" id="show-all"> Show all
+  </label>
+</div>
+
+<div class="cached-bar" id="cached-bar" style="display:none">
+  <span class="filter-label" style="color:var(--neut)">Cached</span>
+  <span id="cached-bar-text"></span>
+</div>
+
+<div class="sincelast-bar" id="sincelast-bar" style="display:none">
+  <span class="filter-label">Since Last Scan</span>
+  <span id="sincelast-content"></span>
+</div>
+
+<div class="layout" id="layout">
+  <div class="main-panel">
+    <div class="table-wrap">
+      <table class="radar-table">
+        <thead><tr>
+          <th>Coin</th><th>Score</th><th>Bucket</th>
+          <th>S Touches</th><th>R Touches</th><th>Contain</th>
+          <th>Slope/bar</th><th>Position</th><th>24h</th><th>TV</th>
+        </tr></thead>
+        <tbody id="table-body">
+          <tr><td colspan="10"><div class="state-view">
+            <div class="spinner"></div>
+            <div class="state-title">Scanning...</div>
+            <div class="state-sub">Fetching top 100 alts from CoinGecko then detecting channels. Takes about 90 seconds.</div>
+          </div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detail-panel" style="display:none">
+    <div class="detail-header">
+      <div class="detail-coin">
+        <div class="coin-icon" id="dp-icon"></div>
+        <div><div class="detail-symbol" id="dp-symbol"></div><div class="detail-price" id="dp-price"></div></div>
+      </div>
+      <button class="close-btn" id="close-btn">x</button>
+    </div>
+    <div class="detail-body">
+      <div class="chart-wrap" id="chart-wrap">
+        <button class="chart-expand-btn" id="chart-expand-btn" type="button">Expand</button>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--bull)"></div><span>Support</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--bear)"></div><span>Resistance</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(232,117,74,.4)"></div><span>Invalidation</span></div>
+        </div>
+        <div id="detail-chart"></div>
+      </div>
+      <div class="ds">
+        <div class="ds-title">Channel Score</div>
+        <div class="score-display"><div class="score-big" id="dp-score"></div><div><div id="dp-badge"></div><div style="font-size:11px;color:var(--muted);margin-top:4px" id="dp-tf"></div></div></div>
+        <div class="score-grid" id="dp-score-grid"></div>
+      </div>
+      <div class="ds">
+        <div class="ds-title">Channel Position</div>
+        <div class="ch-viz">
+          <div class="ch-labels"><span>Support</span><span id="dp-pos-label" style="color:var(--accent);font-weight:600"></span><span>Resistance</span></div>
+          <div class="ch-bar-wrap"><div class="ch-bar-fill" id="dp-pos-bar"></div></div>
+          <div class="ch-prices"><span id="dp-sup"></span><span style="color:var(--accent);font-weight:600" id="dp-cur"></span><span id="dp-res"></span></div>
+        </div>
+      </div>
+      <div class="ds"><div class="ds-title">Analysis</div><div class="expl" id="dp-expl"></div></div>
+      <div class="ds">
+        <div class="ds-title">Confluence Signals (from daily OHLC)</div>
+        <div id="dp-confluence"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Proprietary Brett indicators (ERI, TSI, RSI Pro, Buy Blocks, Order Blocks, Dynamic ATR) are not computable from public OHLC — confirm those in TradingView.</div>
+      </div>
+      <div class="ds">
+        <div class="ds-title">Invalidation</div>
+        <div class="inv-box"><div><div class="inv-label">Channel breaks below</div><div class="inv-value" id="dp-inv"></div><div class="inv-sub" id="dp-inv-pct"></div></div><div style="font-size:22px">!</div></div>
+      </div>
+      <div class="ds"><a class="tv-btn-lg" id="dp-tv" href="#" target="_blank">Open in TradingView - apply Brett indicators</a><a class="tv-btn-lg" id="dp-cg" href="#" target="_blank" style="margin-top:8px;background:rgba(0,200,150,.1);color:var(--bull);border-color:rgba(0,200,150,.3)">View on CoinGecko</a></div>
+    </div>
+  </div>
+</div>
+
+<script src="channel-core.js"></script>
+<script src="universe-core.js"></script>
+<script>
+// CONFIG - replace YOUR_API_KEY_HERE with your CoinGecko Demo API key
+var CG_BASE = 'https://api.coingecko.com/api/v3';
+var CG_KEY = 'CG-YJMCUm9ZMwMfq8YuXac6RZ8P';
+// PIVOT_LB in channel-core.js
+// TOUCH_TOL in channel-core.js
+var GITHUB_REPO = 'rdwills02/BTC_Brief';
+var GITHUB_FILE = 'radar-report.html';
+var GITHUB_API = 'https://api.github.com';
+
+// STABLES in universe-core.js
+
+// Category-based exclusion (2-call approach). These are CoinGecko category slugs.
+// 'exchange-based-tokens' and 'real-world-assets-rwa' were removed 2026-07-03: verified
+// live that they catch legitimate top-100 alts (BNB, XLM, LINK, CRO, UNI, JUP, ALGO,
+// XDC, QNT, ONDO, INJ) alongside the actual noise (WBT, GT, LEO). Those categories are
+// too broad on CoinGecko's side to use as a blanket filter. Genuine single-exchange
+// tokens and other confirmed noise are excluded by symbol below instead (EXCLUDE_SYMBOLS),
+// based on Ryan's manual coin audit from the 2026-07-03 session.
+// CATEGORY_EXCLUDE in universe-core.js
+
+// Manually-vetted noise symbols (confirmed not real/tradeable alts, or single-exchange
+// utility tokens) from the 2026-07-03 coin audit. Lowercase, matched after zero-width
+// char stripping. Keep appending here as new noise is confirmed — do NOT reintroduce
+// broad category exclusion for these.
+// EXCLUDE_SYMBOLS in universe-core.js
+
+// Strips zero-width / invisible unicode chars that can be used to dodge name-based
+// filtering (e.g. a coin named "Stable" with ZWSPs embedded, cgId stable-2, score 95
+// on the 2026-07-03 verify run — passed every text filter until this was added).
+// normalizeStr in universe-core.js
+
+// STATE
+var allResults = [];
+var filtered = [];
+var activeFilter = 'all';
+var sortCol = 'score';
+var sortDir = -1;
+var selectedKey = null;
+var detailChart = null;
+var scanning = false;
+var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
+// Computed once per scan in runScan() from radar.html's own localStorage history (see
+// computeScanDiff below). publishReport() reuses THIS same object for the pushed
+// report's diff bar instead of independently re-deriving it from GitHub - single
+// source of truth, computed once, used in both places.
+var lastScanDiff = {hasPrevious:false, dropped:[], added:[]};
+
+// TV link fallback chain: Kraken primary, Coinbase secondary, Binance last resort.
+// Verified live 2026-07-03: 4/34 candidates (DEXE, BSV, KITE, GRAM) had no Kraken pair
+// and showed "This symbol doesn't exist" in TradingView. Coinbase covered KITE.
+// Binance.com's public API is geo-blocked for US IPs (confirmed while building this -
+// api.binance.com fetch fails from a US network), so the Binance tier is NOT live-
+// verified, just used as an unverified last resort for the rare remainder (DEXE/BSV/GRAM-type).
+var KRAKEN_PAIRS = null;
+var COINBASE_PAIRS = null;
+
+async function fetchTVFallbackSets() {
+  KRAKEN_PAIRS = new Set();
+  COINBASE_PAIRS = new Set();
+  try {
+    var r1 = await fetch('https://api.kraken.com/0/public/AssetPairs');
+    if(r1.ok) {
+      var d1 = await r1.json();
+      var pairs = (d1 && d1.result) || {};
+      for(var k in pairs) { if(pairs[k].altname) KRAKEN_PAIRS.add(pairs[k].altname.toUpperCase()); }
+    }
+  } catch(e) {}
+  try {
+    var r2 = await fetch('https://api.exchange.coinbase.com/products');
+    if(r2.ok) {
+      var d2 = await r2.json();
+      if(Array.isArray(d2)) d2.forEach(function(p){ if(p.id) COINBASE_PAIRS.add(p.id.toUpperCase()); });
+    }
+  } catch(e) {}
+}
+
+function tvLink(symbol) {
+  if(KRAKEN_PAIRS && KRAKEN_PAIRS.has(symbol+'USD')) return {exchange:'KRAKEN', pair:symbol+'USD'};
+  if(COINBASE_PAIRS && COINBASE_PAIRS.has(symbol+'-USD')) return {exchange:'COINBASE', pair:symbol+'-USD'};
+  return {exchange:'BINANCE', pair:symbol+'USDT'};
+}
+
+function fmt(n,d) { d=d||2; return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtP(n) { return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%'; }
+function sleep(ms) { return new Promise(function(r){setTimeout(r,ms);}); }
+
+// --- Confluence signals (all computed from daily OHLC we already fetch) ---
+function confluenceList(r) {
+  var b=[];
+  if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)'});
+  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)'});
+  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  return b;
+}
+function confluenceHTML(r) {
+  var b=confluenceList(r);
+  if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
+  return b.map(function(x){return '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px">'+x.t+'</span>';}).join('');
+}
+
+function getBucket(s) {
+  if(s>=90) return {label:'High',cls:'bh'};
+  if(s>=75) return {label:'Probable',cls:'bp'};
+  if(s>=60) return {label:'Emerging',cls:'be'};
+  if(s>=40) return {label:'Watch',cls:'bw'};
+  return {label:'Weak',cls:''};
+}
+function scoreColor(s) {
+  if(s>=90) return 'var(--high)';
+  if(s>=75) return 'var(--probable)';
+  if(s>=60) return 'var(--emerging)';
+  return 'var(--watch)';
+}
+function setStatus(state, text) {
+  var d = document.getElementById('status-dot');
+  d.className = 'status-dot' + (state==='scanning'?' scanning':state==='error'?' error':state==='idle'?' idle':'');
+  document.getElementById('status-text').textContent = text;
+}
+function getToken() { return localStorage.getItem('gh_token_radar'); }
+
+// Since-last-scan tracking, local to radar.html only. Deliberately independent of
+// radar-report.html/GitHub - radar.html is the source of truth Ryan actually uses, and
+// must never read from or depend on the report it hands off to other people. History is
+// kept entirely in this browser's localStorage.
+var SCAN_HISTORY_KEY = 'radar_scan_history';
+
+// Shared shape for the localStorage cache (this key) AND the candidates pushed to
+// radar-report.html - kept identical so both stay in sync automatically. Excludes
+// chart-only geometry (candles/pivotLows/supSlope/supIntercept) to keep the cache well
+// under 5MB. Detail charts require a fresh in-session scan - see openDetail().
+function toLightCandidate(r) {
+  return {symbol:r.symbol,name:r.name,cgId:r.cgId,price:r.price,change24h:r.change24h,score:r.score,
+    supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,
+    position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,
+    channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,
+    explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,
+    threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category};
+}
+function getPrevScanHistory() {
+  try {
+    var raw = localStorage.getItem(SCAN_HISTORY_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) { return null; }
+}
+function saveScanHistory(results) {
+  try {
+    localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      candidates: results.map(toLightCandidate),
+      diag: diag
+    }));
+  } catch(e) {}
+}
+function computeScanDiff(prev, current) {
+  if(!prev || !prev.candidates) return {hasPrevious:false, dropped:[], added:[]};
+  var currSymbols = current.map(function(c){return c.symbol;});
+  var prevSymbols = prev.candidates.map(function(c){return c.symbol;});
+  return {
+    hasPrevious: true,
+    dropped: prev.candidates.filter(function(p){return currSymbols.indexOf(p.symbol)<0;}),
+    added: current.filter(function(c){return prevSymbols.indexOf(c.symbol)<0;}).map(function(c){return {symbol:c.symbol,name:c.name,score:c.score};})
+  };
+}
+function renderSinceLastScan(diff) {
+  var bar = document.getElementById('sincelast-bar');
+  if(!diff.hasPrevious) { bar.style.display='none'; return; }
+  var dropHTML = diff.dropped.length ? diff.dropped.map(function(d){return '<span class="sl-chip sl-drop">'+d.symbol+'</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
+  var addHTML = diff.added.length ? diff.added.map(function(a){return '<span class="sl-chip sl-add" data-symbol="'+a.symbol+'" style="cursor:pointer" title="Jump to '+a.symbol+'">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="color:var(--muted)">none</span>';
+  document.getElementById('sincelast-content').innerHTML =
+    '<span style="color:var(--text2);margin-right:6px">Dropped ('+diff.dropped.length+', channel no longer tradable):</span>'+dropHTML+
+    '<span style="color:var(--text2);margin:0 6px 0 14px">Added ('+diff.added.length+'):</span>'+addHTML;
+  bar.style.display='flex';
+}
+
+// Clicking an "Added" chip in the Since Last Scan bar jumps to that coin's row/card:
+// forces filters open (all-bucket, show-all) so the row is guaranteed visible regardless
+// of current filter state, scrolls it into view, highlights it, and opens its detail panel.
+function jumpToAddedCoin(symbol) {
+  var r = allResults.find(function(x){return x.symbol===symbol;});
+  if(!r) return;
+  setFilter('all');
+  var sa = document.getElementById('show-all');
+  if(!sa.checked) { sa.checked = true; applyFilters(); }
+  var tr = document.querySelector('.radar-table tr[data-key="'+symbol+'"]');
+  if(tr) tr.scrollIntoView({block:'center', behavior:'smooth'});
+  selectedKey = symbol;
+  document.querySelectorAll('.radar-table tr').forEach(function(row){row.classList.toggle('selected', row.dataset.key===symbol);});
+  openDetail(r);
+}
+
+async function cgFetch(path, retries) {
+  retries = retries === undefined ? 3 : retries;
+  try {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    var url = CG_BASE + path + sep + 'x_cg_demo_api_key=' + CG_KEY;
+    var r = await fetch(url);
+    if(r.status === 429) {
+      if(retries <= 0) return null;
+      await sleep(15000);
+      return cgFetch(path, retries-1);
+    }
+    if(!r.ok) return null;
+    return r.json();
+  } catch(e) { return null; }
+}
+
+async function fetchExcludedIds() {
+  // 2 category-filtered market calls -> set of coin ids to exclude.
+  var excluded = {};
+  for(var i=0;i<CATEGORY_EXCLUDE.length;i++) {
+    var d = await cgFetch('/coins/markets?vs_currency=usd&category='+CATEGORY_EXCLUDE[i]+'&per_page=250&page=1&sparkline=false');
+    if(d && Array.isArray(d)) {
+      for(var j=0;j<d.length;j++){ if(!excluded[d[j].id]) excluded[d[j].id]=CATEGORY_EXCLUDE[i]; }
+    }
+    await sleep(700);
+  }
+  return excluded;
+}
+
+// Display category badges (radar-report cards + detail panel). Same technique as
+// fetchExcludedIds: one /coins/markets?category=X call per slug, build a coinId->label
+// map. First matching slug in the array wins (a coin can be in many CoinGecko
+// categories - this picks one representative label, not an exhaustive list).
+// Slugs verified live 2026-07-03 against CoinGecko's category list.
+// Order matters: first match wins, and most coins are tagged 'layer-1' by CoinGecko
+// even when a more specific/interesting label applies (e.g. Monero is tagged both
+// 'layer-1' and 'privacy-coins' - verified live 2026-07-03). Specific categories are
+// listed first so they win over the generic layer-1/layer-2 catch-alls.
+var DISPLAY_CATEGORIES = [
+  {slug:'privacy-coins', label:'Privacy Coin'},
+  {slug:'meme-token', label:'Meme'},
+  {slug:'decentralized-finance-defi', label:'DeFi'},
+  {slug:'artificial-intelligence', label:'AI'},
+  {slug:'oracle', label:'Oracle'},
+  {slug:'layer-2', label:'Layer 2'},
+  {slug:'layer-1', label:'Layer 1'}
+];
+var CATEGORY_LABELS = {};
+
+async function fetchDisplayCategories() {
+  CATEGORY_LABELS = {};
+  for(var i=0;i<DISPLAY_CATEGORIES.length;i++) {
+    var d = await cgFetch('/coins/markets?vs_currency=usd&category='+DISPLAY_CATEGORIES[i].slug+'&per_page=250&page=1&sparkline=false');
+    if(d && Array.isArray(d)) {
+      for(var j=0;j<d.length;j++){ if(!CATEGORY_LABELS[d[j].id]) CATEGORY_LABELS[d[j].id]=DISPLAY_CATEGORIES[i].label; }
+    }
+    await sleep(700);
+  }
+}
+
+async function buildUniverse() {
+  var excluded = await fetchExcludedIds();
+  var data = await cgFetch('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1&sparkline=false&price_change_percentage=24h');
+  if(!data) return [];
+  var alts = data.filter(function(c) {
+    return qualifiesForUniverse(c, excluded, diag);  // shared: universe-core.js
+  }).slice(0,100);
+  diag.universe = alts.length;
+  return alts;
+}
+
+async function fetchOHLC(cgId) {
+  var data = await cgFetch('/coins/'+cgId+'/ohlc?vs_currency=usd&days=365');
+  if(!data || !Array.isArray(data) || data.length < 30) return null;
+  return data.map(function(c) { return {time:Math.floor(c[0]/1000),open:c[1],high:c[2],low:c[3],close:c[4]}; });
+}
+
+
+
+
+function buildExpl(r, name) {
+  var pos = r.position<=0.33?'lower third (near support)':r.position<=0.66?'middle of channel':'upper third (near resistance)';
+  var sl = r.isFlat?'flat':r.slope>0?'ascending':'descending';
+  return name+' shows a '+sl+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. Price is in the '+pos+'. '+(r.position<=0.33&&r.slope>=0?'Near support in ascending channel may offer favorable risk/reward. Validate with Brett indicators in TradingView.':'Consider waiting for a pullback toward support before entry.');
+}
+
+async function scanCoin(coin) {
+  var ohlc = await fetchOHLC(coin.id);
+  if(!ohlc) return null;
+  diag.ohlcOk++;
+  var ch = detectChannel(ohlc, diag);
+  if(!ch) return null;
+  diag.candidates++;
+  ch.symbol = coin.symbol.toUpperCase();
+  ch.name = coin.name;
+  ch.cgId = coin.id;
+  ch.price = coin.current_price;
+  ch.change24h = coin.price_change_percentage_24h || 0;
+  ch.explanation = buildExpl(ch, coin.name);
+  var tv = tvLink(ch.symbol);
+  ch.tvExchange = tv.exchange;
+  ch.tvPair = tv.pair;
+  ch.category = CATEGORY_LABELS[coin.id] || null;
+  return ch;
+}
+
+async function runScan() {
+  if(scanning) return;
+  scanning = true;
+  diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
+  var btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = 'Scanning...';
+  document.getElementById('publish-btn').style.display = 'none';
+  setStatus('scanning', 'Fetching top 100 alts...');
+  allResults = [];
+
+  // fetchTVFallbackSets hits Kraken/Coinbase (no CoinGecko rate-limit impact), so it
+  // runs alongside fetchDisplayCategories. buildUniverse (which does its own CoinGecko
+  // category calls internally) waits until after, to avoid bursting the CG rate limit.
+  await Promise.all([fetchTVFallbackSets(), fetchDisplayCategories()]);
+  var coins = await buildUniverse();
+  if(!coins.length) {
+    setStatus('error', 'Failed to fetch universe - check API key');
+    btn.disabled=false; btn.textContent='Refresh'; scanning=false; return;
+  }
+
+  setStatus('scanning', 'Scanning '+coins.length+' coins...');
+  for(var i=0; i<coins.length; i++) {
+    var r = await scanCoin(coins[i]);
+    if(r) allResults.push(r);
+    setStatus('scanning', (i+1)+'/'+coins.length+' scanned - '+allResults.length+' channels found');
+    if(document.getElementById('diag-panel').classList.contains('visible')) renderDiag();
+    if(i < coins.length-1) await sleep(700);
+  }
+
+  allResults.sort(function(a,b){return b.score-a.score;});
+  lastScanDiff = computeScanDiff(getPrevScanHistory(), allResults);
+  renderSinceLastScan(lastScanDiff);
+  saveScanHistory(allResults);
+  applyFilters();
+  renderDiag();
+  setStatus('live', allResults.length+' channels - '+coins.length+' scanned');
+  document.getElementById('last-update').textContent = 'Updated '+new Date().toLocaleTimeString();
+  document.getElementById('cached-bar').style.display = 'none';
+  btn.disabled=false; btn.textContent='Refresh';
+  scanning=false;
+  if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
+}
+
+function renderDiag() {
+  var items = [
+    {label:'Universe',value:diag.universe,c:'var(--text)'},
+    {label:'Coins Excluded (low 24h volume)',value:diag.volExcluded,c:'var(--bear)'},
+    {label:'Category excl',value:diag.catExcluded,c:'var(--bear)'},
+    {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
+    {label:'Rail pairs',value:diag.railPairs,c:'var(--text2)'},
+    {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
+    {label:'3+ touches',value:diag.touches,c:'var(--neut)'},
+    {label:'Contain 55%+',value:diag.containment,c:'var(--neut)'},
+    {label:'Candidates',value:diag.candidates,c:'var(--high)'}
+  ];
+  document.getElementById('diag-grid').innerHTML = items.map(function(i) {
+    return '<div class="diag-item"><div class="diag-label">'+i.label+'</div><div class="diag-value" style="color:'+i.c+'">'+i.value+'</div></div>';
+  }).join('');
+  document.getElementById('diag-funnel').innerHTML = items.map(function(i) {
+    return '<span style="color:'+i.c+';font-weight:600">'+i.value+' '+i.label+'</span>';
+  }).join(' -> ');
+}
+
+function getThresh() {
+  return {
+    minTouches: parseInt(document.getElementById('t-touches').value),
+    minContain: parseInt(document.getElementById('t-contain').value),
+    slopeMode: document.getElementById('t-slope').value,
+    minScore: parseInt(document.getElementById('t-score').value),
+    showAll: document.getElementById('show-all').checked
+  };
+}
+
+function applyFilters() {
+  var t = getThresh();
+  filtered = allResults.filter(function(r) {
+    if(!t.showAll) {
+      if(r.supportTouches < t.minTouches) return false;
+      if(r.containment < t.minContain) return false;
+      if(t.slopeMode==='positive' && r.slope<0) return false;
+      if(t.slopeMode==='flat' && r.slope<-0.1) return false;
+      if(r.score < t.minScore) return false;
+    }
+    if(activeFilter==='high' && r.score<90) return false;
+    if(activeFilter==='probable' && (r.score<75||r.score>=90)) return false;
+    if(activeFilter==='emerging' && (r.score<60||r.score>=75)) return false;
+    if(activeFilter==='watch' && (r.score<40||r.score>=60)) return false;
+    return true;
+  });
+  sortFiltered();
+  renderTable();
+  document.getElementById('scan-count').textContent = filtered.length+' of '+allResults.length;
+}
+
+function sortFiltered() {
+  filtered.sort(function(a,b) {
+    var av=a[sortCol], bv=b[sortCol];
+    if(sortCol==='position') return av-bv;
+    if(typeof av==='string') return sortDir*av.localeCompare(bv);
+    return sortDir*((av||0)-(bv||0));
+  });
+}
+
+function renderTable() {
+  var tbody = document.getElementById('table-body');
+  if(!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(function(r) {
+    var bk=getBucket(r.score), sc=scoreColor(r.score);
+    var pw=Math.round(r.position*100);
+    var posLbl=r.position<=0.33?'Lower':r.position<=0.66?'Mid':'Upper';
+    var cc=r.change24h>=0?'up':'dn';
+    var scls=r.slope>0.05?'sp':r.slope<-0.05?'sn':'sf';
+    var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
+    return '<tr data-key="'+r.symbol+'">'+
+      '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
+      '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
+      '<td><span class="bbadge '+bk.cls+'">'+bk.label+'</span></td>'+
+      '<td style="color:var(--bull)">'+r.supportTouches+'</td>'+
+      '<td style="color:var(--text2)">'+r.resTouches+'</td>'+
+      '<td style="color:'+(r.containment>75?'var(--bull)':'var(--text2)')+'">'+r.containment+'%</td>'+
+      '<td class="'+scls+'">'+(r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</td>'+
+      '<td><div class="pos-wrap"><div class="pos-bar-outer"><div class="pos-marker" style="left:'+pw+'%"></div></div><span style="font-size:11px;color:var(--text2)">'+posLbl+'</span></div></td>'+
+      '<td class="'+cc+'">'+fmtP(r.change24h)+'</td>'+
+      '<td><a class="tv-link" href="'+tvUrl+'" target="_blank" onclick="event.stopPropagation()">TV</a></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function openDetail(r) {
+  document.getElementById('detail-panel').style.display='flex';
+  document.getElementById('layout').classList.add('open');
+  document.getElementById('dp-icon').textContent=r.symbol.substring(0,3);
+  document.getElementById('dp-symbol').textContent=r.symbol;
+  document.getElementById('dp-price').textContent=fmt(r.price,4)+'  '+fmtP(r.change24h);
+  var sc=scoreColor(r.score), bk=getBucket(r.score);
+  document.getElementById('dp-score').textContent=r.score;
+  document.getElementById('dp-score').style.color=sc;
+  document.getElementById('dp-badge').innerHTML='<span class="bbadge '+bk.cls+'">'+bk.label+'</span>'+(r.category?' <span class="bbadge" style="background:rgba(157,163,180,.12);color:var(--text2)">'+r.category+'</span>':'');
+  document.getElementById('dp-tf').textContent='Daily - '+r.name;
+  document.getElementById('dp-score-grid').innerHTML=
+    '<div class="score-item"><div class="si-label">Support touches</div><div class="si-value" style="color:var(--bull)">'+r.supportTouches+'</div></div>'+
+    '<div class="score-item"><div class="si-label">Resistance touches</div><div class="si-value">'+r.resTouches+'</div></div>'+
+    '<div class="score-item"><div class="si-label">Containment</div><div class="si-value" style="color:'+(r.containment>75?'var(--bull)':'var(--neut)')+'">'+r.containment+'%</div></div>'+
+    '<div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:'+(r.slope>=0?'var(--bull)':'var(--bear)')+'">'+( r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
+    '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+
+    '<div class="score-item"><div class="si-label">Price vs EMA</div><div class="si-value" style="color:'+(r.emaState==='above_both'?'var(--bull)':r.emaState==='above_50'?'var(--neut)':'var(--bear)')+'">'+(r.emaState==='above_both'?'Above 21 & 50':r.emaState==='above_50'?'Above 50':'Below 50')+'</div></div>'+
+    '<div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:'+sc+'">'+r.score+'/100</div></div>';
+  var pw=Math.round(r.position*100);
+  document.getElementById('dp-pos-label').textContent=r.position<=0.33?'Lower third':r.position<=0.66?'Middle':'Upper third';
+  document.getElementById('dp-pos-bar').style.width=pw+'%';
+  document.getElementById('dp-sup').textContent=fmt(r.supportNow,4);
+  document.getElementById('dp-cur').textContent=fmt(r.price,4);
+  document.getElementById('dp-res').textContent=fmt(r.resistNow,4);
+  document.getElementById('dp-expl').textContent=r.explanation;
+  var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
+  document.getElementById('dp-inv').textContent=fmt(r.invalidation,4);
+  document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
+  document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
+  document.getElementById('dp-cg').href='https://www.coingecko.com/en/coins/'+r.cgId;
+  document.getElementById('dp-confluence').innerHTML=confluenceHTML(r);
+  if(r.candles) {
+    buildChart(r);
+  } else {
+    // Cached candidate - chart-only geometry (candles/pivotLows/supSlope/supIntercept)
+    // isn't retained in the localStorage cache to keep it small. Re-run a scan this
+    // session to view the chart, per Ryan's 2026-07-03 call to keep the cache lean.
+    if(detailChart){detailChart.remove();detailChart=null;}
+    document.getElementById('detail-chart').innerHTML = '<div class="state-view" style="height:100%"><div class="state-title">No chart for cached data</div><div class="state-sub">Run scan for a fresh session to view this coin\'s chart.</div></div>';
+  }
+}
+
+function closePanel() {
+  document.getElementById('detail-panel').style.display='none';
+  document.getElementById('layout').classList.remove('open');
+  selectedKey=null;
+  var rows=document.querySelectorAll('.radar-table tr');
+  for(var i=0;i<rows.length;i++) rows[i].classList.remove('selected');
+  if(detailChart){detailChart.remove();detailChart=null;}
+}
+
+function buildChart(r) {
+  var container=document.getElementById('detail-chart');
+  container.innerHTML='';
+  if(detailChart){detailChart.remove();detailChart=null;}
+  var chart=LightweightCharts.createChart(container,{
+    width:container.clientWidth,height:container.clientHeight,
+    layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},
+    grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    rightPriceScale:{borderColor:'#1e2035'},
+    timeScale:{borderColor:'#1e2035',timeVisible:true}
+  });
+  detailChart=chart;
+  var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
+  cs.setData(r.candles);
+  var n=r.candles.length, startCI=r.lastIdx-(n-1);
+  var supData=r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)};});
+  var resData=r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)+r.channelH};});
+  chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:true,title:'Support'}).setData(supData);
+  chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:true,title:'Resistance'}).setData(resData);
+  chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
+  var markers=r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
+  if(markers.length) cs.setMarkers(markers);
+  chart.timeScale().fitContent();
+  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++)chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});}).observe(container);
+}
+
+function buildReportHTML(data) {
+  var ts = data.timestamp;
+  var cands = data.candidates;
+  var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
+  var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
+  var rows = cands.map(function(r) {
+    var bk = r.score>=90?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'};
+    var sc = r.score>=90?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
+    var pw = Math.round(r.position*100);
+    var posLbl = r.position<=0.33?'Lower third (near support)':r.position<=0.66?'Middle of channel':'Upper third (near resistance)';
+    var slopeColor = r.slope>0.05?'#00c896':r.slope<-0.05?'#e8754a':'#6b7280';
+    var chType = r.isFlat?'Flat channel':r.slope>=0?'Ascending channel':'Descending channel';
+    var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
+    var cgUrl='https://www.coingecko.com/en/coins/'+r.cgId;
+    var invPct = ((r.invalidation-r.price)/r.price*100).toFixed(1);
+    return '<div class="radar-card" id="card-'+r.symbol+'" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+        '<div style="display:flex;align-items:center;gap:10px">'+
+          '<div style="width:32px;height:32px;border-radius:50%;background:#20223a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#7b6ef6">'+r.symbol.substring(0,3)+'</div>'+
+          '<div><div style="font-size:16px;font-weight:700">'+r.symbol+'</div><div style="font-size:11px;color:#6b7280">'+r.name+' - Daily - '+chType+'</div></div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:10px">'+
+          (r.category?'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(157,163,180,.12);color:#9da3b4;border:1px solid rgba(157,163,180,.25)">'+r.category+'</span>':'')+
+          '<div style="font-size:22px;font-weight:700;color:'+sc+'">'+r.score+'</div>'+
+          '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+bk.c+';color:'+bk.tc+'">'+bk.l+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:600">'+fmt2(r.price,4)+'</div><div style="font-size:10px;color:'+(r.change24h>=0?'#00c896':'#e8754a')+'">'+fmtP2(r.change24h)+' 24h</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">S Touches</div><div style="font-size:13px;font-weight:600;color:#00c896">'+r.supportTouches+'</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">R Touches</div><div style="font-size:13px;font-weight:600">'+r.resTouches+'</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Containment</div><div style="font-size:13px;font-weight:600;color:'+(r.containment>75?'#00c896':'#f5a623')+'">'+r.containment+'%</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Slope/bar</div><div style="font-size:13px;font-weight:600;color:'+slopeColor+'">'+(r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
+      '</div>'+
+      '<div style="margin-bottom:12px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-bottom:4px"><span>Support '+fmt2(r.supportNow,4)+'</span><span style="color:#7b6ef6;font-weight:600">'+posLbl+'</span><span>Resistance '+fmt2(r.resistNow,4)+'</span></div>'+
+        '<div style="height:6px;background:#2a2b3d;border-radius:3px;position:relative"><div style="position:absolute;top:-3px;width:2px;height:12px;background:#7b6ef6;border-radius:1px;transform:translateX(-50%);left:'+pw+'%"></div></div>'+
+        '<div style="font-size:10px;color:#7b6ef6;margin-top:4px">'+fmt2(r.price,4)+' current</div>'+
+      '</div>'+
+      '<div class="report-chart-wrap" style="position:relative;height:220px;margin-bottom:12px;background:#0b0c14;border:1px solid #1e2035;border-radius:6px;overflow:hidden">'+
+        '<button class="rchart-expand" data-symbol="'+r.symbol+'" type="button" style="position:absolute;top:6px;right:6px;z-index:5;background:rgba(30,32,53,.85);border:1px solid #2a2b3d;color:#9da3b4;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer">Expand</button>'+
+        '<div class="report-chart" id="rchart-'+r.symbol+'" style="width:100%;height:100%"></div>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6;margin-bottom:12px">'+r.explanation+'</div>'+
+      '<div style="margin-bottom:12px">'+
+        '<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Confluence (daily OHLC)</div>'+
+        confluenceHTML(r)+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+        '<a href="'+tvUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(123,110,246,.12);color:#7b6ef6;border:1px solid rgba(123,110,246,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in TradingView - apply Brett indicators</a>'+
+        '<a href="'+cgUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(0,200,150,.1);color:#00c896;border:1px solid rgba(0,200,150,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">View on CoinGecko</a>'+
+        '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(232,117,74,.1);border:1px solid rgba(232,117,74,.25);border-radius:6px;font-size:11px;color:#e8754a;font-weight:600">Invalidation: '+fmt2(r.invalidation,4)+' ('+invPct+'%)</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  var highCount = cands.filter(function(c){return c.score>=90;}).length;
+  var probCount = cands.filter(function(c){return c.score>=75&&c.score<90;}).length;
+  var lowerThird = cands.filter(function(c){return c.position<=0.33&&c.slope>=0;}).length;
+
+  // Since-last-scan diff bar: dropped candidates (channel no longer tradable - fell out
+  // of position/containment/touches/etc since the last run) vs newly added ones.
+  // data.hasPrevious/data.dropped/data.added are NOT computed here or independently
+  // re-derived from GitHub - publishReport() passes through radar.html's own
+  // `lastScanDiff` (computed once per scan against radar.html's localStorage history).
+  // Single source of truth. Skipped entirely if radar.html has no prior scan in its
+  // local history yet (e.g. first run ever, or localStorage was cleared).
+  var diffBar = '';
+  if(data.hasPrevious) {
+    var dropped = data.dropped || [];
+    var added = data.added || [];
+    var droppedHTML = dropped.length ? dropped.map(function(d){return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(232,117,74,.12);color:#e8754a;font-size:11px;font-weight:600">'+d.symbol+'</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
+    // Added chips are clickable: data-symbol + jump-card class let the script block below
+    // scroll to and highlight that coin's card further down the same static page.
+    var addedHTML = added.length ? added.map(function(a){return '<span class="jump-card" data-symbol="'+a.symbol+'" style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:4px;background:rgba(0,200,150,.12);color:#00c896;font-size:11px;font-weight:600;cursor:pointer" title="Jump to '+a.symbol+'">'+a.symbol+' ('+a.score+')</span>';}).join('') : '<span style="font-size:11px;color:#6b7280">none</span>';
+    diffBar = '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:16px 20px;margin-bottom:20px">'+
+      '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:10px">Since Last Scan</div>'+
+      '<div style="margin-bottom:10px"><span style="font-size:11px;color:#9da3b4;font-weight:600">Dropped out ('+dropped.length+' - channel no longer tradable):</span><div style="margin-top:4px">'+droppedHTML+'</div></div>'+
+      '<div><span style="font-size:11px;color:#9da3b4;font-weight:600">Newly added ('+added.length+'):</span><div style="margin-top:4px" id="added-chip-wrap">'+addedHTML+'</div></div>'+
+    '</div>';
+  }
+
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Channel Radar Report</title><script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"><\/script></head>'+
+  '<body style="background:#0b0c14;color:#e2e4ef;font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;margin:0">'+
+  '<div style="background:#13141f;border-bottom:1px solid #1e2035;padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100">'+
+    '<div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:#7b6ef6"></div><span style="font-size:14px;font-weight:700">Channel Radar Report</span></div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<a href="https://rdwills02.github.io/BTC_Brief/" style="font-size:11px;color:#6b7280;text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid #2a2b3d;background:#13141f">Dashboard</a>'+
+      '<a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" style="font-size:11px;color:#7b6ef6;text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid rgba(123,110,246,.3);background:rgba(123,110,246,.12)">Methodology</a>'+
+      '<a href="https://rdwills02.github.io/BTC_Brief/glossary.html" style="font-size:11px;color:#6b7280;text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid #2a2b3d;background:#13141f">Glossary</a>'+
+    '</div>'+
+  '</div>'+
+  '<div style="max-width:900px;margin:0 auto;padding:28px 24px">'+
+  '<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">'+
+    '<span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Filter by score:</span>'+
+    '<select id="score-filter" style="background:#13141f;border:1px solid #2a2b3d;border-radius:6px;padding:4px 10px;color:#9da3b4;font-size:12px;font-family:inherit;outline:none;cursor:pointer">'+
+      '<option value="0">All scores</option>'+
+      '<option value="75">75+ Probable</option>'+
+      '<option value="60">60+ Emerging</option>'+
+      '<option value="40">40+ Watch</option>'+
+    '</select>'+
+    '<span id="filter-count" style="font-size:11px;color:#6b7280"></span>'+
+  '</div>'+
+    '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #7b6ef6">'+
+      '<div style="font-size:18px;font-weight:700;margin-bottom:4px">Altcoin Channel Radar</div>'+
+      '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">Generated: '+ts+' - '+data.scanned+' coins scanned - '+cands.length+' channels found'+(data.btcPrice?' - BTC '+fmt2(data.btcPrice)+' ('+fmtP2(data.btcChange)+' 24h)':'')+'</div>'+
+      '<div style="font-size:13px;color:#9da3b4;line-height:1.6">'+cands.length+' channel candidates found. '+highCount+' high-confidence, '+probCount+' probable. '+lowerThird+' candidate'+(lowerThird!==1?'s':'')+' in the lower third of an ascending channel. Validate all candidates in TradingView with Brett Fogle indicators before acting.</div>'+
+    '</div>'+
+    diffBar+
+    '<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid #1e2035">Channel Candidates - Ranked by Score</div>'+
+    rows+
+    '<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px 18px;margin-top:20px;font-size:11px;color:#6b7280;line-height:1.6;border-left:3px solid #f5a623">This report is generated by an automated channel detection algorithm. It is a discovery tool only - not a trade recommendation. All candidates require manual validation in TradingView using Brett Fogle indicators. <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" style="color:#7b6ef6">Learn more about the methodology</a></div>'+
+    '<div style="margin-top:40px;padding-top:20px;border-top:1px solid #1e2035;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#6b7280">'+
+      '<span>Finance Agent V3 - Channel Radar - '+ts+'</span>'+
+      '<div style="display:flex;gap:16px"><a href="https://rdwills02.github.io/BTC_Brief/" style="color:#7b6ef6;text-decoration:none">Dashboard</a><a href="https://rdwills02.github.io/BTC_Brief/glossary.html" style="color:#7b6ef6;text-decoration:none">Glossary</a></div>'+
+    '</div>'+
+  '</div>'+
+  '<script type="application/json" id="report-data">'+JSON.stringify({timestamp:ts,scanned:data.scanned,candidates:cands.map(function(c){return {symbol:c.symbol,name:c.name,score:c.score};})}).replace(/</g,'\\u003c')+'<\/script>'+
+  '<script type="application/json" id="chart-data">'+JSON.stringify(data.chartData||{}).replace(/</g,'\\u003c')+'<\/script>'+
+  '<script>'+
+  'function filterCards(){'+
+    'var min=parseInt(document.getElementById("score-filter").value)||0;'+
+    'var cards=document.querySelectorAll(".radar-card");'+
+    'var shown=0;'+
+    'cards.forEach(function(c){'+
+      'var score=parseInt(c.dataset.score);'+
+      'if(score>=min){c.style.display="";shown++;}else{c.style.display="none";}'+
+    '});'+
+    'document.getElementById("filter-count").textContent=shown+" of "+cards.length+" candidates";'+
+  '}'+
+  'document.getElementById("score-filter").addEventListener("change",filterCards);'+
+  'filterCards();'+
+  // Clicking an "Added" chip in the Since Last Scan bar jumps to that coin's card below:
+  // resets the score filter to "All scores" so the card is guaranteed visible regardless
+  // of the reader's current filter, scrolls to it, and briefly highlights it.
+  'function jumpToCard(symbol){'+
+    'var card=document.getElementById("card-"+symbol);'+
+    'if(!card) return;'+
+    'var sel=document.getElementById("score-filter");'+
+    'if(sel.value!=="0"){sel.value="0";filterCards();}'+
+    'card.scrollIntoView({block:"center",behavior:"smooth"});'+
+    'var prevBorder=card.style.border;'+
+    'card.style.border="1px solid #7b6ef6";'+
+    'card.style.boxShadow="0 0 0 3px rgba(123,110,246,.25)";'+
+    'setTimeout(function(){card.style.border=prevBorder;card.style.boxShadow="";},2000);'+
+  '}'+
+  'var addedWrap=document.getElementById("added-chip-wrap");'+
+  'if(addedWrap){addedWrap.addEventListener("click",function(e){'+
+    'var chip=e.target.closest(".jump-card");'+
+    'if(chip&&chip.dataset.symbol) jumpToCard(chip.dataset.symbol);'+
+  '});}'+
+  // --- Embedded channel charts (lazy: draw when a card scrolls into view) ---
+  'var CHARTDATA={};try{CHARTDATA=JSON.parse(document.getElementById("chart-data").textContent);}catch(e){}'+
+  'function drawReportChart(symbol){'+
+    'var cd=CHARTDATA[symbol];if(!cd||!cd.candles)return;'+
+    'var el=document.getElementById("rchart-"+symbol);'+
+    'if(!el||el.dataset.drawn||!window.LightweightCharts)return;'+
+    'el.dataset.drawn="1";'+
+    'var chart=LightweightCharts.createChart(el,{width:el.clientWidth,height:el.clientHeight,layout:{background:{color:"#0b0c14"},textColor:"#6b7280"},grid:{vertLines:{color:"#1e2035"},horzLines:{color:"#1e2035"}},rightPriceScale:{borderColor:"#1e2035"},timeScale:{borderColor:"#1e2035",timeVisible:false}});'+
+    'el._chart=chart;'+
+    'var cs=chart.addCandlestickSeries({upColor:"#00c896",downColor:"#e8754a",borderUpColor:"#00c896",borderDownColor:"#e8754a",wickUpColor:"#00c896",wickDownColor:"#e8754a"});'+
+    'cs.setData(cd.candles);'+
+    'var n=cd.candles.length,startCI=cd.lastIdx-(n-1);'+
+    'var supData=cd.candles.map(function(c,i){return {time:c.time,value:cd.supSlope*(startCI+i)+cd.supIntercept};});'+
+    'var resData=cd.candles.map(function(c,i){return {time:c.time,value:cd.supSlope*(startCI+i)+cd.supIntercept+cd.channelH};});'+
+    'chart.addLineSeries({color:"#00c896",lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false}).setData(supData);'+
+    'chart.addLineSeries({color:"#e8754a",lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(resData);'+
+    'chart.addLineSeries({color:"rgba(232,117,74,0.4)",lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:cd.candles[0].time,value:cd.invalidation},{time:cd.candles[n-1].time,value:cd.invalidation}]);'+
+    'if(cd.pivotLows&&cd.pivotLows.length){var mk=cd.pivotLows.filter(function(p){return cd.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:"belowBar",color:"#00c896",shape:"circle",text:"S",size:1};}).sort(function(a,b){return a.time-b.time;});if(mk.length)cs.setMarkers(mk);}'+
+    'chart.timeScale().fitContent();'+
+  '}'+
+  'if("IntersectionObserver" in window){'+
+    'var chartIO=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){drawReportChart(e.target.id.replace("rchart-",""));}});},{rootMargin:"150px"});'+
+    'document.querySelectorAll(".report-chart").forEach(function(el){chartIO.observe(el);});'+
+  '}else{document.querySelectorAll(".report-chart").forEach(function(el){drawReportChart(el.id.replace("rchart-",""));});}'+
+  // per-card expand: toggle wrap height and resize that chart
+  'document.addEventListener("click",function(e){'+
+    'var btn=e.target.closest(".rchart-expand");if(!btn)return;'+
+    'var wrap=btn.parentElement;var big=wrap.style.height==="480px";'+
+    'wrap.style.height=big?"220px":"480px";btn.textContent=big?"Expand":"Collapse";'+
+    'var el=document.getElementById("rchart-"+btn.dataset.symbol);'+
+    'if(el){if(!el.dataset.drawn)drawReportChart(btn.dataset.symbol);if(el._chart){el._chart.applyOptions({width:el.clientWidth,height:el.clientHeight});el._chart.timeScale().fitContent();}}'+
+  '});'+
+  '<\/script>'+
+  '</body></html>';
+}
+
+async function publishReport() {
+  var token = getToken();
+  if(!token) { alert('No GitHub token. Run in browser console: localStorage.setItem("gh_token_radar","ghp_yourtoken")'); return; }
+  if(!allResults.length) { alert('No results to publish. Run scan first.'); return; }
+  var btn = document.getElementById('publish-btn');
+  btn.disabled=true; btn.textContent='Publishing...';
+  try {
+    var ts = new Date().toLocaleString('en-US',{timeZone:'America/Chicago',month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})+' CT';
+    var reportData = {
+      timestamp: ts,
+      scanned: 100,
+      btcPrice: null,
+      btcChange: null,
+      candidates: allResults.map(toLightCandidate),
+      // Reuse the diff radar.html already computed this scan (from its own localStorage
+      // history - see lastScanDiff/computeScanDiff) instead of independently re-deriving
+      // it by fetching and parsing GitHub's copy of the previous report. Single source
+      // of truth, computed once in runScan(), used for both the live bar and the report.
+      hasPrevious: lastScanDiff.hasPrevious,
+      dropped: lastScanDiff.dropped,
+      added: lastScanDiff.added
+    };
+    // Embed lightweight chart geometry per candidate so the static report can draw charts
+    // (report has no API access — data must be baked in at publish). ~90 candles/coin.
+    var chartData = {};
+    allResults.forEach(function(r){
+      if(r.candles && r.candles.length) {
+        chartData[r.symbol] = {
+          candles: r.candles,
+          supSlope: r.supSlope, supIntercept: r.supIntercept, channelH: r.channelH,
+          lastIdx: r.lastIdx, invalidation: r.invalidation,
+          pivotLows: (r.pivotLows||[]).map(function(p){return {time:p.time};})
+        };
+      }
+    });
+    reportData.chartData = chartData;
+    try {
+      var btcR = await fetch(CG_BASE+'/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&x_cg_demo_api_key='+CG_KEY);
+      if(btcR.ok){var btcD=await btcR.json();reportData.btcPrice=btcD.bitcoin.usd;reportData.btcChange=btcD.bitcoin.usd_24h_change;}
+    } catch(e){}
+    var shaRes = await fetch(GITHUB_API+'/repos/'+GITHUB_REPO+'/contents/'+GITHUB_FILE, {headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github.v3+json'}});
+    var sha = null;
+    if(shaRes.ok){ var shaData=await shaRes.json(); sha=shaData.sha; }
+    var html = buildReportHTML(reportData);
+    var bodyObj = {message:'Channel Radar Report - '+ts,content:btoa(unescape(encodeURIComponent(html)))};
+    if(sha) bodyObj.sha = sha;
+    var pushRes = await fetch(GITHUB_API+'/repos/'+GITHUB_REPO+'/contents/'+GITHUB_FILE, {method:'PUT',headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify(bodyObj)});
+    if(pushRes.ok) {
+      btn.textContent='Published!';
+      btn.style.background='rgba(0,200,150,.25)';
+      setTimeout(function(){btn.textContent='Publish Report';btn.style.background='';btn.disabled=false;},3000);
+    } else {
+      var err=await pushRes.json();
+      alert('Publish failed: '+(err.message||pushRes.status)+'. Check token has repo scope.');
+      btn.textContent='Publish Report'; btn.disabled=false;
+    }
+  } catch(e) {
+    alert('Publish error: '+e.message);
+    btn.textContent='Publish Report'; btn.disabled=false;
+  }
+}
+
+window.addEventListener('load', function() {
+  document.getElementById('diag-btn').addEventListener('click', function() {
+    var p=document.getElementById('diag-panel');
+    p.classList.toggle('visible');
+    if(p.classList.contains('visible')) renderDiag();
+  });
+  document.getElementById('refresh-btn').addEventListener('click', runScan);
+  document.getElementById('publish-btn').addEventListener('click', publishReport);
+  document.getElementById('close-btn').addEventListener('click', closePanel);
+  document.getElementById('chart-expand-btn').addEventListener('click', function() {
+    var wrap = document.getElementById('chart-wrap');
+    var btn = document.getElementById('chart-expand-btn');
+    wrap.classList.toggle('expanded');
+    btn.textContent = wrap.classList.contains('expanded') ? 'Collapse' : 'Expand';
+    // resize the chart to the new container size, then refit the data
+    if (detailChart) {
+      var c = document.getElementById('detail-chart');
+      detailChart.applyOptions({ width: c.clientWidth, height: c.clientHeight });
+      detailChart.timeScale().fitContent();
+    }
+  });
+  document.getElementById('sort-sel').addEventListener('change', function() {
+    sortCol=this.value; sortDir=sortCol==='position'?1:-1; sortFiltered(); renderTable();
+  });
+  document.getElementById('t-touches').addEventListener('change', applyFilters);
+  document.getElementById('t-contain').addEventListener('change', applyFilters);
+  document.getElementById('t-slope').addEventListener('change', applyFilters);
+  document.getElementById('t-score').addEventListener('change', applyFilters);
+  document.getElementById('show-all').addEventListener('change', applyFilters);
+  document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
+  document.getElementById('fb-high').addEventListener('click', function() { setFilter('high'); });
+  document.getElementById('fb-probable').addEventListener('click', function() { setFilter('probable'); });
+  document.getElementById('fb-emerging').addEventListener('click', function() { setFilter('emerging'); });
+  document.getElementById('fb-watch').addEventListener('click', function() { setFilter('watch'); });
+  document.getElementById('sincelast-content').addEventListener('click', function(e) {
+    var chip = e.target.closest('.sl-add');
+    if(chip && chip.dataset.symbol) jumpToAddedCoin(chip.dataset.symbol);
+  });
+  document.getElementById('table-body').addEventListener('click', function(e) {
+    var tr = e.target.closest('tr');
+    if(!tr || !tr.dataset.key) return;
+    var key = tr.dataset.key;
+    selectedKey = key;
+    document.querySelectorAll('.radar-table tr').forEach(function(r){r.classList.toggle('selected',r.dataset.key===key);});
+    var r = filtered.find(function(x){return x.symbol===key;});
+    if(r) openDetail(r);
+  });
+  loadCachedOrResting();
+});
+
+// On load: render the last cached scan with zero API calls, or a resting "ready" state
+// if there's no history yet. Scanning only ever happens on an explicit Refresh click -
+// see runScan(). This avoids burning CoinGecko's rate limit (and losing chart-only data
+// on browser close/computer reset) just from opening or reloading the tab.
+function loadCachedOrResting() {
+  var prev = getPrevScanHistory();
+  if(!prev || !prev.candidates || !prev.candidates.length) {
+    setStatus('idle', 'Ready - click Run scan');
+    document.getElementById('table-body').innerHTML = '<tr><td colspan="10"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Run scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
+    return;
+  }
+  allResults = prev.candidates;
+  if(prev.diag) diag = prev.diag;
+  applyFilters();
+  setStatus('idle', 'Showing cached results');
+  document.getElementById('last-update').textContent = 'Last scanned ' + new Date(prev.timestamp).toLocaleString();
+  document.getElementById('cached-bar-text').innerHTML = 'Showing results from <strong>'+new Date(prev.timestamp).toLocaleString()+'</strong> - click Run scan for live data.';
+  document.getElementById('cached-bar').style.display = 'flex';
+  if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
+}
+
+function setFilter(f) {
+  activeFilter = f;
+  ['all','high','probable','emerging','watch'].forEach(function(n) {
+    var btn = document.getElementById('fb-'+n);
+    btn.className = 'bbtn' + (n===f?' a-'+f:'');
+  });
+  applyFilters();
+}
+</script>
+</body>
+</html>
