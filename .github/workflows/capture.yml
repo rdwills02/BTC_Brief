@@ -1,0 +1,48 @@
+name: Channel Radar Daily Capture
+
+on:
+  schedule:
+    # 14:30 UTC daily = 10:30 AM ET during EDT (summer), 9:30 AM ET during EST (winter).
+    # Timed ~1hr after US equity market open to capture crypto's post-open volume/price reaction
+    # (overnight/pre-market news gets reflected shortly after open). Cron is ALWAYS UTC and does
+    # NOT follow US daylight saving, so this anchors to EDT; in winter it lands ~1hr earlier (at
+    # open). Fine for a "roughly after open" goal. NOTE: the 4-day OHLC candle is already closed
+    # regardless of capture time; this timing mainly sharpens the live 24h-volume snapshot.
+    - cron: '30 14 * * *'
+  workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab
+
+permissions:
+  contents: write          # lets the built-in GITHUB_TOKEN commit captured data
+
+concurrency:
+  group: radar-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'   # Node 20 has global fetch built in
+
+      - name: Run capture
+        env:
+          CG_KEY: ${{ secrets.CG_KEY }}
+        run: node capture.js
+
+      - name: Commit captured data
+        run: |
+          git config user.name  "radar-capture-bot"
+          git config user.email "actions@github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No new data to commit."
+          else
+            git commit -m "Daily capture — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
