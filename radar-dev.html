@@ -1196,13 +1196,18 @@ function toggleDevDetail(r, tr) {
   devSelectedChannels = {};
   tr.classList.add('selected');
 
-  // Prior channels = detected historical channels EXCLUDING the one still live at the last candle
-  // (that one IS the current channel, already shown as tile 1). The current channel always ends at
-  // the coin's most recent candle, so it has the MAX endIdx among that coin's channels. Identify
-  // it within the dataset itself (robust to index-space differences vs the live scan).
+  // Prior channels = all detected channels EXCEPT one that essentially duplicates tile 1 (the
+  // current channel radar shows). A dataset channel is a duplicate ONLY if it matches the current
+  // channel's DIRECTION and start date closely — NOT merely because it reaches the last candle.
+  // (The geo dataset finds descending channels to present that radar's ascending-only current view
+  // never shows; those are genuinely different channels and must NOT be excluded.)
   var allChans = PRIOR_CHANNELS[r.symbol] || [];
-  var maxEnd = allChans.reduce(function(m,ch){ return Math.max(m, ch.endIdx); }, -1);
-  var chans = allChans.filter(function(ch){ return ch.endIdx < maxEnd; });
+  var curAsc = r.isAscending, curStartDate = (r.candles && r.candles[r.firstIdx]) ? r.candles[r.firstIdx].date : null;
+  var chans = allChans.filter(function(ch){
+    var sameDir = (!!ch.isAscending === !!curAsc) && (!!ch.isFlat === !!r.isFlat);
+    var sameStart = curStartDate && ch.startDate === curStartDate;
+    return !(sameDir && sameStart);   // drop only a true duplicate of the current channel
+  });
   var row = document.createElement('tr');
   row.id = 'dev-detail-row';
   row.className = 'dev-detail-row';
