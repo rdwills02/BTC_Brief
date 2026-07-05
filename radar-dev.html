@@ -84,17 +84,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .dev-chan-opts{display:flex;flex-wrap:wrap;gap:8px;max-width:720px}
 .dev-chan-chip{display:flex;align-items:center;gap:6px;font-size:11px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);cursor:pointer;color:var(--text2)}
 .dev-chan-chip.on{border-color:var(--accent);color:var(--text);background:rgba(123,110,246,.1)}
-/* square-tile comparison grid: current channel + selected prior channels, all uniform square tiles */
-.dev-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
-.dev-tile{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column}
+/* square-tile comparison grid: current channel + selected prior channels, all resizable tiles */
+.dev-tile-grid{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+.dev-tile{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column;width:340px;height:360px;min-width:240px;min-height:240px;resize:both;position:relative}
 .dev-tile.current{border-color:var(--accent)}
-.dev-tile.expanded{grid-column:1/-1}
-.dev-tile-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;font-size:11px;border-bottom:1px solid var(--border)}
+.dev-tile-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;font-size:11px;border-bottom:1px solid var(--border);flex-shrink:0}
 .dev-tile-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dev-tile-sub{color:var(--muted);font-weight:400}
-.dev-tile-expand{font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer;flex-shrink:0}
-.dev-tile-chart{width:100%;aspect-ratio:1/1;background:#0b0c14}
-.dev-tile.expanded .dev-tile-chart{aspect-ratio:auto;height:460px}
+.dev-tile-chart{width:100%;flex:1;background:#0b0c14;min-height:0}
+/* the browser resize grip sits bottom-right; hint it */
+.dev-tile::after{content:'';position:absolute;right:2px;bottom:2px;width:10px;height:10px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);opacity:.5;pointer-events:none}
 .coin-cell{display:flex;align-items:center;gap:8px}
 .coin-icon{width:26px;height:26px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--accent);flex-shrink:0}
 .coin-name{font-weight:600;font-size:13px}
@@ -1197,7 +1196,13 @@ function toggleDevDetail(r, tr) {
   devSelectedChannels = {};
   tr.classList.add('selected');
 
-  var chans = PRIOR_CHANNELS[r.symbol] || [];
+  // Prior channels = detected historical channels EXCLUDING the one still live at the last candle
+  // (that one IS the current channel, already shown as tile 1). The current channel always ends at
+  // the coin's most recent candle, so it has the MAX endIdx among that coin's channels. Identify
+  // it within the dataset itself (robust to index-space differences vs the live scan).
+  var allChans = PRIOR_CHANNELS[r.symbol] || [];
+  var maxEnd = allChans.reduce(function(m,ch){ return Math.max(m, ch.endIdx); }, -1);
+  var chans = allChans.filter(function(ch){ return ch.endIdx < maxEnd; });
   var row = document.createElement('tr');
   row.id = 'dev-detail-row';
   row.className = 'dev-detail-row';
@@ -1249,14 +1254,8 @@ function devMakeTile(meta) {
   tile.className='dev-tile'+(meta.isCurrent?' current':'');
   tile.innerHTML='<div class="dev-tile-head">'+
     '<div class="dev-tile-title">'+meta.title+' <span class="dev-tile-sub">'+meta.sub+'</span></div>'+
-    '<button class="dev-tile-expand">Expand</button>'+
     '</div><div class="dev-tile-chart"></div>';
   var chartHost=tile.querySelector('.dev-tile-chart');
-  var expandBtn=tile.querySelector('.dev-tile-expand');
-  expandBtn.addEventListener('click', function(){
-    tile.classList.toggle('expanded');
-    expandBtn.textContent = tile.classList.contains('expanded') ? 'Shrink' : 'Expand';
-  });
   setTimeout(function(){
     if(!meta.candles || !meta.candles.length){ chartHost.innerHTML='<div class="state-view" style="height:100%"><div class="state-sub">No candles — run a scan.</div></div>'; return; }
     var chart=LightweightCharts.createChart(chartHost,{width:chartHost.clientWidth,height:chartHost.clientHeight,layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},rightPriceScale:{borderColor:'#1e2035'},timeScale:{borderColor:'#1e2035',timeVisible:false}});
