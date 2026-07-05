@@ -14,7 +14,11 @@
  */
 
 (function(root){
-  var C = (typeof require !== 'undefined') ? require('./channel-core.js') : root;
+  // History layer uses the GEOMETRY detector (channel-geo): any direction, no score, no entry
+  // gating — catalogs the ideal channel structure regardless of up/down. Falls back to the live
+  // detector's export shape only for the math primitives it shares. Live radar is untouched.
+  var G = (typeof require !== 'undefined') ? require('./channel-geo.js') : root;
+  var detect = G.detectChannelGeo || (typeof detectChannelGeo!=='undefined'?detectChannelGeo:null);
 
   // Minimum candles before detection can find a channel (needs pivots + touches).
   var MIN_HISTORY = 20;
@@ -40,7 +44,7 @@
     var nullStreak = 0;
 
     for (var i = MIN_HISTORY - 1; i < n; i++) {
-      var ch = C.detectChannel(candles.slice(0, i + 1));
+      var ch = detect(candles.slice(0, i + 1));
 
       if (!ch) {
         nullStreak++;
@@ -54,7 +58,7 @@
       } else if (Math.abs(ch.firstIdx - current.openFirstIdx) <= SAME_CHANNEL_FIRSTIDX_TOL) {
         // same formation start -> same channel, just longer. Keep peak detection, extend end.
         current.endStep = i;
-        if (ch.score > current.best.score) current.best = ch;
+        if ((ch.containment||0) > (current.best.containment||0)) current.best = ch;
       } else {
         // a different formation start that appeared without a sustained break -> new channel
         runs.push(current);
@@ -95,14 +99,14 @@
         startIdx: startIdx, endIdx: endIdx,
         startDate: startC.date || null, endDate: endC.date || null,
         durationCandles: endIdx - startIdx + 1,
-        peakScore: d.score, finalScore: run.best.score,
+        peakContainment: d.containment,        // quality proxy (no score in the geometry catalog)
         supSlope: d.supSlope, supIntercept: d.supIntercept, channelH: d.channelH,
         slope: d.slope, containment: d.containment,
         supportTouches: d.supportTouches, resTouches: d.resTouches,
         supportNow: d.supportNow, resistNow: d.resistNow, invalidation: d.invalidation,
         isAscending: d.isAscending, isFlat: d.isFlat, position: d.position,
         startPrice: startPrice, endPrice: endPrice, runPct: runPct,
-        candles: candles.slice(startIdx, endIdx + 1)
+        candles: candles.slice(startIdx, endIdx + 1)   // the channel span (entry->exit)
       };
     });
   }

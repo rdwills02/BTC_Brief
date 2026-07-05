@@ -1245,10 +1245,13 @@ function toggleDevDetail(r, tr) {
   row.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 
-// Build a square chart tile for one channel (or the current channel) cropped to span + margin.
-// `meta` = {id, title, sub, candles, supSlope, supIntercept, channelH, startOrigIdx, isCurrent}
-// startOrigIdx = the ORIGINAL series index of candles[0]; rails are fit in that index space,
-// so rail at candles[i] = railAt(supSlope, supIntercept, startOrigIdx + i).
+// Build a chart tile that shows a channel cropped to its span, but with the coin's FULL series
+// loaded so widening the tile reveals more surrounding time horizon.
+// `meta` = {title, sub, fullCandles, chStartIdx, chEndIdx, supSlope, supIntercept, channelH, isCurrent}
+//   fullCandles = the coin's entire candle series (rails fit in this index space)
+//   chStartIdx/chEndIdx = the channel's span within fullCandles
+// On resize, the visible window = channel span + margin proportional to tile width, so dragging
+// the tile wider expands the time horizon (reveals price before/after the channel).
 function devMakeTile(meta) {
   var tile=document.createElement('div');
   tile.className='dev-tile'+(meta.isCurrent?' current':'');
@@ -1257,52 +1260,91 @@ function devMakeTile(meta) {
     '</div><div class="dev-tile-chart"></div>';
   var chartHost=tile.querySelector('.dev-tile-chart');
   setTimeout(function(){
-    if(!meta.candles || !meta.candles.length){ chartHost.innerHTML='<div class="state-view" style="height:100%"><div class="state-sub">No candles — run a scan.</div></div>'; return; }
+    var full=meta.fullCandles;
+    if(!full || !full.length){ chartHost.innerHTML='<div class="state-view" style="height:100%"><div class="state-sub">No candles — run a scan.</div></div>'; return; }
     var chart=LightweightCharts.createChart(chartHost,{width:chartHost.clientWidth,height:chartHost.clientHeight,layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},rightPriceScale:{borderColor:'#1e2035'},timeScale:{borderColor:'#1e2035',timeVisible:false}});
     devStackCharts.push(chart);
     var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
-    cs.setData(meta.candles);
-    var base=meta.startOrigIdx||0;
-    chart.addLineSeries({color:'#00c896',lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(meta.candles.map(function(c,i){return {time:c.time,value:railAt(meta.supSlope,meta.supIntercept,base+i)};}));
-    chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(meta.candles.map(function(c,i){return {time:c.time,value:railAt(meta.supSlope,meta.supIntercept,base+i)+meta.channelH};}));
-    chart.timeScale().fitContent();
-    new ResizeObserver(function(en){for(var i=0;i<en.length;i++)chart.applyOptions({width:en[i].contentRect.width,height:en[i].contentRect.height});}).observe(chartHost);
+    cs.setData(full);   // load the ENTIRE series
+    // rails span the full series (fit in full-series index space)
+    chart.addLineSeries({color:'#00c896',lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(full.map(function(c,i){return {time:c.time,value:railAt(meta.supSlope,meta.supIntercept,i)};}));
+    chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(full.map(function(c,i){return {time:c.time,value:railAt(meta.supSlope,meta.supIntercept,i)+meta.channelH};}));
+
+    // Set the visible time range based on tile width: channel span + margin that grows with width.
+    function applyWindow(){
+      var w=chartHost.clientWidth||300;
+      // margin candles scales with width beyond a base — wider tile => more horizon
+      var extra=Math.round(Math.max(0,(w-300))/12);   // ~1 extra candle per 12px past 300px
+      var a=Math.max(0, meta.chStartIdx-2-extra);
+      var b=Math.min(full.length-1, meta.chEndIdx+2+extra);
+      if(full[a] && full[b]){
+        try { chart.timeScale().setVisibleRange({from:full[a].time, to:full[b].time}); }
+        catch(e){ chart.timeScale().fitContent(); }
+      }
+    }
+    applyWindow();
+    new ResizeObserver(function(en){
+      for(var i=0;i<en.length;i++) chart.applyOptions({width:en[i].contentRect.width,height:en[i].contentRect.height});
+      applyWindow();   // widening the tile widens the visible time horizon
+    }).observe(chartHost);
   },30);
   return tile;
-}
-
-// Crop a channel's candles to its span + a small margin on each side, from the full series.
-function cropWithMargin(fullCandles, startIdx, endIdx, margin) {
-  var a=Math.max(0, startIdx-margin), b=Math.min(fullCandles.length-1, endIdx+margin);
-  return {candles:fullCandles.slice(a,b+1), startOrigIdx:a};
 }
 
 function devRenderTiles(r, chans) {
   devStackCharts.forEach(function(c){try{c.remove();}catch(e){}}); devStackCharts=[];
   var grid=document.getElementById('dev-tile-grid'); if(!grid) return;
   grid.innerHTML='';
+  var full = r.candles || [];
 
-  // Tile 1 = current channel (cropped to span + margin from the coin's full candles)
-  if(r.candles && r.candles.length){
-    var cur=cropWithMargin(r.candles, r.firstIdx, r.lastIdx, 6);
+  // Tile 1 = current channel. Full series is r.candles; channel span = firstIdx..lastIdx.
+  if(full.length){
     grid.appendChild(devMakeTile({
       isCurrent:true, title:r.symbol+' — current',
-      sub:'score '+r.score+' · '+(r.isAscending?'asc':r.isFlat?'flat':'desc')+' · contain '+r.containment+'%',
-      candles:cur.candles, supSlope:r.supSlope, supIntercept:r.supIntercept, channelH:r.channelH, startOrigIdx:cur.startOrigIdx
+      sub:(r.isAscending?'asc':r.isFlat?'flat':'desc')+' · contain '+r.containment+'%',
+      fullCandles:full, chStartIdx:r.firstIdx, chEndIdx:r.lastIdx,
+      supSlope:r.supSlope, supIntercept:r.supIntercept, channelH:r.channelH
     }));
   }
 
-  // Selected prior channels — ch.candles is the stored span (startIdx..endIdx), so its rails
-  // are fit starting at ch.startIdx in the original index space.
+  // Prior channels: same coin, so context = r.candles (the full current series). Locate the
+  // channel within it BY DATE (robust to index-space differences between dataset and scan).
   chans.forEach(function(ch){
     if(!devSelectedChannels[ch.id]) return;
     var dir=ch.isAscending?'asc':ch.isFlat?'flat':'desc';
+    // find the channel's span in the current coin's full series by matching dates
+    var si=indexOfDate(full, ch.startDate), ei=indexOfDate(full, ch.endDate);
+    if(si<0 || ei<0){
+      // dataset dates not in current series — fall back to the stored channel candles alone
+      grid.appendChild(devMakeTile({
+        isCurrent:false, title:ch.id,
+        sub:dir+' · '+ch.startDate+'→'+ch.endDate+' · contain '+ch.containment+'% · run '+(ch.runPct!=null?(ch.runPct>=0?'+':'')+ch.runPct.toFixed(1)+'%':'--'),
+        fullCandles:ch.candles, chStartIdx:0, chEndIdx:ch.candles.length-1,
+        supSlope:ch.supSlope, supIntercept:ch.supIntercept, channelH:ch.channelH
+      }));
+      return;
+    }
+    // Re-fit the rail into the CURRENT series index space so it aligns with full's candles.
+    // The rail passes through the channel's support at its endpoints; solve slope/intercept in
+    // the current-series index space from the stored geometry evaluated at its own endpoints.
+    var railStartVal = railAt(ch.supSlope, ch.supIntercept, ch.startIdx);
+    var railEndVal   = railAt(ch.supSlope, ch.supIntercept, ch.endIdx);
+    var newSlope = (railEndVal - railStartVal) / (ei - si || 1);
+    var newIntercept = railStartVal - newSlope * si;
     grid.appendChild(devMakeTile({
       isCurrent:false, title:ch.id,
-      sub:dir+' · '+ch.startDate+'→'+ch.endDate+' · pk'+ch.peakScore+' · contain '+ch.containment+'% · run '+(ch.runPct!=null?(ch.runPct>=0?'+':'')+ch.runPct.toFixed(1)+'%':'--'),
-      candles:ch.candles, supSlope:ch.supSlope, supIntercept:ch.supIntercept, channelH:ch.channelH, startOrigIdx:ch.startIdx
+      sub:dir+' · '+ch.startDate+'→'+ch.endDate+' · contain '+ch.containment+'% · run '+(ch.runPct!=null?(ch.runPct>=0?'+':'')+ch.runPct.toFixed(1)+'%':'--'),
+      fullCandles:full, chStartIdx:si, chEndIdx:ei,
+      supSlope:newSlope, supIntercept:newIntercept, channelH:ch.channelH
     }));
   });
+}
+
+// find index of a date (YYYY-MM-DD) in a candle array, or -1
+function indexOfDate(candles, date){
+  if(!date) return -1;
+  for(var i=0;i<candles.length;i++){ if(candles[i].date===date) return i; }
+  return -1;
 }
 
 
