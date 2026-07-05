@@ -78,20 +78,23 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* [DEV] inline expanded detail row */
 .dev-detail-row td{padding:0!important;background:var(--bg);border-bottom:2px solid var(--accent)}
 .dev-detail{padding:16px 20px}
-.dev-detail-chart{width:100%;height:320px;background:#0b0c14;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;position:relative}
 .dev-toolkit{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px}
 .dev-tk-group{display:flex;flex-direction:column;gap:6px}
 .dev-tk-label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.dev-tk-btns{display:flex;gap:4px}
-.dev-mode-btn{font-size:11px;padding:4px 12px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer;font-weight:600}
-.dev-mode-btn.on{background:var(--accent);color:#0b0c14;border-color:var(--accent)}
-.dev-chan-opts{display:flex;flex-wrap:wrap;gap:8px;max-width:640px}
+.dev-chan-opts{display:flex;flex-wrap:wrap;gap:8px;max-width:720px}
 .dev-chan-chip{display:flex;align-items:center;gap:6px;font-size:11px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);cursor:pointer;color:var(--text2)}
 .dev-chan-chip.on{border-color:var(--accent);color:var(--text);background:rgba(123,110,246,.1)}
-.dev-stack{display:flex;flex-direction:column;gap:12px}
-.dev-stack-item{border:1px solid var(--border);border-radius:8px;overflow:hidden}
-.dev-stack-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);font-size:12px}
-.dev-stack-chart{width:100%;height:240px;background:#0b0c14}
+/* square-tile comparison grid: current channel + selected prior channels, all uniform square tiles */
+.dev-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.dev-tile{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column}
+.dev-tile.current{border-color:var(--accent)}
+.dev-tile.expanded{grid-column:1/-1}
+.dev-tile-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;font-size:11px;border-bottom:1px solid var(--border)}
+.dev-tile-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dev-tile-sub{color:var(--muted);font-weight:400}
+.dev-tile-expand{font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer;flex-shrink:0}
+.dev-tile-chart{width:100%;aspect-ratio:1/1;background:#0b0c14}
+.dev-tile.expanded .dev-tile-chart{aspect-ratio:auto;height:460px}
 .coin-cell{display:flex;align-items:center;gap:8px}
 .coin-icon{width:26px;height:26px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--accent);flex-shrink:0}
 .coin-name{font-weight:600;font-size:13px}
@@ -1202,16 +1205,9 @@ function toggleDevDetail(r, tr) {
   td.colSpan = 11;
   td.innerHTML =
     '<div class="dev-detail">'+
-      '<div class="dev-detail-chart" id="dev-main-chart"></div>'+
       (chans.length
         ? '<div class="dev-toolkit">'+
-            '<div class="dev-tk-group"><span class="dev-tk-label">Display mode</span>'+
-              '<div class="dev-tk-btns">'+
-                '<button class="dev-mode-btn'+(devMode==='stack'?' on':'')+'" data-mode="stack">Stack below</button>'+
-                '<button class="dev-mode-btn'+(devMode==='overlay'?' on':'')+'" data-mode="overlay">Overlay on chart</button>'+
-              '</div>'+
-            '</div>'+
-            '<div class="dev-tk-group"><span class="dev-tk-label">Prior channels ('+chans.length+')</span>'+
+            '<div class="dev-tk-group"><span class="dev-tk-label">Compare prior channels ('+chans.length+')</span>'+
               '<div class="dev-chan-opts" id="dev-chan-opts">'+
                 chans.map(function(ch,i){
                   var dir=ch.isAscending?'asc':ch.isFlat?'flat':'desc';
@@ -1219,104 +1215,97 @@ function toggleDevDetail(r, tr) {
                 }).join('')+
               '</div>'+
             '</div>'+
-          '</div>'+
-          '<div id="dev-display"></div>'
-        : '<div style="font-size:12px;color:var(--muted);padding:4px">No prior channels in the dataset for '+r.symbol+' (run channel-history-gen, or none detected).</div>'
+          '</div>'
+        : '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">No prior channels in the dataset for '+r.symbol+' (run channel-history-gen, or none detected).</div>'
       )+
+      '<div class="dev-tile-grid" id="dev-tile-grid"></div>'+
     '</div>';
   row.appendChild(td);
   tr.parentNode.insertBefore(row, tr.nextSibling);
 
-  // main chart (reuse the coin's current candles/geometry if present)
-  if(r.candles && r.candles.length) devBuildMainChart(r);
-  else document.getElementById('dev-main-chart').innerHTML='<div class="state-view" style="height:100%"><div class="state-title">No chart</div><div class="state-sub">Run a scan this session to load candles.</div></div>';
+  // Render the tile grid: current channel is always tile one; selected priors tile after it.
+  devRenderTiles(r, chans);
 
-  // wire toolkit
+  // wire channel checkboxes
   if(chans.length) {
-    Array.prototype.forEach.call(td.querySelectorAll('.dev-mode-btn'), function(b){
-      b.addEventListener('click', function(){
-        devMode=b.dataset.mode;
-        Array.prototype.forEach.call(td.querySelectorAll('.dev-mode-btn'),function(x){x.classList.toggle('on',x.dataset.mode===devMode);});
-        devRenderSelection(r, chans);
-      });
-    });
     Array.prototype.forEach.call(td.querySelectorAll('.dev-chan-opts input'), function(cb){
       cb.addEventListener('change', function(){
         var idx=cb.dataset.idx;
         cb.closest('.dev-chan-chip').classList.toggle('on', cb.checked);
         devSelectedChannels[chans[idx].id]=cb.checked;
-        devRenderSelection(r, chans);
+        devRenderTiles(r, chans);
       });
     });
   }
   row.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 
-function devBuildMainChart(r) {
-  var container=document.getElementById('dev-main-chart');
-  container.innerHTML='';
-  var chart=LightweightCharts.createChart(container,{
-    width:container.clientWidth,height:container.clientHeight,
-    layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},
-    grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},
-    rightPriceScale:{borderColor:'#1e2035'},timeScale:{borderColor:'#1e2035',timeVisible:true}
+// Build a square chart tile for one channel (or the current channel) cropped to span + margin.
+// `meta` = {id, title, sub, candles, supSlope, supIntercept, channelH, startOrigIdx, isCurrent}
+// startOrigIdx = the ORIGINAL series index of candles[0]; rails are fit in that index space,
+// so rail at candles[i] = railAt(supSlope, supIntercept, startOrigIdx + i).
+function devMakeTile(meta) {
+  var tile=document.createElement('div');
+  tile.className='dev-tile'+(meta.isCurrent?' current':'');
+  tile.innerHTML='<div class="dev-tile-head">'+
+    '<div class="dev-tile-title">'+meta.title+' <span class="dev-tile-sub">'+meta.sub+'</span></div>'+
+    '<button class="dev-tile-expand">Expand</button>'+
+    '</div><div class="dev-tile-chart"></div>';
+  var chartHost=tile.querySelector('.dev-tile-chart');
+  var expandBtn=tile.querySelector('.dev-tile-expand');
+  expandBtn.addEventListener('click', function(){
+    tile.classList.toggle('expanded');
+    expandBtn.textContent = tile.classList.contains('expanded') ? 'Shrink' : 'Expand';
   });
-  devDetailChart=chart;
-  var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
-  cs.setData(r.candles);
-  var n=r.candles.length, startCI=r.lastIdx-(n-1);
-  chart.addLineSeries({color:'#00c896',lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)};}));
-  chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)+r.channelH};}));
-  chart.timeScale().fitContent();
-  new ResizeObserver(function(en){for(var i=0;i<en.length;i++)chart.applyOptions({width:en[i].contentRect.width,height:en[i].contentRect.height});}).observe(container);
+  setTimeout(function(){
+    if(!meta.candles || !meta.candles.length){ chartHost.innerHTML='<div class="state-view" style="height:100%"><div class="state-sub">No candles — run a scan.</div></div>'; return; }
+    var chart=LightweightCharts.createChart(chartHost,{width:chartHost.clientWidth,height:chartHost.clientHeight,layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},rightPriceScale:{borderColor:'#1e2035'},timeScale:{borderColor:'#1e2035',timeVisible:false}});
+    devStackCharts.push(chart);
+    var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
+    cs.setData(meta.candles);
+    var base=meta.startOrigIdx||0;
+    chart.addLineSeries({color:'#00c896',lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(meta.candles.map(function(c,i){return {time:c.time,value:railAt(meta.supSlope,meta.supIntercept,base+i)};}));
+    chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(meta.candles.map(function(c,i){return {time:c.time,value:railAt(meta.supSlope,meta.supIntercept,base+i)+meta.channelH};}));
+    chart.timeScale().fitContent();
+    new ResizeObserver(function(en){for(var i=0;i<en.length;i++)chart.applyOptions({width:en[i].contentRect.width,height:en[i].contentRect.height});}).observe(chartHost);
+  },30);
+  return tile;
 }
 
-// Render selected prior channels per current mode (stack = own charts below; overlay = rails on main chart).
-function devRenderSelection(r, chans) {
-  // clear prior render
-  devStackCharts.forEach(function(c){try{c.remove();}catch(e){}}); devStackCharts=[];
-  devOverlaySeries.forEach(function(o){try{devDetailChart.removeSeries(o);}catch(e){}}); devOverlaySeries=[];
-  var display=document.getElementById('dev-display'); if(display) display.innerHTML='';
-  var chosen = chans.filter(function(ch){return devSelectedChannels[ch.id];});
-  if(!chosen.length) return;
+// Crop a channel's candles to its span + a small margin on each side, from the full series.
+function cropWithMargin(fullCandles, startIdx, endIdx, margin) {
+  var a=Math.max(0, startIdx-margin), b=Math.min(fullCandles.length-1, endIdx+margin);
+  return {candles:fullCandles.slice(a,b+1), startOrigIdx:a};
+}
 
-  if(devMode==='overlay' && devDetailChart) {
-    chosen.forEach(function(ch){
-      if(!ch.candles||!ch.candles.length) return;
-      var n=ch.candles.length, startCI=ch.endIdx-(n-1);
-      var s1=devDetailChart.addLineSeries({color:'#7b6ef6',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
-      var s2=devDetailChart.addLineSeries({color:'#b3a7ff',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
-      s1.setData(ch.candles.map(function(c,i){return {time:c.time,value:railAt(ch.supSlope,ch.supIntercept,startCI+i)};}));
-      s2.setData(ch.candles.map(function(c,i){return {time:c.time,value:railAt(ch.supSlope,ch.supIntercept,startCI+i)+ch.channelH};}));
-      devOverlaySeries.push(s1,s2);
-    });
-    return;
+function devRenderTiles(r, chans) {
+  devStackCharts.forEach(function(c){try{c.remove();}catch(e){}}); devStackCharts=[];
+  var grid=document.getElementById('dev-tile-grid'); if(!grid) return;
+  grid.innerHTML='';
+
+  // Tile 1 = current channel (cropped to span + margin from the coin's full candles)
+  if(r.candles && r.candles.length){
+    var cur=cropWithMargin(r.candles, r.firstIdx, r.lastIdx, 6);
+    grid.appendChild(devMakeTile({
+      isCurrent:true, title:r.symbol+' — current',
+      sub:'score '+r.score+' · '+(r.isAscending?'asc':r.isFlat?'flat':'desc')+' · contain '+r.containment+'%',
+      candles:cur.candles, supSlope:r.supSlope, supIntercept:r.supIntercept, channelH:r.channelH, startOrigIdx:cur.startOrigIdx
+    }));
   }
 
-  // stack mode: each chosen channel as its own chart
-  var stack=document.createElement('div'); stack.className='dev-stack';
-  chosen.forEach(function(ch){
-    var item=document.createElement('div'); item.className='dev-stack-item';
-    var dir=ch.isAscending?'Ascending':ch.isFlat?'Flat':'Descending';
-    item.innerHTML='<div class="dev-stack-head"><span style="font-weight:600">'+ch.id+' <span style="color:var(--muted);font-weight:400">'+dir+' · '+ch.startDate+'→'+ch.endDate+' · '+ch.durationCandles+' bars · peak '+ch.peakScore+' · contain '+ch.containment+'% · run '+(ch.runPct!=null?(ch.runPct>=0?'+':'')+ch.runPct.toFixed(1)+'%':'--')+'</span></span></div><div class="dev-stack-chart"></div>';
-    stack.appendChild(item);
-    var cont=item.querySelector('.dev-stack-chart');
-    // defer chart creation until in DOM (needs width)
-    setTimeout(function(){
-      if(!ch.candles||!ch.candles.length) return;
-      var chart=LightweightCharts.createChart(cont,{width:cont.clientWidth,height:cont.clientHeight,layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},rightPriceScale:{borderColor:'#1e2035'},timeScale:{borderColor:'#1e2035',timeVisible:false}});
-      devStackCharts.push(chart);
-      var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
-      cs.setData(ch.candles);
-      var n=ch.candles.length, startCI=ch.endIdx-(n-1);
-      chart.addLineSeries({color:'#00c896',lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(ch.candles.map(function(c,i){return {time:c.time,value:railAt(ch.supSlope,ch.supIntercept,startCI+i)};}));
-      chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(ch.candles.map(function(c,i){return {time:c.time,value:railAt(ch.supSlope,ch.supIntercept,startCI+i)+ch.channelH};}));
-      chart.timeScale().fitContent();
-      new ResizeObserver(function(en){for(var i=0;i<en.length;i++)chart.applyOptions({width:en[i].contentRect.width,height:en[i].contentRect.height});}).observe(cont);
-    },30);
+  // Selected prior channels — ch.candles is the stored span (startIdx..endIdx), so its rails
+  // are fit starting at ch.startIdx in the original index space.
+  chans.forEach(function(ch){
+    if(!devSelectedChannels[ch.id]) return;
+    var dir=ch.isAscending?'asc':ch.isFlat?'flat':'desc';
+    grid.appendChild(devMakeTile({
+      isCurrent:false, title:ch.id,
+      sub:dir+' · '+ch.startDate+'→'+ch.endDate+' · pk'+ch.peakScore+' · contain '+ch.containment+'% · run '+(ch.runPct!=null?(ch.runPct>=0?'+':'')+ch.runPct.toFixed(1)+'%':'--'),
+      candles:ch.candles, supSlope:ch.supSlope, supIntercept:ch.supIntercept, channelH:ch.channelH, startOrigIdx:ch.startIdx
+    }));
   });
-  display.appendChild(stack);
 }
+
 
 // On load: render the last cached scan with zero API calls, or a resting "ready" state
 // if there's no history yet. Scanning only ever happens on an explicit Refresh click -
