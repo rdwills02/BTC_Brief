@@ -1,0 +1,41 @@
+name: Channel History Dataset
+
+on:
+  workflow_dispatch: {}   # manual "Run workflow" only — the historical channel dataset
+                          # doesn't change day-to-day, so no schedule. Run when you want a refresh.
+
+permissions:
+  contents: write         # commit data/channels.json
+
+concurrency:
+  group: channel-history
+  cancel-in-progress: false
+
+jobs:
+  channels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate channel dataset
+        env:
+          CG_KEY: ${{ secrets.CG_KEY }}
+        run: node channel-history-gen.js
+
+      - name: Commit dataset
+        run: |
+          git config user.name  "radar-capture-bot"
+          git config user.email "actions@github.com"
+          git add data/channels.json
+          if git diff --staged --quiet; then
+            echo "No change to channels.json."
+          else
+            git commit -m "Channel history dataset — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
