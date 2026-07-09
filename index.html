@@ -70,6 +70,9 @@
   .card .value { font-size: 20px; font-weight: 700; }
   .card .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
+  .audit-banner { background: rgba(232,117,74,0.08); border: 1px solid var(--bear); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; color: var(--text); }
+  .audit-banner b { color: var(--bear); }
+
   .section-title {
     font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--muted); margin: 28px 0 12px;
@@ -96,19 +99,11 @@
   .badge-weight { background: rgba(123,110,246,0.15); color: var(--accent); border: 1px solid var(--accent); }
   .badge-bear-lens { background: rgba(232,117,74,0.15); color: var(--bear); border: 1px solid var(--bear); }
   .badge-alert { background: rgba(245,166,35,0.15); color: var(--neutral); border: 1px solid var(--neutral); }
+  .badge-stale { background: rgba(232,117,74,0.15); color: var(--bear); border: 1px solid var(--bear); }
   .signal-tag { margin-left: auto; font-weight: 700; font-size: 13px; }
   .signal-tag.bull { color: var(--bull); } .signal-tag.bear { color: var(--bear); } .signal-tag.neutral { color: var(--neutral); }
   .lens-finding { font-size: 14px; color: var(--text); margin-bottom: 4px; }
   .lens-delta { font-size: 12px; color: var(--muted); }
-
-  .critical-card {
-    background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--bear);
-    border-radius: 10px; padding: 16px; margin-bottom: 10px;
-  }
-  .critical-card.bull-flag { border-left-color: var(--bull); }
-  .critical-type { font-size: 12px; font-weight: 700; color: var(--neutral); margin-bottom: 6px; text-transform: uppercase; }
-  .critical-text { font-size: 14px; margin-bottom: 6px; }
-  .critical-source { font-size: 12px; color: var(--muted); }
 
   .watchlist { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
   .watchlist ul { margin: 0; padding-left: 18px; }
@@ -127,7 +122,7 @@
   <div class="header">
     <a href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank" class="full-brief-link">Full Brief →</a>
     <a href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank" class="full-brief-link" style="right:140px;">Calculator ↗</a>
-    <div class="updated">Last updated: Thursday, July 9, 2026 at 06:15 AM CT</div>
+    <div class="updated">Last updated: Thursday, July 9, 2026 at 06:15 AM CT · source-date corrected PM</div>
     <div class="alignment">🔴 BEAR ALIGNMENT 2/8 &nbsp;|&nbsp; 🟡 NEUTRAL 4/8 &nbsp;|&nbsp; 🟢 BULL 2/8</div>
     <div class="composite-row">
       <span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span>
@@ -137,6 +132,10 @@
       $62,300 <span class="price-change down">24hr -1.6%</span> <span class="price-change up">7day ~+3-5%*</span>
     </div>
     <div class="sub" style="margin-top:6px;color:var(--muted);font-size:12px;">*conflicting sources ($62,303 CoinDesk/CMC-AI → $62,852 Cryptonomist) — conservative $62,300 used. Composite steps down BULLISH → NEUTRAL as ETF flows and Fear &amp; Greed both reversed.</div>
+  </div>
+
+  <div class="audit-banner">
+    <b>⚠️ Source-date correction:</b> the Brandt lens sources are NOT from July 9 — u.today "Not Not Not" is dated <b>5/13/2026</b> (BTC ~$79K) and moneycheck is <b>6/15/2026</b> (recaps the 5/13 chart); the Wright "+91K BTC / ADX ~28" figures trace to crypto.news <b>6/15/2026</b>. Brandt stays 🔴 Bearish on its standing thesis but this is May–June commentary, not a fresh July reiteration. Composite (NEUTRAL/LOW) unchanged. Full dated citations in the <a href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief →</a>.
   </div>
 
   <div class="section-title">Snapshot</div>
@@ -172,12 +171,12 @@
     <div class="card">
       <div class="label">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a></div>
       <div class="value" style="color:var(--bull);">0.615</div>
-      <div class="sub">Fresh June 30 print · lowest since Jul 2023</div>
+      <div class="sub">June 30 print (9d old) · lowest since Jul 2023</div>
     </div>
     <div class="card">
       <div class="label">Whale Accumulation</div>
       <div class="value" style="color:var(--bull);">🟢 Strong</div>
-      <div class="sub">+91K BTC · reserves 7-year low</div>
+      <div class="sub">+91K BTC (carried 6/15) · reserves 7-year low</div>
     </div>
     <div class="card">
       <div class="label">Miner Production Cost</div>
@@ -239,7 +238,7 @@
       <div class="sub">1 day · JpM2 <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> sideways rounded bottom; bounce fading into window</div>
       <div class="label" style="margin-top:12px;">Brandt Bottom Call</div>
       <div class="value">Sep–Oct 2026</div>
-      <div class="sub">~64 days · "Not Not Not" — surge is a trap</div>
+      <div class="sub">~64 days · "Not Not Not" (from 5/13 chart — no new July input)</div>
     </div>
     <div class="card">
       <div class="label">Fed Stance</div>
@@ -258,7 +257,7 @@
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">1. Halving / Cycle</span><span class="signal-tag bear">🔴 BEARISH</span></div>
       <div class="lens-finding">Miner capitulation confirmed — hashprice ~$29/PH post-halving low, difficulty ~-20% from peak, Miner Stress Composite at 2026 lows, record quarterly miner selling; production cost ~$78K vs $62.3K spot.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change</div>
+      <div class="lens-delta">vs Prior: ➡️ No change · Source dated 3/23/2026 (upd 7/1/2026)</div>
     </div>
   </div>
 
@@ -267,7 +266,7 @@
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">2. Macro / Liquidity</span><span class="badge badge-weight">2× weight</span><span class="badge badge-alert">⚡ downgraded</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
       <div class="lens-finding">ETF flows flipped to -$84.9M (July 8), breaking the 3-day inflow streak; DXY firm ~101.07; Fed on hold, July hike odds ~25-30%. The flow reversal tips this lens off Bullish.</div>
-      <div class="lens-delta">vs Prior: 📉 Downgraded 🟢→🟡 — ETF "relapse to outflows" trigger fired</div>
+      <div class="lens-delta">vs Prior: 📉 Downgraded 🟢→🟡 · Source dated 7/8/2026 (fresh)</div>
     </div>
   </div>
 
@@ -276,16 +275,16 @@
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">3. Adoption / Reserve</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
       <div class="lens-finding">CLARITY Act ~50/50 with ~4 weeks of Senate runway; committee advanced 15-9 (May 14); still needs a 60-vote floor vote and ethics resolution.</div>
-      <div class="lens-delta">vs Prior: ➡️ No signal change</div>
+      <div class="lens-delta">vs Prior: ➡️ No signal change · Source dated 7/6/2026</div>
     </div>
   </div>
 
   <div class="lens-card">
     <div class="dot bull"></div>
     <div class="lens-body">
-      <div class="lens-title-row"><span class="lens-name">4. Wright</span><span class="signal-tag bull">🟢 BULLISH</span></div>
-      <div class="lens-finding">Contrarian miner-capitulation / LTH-accumulation thesis intact — negative hashrate growth precedes positive 180-day returns ~77% of the time; whales +91K BTC, reserves at a 7-year low.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — stays Bullish</div>
+      <div class="lens-title-row"><span class="lens-name">4. Wright</span><span class="badge badge-stale">⚠️ carried 6/15</span><span class="signal-tag bull">🟢 BULLISH</span></div>
+      <div class="lens-finding">Contrarian miner-capitulation / LTH-accumulation thesis — negative hashrate growth precedes positive 180-day returns ~77% of the time; whales +91K BTC, reserves at a 7-year low. ⚠️ "+91K / ADX ~28" from a 6/15/2026 article, not a fresh July print.</div>
+      <div class="lens-delta">vs Prior: ➡️ Signal unchanged; sourcing re-dated 6/15/2026</div>
     </div>
   </div>
 
@@ -294,7 +293,7 @@
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">5. Fogle Technical</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
       <div class="lens-finding">Deteriorated — rejected under the $64.8K bear flag / $65.4K EMA50, damaged daily structure (22 bearish vs 8 bullish reads), F&amp;G back to Extreme Fear; still above the 200-day MA but cushion thinned to ~2.5%.</div>
-      <div class="lens-delta">vs Prior: 📉 Deteriorated — a $60.8K close-below flips it Bearish</div>
+      <div class="lens-delta">vs Prior: 📉 Deteriorated · Source dated 7/9/2026 (fresh)</div>
     </div>
   </div>
 
@@ -311,17 +310,17 @@
     <div class="dot bull"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="badge badge-alert">⚡ hard rule</span><span class="signal-tag bull">🟢 BULLISH</span></div>
-      <div class="lens-finding">LTH SOPR 0.615 (&lt;0.7, fresh June 30 print), HODL LTH% 78.3% (&gt;75%), whale accumulation with reserves at a 7-year low, MVRV in the accumulation zone — all three hard-rule conditions met.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — hard rule stays triggered; SOPR data quality improved</div>
+      <div class="lens-finding">LTH SOPR 0.615 (&lt;0.7, June 30 print — 9d old), HODL LTH% 78.3% (&gt;75%, carried), whale accumulation with reserves at a 7-year low, MVRV in the accumulation zone — all three hard-rule conditions met, but on June-30/carried inputs.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change — hard rule stays triggered (aging inputs)</div>
     </div>
   </div>
 
   <div class="lens-card">
     <div class="dot bear"></div>
     <div class="lens-body">
-      <div class="lens-title-row"><span class="lens-name">8. Brandt Classical</span><span class="badge badge-bear-lens">Bear lens</span><span class="signal-tag bear">🔴 BEARISH</span></div>
-      <div class="lens-finding">"Not Not Not" — Brandt calls the current surge a trap and rejects a bottom; descending channel intact, Sep-Oct low, $24,825 baseline / $127,500 upper; ADX ~28 confirms bears in control.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — conviction reinforced</div>
+      <div class="lens-title-row"><span class="lens-name">8. Brandt Classical</span><span class="badge badge-bear-lens">Bear lens</span><span class="badge badge-stale">⚠️ sources May–Jun</span><span class="signal-tag bear">🔴 BEARISH</span></div>
+      <div class="lens-finding">Standing descending-channel thesis — Sep-Oct low, $24,825 baseline / $127,500 upper. ⚠️ No fresh July statement: sources are u.today 5/13/2026 (BTC ~$79K) and moneycheck 6/15/2026; ADX ~28 from crypto.news 6/15/2026. May–June commentary, not a July reiteration.</div>
+      <div class="lens-delta">vs Prior: ➡️ Signal unchanged; "conviction reinforced" RETRACTED — no new Brandt input</div>
     </div>
   </div>
 
@@ -332,17 +331,17 @@
       <li>⚡ ETF flows — the -$84.9M outflow broke the streak; a return to sustained inflows is required to re-upgrade Macro</li>
       <li>⚡ $64.8K bear flag → $65.4K EMA50 → $65-66.5K — a daily close above $65K on volume is the trend-confirmation trigger</li>
       <li>⚡ July 10 Villaverde cycle low — 1 day out; watch for a confirmed reversal candle vs a failed-timing breakdown</li>
-      <li>CLARITY Act ~4-week window; MVRV Z reconciliation (0.25-0.33 vs 1.2) to firm the Woo audit trail</li>
+      <li>Source hygiene — re-source Brandt/Wright with July-dated data; verify unconfirmed pub dates before next run (see Full Brief)</li>
     </ul>
   </div>
 
   <div class="section-title">Bottom Line</div>
   <div class="bottom-line">
-    BTC ~$62,300 — the composite steps down from BULLISH to NEUTRAL at LOW confidence. Both watch items that firmed the July 8 brief reversed inside 24 hours: ETF flows flipped from a 3-day inflow streak to a -$84.9M outflow, and Fear &amp; Greed fell from 45 (Neutral) back to 22 (Extreme Fear). Because Macro carries 2× weight, its drop from Bullish to Neutral is what tips the composite. Price rejected under the $64.8K bear flag and slid to ~$62.3K, thinning the 200-day MA cushion to ~2.5%. The offsetting bull case is entirely on-chain and mechanically intact — the Woo hard rule still holds (LTH SOPR 0.615, LTH supply 78.3%, whale accumulation, reserves at a 7-year low, MVRV in the accumulation zone). A real divergence: structural-value metrics say a bottom is forming while price, flows, and sentiment say the bounce failed. Advisory only — hold positioning, treat the 200-day MA ($60.8K) as the line that flips the read Bearish, and require both a return to ETF inflows and a $65K+ close to move it back toward BULLISH. The July 10 Villaverde window (tomorrow) is the near-term tell.
+    BTC ~$62,300 — the composite steps down from BULLISH to NEUTRAL at LOW confidence. Both watch items that firmed the July 8 brief reversed inside 24 hours: ETF flows flipped from a 3-day inflow streak to a -$84.9M outflow, and Fear &amp; Greed fell from 45 (Neutral) back to 22 (Extreme Fear). Because Macro carries 2× weight, its drop from Bullish to Neutral is what tips the composite. Price rejected under the $64.8K bear flag and slid to ~$62.3K, thinning the 200-day MA cushion to ~2.5%. The offsetting bull case is entirely on-chain and mechanically intact — the Woo hard rule still holds (LTH SOPR 0.615, LTH supply 78.3%, whale accumulation, reserves at a 7-year low, MVRV in the accumulation zone), though those inputs are June-30/carried rather than same-day. A real divergence: structural-value metrics say a bottom is forming while price, flows, and sentiment say the bounce failed. Advisory only — hold positioning, treat the 200-day MA ($60.8K) as the line that flips the read Bearish, and require both a return to ETF inflows and a $65K+ close to move it back toward BULLISH. The July 10 Villaverde window (tomorrow) is the near-term tell. <em>Note: the Brandt lens rests on May–June commentary; see the source-date banner above.</em>
   </div>
 
   <div class="footer">
-    Finance Agent V3 · Last updated: Thursday, July 9, 2026 at 06:15 AM CT<br>
+    Finance Agent V3 · Last updated: Thursday, July 9, 2026 at 06:15 AM CT (source-date corrected PM)<br>
     Glossary: <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">https://rdwills02.github.io/BTC_Brief/glossary.html</a> ·
     Calculator: <a href="https://rdwills02.github.io/BTC_Brief/calculator.html">https://rdwills02.github.io/BTC_Brief/calculator.html</a> ·
     Dashboard: <a href="https://rdwills02.github.io/BTC_Brief/">https://rdwills02.github.io/BTC_Brief/</a>
