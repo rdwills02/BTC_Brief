@@ -3,32 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BTC Full Brief — July 8, 2026</title>
+<title>BTC Full Brief — July 9, 2026</title>
 <style>
   :root {
-    --bg: #0b0c14; --surface: #13141f; --border: #1e2035; --text: #e2e4ef;
-    --muted: #6b7280; --bull: #00c896; --bear: #e8754a; --neutral: #f5a623; --accent: #7b6ef6;
+    --bg: #0b0c14; --surface: #13141f; --border: #1e2035; --text: #e2e4ef; --muted: #6b7280;
+    --bull: #00c896; --bear: #e8754a; --neutral: #f5a623; --accent: #7b6ef6;
   }
   * { box-sizing: border-box; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 24px; line-height: 1.6; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 24px; line-height: 1.55; }
   .container { max-width: 900px; margin: 0 auto; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .nav { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; font-size: 13px; flex-wrap: wrap; }
+  .nav { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; font-size: 13px; }
   .nav .spacer { margin-left: auto; color: var(--muted); }
-  .header { background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--bull); border-radius: 10px; padding: 22px; margin-bottom: 20px; }
+  .header { position: relative; background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--neutral); border-radius: 10px; padding: 22px; margin-bottom: 20px; }
+  .updated { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .alignment { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
-  .composite-row { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-  .composite-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 14px; background: rgba(0,200,150,0.15); color: var(--bull); border: 1px solid var(--bull); }
-  .confidence { color: var(--muted); font-size: 13px; }
+  .composite-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 14px; background: rgba(245,166,35,0.15); color: var(--neutral); border: 1px solid var(--neutral); }
+  .confidence { color: var(--muted); font-size: 13px; margin-left: 12px; }
   .price-row { margin-top: 14px; font-size: 26px; font-weight: 700; }
-  .price-change { font-size: 14px; font-weight: 500; margin-left: 12px; }
-  .up { color: var(--bull); } .down { color: var(--bear); } .flat { color: var(--muted); }
+  .price-change { font-size: 15px; font-weight: 500; margin-left: 12px; }
+  .up { color: var(--bull); } .down { color: var(--bear); }
   .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 28px 0 12px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 12px; }
-  .delta-row { font-size: 14px; margin-bottom: 8px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 12px; font-size: 14px; }
+  .card p { margin: 6px 0; }
+  .delta-imp { color: var(--bull); } .delta-det { color: var(--bear); } .delta-unch { color: var(--muted); }
   .lens-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 10px; display: flex; gap: 14px; align-items: flex-start; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
   .dot.bull { background: var(--bull); } .dot.bear { background: var(--bear); } .dot.neutral { background: var(--neutral); }
   .lens-body { flex: 1; }
   .lens-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -40,21 +41,25 @@
   .signal-tag { margin-left: auto; font-weight: 700; font-size: 13px; }
   .signal-tag.bull { color: var(--bull); } .signal-tag.bear { color: var(--bear); } .signal-tag.neutral { color: var(--neutral); }
   .lens-finding { font-size: 14px; margin-bottom: 6px; }
-  .lens-sub { font-size: 13px; color: var(--text); margin: 3px 0; }
-  .lens-delta { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .hard-rule { font-size: 12px; color: var(--bear); margin-top: 6px; }
-  .src { font-size: 12px; color: var(--muted); }
+  .submetric { font-size: 13px; color: var(--text); margin: 3px 0; border-left: 2px solid var(--border); padding-left: 8px; }
+  .lens-delta { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .hardrule { font-size: 12px; color: var(--bull); margin-top: 6px; }
+  .critical-card { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--bear); border-radius: 10px; padding: 16px; margin-bottom: 10px; }
+  .critical-card.bull-flag { border-left-color: var(--bull); }
+  .critical-type { font-size: 12px; font-weight: 700; color: var(--neutral); margin-bottom: 6px; text-transform: uppercase; }
   .watchlist ul, .keydev ul { margin: 0; padding-left: 18px; }
   .watchlist li, .keydev li { font-size: 14px; margin-bottom: 10px; }
-  .bottom-line { font-size: 15px; line-height: 1.75; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  td:first-child { color: var(--muted); width: 42%; }
-  .toggle-btn { font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 5px; background: rgba(123,110,246,0.15); color: var(--accent); border: 1px solid rgba(123,110,246,0.3); cursor: pointer; }
+  .bottom-line { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; font-size: 15px; line-height: 1.7; }
+  table.snapshot { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.snapshot td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.snapshot td:first-child { color: var(--muted); width: 42%; }
+  .toggle-btn { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 5px; background: rgba(123,110,246,0.15); color: var(--accent); border: 1px solid rgba(123,110,246,0.3); cursor: pointer; margin-bottom: 10px; }
+  .signalcount { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; font-size: 14px; }
+  .signalcount .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
   .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); }
   .footer a { color: var(--muted); }
-  ol.sources { font-size: 12px; color: var(--muted); line-height: 1.8; padding-left: 22px; }
-  ol.sources a { word-break: break-all; }
+  .verif { font-size: 12px; color: var(--muted); }
+  .verif li { margin-bottom: 8px; word-break: break-word; }
 </style>
 </head>
 <body>
@@ -63,29 +68,26 @@
   <div class="nav">
     <a href="https://rdwills02.github.io/BTC_Brief/">← Dashboard</a>
     <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">Glossary →</a>
-    <span class="spacer">Last updated: Wednesday, July 8, 2026 at 06:10 AM CT</span>
+    <span class="spacer">Last updated: Thursday, July 9, 2026 at 06:15 AM CT</span>
   </div>
 
   <div class="header">
-    <div class="alignment">🟢 BULL ALIGNMENT 3/8 &nbsp;|&nbsp; 🟡 NEUTRAL 3/8 &nbsp;|&nbsp; 🔴 BEAR 2/8</div>
-    <div class="composite-row">
-      <span class="composite-badge">⚡ COMPOSITE: BULLISH</span>
-      <span class="confidence">Confidence: MEDIUM</span>
-    </div>
-    <div class="price-row">
-      ~$63,600 <span class="price-change flat">24hr ~flat</span> <span class="price-change up">7day ~+6%</span>
-    </div>
-    <div class="src" style="margin-top:6px;">Sources conflict $63,300–$64,000; conservative figure used. 200-day MA ~$60,802 — 🟢 BTC ~4.6% above.</div>
+    <div class="updated">BTC FULL BRIEF — Thursday, July 9, 2026 at 06:15 AM CT</div>
+    <div class="alignment">🔴 BEAR ALIGNMENT 2/8 &nbsp;|&nbsp; 🟡 NEUTRAL 4/8 &nbsp;|&nbsp; 🟢 BULL 2/8</div>
+    <span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span><span class="confidence">Confidence: LOW</span>
+    <div class="price-row">$62,300 <span class="price-change down">24hr -1.6%</span> <span class="price-change up">7day ~+3-5%</span></div>
+    <div style="margin-top:6px;color:var(--muted);font-size:12px;">Source conflict: $62,303 (CoinDesk/CMC-AI) → $62,852 (Cryptonomist); conservative $62,300 used. 200-day MA ~$60,802 — 🟢 above by ~2.5%.</div>
   </div>
 
-  <div class="section-title">📊 Delta vs Prior Brief (July 7, 2026 — 06:15 AM CT)</div>
+  <div class="section-title">📊 Delta vs Prior Brief (July 8, 2026 — 06:10 AM CT)</div>
   <div class="card">
-    <div class="delta-row">🟢 <b>IMPROVED:</b> Fear &amp; Greed 45 — Neutral vs 23 — Extreme Fear (+22 in 24hr); first exit from Extreme Fear in weeks</div>
-    <div class="delta-row">🟢 <b>IMPROVED:</b> ETF flows — 3rd consecutive inflow day confirmed (+$21M July 7); regime-shift watch item satisfied</div>
-    <div class="delta-row">🔴 <b>DETERIORATED:</b> ETF daily inflow magnitude collapsed to +$21M (July 7) from +$266M (July 6) — buying momentum fading</div>
-    <div class="delta-row">➡️ <b>UNCHANGED:</b> Price ~$63,600 (flat); 200-day MA ~$60.8K; DXY &lt;101; Fed dovish; MVRV 1.2; whale 270K/30d; reserves 2.21M; LTH SOPR ~0.6; LTH 78.3%; Brandt; miners</div>
-    <div class="delta-row">🆕 <b>NEW:</b> Fear &amp; Greed regime shift to Neutral; ETF 3rd inflow day; Strategy holdings 843,775 BTC post-sale; Saylor teasing a fresh buy</div>
-    <div class="delta-row">⚠️ <b>STALE:</b> LTH SOPR (11 briefs), Realized Price, CVDD Floor, miner hashprice</div>
+    <p class="delta-det">🔴 DETERIORATED: ETF flows flipped to -$84.9M (July 8), ending the 3-day inflow streak — the exact "relapse to outflows" the prior brief flagged as a Macro downgrade trigger. <a href="https://financefeeds.com/crypto-etf-flows-turn-negative-on-july-8-as-bitcoin-funds-lose-84-9-million/" target="_blank">Source</a></p>
+    <p class="delta-det">🔴 DETERIORATED: Fear &amp; Greed 22 (Extreme Fear) vs 45 (Neutral) — the single-day sentiment recovery fully reversed (-23 in 24hr). <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank">Source</a></p>
+    <p class="delta-det">🔴 DETERIORATED: Price ~$62,300 vs ~$63,600 (~-2%); 200-day MA cushion thinned to ~2.5% from ~4.6%; rejected under the EMA50 / $64.8K bear flag. <a href="https://en.cryptonomist.ch/2026/07/09/bitcoin-price-today-analysis-fragile-recovery/" target="_blank">Source</a></p>
+    <p class="delta-imp">🟢 IMPROVED (data quality): Fresh LTH SOPR print — 0.615 (June 30), lowest since July 2023, replacing the carried ~0.6 estimate; still below the 0.7 hard-rule threshold. <a href="https://cryptobriefing.com/bitcoin-long-term-holder-sopr-hits-lowest-level-since-july-2023/" target="_blank">Source</a></p>
+    <p class="delta-unch">➡️ UNCHANGED: 200-day MA ~$60.8K (still above); DXY ~101.07 firm; Fed hold 3.50-3.75%; whale accumulation strong / reserves 7-year low; LTH supply 78.3%; miner capitulation; Brandt Sep-Oct channel low; dominance ~56%.</p>
+    <p class="delta-unch">🆕 NEW: ETF outflow resumes; F&amp;G reverses to Extreme Fear; Brandt "Not Not Not" reiteration; CLARITY Act ~50/50 with ~4-week runway; miner difficulty ~-20% from peak.</p>
+    <p class="delta-unch">⚠️ STALE: Realized Price (~$54K est.), LTH Realized Price ($40-45K), CVDD Floor (~$48K est.), miner hashprice (~$29). MVRV Z source conflict (see Woo lens).</p>
   </div>
 
   <div class="section-title">🔍 Lens Scorecard</div>
@@ -94,19 +96,17 @@
     <div class="dot bear"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">1. Halving / Cycle</span><span class="signal-tag bear">🔴 BEARISH</span></div>
-      <div class="lens-finding">27 months post-April-2024 halving, no post-halving surge; miner capitulation ongoing — hashrate ~963 EH/s (Q2 30-day SMA 1,004 vs 1,066 Q1, -5.8%), hashprice at a post-halving low ~$29/PH/s/day, ~20% of miners at a loss, production cost ~$78K vs ~$63.6K spot (~19% underwater); public miners sold a record 32,000+ BTC in Q1. Strategy now an active net seller (holdings 843,775 BTC).</div>
-      <div class="src">Source: <a href="https://startmining.io/en/blog/is-bitcoin-mining-profitable-2026">startmining.io</a> · <a href="https://coinshares.com/insights/research-data/bitcoin-mining-report-q1-2026/">CoinShares Q1 2026</a> (July 2026)</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — structural overhang intact</div>
+      <div class="lens-finding">27 months post-April-2024 halving, no post-halving surge; miner capitulation confirmed — hashrate ~963 EH/s (~0.96 ZH/s), hashprice at a post-halving low ~$29/PH/s/day (below ~$35 breakeven for older rigs), difficulty ~-20% from peak, Miner Stress Composite at 2026 lows, public miners sold more BTC than any prior quarter on record. Production cost ~$78K vs ~$62.3K spot (miners ~20% underwater).</div>
+      <div class="lens-delta">Source: <a href="https://startmining.io/en/blog/is-bitcoin-mining-profitable-2026" target="_blank">Startmining</a> · <a href="https://www.coingabbar.com/en/crypto-currency-news/bitcoin-miner-capitulation-difficulty-drops-20-percent" target="_blank">Coingabbar</a> · vs Prior: ➡️ No change</div>
     </div>
   </div>
 
   <div class="lens-card">
-    <div class="dot bull"></div>
+    <div class="dot neutral"></div>
     <div class="lens-body">
-      <div class="lens-title-row"><span class="lens-name">2. Macro / Liquidity</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bull">🟢 BULLISH</span></div>
-      <div class="lens-finding">Constructive but softening at the margin — ETF flows posted a 3rd straight inflow day (+$21M July 7) confirming the streak break, though the daily figure collapsed from +$266M; DXY held below 101 as rate-hike bets were pared; Fed dovish-leaning with Sept hike odds ~50% (from ~two-thirds) after weak 57K June payrolls. YTD ETF net still negative; Strategy sale the offset.</div>
-      <div class="src">Source: <a href="https://www.walletpilot.com/bitcoin-tracker/etfs">WalletPilot ETF tracker</a> · <a href="https://tradingeconomics.com/united-states/currency">TradingEconomics DXY</a> (July 7-8, 2026)</div>
-      <div class="lens-delta">vs Prior: 📈 Improved (direction) — 3rd inflow day; ⚠️ magnitude fading tempers the upgrade</div>
+      <div class="lens-title-row"><span class="lens-name">2. Macro / Liquidity</span><span class="badge badge-weight">2× weight</span><span class="badge badge-alert">⚡ downgraded</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
+      <div class="lens-finding">Downgraded — ETF flows flipped back to a -$84.9M outflow (July 8), breaking the 3-day inflow streak the bull case relied on; DXY firm at ~101.07 (strength projected into H2); Fed on hold at 3.50-3.75% with July hike odds ~25-30% (dovish-leaning hold). The flow direction reversal is the decisive negative that tips this lens off Bullish.</div>
+      <div class="lens-delta">Source: <a href="https://financefeeds.com/crypto-etf-flows-turn-negative-on-july-8-as-bitcoin-funds-lose-84-9-million/" target="_blank">FinanceFeeds</a> · <a href="https://tradingeconomics.com/united-states/currency" target="_blank">TradingEconomics</a> · vs Prior: 📉 Downgraded 🟢→🟡 — ETF relapse trigger fired</div>
     </div>
   </div>
 
@@ -114,9 +114,8 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">3. Adoption / Reserve</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
-      <div class="lens-finding">CLARITY Act <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> alive; Saylor publicly frames it as a "turning point" for digital-asset capital markets, and a markup is referenced — but it still needs Senate reconciliation, a 60-vote floor vote, and resolution of the ethics provision; ~8 weeks of calendar left. Corporate-reserve narrative still dented by Strategy's shift to net seller, though Saylor is teasing a fresh buy.</div>
-      <div class="src">Source: <a href="https://finance.yahoo.com/markets/crypto/articles/michael-saylor-sees-clarity-act-152700894.html">Yahoo Finance</a> · <a href="https://crypto.news/michael-saylor-teases-fresh-strategy-bitcoin-buy-with-cryptic-dots-post/">crypto.news</a> (July 2026)</div>
-      <div class="lens-delta">vs Prior: ➡️ No signal change</div>
+      <div class="lens-finding">CLARITY Act <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> alive but on the clock — odds ~50/50 with ~4 weeks of Senate runway before the window closes; committee advanced it 15-9 (May 14). Still needs a 60-vote floor vote and resolution of the ethics provision. Corporate-reserve narrative still dented by Strategy's shift to net seller.</div>
+      <div class="lens-delta">Source: <a href="https://www.fool.com/investing/2026/07/06/the-chances-of-the-clarity-act-passing-this-year-a/" target="_blank">Motley Fool</a> · <a href="https://cryptoslate.com/bitcoins-rally-has-four-weeks-to-get-its-washington-clarity-catalyst-before-the-clock-runs-out/" target="_blank">CryptoSlate</a> · vs Prior: ➡️ No signal change</div>
     </div>
   </div>
 
@@ -124,9 +123,8 @@
     <div class="dot bull"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">4. Wright</span><span class="signal-tag bull">🟢 BULLISH</span></div>
-      <div class="lens-finding">Contrarian miner-capitulation / LTH-accumulation thesis intact — negative 90-day hashrate growth has historically preceded positive 180-day returns ~77% of the time; whales net-bought 270,000 BTC over 30 days (2,140 wallets ≥1,000 BTC; Whale Accumulation Trend Score 0.68) with exchange reserves at a 7-year low (~2.21M BTC, 5.88% of supply) — a textbook smart-money accumulation vs miner-distribution split.</div>
-      <div class="src">Source: <a href="https://coira.io/blog/bitcoin-whale-270k-btc-accumulation-supply-squeeze-2026">Coira</a> · <a href="https://www.spotedcrypto.com/bitcoin-whale-accumulation-exchange-reserves-2026/">SpotedCrypto</a> (July 2026)</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — stays Bullish</div>
+      <div class="lens-finding">Contrarian miner-capitulation / LTH-accumulation thesis intact — negative hashrate growth has historically preceded positive 180-day returns ~77% of the time; whales continue stacking (+91K BTC latest window) with exchange reserves at a 7-year low — the textbook smart-money accumulation vs miner-distribution split.</div>
+      <div class="lens-delta">Source: <a href="https://www.spotedcrypto.com/bitcoin-exchange-reserves-whale-accumulation/" target="_blank">SpotedCrypto</a> · <a href="https://crypto.news/bitcoin-whales-are-buying-but-peter-brandts-chart-says-wait/" target="_blank">Crypto.news</a> · vs Prior: ➡️ No change</div>
     </div>
   </div>
 
@@ -134,9 +132,8 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">5. Fogle Technical</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
-      <div class="lens-finding">Improving but not confirmed — BTC ~$63.6K is holding a 2nd day above the 200-day MA <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> (~$60.8K, Investing.com "Buy"), and Fear &amp; Greed <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> lifted out of Extreme Fear to Neutral (45); still below the 50-day and capped by the $64.8K bear flag / $65-66.5K trend-confirmation zone. Bitcoin Dominance <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> ~55.5-58% (source conflict).</div>
-      <div class="src">Source: <a href="https://www.investing.com/indices/bitcoin-real-time-technical">Investing.com</a> · <a href="https://coinstats.app/ai/a/latest-news-for-bitcoin">CoinStats</a> (July 8, 2026)</div>
-      <div class="lens-delta">vs Prior: ➡️ No signal change — held at Neutral pending a $65K+ close; sentiment improvement a constructive tell</div>
+      <div class="lens-finding">Deteriorated within Neutral — BTC ~$62.3K rejected under the $64.8K bear flag and $65.4K EMA50, daily structure "remains damaged" (22 bearish vs 8 bullish TA reads, RSI ~48.6, MACD histogram bearish), and Fear &amp; Greed slid back to Extreme Fear (22). Still holding above the 200-day MA <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> (~$60.8K) but the cushion thinned to ~2.5%. Bitcoin Dominance <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> ~56.08% — capital sheltering in BTC amid fear.</div>
+      <div class="lens-delta">Source: <a href="https://en.cryptonomist.ch/2026/07/09/bitcoin-price-today-analysis-fragile-recovery/" target="_blank">Cryptonomist</a> · <a href="https://coinmarketcap.com/cmc-ai/bitcoin/price-analysis/" target="_blank">CMC-AI</a> · vs Prior: 📉 Deteriorated — a $60.8K close-below flips it Bearish</div>
     </div>
   </div>
 
@@ -144,27 +141,25 @@
     <div class="dot neutral"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">6. Villaverde Cycles</span><span class="signal-tag neutral">🟡 NEUTRAL</span></div>
-      <div class="lens-finding">July 10, 2026 target now 2 days out; JpM2 <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> "sideways rounded bottom" thesis unchanged and the "July bounce" is holding into the window. Still diverges from the Q4-2026 convergence view (CryptoQuant, Glassnode) and roadmaps calling a "brutal August" with a lower final low.</div>
-      <div class="src">Source: <a href="https://mudrex.com/learn/when-will-bitcoin-bottom-prediction/">Mudrex</a> (July 2026)</div>
-      <div class="lens-delta">vs Prior: ➡️ No signal change — one step closer; bounce holding into the window</div>
+      <div class="lens-finding">July 10, 2026 target now 1 day out; JpM2 <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> "sideways rounded bottom" thesis unchanged, but the "July bounce" is fading into the window rather than accelerating — the low either prints on schedule or the timing thesis is tested. Still diverges from the Q4-2026 convergence view (CryptoQuant, Glassnode).</div>
+      <div class="lens-delta">Source: <a href="https://mudrex.com/learn/when-will-bitcoin-bottom-prediction/" target="_blank">Mudrex</a> · vs Prior: ➡️ No signal change — one day out</div>
     </div>
   </div>
 
   <div class="lens-card">
     <div class="dot bull"></div>
     <div class="lens-body">
-      <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="signal-tag bull">🟢 BULLISH</span><span class="badge badge-alert">⚡ hard rule</span></div>
-      <div class="lens-sub">MVRV Z-Score <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: 1.2 — 1.0-1.5 band; 7/7 positive 12-mo returns since 2013 🟢</div>
-      <div class="lens-sub">Exchange Netflows <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: 🟢 Structural outflow — reserves ~2.21M BTC (5.88% supply, 7-year low, lowest since Dec 2017)</div>
-      <div class="lens-sub">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: ⚠️ STALE ~$54,000 — BTC ~18% above 🟢</div>
-      <div class="lens-sub">LTH Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: $40,000-$45,000 (carried) — BTC ~41-59% above 🟢</div>
-      <div class="lens-sub">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: ~0.6 🟢 ⚠️ STALE (11 briefs) — below 0.7 hard-rule threshold; capitulation-level</div>
-      <div class="lens-sub">HODL Waves <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: LTH supply 78.3% (above 75%); ~50% of realized cap from new large holders</div>
-      <div class="lens-sub">CVDD Floor <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: ⚠️ STALE ~$48,000 — BTC ~33% above floor 🟢</div>
-      <div class="lens-sub">Whale accumulation: 🟢 STRONG — 270,000 BTC net/30d (WATS 0.68); reserves 7-year low</div>
-      <div class="src">Source: <a href="https://coira.io/blog/bitcoin-whale-270k-btc-accumulation-supply-squeeze-2026">Coira</a> · <a href="https://www.spotedcrypto.com/bitcoin-whale-accumulation-exchange-reserves-2026/">SpotedCrypto</a> (July 2026)</div>
-      <div class="hard-rule">🔴 HARD RULE STATUS: ✅ TRIGGERED — LTH SOPR ~0.6 (&lt;0.7) AND HODL LTH% 78.3% (&gt;75%) AND whale accumulation 270K BTC/30d with reserves at a 7-year low (top-decile). All three met — Woo lens scores 🟢 BULLISH.</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — hard rule remains triggered</div>
+      <div class="lens-title-row"><span class="lens-name">7. Woo On-Chain</span><span class="badge badge-weight">2× weight</span><span class="badge badge-alert">⚡ hard rule</span><span class="signal-tag bull">🟢 BULLISH</span></div>
+      <div class="submetric">MVRV Z-Score <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: ⚠️ CONFLICT 0.25-0.33 (fresh, July 2-4) vs 1.2 carried — both deep-accumulation; conservative fresh print used 🟢 · <a href="https://ahasignals.com/current-bitcoin-mvrv-z-score/" target="_blank">Source</a></div>
+      <div class="submetric">Exchange Netflows <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: 🟢 Structural outflow — reserves at a 7-year low · <a href="https://www.spotedcrypto.com/bitcoin-exchange-reserves-whale-accumulation/" target="_blank">Source</a></div>
+      <div class="submetric">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: ⚠️ STALE ~$54,000 — BTC ~15% above 🟢 · <a href="https://newhedge.io/bitcoin/realized-price" target="_blank">Source</a></div>
+      <div class="submetric">LTH Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: $40,000-$45,000 (carried) — BTC ~38-56% above 🟢 · <a href="https://www.bitcoinmagazinepro.com/charts/long-term-holder-realized-price/" target="_blank">Source</a></div>
+      <div class="submetric">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: 🟢 0.615 (June 30, lowest since July 2023) — fresh primary print, below 0.7 hard-rule threshold · <a href="https://cryptobriefing.com/bitcoin-long-term-holder-sopr-hits-lowest-level-since-july-2023/" target="_blank">Source</a></div>
+      <div class="submetric">HODL Waves <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: LTH supply 78.3% (above 75% threshold; carried) · <a href="https://www.bitcoinmagazinepro.com/charts/long-term-holder-supply/" target="_blank">Source</a></div>
+      <div class="submetric">CVDD Floor <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a>: ⚠️ STALE ~$48,000 — BTC ~30% above floor 🟢 · <a href="https://thecryptobasic.com/bitcoin-cvdd-model-shows-price-likely-to-bottom-near-48k" target="_blank">Source</a></div>
+      <div class="submetric">Whale accumulation: 🟢 STRONG — +91K BTC latest window; reserves 7-year low · <a href="https://www.spotedcrypto.com/bitcoin-exchange-reserves-whale-accumulation/" target="_blank">Source</a></div>
+      <div class="hardrule">🔴 HARD RULE: ✅ TRIGGERED — LTH SOPR 0.615 (&lt;0.7) AND HODL LTH% 78.3% (&gt;75%) AND whale accumulation strong with reserves at a 7-year low. All three conditions met — Woo lens MUST score 🟢 BULLISH.</div>
+      <div class="lens-delta">vs Prior: ➡️ No change — SOPR now on a fresh June 30 print (data quality improved)</div>
     </div>
   </div>
 
@@ -172,117 +167,116 @@
     <div class="dot bear"></div>
     <div class="lens-body">
       <div class="lens-title-row"><span class="lens-name">8. Brandt Classical</span><span class="badge badge-bear-lens">Bear lens</span><span class="signal-tag bear">🔴 BEARISH</span></div>
-      <div class="lens-finding">Descending channel + Expanding Triangle <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> thesis unchanged; Brandt continues rejecting the bull-flag reading; Sep-Oct 2026 investable low intact; $24,825 multi-year baseline, $127,500 upper boundary, additional downside possible (~$49K flagged in March) before a late-2026 recovery. No fresh statement this run.</div>
-      <div class="src">Source: <a href="https://moneycheck.com/peter-brandt-dismisses-bitcoin-bull-flag-theory-as-descending-channel-dominates/">MoneyCheck</a> · <a href="https://u.today/down-15-or-up-to-127500-where-peter-brandt-sees-bitcoin-heading-next">U.Today</a> (2026)</div>
-      <div class="lens-delta">vs Prior: ➡️ No change — pattern, target, and timeline all held</div>
+      <div class="lens-finding">Descending channel + Expanding Triangle <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">→ Glossary</a> thesis unchanged and reinforced — Brandt reiterated "Not Not Not," calling the current surge a trap and rejecting the idea BTC has bottomed; full cyclical bottom no earlier than Sep-Oct 2026; $24,825 multi-year baseline, $127,500 upper boundary, $300-500K by 2029 if the pattern holds. ADX ~28 confirms bears in control.</div>
+      <div class="lens-delta">Source: <a href="https://u.today/not-not-not-peter-brandt-explains-why-current-bitcoin-surge-is-trap" target="_blank">U.Today</a> · <a href="https://moneycheck.com/peter-brandt-dismisses-bitcoin-bull-flag-theory-as-descending-channel-dominates/" target="_blank">MoneyCheck</a> · vs Prior: ➡️ No change — conviction reinforced</div>
     </div>
   </div>
 
   <div class="section-title">📊 Signal Count</div>
-  <div class="card">
-    <div class="delta-row">1. Halving/Cycle: 🔴 Bearish &nbsp; 2. Macro/Liquidity: 🟢 Bullish &nbsp; 3. Adoption/Reserve: 🟡 Neutral &nbsp; 4. Wright: 🟢 Bullish</div>
-    <div class="delta-row">5. Fogle Technical: 🟡 Neutral &nbsp; 6. Villaverde: 🟡 Neutral &nbsp; 7. Woo On-Chain: 🟢 Bullish &nbsp; 8. Brandt Classical: 🔴 Bearish</div>
-    <div class="delta-row" style="margin-top:10px;"><b>🟢 Bullish: 3/8 &nbsp;|&nbsp; 🟡 Neutral: 3/8 &nbsp;|&nbsp; 🔴 Bearish: 2/8</b></div>
-    <div class="delta-row" style="margin-top:10px;">Weighted (Lens 2 &amp; 7 ×2): Bullish = 2(×2)+4+7(×2) = <b>5</b> · Neutral = 3+5+6 = <b>3</b> · Bearish = 1+8 = <b>2</b> · Total 10.</div>
-    <div class="delta-row">Bullish (5) is the outright plurality and both 2×-weighted lenses (Macro, Woo) are Bullish → resolves to <b style="color:var(--bull);">BULLISH</b>. Confidence held at MEDIUM: the two prior watch items resolved constructively (3rd ETF inflow day; F&amp;G out of Extreme Fear), but the ETF inflow shrank to +$21M, price is flat under $65K, LTH SOPR is 11 briefs stale, and two structural-bearish lenses plus the Strategy seller remain.</div>
-    <div class="delta-row" style="margin-top:10px;">⚡ <b>COMPOSITE SIGNAL: 🟢 BULLISH</b> · Confidence: MEDIUM</div>
-    <div class="delta-row" style="margin-top:8px;">⚠️ <b>SIGNAL TENSION:</b> Bullish case is on-chain + liquidity-driven (record whale accumulation, reserves at a 7-year low, capitulation SOPR, MVRV 1.2, confirmed 3-day ETF streak, sentiment lifting, dovish Fed, soft dollar); bearish drag is structural/pattern-based (miners ~19% underwater, Brandt's Sep-Oct channel low, confirmed Strategy seller). HIGH-confidence needs a $65K+ close on volume with re-accelerating ETF inflows and a fresh LTH SOPR print; a close below the 200-day MA ($60.8K) flips it toward NEUTRAL.</div>
+  <div class="signalcount">
+    <div class="row"><span>1. Halving / Cycle</span><span>🔴 Bearish</span></div>
+    <div class="row"><span>2. Macro / Liquidity (2×)</span><span>🟡 Neutral</span></div>
+    <div class="row"><span>3. Adoption / Reserve</span><span>🟡 Neutral</span></div>
+    <div class="row"><span>4. Wright</span><span>🟢 Bullish</span></div>
+    <div class="row"><span>5. Fogle Technical</span><span>🟡 Neutral</span></div>
+    <div class="row"><span>6. Villaverde Cycles</span><span>🟡 Neutral</span></div>
+    <div class="row"><span>7. Woo On-Chain (2×)</span><span>🟢 Bullish</span></div>
+    <div class="row"><span>8. Brandt Classical</span><span>🔴 Bearish</span></div>
+    <p style="margin-top:12px;">🟢 Bullish: 2/8 &nbsp;|&nbsp; 🟡 Neutral: 4/8 &nbsp;|&nbsp; 🔴 Bearish: 2/8</p>
+    <p><strong>Weighted (Lens 2 &amp; 7 ×2):</strong> Bullish 3 (Lens 4 + Lens 7 ×2) · Neutral 5 (Lens 2 ×2 + Lens 3 + Lens 5 + Lens 6) · Bearish 2 (Lens 1 + Lens 8) · Total 10. Neutral is the weighted plurality; bullish+neutral (8) far exceeds bearish (2) → <strong>NEUTRAL minimum</strong>. The step-down from BULLISH is driven by the Macro lens (2×) dropping from Bullish to Neutral when the ETF inflow streak broke — removing one of the two 2×-weighted bullish pillars. Woo (2×) remains Bullish under the hard rule but is no longer joined by Macro.</p>
+    <p><span class="composite-badge">⚡ COMPOSITE: NEUTRAL</span><span class="confidence">Confidence: LOW</span></p>
+    <p style="color:var(--neutral);">⚠️ SIGNAL TENSION: On-chain / structural-value metrics (Woo hard rule, whale accumulation, reserves 7-year low, MVRV accumulation zone) say a bottom is forming; price, flows, and sentiment (ETF outflow, F&amp;G Extreme Fear, EMA50 rejection, miners underwater, Brandt) say the bounce failed. Resolves BULLISH on ETF inflows returning + a $65K close; resolves BEARISH on a close below the 200-day MA ($60.8K).</p>
   </div>
 
   <div class="section-title">🆕 Key Developments Since Last Brief</div>
   <div class="card keydev">
     <ul>
-      <li>Fear &amp; Greed Index jumped to 45 (Neutral) from 23 (Extreme Fear) — first exit from the Extreme Fear zone in weeks | <a href="https://alternative.me/crypto/fear-and-greed-index/">Source</a></li>
-      <li>ETF flows posted a 3rd consecutive inflow day (+$21M July 7), confirming the streak break — magnitude collapsed from +$266M July 6 | <a href="https://www.walletpilot.com/bitcoin-tracker/etfs">Source</a></li>
-      <li>Strategy holdings now 843,775 BTC after the $216M sale (cost basis ~$74,476, sold ~20% below); Saylor teasing a fresh buy via a "cryptic dots" post | <a href="https://www.cryptotimes.io/2026/07/07/why-michael-saylors-strategy-is-selling-bitcoin-after-years-of-buying/">Source</a></li>
-      <li>Fed Sept hike odds ~50% (from ~two-thirds) after weak 57K June NFP; DXY holding below 101 | <a href="https://tradingeconomics.com/united-states/currency">Source</a></li>
-      <li>On-chain floor intact: whales +270K BTC/30d, reserves 2.21M BTC (7-year low), MVRV Z 1.2 | <a href="https://coira.io/blog/bitcoin-whale-270k-btc-accumulation-supply-squeeze-2026">Source</a></li>
+      <li>ETF flows flipped to -$84.9M (July 8), ending the 3-day inflow streak (~$510M); IBIT -$59.1M, GBTC -$63.7M. <a href="https://financefeeds.com/crypto-etf-flows-turn-negative-on-july-8-as-bitcoin-funds-lose-84-9-million/" target="_blank">Source</a></li>
+      <li>Fear &amp; Greed reversed to 22 (Extreme Fear) from 45 (Neutral) — the July 8 recovery did not hold. <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank">Source</a></li>
+      <li>Peter Brandt reiterated "Not Not Not" — current surge is a trap, BTC has not bottomed; Sep-Oct channel low intact. <a href="https://u.today/not-not-not-peter-brandt-explains-why-current-bitcoin-surge-is-trap" target="_blank">Source</a></li>
+      <li>Fresh LTH SOPR print: 0.615 (June 30), lowest since July 2023 — capitulation, hard rule stays triggered. <a href="https://cryptobriefing.com/bitcoin-long-term-holder-sopr-hits-lowest-level-since-july-2023/" target="_blank">Source</a></li>
+      <li>CLARITY Act now framed ~50/50 with ~4 weeks of Senate runway before the window closes. <a href="https://cryptoslate.com/bitcoins-rally-has-four-weeks-to-get-its-washington-clarity-catalyst-before-the-clock-runs-out/" target="_blank">Source</a></li>
     </ul>
   </div>
 
   <div class="section-title">🔍 Watch List</div>
   <div class="card watchlist">
     <ul>
-      <li>⚡ $64.8K bear-flag ceiling → $65-66.5K trend-confirmation zone — a daily close above $65K on volume confirms the trend turn; rejection risks a slip to $58-55K</li>
-      <li>⚡ 200-day MA (~$60.8K) — the reclaim line; losing it on a close reopens the whale floor ($58K) and July 1 low</li>
-      <li>⚡ ETF flows — buying momentum fading (+$21M July 7); a re-acceleration cements the regime shift, any relapse to outflows downgrades Macro</li>
-      <li>⚡ July 10 Villaverde cycle low — 2 days out; watch for a confirmed reversal candle into the window</li>
-      <li>Strategy (Saylor) — further sales vs a teased fresh buy; net direction is the key structural swing factor</li>
-      <li>Fresh primary-source LTH SOPR print (Glassnode/CryptoQuant) — now 11 briefs stale, material to the Woo hard-rule audit trail</li>
+      <li>⚡ 200-day MA (~$60.8K) — cushion thinned to ~2.5%; a daily close below reopens the $58.4K whale floor and the July 1 low — the level that flips the composite Bearish.</li>
+      <li>⚡ ETF flows — the -$84.9M outflow broke the streak; a return to sustained inflows is required to re-upgrade Macro back to Bullish.</li>
+      <li>⚡ $64.8K bear flag → $65.4K EMA50 → $65-66.5K — a daily close above $65K on volume is the trend-confirmation trigger.</li>
+      <li>⚡ July 10 Villaverde cycle low — 1 day out; watch for a confirmed reversal candle vs a failed-timing breakdown.</li>
+      <li>CLARITY Act ~4-week window; MVRV Z reconciliation (0.25-0.33 vs 1.2) and primary Realized Price / CVDD prints to firm the Woo audit trail.</li>
     </ul>
   </div>
 
   <div class="section-title">📋 Bottom Line</div>
-  <div class="card bottom-line">
-    BTC ~$63,600 (sources conflict $63,300–$64,000; conservative figure used) — the composite holds BULLISH at MEDIUM confidence in a firming-but-not-breaking session. Both watch items the prior brief was tracking resolved constructively: ETF flows logged a third straight inflow day and Fear &amp; Greed lifted out of Extreme Fear (23) into Neutral (45) in a single day. But the follow-through is muted — the ETF inflow shrank from +$266M to +$21M, and price is essentially flat, still capped under the $64.8K bear flag and the $65K trend-confirmation line. Both 2x-weighted lenses — Macro/Liquidity and Woo On-Chain — still point bullish, and the Woo hard rule stays mechanically triggered (LTH SOPR ~0.6, LTH supply 78.3%, whale accumulation 270K BTC/30d with reserves at a 7-year low). The counterweight is unchanged and concrete: miners remain ~19% underwater with hashprice at a post-halving low, Brandt's descending-channel Sep-Oct low is intact, and Strategy is a confirmed net seller (holdings now 843,775 BTC), even as Saylor teases a fresh buy. The decisive tell remains a daily close above $65K toward $66.5K with re-accelerating ETF inflows; a loss of the 200-day MA at $60.8K on a close flips the read back toward NEUTRAL. Advisory only: the data continues to tilt constructive, but the session added confirmation without conviction — treat the trend turn as validated only on a $65K+ close, and keep the Strategy program on the radar as the primary structural risk.
+  <div class="bottom-line">
+    BTC ~$62,300 (sources conflict $62,300–$62,900; conservative figure used) — the composite steps down from BULLISH to NEUTRAL at LOW confidence. The two watch items that firmed the July 8 brief both reversed inside 24 hours: ETF flows flipped from a 3-day inflow streak to a -$84.9M outflow, and Fear &amp; Greed fell from 45 (Neutral) back to 22 (Extreme Fear). That flow reversal is exactly the trigger the prior brief flagged as a Macro downgrade — and because Macro carries 2× weight, its drop from Bullish to Neutral is what tips the composite. Price rejected under the $64.8K bear flag and EMA50 and slid to ~$62.3K, thinning the 200-day MA cushion to ~2.5%. The offsetting bull case is entirely on-chain and remains mechanically intact: the Woo hard rule is still triggered (LTH SOPR 0.615 — a fresh June 30 print and the lowest since July 2023 — LTH supply 78.3%, whale accumulation with exchange reserves at a 7-year low, MVRV in the accumulation zone). This is a real divergence, not a wash: structural-value metrics keep signaling a bottom is forming while price, flows, and sentiment say the bounce failed. Advisory only — hold positioning, treat the 200-day MA ($60.8K) as the line that flips the read Bearish, and require both a return to ETF inflows and a $65K+ close to move it back toward BULLISH. The July 10 Villaverde window (tomorrow) is the near-term tell.
   </div>
 
-  <div class="section-title">📸 Data Snapshot <button class="toggle-btn" onclick="toggleSnap()" id="snap-btn">Show</button></div>
-  <div class="card" id="snap" style="display:none;">
-    <table>
-      <tr><td>BTC Price</td><td>~$63,600 (conflict — Yahoo $64,000/$63,276 / CoinStats $63,423-$64,021 / Coinbase $63,618; range $63,300–$64,000)</td></tr>
-      <tr><td>24hr Change</td><td>~flat vs prior brief (intraday sources +0.8% to +2.4%)</td></tr>
-      <tr><td>24hr Volume</td><td>~$25-30B</td></tr>
-      <tr><td>7-day Change</td><td>~+6% (recovered from July 1 low ~$57,950)</td></tr>
-      <tr><td>DXY</td><td>&lt;101 (soft; rate-hike bets pared)</td></tr>
-      <tr><td>Fed stance</td><td>Dovish-leaning — July 29 hold at 3.50-3.75% priced; Sept hike odds ~50%</td></tr>
-      <tr><td>ETF July 7 daily flow</td><td>+$21M — 3rd straight inflow day; magnitude fading from +$266M</td></tr>
-      <tr><td>ETF streak context</td><td>prior 10-day outflow &gt;-$2.7B; 3-day inflow streak confirmed; YTD net still negative</td></tr>
-      <tr><td>Fear &amp; Greed Index</td><td>45 — Neutral (up from 23 Extreme Fear; +22 in 24hr)</td></tr>
-      <tr><td>MVRV Z-Score</td><td>1.2 — 1.0-1.5 band, 7/7 positive 12-mo returns since 2013</td></tr>
-      <tr><td>Realized Price</td><td>⚠️ STALE ~$54,000 — BTC ~18% above</td></tr>
-      <tr><td>LTH Realized Price</td><td>$40,000-$45,000 (carried) — BTC ~41-59% above</td></tr>
-      <tr><td>LTH SOPR</td><td>~0.6 ⚠️ STALE (11 briefs) — capitulation, below 0.7 threshold</td></tr>
-      <tr><td>Exchange Netflows</td><td>Structural outflow; reserves ~2.21M BTC (5.88% supply, 7-year low)</td></tr>
-      <tr><td>HODL Waves LTH %</td><td>78.3% (above 75% threshold)</td></tr>
-      <tr><td>CVDD Floor</td><td>⚠️ STALE ~$48,000 — BTC ~33% above floor</td></tr>
-      <tr><td>Whale accumulation</td><td>🟢 STRONG — 270K BTC/30d, WATS 0.68; reserves 7-year low</td></tr>
-      <tr><td>200-day MA</td><td>~$60,802 (Investing.com, "Buy") — BTC ~4.6% above ⚠️ Investtech ~$72K outlier, not used</td></tr>
-      <tr><td>Miner production cost</td><td>~$78,000/BTC (est.) — BTC ~19% below</td></tr>
-      <tr><td>Miner hashrate / hashprice</td><td>~963 EH/s; hashprice post-halving low ~$29/PH/s/day; ~20% at a loss</td></tr>
-      <tr><td>BTC Dominance</td><td>~55.5-58% (source conflict)</td></tr>
-      <tr><td>Villaverde cycle low target</td><td>July 10, 2026 (2 days)</td></tr>
+  <div class="section-title">📸 Data Snapshot</div>
+  <button class="toggle-btn" onclick="var t=document.getElementById('snap');t.style.display=t.style.display==='none'?'block':'none';">Toggle table</button>
+  <div class="card" id="snap" style="display:block;">
+    <table class="snapshot">
+      <tr><td>BTC Price</td><td>~$62,300 (conflict $62,303–$62,852; range $62,300–$62,900)</td></tr>
+      <tr><td>24hr Change</td><td>~-1.6%</td></tr>
+      <tr><td>24hr Volume</td><td>~$13-25B</td></tr>
+      <tr><td>7-day Change</td><td>~+3-5% (up off July 1 low ~$57,950)</td></tr>
+      <tr><td>DXY</td><td>~101.07 (firm)</td></tr>
+      <tr><td>Fed stance</td><td>Hold 3.50-3.75%; July hike odds ~25-30% (dovish-leaning)</td></tr>
+      <tr><td>ETF July 8 flow</td><td>-$84.9M — ends 3-day streak; IBIT -$59.1M, GBTC -$63.7M, Mini +$52.8M</td></tr>
+      <tr><td>ETF streak context</td><td>~$510M inflow over Jul 3/6/7 broken; YTD net still negative</td></tr>
+      <tr><td>Fear &amp; Greed Index</td><td>22 — Extreme Fear (down from 45 Neutral)</td></tr>
+      <tr><td>MVRV Z-Score</td><td>⚠️ CONFLICT 0.25-0.33 (fresh) vs 1.2 carried — accumulation zone</td></tr>
+      <tr><td>Realized Price</td><td>⚠️ STALE ~$54,000 — BTC ~15% above</td></tr>
+      <tr><td>LTH Realized Price</td><td>$40,000-$45,000 (carried) — BTC ~38-56% above</td></tr>
+      <tr><td>LTH SOPR</td><td>0.615 (June 30, fresh) — capitulation, below 0.7 threshold</td></tr>
+      <tr><td>Exchange Netflows</td><td>Structural outflow; reserves at a 7-year low</td></tr>
+      <tr><td>HODL Waves LTH %</td><td>78.3% (above 75% threshold; carried)</td></tr>
+      <tr><td>CVDD Floor</td><td>⚠️ STALE ~$48,000 — BTC ~30% above floor</td></tr>
+      <tr><td>Whale accumulation</td><td>🟢 STRONG — +91K BTC latest window; reserves 7-year low</td></tr>
+      <tr><td>200-day MA</td><td>~$60,802 (Investing.com, "Buy") — BTC ~2.5% above</td></tr>
+      <tr><td>Miner production cost</td><td>~$78,000/BTC (est.) — BTC ~20% below</td></tr>
+      <tr><td>Miner hashrate / hashprice</td><td>~963 EH/s; hashprice ~$29/PH/s/day; difficulty ~-20% from peak</td></tr>
+      <tr><td>BTC Dominance</td><td>~56.08%</td></tr>
+      <tr><td>Villaverde cycle low target</td><td>July 10, 2026 (1 day)</td></tr>
       <tr><td>Brandt target</td><td>Sep-Oct 2026 low; $24,825 baseline / $127,500 upper; $300-500K by 2029</td></tr>
-      <tr><td>Composite Signal</td><td>🟢 BULLISH / MEDIUM confidence</td></tr>
-      <tr><td>Brief timestamp</td><td>Wednesday, July 8, 2026 at 06:10 AM CT</td></tr>
+      <tr><td>Composite Signal</td><td>🟡 NEUTRAL / LOW confidence</td></tr>
+      <tr><td>Brief timestamp</td><td>Thursday, July 9, 2026 at 06:15 AM CT</td></tr>
     </table>
   </div>
 
   <div class="section-title">🔗 Data Verification Footer</div>
-  <div class="card">
-    <div class="src" style="margin-bottom:10px;">All data retrieved July 8, 2026 during current run via live web search. No training knowledge used for market data.</div>
-    <ol class="sources">
-      <li>BTC price: <a href="https://finance.yahoo.com/quote/BTC-USD/">Yahoo Finance</a> · <a href="https://www.coinbase.com/price/bitcoin">Coinbase</a> · <a href="https://coinstats.app/ai/a/latest-news-for-bitcoin">CoinStats</a> (July 8, 2026)</li>
-      <li>200-day MA (~$60,802, "Buy"): <a href="https://www.investing.com/indices/bitcoin-real-time-technical">Investing.com</a> ⚠️ Investtech ~$72K outlier, not used (July 8, 2026)</li>
-      <li>Fear &amp; Greed (45, Neutral): <a href="https://alternative.me/crypto/fear-and-greed-index/">alternative.me</a> (July 8, 2026)</li>
-      <li>ETF flows July 7 (+$21M, 3rd inflow day): <a href="https://www.walletpilot.com/bitcoin-tracker/etfs">WalletPilot</a> (July 7, 2026)</li>
-      <li>ETF July 6 (+$265.7M): <a href="https://www.kucoin.com/news/flash/bitcoin-etf-sees-265-7m-net-inflow-on-july-6-second-consecutive-day-over-200m">KuCoin</a> (July 6, 2026)</li>
-      <li>DXY / Fed (&lt;101, Sept odds ~50%): <a href="https://tradingeconomics.com/united-states/currency">TradingEconomics</a> (July 8, 2026)</li>
-      <li>Whale / MVRV 1.2 / reserves 2.21M / LTH 78.3%: <a href="https://coira.io/blog/bitcoin-whale-270k-btc-accumulation-supply-squeeze-2026">Coira</a> · <a href="https://www.spotedcrypto.com/bitcoin-whale-accumulation-exchange-reserves-2026/">SpotedCrypto</a> (July 2026)</li>
-      <li>Exchange reserves 7-year low: <a href="https://www.spotedcrypto.com/bitcoin-exchange-reserves-onchain-bottom-signals-2026/">SpotedCrypto</a> (July 2026)</li>
-      <li>LTH SOPR (~0.6, stale): <a href="https://deepbluealpha.io/research/bitcoin-bottom-signals-2026-on-chain">DeepBlueAlpha</a> ⚠️ STALE (11 briefs)</li>
-      <li>Miner capitulation / hashrate: <a href="https://startmining.io/en/blog/is-bitcoin-mining-profitable-2026">startmining.io</a> · <a href="https://coinshares.com/insights/research-data/bitcoin-mining-report-q1-2026/">CoinShares</a> (July 2026)</li>
-      <li>Villaverde (July 10): <a href="https://mudrex.com/learn/when-will-bitcoin-bottom-prediction/">Mudrex</a> (July 2026)</li>
-      <li>Brandt (channel, Sep-Oct low): <a href="https://moneycheck.com/peter-brandt-dismisses-bitcoin-bull-flag-theory-as-descending-channel-dominates/">MoneyCheck</a> · <a href="https://u.today/down-15-or-up-to-127500-where-peter-brandt-sees-bitcoin-heading-next">U.Today</a> (2026)</li>
-      <li>Strategy / Saylor / CLARITY: <a href="https://www.cryptotimes.io/2026/07/07/why-michael-saylors-strategy-is-selling-bitcoin-after-years-of-buying/">CryptoTimes</a> · <a href="https://finance.yahoo.com/markets/crypto/articles/michael-saylor-sees-clarity-act-152700894.html">Yahoo Finance</a> (July 2026)</li>
+  <div class="card verif">
+    <p>All data retrieved July 9, 2026 during current run via live web search. No training knowledge used for market data.</p>
+    <ol>
+      <li>BTC price ($62,303 CoinDesk/CMC-AI / $62,852 Cryptonomist): <a href="https://www.coindesk.com/price/bitcoin" target="_blank">coindesk.com</a> · <a href="https://en.cryptonomist.ch/2026/07/09/bitcoin-price-today-analysis-fragile-recovery/" target="_blank">cryptonomist.ch</a></li>
+      <li>Technicals / support-resistance / dominance 56.08%: <a href="https://coinmarketcap.com/cmc-ai/bitcoin/price-analysis/" target="_blank">coinmarketcap.com</a></li>
+      <li>200-day MA (~$60,802, "Buy"): <a href="https://www.investing.com/indices/bitcoin-real-time-technical" target="_blank">investing.com</a></li>
+      <li>Fear &amp; Greed (22, Extreme Fear): <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank">alternative.me</a></li>
+      <li>ETF flows July 8 (-$84.9M, streak broken): <a href="https://financefeeds.com/crypto-etf-flows-turn-negative-on-july-8-as-bitcoin-funds-lose-84-9-million/" target="_blank">financefeeds.com</a> · <a href="https://en.cryptonomist.ch/2026/07/08/bitcoin-etfs-inflows-shift/" target="_blank">cryptonomist.ch</a></li>
+      <li>DXY (~101.07) + Fed (hold, July odds ~25-30%): <a href="https://tradingeconomics.com/united-states/currency" target="_blank">tradingeconomics.com</a> · <a href="https://finance.yahoo.com/economy/policy/articles/fed-hike-interest-rates-july-060507499.html" target="_blank">yahoo</a></li>
+      <li>MVRV Z (0.25-0.33 fresh): <a href="https://ahasignals.com/current-bitcoin-mvrv-z-score/" target="_blank">ahasignals.com</a> · <a href="https://newhedge.io/bitcoin/mvrv-z-score" target="_blank">newhedge.io</a></li>
+      <li>Reserves 7-year low / whales +91K BTC: <a href="https://www.spotedcrypto.com/bitcoin-exchange-reserves-whale-accumulation/" target="_blank">spotedcrypto.com</a></li>
+      <li>LTH SOPR (0.615, June 30): <a href="https://cryptobriefing.com/bitcoin-long-term-holder-sopr-hits-lowest-level-since-july-2023/" target="_blank">cryptobriefing.com</a></li>
+      <li>LTH Realized Price / supply: <a href="https://www.bitcoinmagazinepro.com/charts/long-term-holder-realized-price/" target="_blank">bitcoinmagazinepro</a></li>
+      <li>Realized Price (~$54K est.): <a href="https://newhedge.io/bitcoin/realized-price" target="_blank">newhedge.io</a> ⚠️ STALE</li>
+      <li>CVDD Floor (~$48K est.): <a href="https://thecryptobasic.com/bitcoin-cvdd-model-shows-price-likely-to-bottom-near-48k" target="_blank">thecryptobasic.com</a> ⚠️ STALE</li>
+      <li>Miner capitulation / difficulty -20%: <a href="https://startmining.io/en/blog/is-bitcoin-mining-profitable-2026" target="_blank">startmining.io</a> · <a href="https://www.coingabbar.com/en/crypto-currency-news/bitcoin-miner-capitulation-difficulty-drops-20-percent" target="_blank">coingabbar</a></li>
+      <li>Villaverde (July 10): <a href="https://mudrex.com/learn/when-will-bitcoin-bottom-prediction/" target="_blank">mudrex.com</a></li>
+      <li>Brandt ("Not Not Not," channel, Sep-Oct low): <a href="https://u.today/not-not-not-peter-brandt-explains-why-current-bitcoin-surge-is-trap" target="_blank">u.today</a> · <a href="https://moneycheck.com/peter-brandt-dismisses-bitcoin-bull-flag-theory-as-descending-channel-dominates/" target="_blank">moneycheck.com</a></li>
+      <li>CLARITY Act (~50/50, 4-week window): <a href="https://www.fool.com/investing/2026/07/06/the-chances-of-the-clarity-act-passing-this-year-a/" target="_blank">fool.com</a> · <a href="https://cryptoslate.com/bitcoins-rally-has-four-weeks-to-get-its-washington-clarity-catalyst-before-the-clock-runs-out/" target="_blank">cryptoslate.com</a></li>
     </ol>
-    <div class="src" style="margin-top:10px;">⚠️ LTH SOPR: 11 consecutive briefs with no fresh primary-source print — highest-priority data gap; Woo hard rule carried on this stale figure plus fresh HODL/whale/reserve/MVRV confirmation.<br>⚠️ Realized Price, LTH Realized Price, CVDD Floor, miner hashprice: best-available figures dated/estimated, not fresh primary prints this run.</div>
+    <p>⚠️ MVRV Z source conflict (0.25-0.33 vs 1.2) — conservative fresh print used; reconcile next run. ⚠️ Realized Price, LTH Realized Price, CVDD Floor, miner hashprice remain dated/estimated.</p>
   </div>
 
   <div class="footer">
-    Finance Agent V3 · Last updated: Wednesday, July 8, 2026 at 06:10 AM CT<br>
+    Finance Agent V3 · Last updated: Thursday, July 9, 2026 at 06:15 AM CT<br>
     <a href="https://rdwills02.github.io/BTC_Brief/">Dashboard</a> ·
     <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">Glossary</a>
   </div>
 
 </div>
-<script>
-function toggleSnap() {
-  const s = document.getElementById('snap');
-  const b = document.getElementById('snap-btn');
-  if (s.style.display === 'none') { s.style.display = 'block'; b.textContent = 'Hide'; }
-  else { s.style.display = 'none'; b.textContent = 'Show'; }
-}
-</script>
 </body>
 </html>
