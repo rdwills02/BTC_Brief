@@ -3,263 +3,193 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Finance Agent V4 · Dashboard</title>
+<title>Finance Agent V4 · Daily Dashboard</title>
 <style>
-:root{
-  --bg:#0b0c14; --surface:#13141f; --border:#1e2035; --text:#e2e4ef; --muted:#6b7280;
-  --bull:#00c896; --bear:#e8754a; --neutral:#f5a623; --accent:#7b6ef6;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;padding:0 0 60px}
-a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
-.wrap{max-width:1100px;margin:0 auto;padding:0 20px}
-header.top{position:relative;padding:22px 20px 14px;border-bottom:1px solid var(--border);background:var(--surface)}
-header.top h1{font-size:18px;font-weight:700;letter-spacing:.3px}
-header.top .sub{color:var(--muted);font-size:12px;margin-top:4px}
-.full-brief-link{position:absolute;top:22px;right:20px;font-size:12px;background:#191b2b;border:1px solid var(--border);padding:6px 12px;border-radius:6px;color:var(--accent)}
-.section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;margin:18px 0}
-.section h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px}
-.composite{border-left:5px solid var(--neutral)}
-.composite.bear{border-left-color:var(--bear)}
-.composite.bull{border-left-color:var(--bull)}
-.bigrow{display:flex;flex-wrap:wrap;gap:20px;align-items:baseline}
-.bigrow .px{font-size:34px;font-weight:700}
-.bigrow .chg{font-size:16px;font-weight:600}
-.down{color:var(--bear)} .up{color:var(--bull)} .flat{color:var(--neutral)}
-.badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:.5px}
-.badge.neu{background:rgba(245,166,35,.15);color:var(--neutral);border:1px solid var(--neutral)}
-.badge.bear{background:rgba(232,117,74,.15);color:var(--bear);border:1px solid var(--bear)}
-.badge.bull{background:rgba(0,200,150,.15);color:var(--bull);border:1px solid var(--bull)}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.card{background:#0f1019;border:1px solid var(--border);border-radius:8px;padding:12px}
-.card .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-.card .val{font-size:19px;font-weight:700;margin-top:5px}
-.card .note{font-size:11px;color:var(--muted);margin-top:3px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.lens{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
-.lens:last-child{border-bottom:none}
-.dot{width:11px;height:11px;border-radius:50%;margin-top:5px;flex:none}
-.dot.bear{background:var(--bear)} .dot.bull{background:var(--bull)} .dot.neu{background:var(--neutral)}
-.lens .nm{font-weight:600;font-size:14px}
-.lens .fd{font-size:12px;color:var(--muted)}
-.wbadge{font-size:9px;background:rgba(123,110,246,.18);color:var(--accent);border:1px solid var(--accent);padding:1px 5px;border-radius:4px;margin-left:6px;vertical-align:middle}
-.bbadge{font-size:9px;background:rgba(232,117,74,.15);color:var(--bear);border:1px solid var(--bear);padding:1px 5px;border-radius:4px;margin-left:6px;vertical-align:middle}
-.arrow{margin-left:auto;font-size:13px;padding-left:10px;flex:none}
-.crit{border-left:5px solid var(--bear)}
-.watch li,.bl p{margin:8px 0;font-size:14px}
-.watch ul{list-style:none}
-.watch li:before{content:"▸ ";color:var(--accent)}
-.chartbox{position:relative;height:420px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
-.expand{position:absolute;top:8px;right:8px;z-index:5;background:#191b2b;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 9px;font-size:12px;cursor:pointer}
-.chartbox.full{position:fixed;inset:0;height:100vh;z-index:999;border-radius:0}
-footer{color:var(--muted);font-size:12px;text-align:center;padding:24px 20px}
-.k{color:var(--bear)} .s{color:var(--bull)}
-.ctx{border-left:5px solid var(--accent)}
-@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.bigrow .px{font-size:26px}}
+  :root{
+    --bg:#0b0c14; --surface:#13141f; --border:#1e2035; --text:#e2e4ef; --muted:#6b7280;
+    --bull:#00c896; --bear:#e8754a; --neutral:#f5a623; --accent:#7b6ef6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.5;padding:0 0 60px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+  header.top{position:relative;padding:26px 20px 18px;border-bottom:1px solid var(--border);background:var(--surface)}
+  header.top h1{font-size:19px;font-weight:700;letter-spacing:.3px}
+  header.top .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .full-brief-link{position:absolute;top:26px;right:20px;color:var(--accent);text-decoration:none;font-size:13px;font-weight:600;border:1px solid var(--border);padding:6px 12px;border-radius:7px;background:var(--bg)}
+  .full-brief-link:hover{border-color:var(--accent)}
+  .banner{background:var(--surface);border-left:4px solid var(--neutral);padding:10px 16px;margin:16px 0;border-radius:6px;font-size:13px;color:var(--muted)}
+  .composite{border-radius:10px;background:var(--surface);border:1px solid var(--border);padding:20px;margin:20px 0}
+  .composite.btc{border-left:5px solid var(--bull)}
+  .composite.bah{border-left:5px solid var(--bull)}
+  .composite h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px}
+  .composite .big{font-size:26px;font-weight:700}
+  .composite .price{font-size:15px;color:var(--muted);margin-top:6px}
+  .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;margin-left:8px}
+  .pill.bull{background:rgba(0,200,150,.15);color:var(--bull)}
+  .pill.bear{background:rgba(232,117,74,.15);color:var(--bear)}
+  .pill.neutral{background:rgba(245,166,35,.15);color:var(--neutral)}
+  .grid{display:grid;gap:14px;margin:16px 0}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:820px){.g4{grid-template-columns:repeat(2,1fr)}.g2{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px}
+  .card .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  .card .val{font-size:19px;font-weight:700;margin-top:5px}
+  .card .note{font-size:12px;color:var(--muted);margin-top:4px}
+  .sec-title{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin:26px 0 8px}
+  .lens{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
+  .dot{width:11px;height:11px;border-radius:50%;margin-top:5px;flex:0 0 auto}
+  .dot.bull{background:var(--bull)}.dot.bear{background:var(--bear)}.dot.neutral{background:var(--neutral)}
+  .lens .name{font-weight:700;font-size:14px}
+  .lens .finding{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;margin-left:6px;vertical-align:middle}
+  .badge.w2{background:rgba(123,110,246,.18);color:var(--accent)}
+  .badge.bearlens{background:rgba(232,117,74,.18);color:var(--bear)}
+  .badge.alert{background:rgba(245,166,35,.2);color:var(--neutral)}
+  .levels{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .levels .col{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px}
+  .levels .res{color:var(--bear);font-weight:700}
+  .levels .sup{color:var(--bull);font-weight:700}
+  .crit{background:var(--surface);border-left:4px solid var(--bull);border-radius:8px;padding:14px;margin-bottom:10px}
+  .crit .t{font-weight:700;color:var(--bull)}
+  ul.watch{list-style:none;padding:0}
+  ul.watch li{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:7px;font-size:13px}
+  .chart-box{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:8px;margin:14px 0;position:relative}
+  .chart-box .exp{position:absolute;top:12px;right:14px;z-index:5;background:var(--bg);border:1px solid var(--border);color:var(--accent);border-radius:6px;padding:3px 9px;font-size:12px;cursor:pointer}
+  .tvwrap{height:360px;transition:height .2s}
+  .tvwrap.expanded{height:640px}
+  .bottomline{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin-bottom:12px;font-size:13.5px}
+  .bottomline h3{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:6px}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;text-align:center}
+  footer a{color:var(--accent);text-decoration:none;margin:0 8px}
+  a{color:var(--accent)}
 </style>
 </head>
 <body>
 <header class="top">
+  <h1>⚡ Finance Agent V4 · Daily Dashboard</h1>
+  <div class="sub">Last updated: Tuesday, July 21, 2026 at 04:25 PM CT · <span style="color:var(--neutral)">late/manual run</span></div>
   <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief →</a>
   <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank" style="right:140px;">Calculator ↗</a>
-  <h1>Finance Agent V4 · Daily Dashboard</h1>
-  <div class="sub">Last updated: Friday, July 17, 2026 at 06:15 AM CT</div>
 </header>
 <div class="wrap">
 
-  <div class="section composite neu">
-    <h2>₿ BTC Composite</h2>
-    <div class="bigrow">
-      <span class="px">$62,810</span>
-      <span class="chg down">24hr −3.1%</span>
-      <span class="chg down">7d ~−1.5%</span>
-      <span class="badge neu">🟡 NEUTRAL · bearish tilt</span>
-      <span class="badge neu">Confidence MEDIUM</span>
-    </div>
-    <div class="card" style="margin-top:14px;background:transparent;border:none;padding:0">
-      <div class="note" style="font-size:13px;color:var(--text)">🔴 Bearish 3/8 · 🟡 Neutral 3/8 · 🟢 Bullish 2/8 · Fresh-data lenses 7/8. <b>BTC broke below the 200-day SMA (~$63,182)</b> on a 6th straight night of US strikes on Iran + a Trump China-election claim. On-chain floor still constructive.</div>
-    </div>
+  <div class="banner">⚠️ Late/manual run (~4:25 PM CT, not the scheduled 6:00 AM). BTC = live intraday July 21 prints. BAH = confirmed July 20 prior close ($63.89); the July 21 close could not be verified this pass.</div>
+
+  <div class="composite btc">
+    <h2>BTC Composite</h2>
+    <div class="big">🟢 BULLISH <span class="pill bull">Confidence: MEDIUM</span></div>
+    <div class="price">🟢 Bullish 4/8 · 🟡 Neutral 2/8 · 🔴 Bearish 2/8 · Fresh 8/8 · Weighted bullish 6 of 10</div>
+    <div class="price">BTC <b style="color:var(--text)">~$66,609</b> · 📈 24hr ~+2.1% · 📈 vs prior brief +6.0% · five-week high</div>
   </div>
 
-  <div class="section">
-    <h2>BTC · Market</h2>
-    <div class="cards">
-      <div class="card"><div class="lbl">24hr Range</div><div class="val">~$62K–$65K</div><div class="note">below 200-day SMA ~$63,182</div></div>
-      <div class="card"><div class="lbl">Fear &amp; Greed <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">↗</a></div><div class="val flat">26 · Fear</div><div class="note">≈flat; contrarian fuel</div></div>
-      <div class="card"><div class="lbl">ETF Flows 7d <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">↗</a></div><div class="val up">+$270M</div><div class="note">3rd inflow day (+$79M 07/16)</div></div>
-      <div class="card"><div class="lbl">DXY <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">↗</a></div><div class="val down">~100.7</div><div class="note">safe-haven rebound; oil ~$80</div></div>
-    </div>
+  <div class="grid g4">
+    <div class="card"><div class="lbl">24hr Range / MA</div><div class="val">$65.2K–$66.6K</div><div class="note">🟢 above 200-day SMA ~$63,182 & 50-day EMA ~$65,143</div></div>
+    <div class="card"><div class="lbl">Fear &amp; Greed</div><div class="val" style="color:var(--bear)">~24 Extreme Fear</div><div class="note">price at 5-wk high while sentiment lags — contrarian</div></div>
+    <div class="card"><div class="lbl">ETF Flows (7d)</div><div class="val" style="color:var(--bull)">+$226.8M</div><div class="note">07/20 · 5th straight inflow day (IBIT lead)</div></div>
+    <div class="card"><div class="lbl">DXY</div><div class="val">~101</div><div class="note">flat; safe-haven bid unwound</div></div>
+  </div>
+  <div class="grid g4">
+    <div class="card"><div class="lbl">Realized Price</div><div class="val">~$52,493</div><div class="note">⚠️ 07/13 stale · BTC ~27% above</div></div>
+    <div class="card"><div class="lbl">LTH SOPR</div><div class="val" style="color:var(--bear)">0.615</div><div class="note">⚠️ 06/30 stale · hard rule NOT fired</div></div>
+    <div class="card"><div class="lbl">Whale Accumulation</div><div class="val" style="color:var(--bull)">~66,700 BTC / 60d</div><div class="note">one of 2026's strongest waves</div></div>
+    <div class="card"><div class="lbl">Miner Cost vs Spot</div><div class="val">cash ~$37.9K</div><div class="note">BTC above cash cost; hashprice ~$29 record low</div></div>
   </div>
 
-  <div class="section">
-    <h2>BTC · On-Chain</h2>
-    <div class="cards">
-      <div class="card"><div class="lbl">Realized Price <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">↗</a></div><div class="val">~$52,493</div><div class="note">BTC ~20% above (07/13, carried)</div></div>
-      <div class="card"><div class="lbl">LTH SOPR <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">↗</a></div><div class="val flat">0.615 ⚠️</div><div class="note">06/30 — STALE, hard rule not fired</div></div>
-      <div class="card"><div class="lbl">Whale Accumulation</div><div class="val up">🟢 Strong</div><div class="note">+270K BTC; reserves 7-yr low</div></div>
-      <div class="card"><div class="lbl">Miner Cost vs Spot</div><div class="val down">~$78K</div><div class="note">BTC ~19% below breakeven</div></div>
+  <div class="chart-box">
+    <button class="exp" onclick="toggleChart('btcw',this)">⛶ Expand</button>
+    <div id="btcw" class="tvwrap">
+      <iframe src="https://s.tradingview.com/widgetembed/?symbol=BITSTAMP%3ABTCUSD&interval=D&theme=dark&style=1&studies=%5B%22MASimple%40tv-basicstudies%22%5D&hidesidetoolbar=1&hidetoptoolbar=0&saveimage=0&toolbarbg=0b0c14" style="width:100%;height:100%;border:0;border-radius:6px" title="BTCUSD"></iframe>
     </div>
   </div>
 
-  <div class="section">
-    <h2>Live Chart · BTCUSD</h2>
-    <div class="chartbox" id="btcbox">
-      <button class="expand" onclick="tog('btcbox')">⛶ Expand</button>
-      <div class="tradingview-widget-container" style="height:100%;width:100%">
-        <div id="tv_btc" style="height:100%;width:100%"></div>
-      </div>
+  <div class="sec-title">BTC Key Levels</div>
+  <div class="levels">
+    <div class="col"><div class="lbl" style="color:var(--muted);font-size:11px">RESISTANCE</div><div class="res">$68,000 → $72,200 (STH cost basis) → $74,705 (200-day EMA)</div></div>
+    <div class="col"><div class="lbl" style="color:var(--muted);font-size:11px">SUPPORT</div><div class="sup">$65,150 (50-day EMA) → $63,182 (200-day SMA) → $61,300</div></div>
+  </div>
+
+  <div class="sec-title">Cycle Timing &amp; Macro</div>
+  <div class="grid g2">
+    <div class="card"><div class="lbl">Cycle Timing</div><div class="note" style="margin-top:6px">Villaverde low target: <b>July 10</b> — passed 11d, unconfirmed; bounce now holding<br>Brandt bottom: <b>Oct 4, 2026</b> — lower low first (high-$40Ks); $250K–$300K by 2029<br>Woo floor: <b>$46–54K</b> — timeline pushed to Dec 2026–Mar 2027</div></div>
+    <div class="card"><div class="lbl">Macro</div><div class="note" style="margin-top:6px">Fed hold 3.50–3.75%; July 29 ~65% hold; Sept hike odds ~65%<br>BTC Dominance ~56.4%<br>June CPI cool; risk appetite returned market-wide</div></div>
+  </div>
+
+  <div class="sec-title">BTC Lens Scorecard</div>
+  <div class="lens"><div class="dot bear"></div><div><span class="name">1. Halving / Cycle</span><div class="finding">Hashprice record-low ~$29/PH/s/day; BTC above cash cost but below all-in ~$78K. 🔴 ➡️</div></div></div>
+  <div class="lens"><div class="dot bull"></div><div><span class="name">2. Macro / Liquidity<span class="badge w2">2× weight</span><span class="badge alert">⚡ upgrade</span></span><div class="finding">Safe-haven bid unwound; DXY ~101; 5-day ETF inflow streak. 🟡→🟢 📈</div></div></div>
+  <div class="lens"><div class="dot neutral"></div><div><span class="name">3. Adoption / Reserve</span><div class="finding">No fresh sovereign/legislative catalyst; CLARITY Act carried. 🟡 ➡️</div></div></div>
+  <div class="lens"><div class="dot bull"></div><div><span class="name">4. Wright</span><div class="finding">Extreme Fear (~24) into a 5-wk high + record whale accumulation — contrarian bullish. 🟢 ➡️</div></div></div>
+  <div class="lens"><div class="dot bull"></div><div><span class="name">5. Fogle Technical<span class="badge alert">⚡ reclaim</span></span><div class="finding">Reclaimed 200-day SMA (~$63,182) & 50-day EMA (~$65,143); five-week high. 🔴→🟢 📈</div></div></div>
+  <div class="lens"><div class="dot neutral"></div><div><span class="name">6. Villaverde Cycles</span><div class="finding">July 10 target passed but bounce holding above 200-day SMA; tilting bullish. 🟡 ➡️</div></div></div>
+  <div class="lens"><div class="dot bull"></div><div><span class="name">7. Woo On-Chain<span class="badge w2">2× weight</span></span><div class="finding">7-yr-low reserves + record whale buying (in-window) 🟢; MVRV/SOPR stale-carried; hard rule NOT fired. ➡️</div></div></div>
+  <div class="lens"><div class="dot bear"></div><div><span class="name">8. Brandt Classical<span class="badge bearlens">Bear lens</span></span><div class="finding">Oct 4 bottom call intact, lower low into high-$40Ks; weighing BTC→gold. 🔴 ➡️</div></div></div>
+
+  <div class="composite bah">
+    <h2>⚡ BAH Sell Zone · Booz Allen</h2>
+    <div class="big">🟢 TOO EARLY <span class="pill bull">Confidence: MEDIUM</span></div>
+    <div class="price">BAH <b style="color:var(--text)">$63.89</b> (prior close — July 20) · 📉 1d −2.07% · 5d ❓ · YTD ❓</div>
+    <div class="price">Tracking only — next vest June 2027 (~315 days), no shares available to sell</div>
+  </div>
+
+  <div class="grid g4">
+    <div class="card"><div class="lbl">52-wk Range / %ile</div><div class="val">~7th %ile</div><div class="note">$59.50 – $120.05</div></div>
+    <div class="card"><div class="lbl">vs ATH $183.51</div><div class="val" style="color:var(--bear)">−65.2%</div><div class="note">10/28/2024</div></div>
+    <div class="card"><div class="lbl">% Drawdown Recovered</div><div class="val" style="color:var(--bear)">10.3%</div><div class="note">the thesis in one number (was 13.5% Fri)</div></div>
+    <div class="card"><div class="lbl">vs 200-day MA</div><div class="val" style="color:var(--bear)">−23%</div><div class="note">200-day ~$83 · 50-day ~$72.6</div></div>
+  </div>
+  <div class="grid g4">
+    <div class="card"><div class="lbl">Consensus Target</div><div class="val">$82.44 → +29%</div><div class="note">⚠️ newest marks $65/$70/$75 (stale headline)</div></div>
+    <div class="card"><div class="lbl">Fwd P/E vs own avg</div><div class="val">10.6× / 20.6×</div><div class="note">multiple roughly halved, no re-rating</div></div>
+    <div class="card"><div class="lbl">Peer Discount</div><div class="val">modest</div><div class="note">peer discount largely closed; own-history not</div></div>
+    <div class="card"><div class="lbl">Next Vest</div><div class="val">June 2027</div><div class="note">~315 days · shares ❓ · value ❓</div></div>
+  </div>
+
+  <div class="chart-box">
+    <button class="exp" onclick="toggleChart('bahw',this)">⛶ Expand</button>
+    <div id="bahw" class="tvwrap">
+      <iframe src="https://s.tradingview.com/widgetembed/?symbol=NYSE%3ABAH&interval=D&theme=dark&style=1&studies=%5B%22MASimple%40tv-basicstudies%22%5D&hidesidetoolbar=1&hidetoptoolbar=0&saveimage=0&toolbarbg=0b0c14" style="width:100%;height:100%;border:0;border-radius:6px" title="BAH"></iframe>
     </div>
   </div>
 
-  <div class="section">
-    <h2>BTC · Key Levels</h2>
-    <div class="two">
-      <div><div class="lbl" style="color:var(--muted);font-size:11px;text-transform:uppercase">Resistance</div>
-        <p class="k">$63,350–$65,150 → $65,700–$65,800 → $66,000 → $68,000</p></div>
-      <div><div class="lbl" style="color:var(--muted);font-size:11px;text-transform:uppercase">Support</div>
-        <p class="s">$61,300–$61,400 → $60,000 → $58,115–$58,500</p></div>
-    </div>
-    <p class="note" style="margin-top:8px">Lost the $65,800 cluster and the 200-day SMA; battle now at $61,300–$61,400.</p>
+  <div class="sec-title">BAH Sell-Zone Read (compact — full 5-lens Mondays &amp; inside 90d of a vest)</div>
+  <div class="lens"><div class="dot bull"></div><div><span class="name">Price Zone<span class="badge w2">2× weight</span></span><div class="finding">~7th %ile, −65% vs ATH, −37.5% vs pre-disclosure, only 10.3% recovered → too early. 🟢</div></div></div>
+  <div class="lens"><div class="dot bull"></div><div><span class="name">Upside Left<span class="badge w2">2× weight</span></span><div class="finding">Below even the newest bear marks; headline +29% rests on un-refreshed targets; earnings Jul 24 the catalyst. 🟢</div></div></div>
+
+  <div class="sec-title">⚡ Critical Developments</div>
+  <div class="crit"><span class="t">⚡ METRIC THRESHOLD — BTC crossed back ABOVE the 200-day MA.</span> +6.0% to ~$66,609, reclaiming the 200-day SMA (~$63,182) and 50-day EMA on a fifth straight ETF inflow day — the mirror of last week's breakdown. <a href="https://finance.yahoo.com/personal-finance/investing/article/bitcoin-and-ethereum-prices-today-tuesday-july-21-2026-crypto-prices-rise-as-investors-risk-appetite-returns-152323748.html" target="_blank">Source</a> (07/21/2026)</div>
+
+  <div class="sec-title">Watch List</div>
+  <ul class="watch">
+    <li>⚡ <b>$68,000, then $65,150.</b> $68K confirms the breakout; losing $65,150 invalidates the reclaim.</li>
+    <li>⚡ <b>FOMC July 29 (8 days).</b> Hold ~65% priced; a hawkish surprise under the Warsh Fed is the main macro risk.</li>
+    <li>⚡ <b>07/21 ETF flow.</b> A sixth inflow day extends the streak; the first outflow is the first crack.</li>
+    <li>⚡ <b>Fresh ≤72h SOPR / MVRV print.</b> Both stale; a fresh print could lift confidence to HIGH.</li>
+    <li>📊 <b>BAH Q1 FY27 earnings — Friday July 24 (3 days).</b> The only dated BAH binary before the June 2027 vest.</li>
+  </ul>
+
+  <div class="sec-title">401(k) · Venus (context — not a buy/sell/cash signal)</div>
+  <div class="card" style="border-left:4px solid var(--neutral)">
+    <div class="val" style="color:var(--neutral);font-size:15px">⚡ ACTION — Venus 401(k) NOT ENROLLED</div>
+    <div class="note" style="font-size:12.5px">~$10,000 of ~$18,000 annual employer match forfeited YTD. Auto-enroll ~3% (~Aug 2026) captures only half. <b>Elect 6% to capture all of it.</b> · S&amp;P ~7,572 (07/15) near record — 23-year hold, no drawdown flag; any decline is shares on sale.</div>
   </div>
 
-  <div class="section">
-    <h2>Cycle Timing &amp; Macro</h2>
-    <div class="two">
-      <div>
-        <p>⏱️ <b>Villaverde</b> low target: Jul 10 — passed 7d, unconfirmed 🟡 (bounce failed)</p>
-        <p>⏱️ <b>Brandt</b> investable low: Sep–Oct 2026 (~75d) 🔴 — "rally then chop"</p>
-        <p>⏱️ <b>Woo</b> capitulation floor: $46–54K, Q4 2026 🔴</p>
-      </div>
-      <div>
-        <p>🏦 <b>Fed</b>: hold 3.50–3.75%; July hike ~12%, Sept ~56–59%</p>
-        <p>📉 <b>CPI</b>: 3.5% headline, 2.6% core (cooling)</p>
-        <p>🧭 <b>BTC Dominance</b> <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">↗</a>: ~56.3%</p>
-      </div>
-    </div>
-  </div>
+  <div class="sec-title">Bottom Line</div>
+  <div class="bottomline"><h3>BTC</h3>Composite upgrades to BULLISH. BTC reversed last week's 200-day breakdown, +6% to a five-week high ~$66,609, reclaiming both the 200-day SMA and 50-day EMA on a return of risk appetite, confirmed by a 5th straight ETF inflow day and record whale accumulation into 7-yr-low reserves. Both 2× lenses score bullish. Tension: Brandt (Oct 4 lower low) and Woo ($46–54K floor) haven't blinked, and MVRV/SOPR went stale again — so confidence is MEDIUM. Above $68,000 the breakout builds; below $65,150 it fails. Watch July 29 FOMC. Advisory only.</div>
+  <div class="bottomline"><h3>BAH</h3>Still too early — and the divergence made it more so. BAH slipped to $63.89 while risk assets rallied, at the ~7th percentile of its range, 65% below ATH, only 10.3% of the drawdown recovered. It now sits below even the three newest analyst marks ($65/$70/$75), so the headline +29% upside rests on un-refreshed targets. Earnings Friday July 24 is the catalyst most likely to force those lower. Nothing to sell for ~315 days regardless. Do nothing; revisit after July 24.</div>
 
-  <div class="section">
-    <h2>BTC Lens Scorecard</h2>
-    <div class="lens"><span class="dot bear"></span><div><span class="nm">1. Halving/Cycle</span><div class="fd">Miners ~19% underwater; no post-halving surge</div></div><span class="arrow">➡️</span></div>
-    <div class="lens"><span class="dot neu"></span><div><span class="nm">2. Macro/Liquidity<span class="wbadge">2× weight</span></span><div class="fd">Cool CPI offset by safe-haven dollar/oil bid</div></div><span class="arrow down">📉 🟢→🟡</span></div>
-    <div class="lens"><span class="dot neu"></span><div><span class="nm">3. Adoption/Reserve</span><div class="fd">CLARITY Act stalled; no new catalyst</div></div><span class="arrow">➡️</span></div>
-    <div class="lens"><span class="dot bull"></span><div><span class="nm">4. Wright</span><div class="fd">Fear + historic whale accumulation = contrarian fuel</div></div><span class="arrow">➡️</span></div>
-    <div class="lens"><span class="dot bear"></span><div><span class="nm">5. Fogle Technical</span><div class="fd">⚡ Broke 200-day SMA + 50-day EMA; bounce failed</div></div><span class="arrow down">📉 🟡→🔴</span></div>
-    <div class="lens"><span class="dot neu"></span><div><span class="nm">6. Villaverde Cycles</span><div class="fd">Window open but bounce failed; tilting bearish</div></div><span class="arrow">➡️</span></div>
-    <div class="lens"><span class="dot bull"></span><div><span class="nm">7. Woo On-Chain<span class="wbadge">2× weight</span></span><div class="fd">🟢 on fresh netflow/whale; MVRV &amp; SOPR now stale</div></div><span class="arrow">➡️</span></div>
-    <div class="lens"><span class="dot bear"></span><div><span class="nm">8. Brandt Classical<span class="bbadge">Bear lens</span></span><div class="fd">Sep–Oct low; failed bounce validates the call</div></div><span class="arrow">➡️</span></div>
-  </div>
-
-  <div class="section composite bull">
-    <h2>📊 BAH Sell Zone · Booz Allen</h2>
-    <div class="bigrow">
-      <span class="px">$65.26</span>
-      <span class="chg up">1d +2.79%</span>
-      <span class="chg" style="color:var(--muted)">prior close 07/16</span>
-      <span class="badge bull">🟢 TOO EARLY</span>
-      <span class="badge bull">Confidence MEDIUM</span>
-    </div>
-    <div class="note" style="margin-top:12px;font-size:13px;color:var(--text)">Only 13.5% of the drawdown recovered. Tracking only — no shares available for ~319 days (next vest June 2027). Rose while BTC fell.</div>
-  </div>
-
-  <div class="section">
-    <h2>BAH · Where We Are</h2>
-    <div class="cards">
-      <div class="card"><div class="lbl">52-wk Percentile</div><div class="val">~13th</div><div class="note">$59.50–$120.05</div></div>
-      <div class="card"><div class="lbl">vs ATH</div><div class="val down">−64.4%</div><div class="note">$183.51 (10/28/24)</div></div>
-      <div class="card"><div class="lbl">% Drawdown Recovered</div><div class="val flat">13.5%</div><div class="note">the thesis in one number</div></div>
-      <div class="card"><div class="lbl">vs 200-day MA</div><div class="val down">−21%</div><div class="note">MA ~$83.00</div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>BAH · Upside &amp; Vest</h2>
-    <div class="cards">
-      <div class="card"><div class="lbl">Consensus Target</div><div class="val">$86.00</div><div class="note">+31.8% ⚠️ newest marks $65–70</div></div>
-      <div class="card"><div class="lbl">Fwd P/E vs own 3yr</div><div class="val">10.9x / 20.6x</div><div class="note">multiple halved, no re-rate</div></div>
-      <div class="card"><div class="lbl">Peer Discount</div><div class="val flat">~in line</div><div class="note">peer median ~10.8x</div></div>
-      <div class="card"><div class="lbl">Next Vest</div><div class="val">~319 days</div><div class="note">June 2027 · shares ❓</div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>Live Chart · NYSE:BAH</h2>
-    <div class="chartbox" id="bahbox">
-      <button class="expand" onclick="tog('bahbox')">⛶ Expand</button>
-      <div class="tradingview-widget-container" style="height:100%;width:100%">
-        <div id="tv_bah" style="height:100%;width:100%"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>BAH · Sell-Zone Read (compact — full 5-lens Mondays)</h2>
-    <div class="lens"><span class="dot bull"></span><div><span class="nm">Price Zone<span class="wbadge">2× weight</span></span><div class="fd">~13th percentile, 36% below pre-disclosure → too early</div></div></div>
-    <div class="lens"><span class="dot bull"></span><div><span class="nm">Upside Left<span class="wbadge">2× weight</span></span><div class="fd">Discount to own history intact; but newest marks $65–70</div></div></div>
-    <div class="lens"><span class="dot neu"></span><div><span class="nm">Peer Group</span><div class="fd">Discount to peers closed; discount to own history hasn't</div></div></div>
-    <div class="lens"><span class="dot neu"></span><div><span class="nm">Trend</span><div class="fd">+2.79% relative strength; still below 50/200-day MA</div></div></div>
-    <div class="lens"><span class="dot neu"></span><div><span class="nm">Catalysts</span><div class="fd">Q1 FY27 earnings Jul 24; tax-records suits ongoing</div></div></div>
-  </div>
-
-  <div class="section crit">
-    <h2>⚡ Critical Developments</h2>
-    <p><b>Metric threshold + macro regime — BTC broke below the 200-day MA on volume.</b> BTC −3.1% to ~$62,810, cutting through the 200-day SMA (~$63,182) on a 6th straight night of US strikes on Iran plus a Trump China-election-interference claim. Safe-haven flows lifted DXY (~100.7) and crude (~$80). Lens impact 🔴 (Fogle 🔴, Macro → 🟡). <a href="https://www.coindesk.com/markets/2026/07/17/bitcoin-under-usd64-000-after-u-s-strike-on-iran-trump-s-china-comment-adds-to-uncertainty" target="_blank">Source (07/17)</a></p>
-  </div>
-
-  <div class="section ctx">
-    <h2>💼 401(k) · Venus (context only — never a buy/sell signal)</h2>
-    <p>⚡ <b>ACTION — Venus 401(k): NOT ENROLLED.</b> ~$10,000 of the ~$18,000 employer match forfeited YTD. Auto-enroll ~3% (~Aug 2026) captures only half. <b>Elect 6% to capture all of it.</b></p>
-    <p class="note">S&amp;P 500 ~7,572 (near record) — no drawdown flag. 100% S&amp;P 500, 23-year hold: any decline here is shares on sale, not a warning. Stay the course; the plan already assumes crashes happen.</p>
-  </div>
-
-  <div class="section watch">
-    <h2>🔍 Watch List</h2>
-    <ul>
-      <li>$61,300–$61,400 then $60,000 — the line between a retest and a deeper leg to $58,115</li>
-      <li>Reclaim 200-day SMA (~$63,182) + 50-day EMA (~$65,143) on volume to repair the break</li>
-      <li>Iran escalation/de-escalation — drives the dollar/oil safe-haven bid</li>
-      <li>07/17 ETF flow — a 4th inflow day says institutions are buying the dip</li>
-      <li>BAH Q1 FY27 earnings — Friday July 24 (7 days)</li>
-    </ul>
-  </div>
-
-  <div class="section bl">
-    <h2>Bottom Line</h2>
-    <div class="two">
-      <div><div class="lbl" style="color:var(--muted);font-size:11px;text-transform:uppercase">BTC</div>
-        <p>Neutral, bearish tilt. A geopolitical risk-off broke the 200-day SMA and failed the relief bounce (Fogle 🔴, Macro → 🟡). But the on-chain floor holds — 7-yr-low reserves, whale accumulation, a 3rd ETF inflow day — so Woo/Wright keep it off a clean bearish. Watch $61,300–$61,400. Advisory only.</p></div>
-      <div><div class="lbl" style="color:var(--muted);font-size:11px;text-transform:uppercase">BAH</div>
-        <p>Too early — only 13.5% of the drawdown recovered, and no shares to sell for ~319 days. At $65.26 the stock sits right on the newest bear-case marks ($65–70); if the Street converges there after Jul 24 earnings, headline upside collapses without the stock moving. Do nothing; revisit Jul 24.</p></div>
-    </div>
-  </div>
-
+  <footer>
+    Finance Agent V4 · Last updated: Tuesday, July 21, 2026 at 04:25 PM CT<br>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">Glossary</a> ·
+    <a href="https://rdwills02.github.io/BTC_Brief/" target="_blank">Dashboard</a> ·
+    <a href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank">Calculator</a>
+  </footer>
 </div>
-<footer>
-  Finance Agent V4 · Last updated: Friday, July 17, 2026 at 06:15 AM CT ·
-  <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">Glossary</a> ·
-  <a href="https://rdwills02.github.io/BTC_Brief/">Dashboard</a> ·
-  <a href="https://rdwills02.github.io/BTC_Brief/calculator.html">Calculator</a>
-</footer>
-
-<script src="https://s3.tradingview.com/tv.js"></script>
 <script>
-function mkChart(id,symbol){
-  new TradingView.widget({
-    autosize:true, symbol:symbol, interval:"D", timezone:"Etc/UTC",
-    theme:"dark", style:"1", locale:"en", toolbar_bg:"#0b0c14",
-    enable_publishing:false, hide_top_toolbar:false, hide_legend:false,
-    backgroundColor:"#0b0c14", gridColor:"#1e2035",
-    studies:["MASimple@tv-basicstudies"], container_id:id
-  });
-}
-mkChart("tv_btc","BITSTAMP:BTCUSD");
-mkChart("tv_bah","NYSE:BAH");
-function tog(boxId){
-  var b=document.getElementById(boxId);
-  b.classList.toggle('full');
-  var btn=b.querySelector('.expand');
-  btn.textContent=b.classList.contains('full')?'⛶ Collapse':'⛶ Expand';
+function toggleChart(id,btn){
+  var el=document.getElementById(id);
+  el.classList.toggle('expanded');
+  btn.textContent=el.classList.contains('expanded')?'⛶ Collapse':'⛶ Expand';
 }
 </script>
 </body>
