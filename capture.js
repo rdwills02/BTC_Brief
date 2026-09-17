@@ -3,30 +3,49 @@
  * Reuses the SAME shared logic as the live radar:
  *   - universe-core.js  (which coins qualify)
  *   - channel-core.js   (channel detection + scoring)
+ *   - cache-core.js     (incremental per-coin cache — upgrade #1a, 2026-09-17)
  * so captured data always matches what radar shows. Do NOT reimplement detection or
  * universe filtering here — require the cores.
  *
  * Each run:
  *   1. Build the live universe (markets + category-exclusion + shared filter).
- *   2. For every universe coin, pull 365d OHLC (/ohlc) and 365d daily price+mcap+volume
- *      (/market_chart), run detection.
+ *   2. For every universe coin, pull 365d OHLC (/ohlc, always full — CoinGecko has no
+ *      incremental OHLC query) and daily price+mcap+volume (/market_chart, INCREMENTAL
+ *      after the first run — see pullCoin), run detection.
  *   3. Write ONE file per OHLC GRID CANDLE: /data/YYYY-MM/YYYY-MM-DD.json.
  *      CoinGecko's /ohlc at days=365 returns candles every ~4 days — this is the SAME
  *      resolution the live radar detects on, so capture matches the system's native basis.
  *      Each file stores, per coin, that candle's raw bar + SUMMED volume over the candle's
  *      ~4-day span + market cap + detection output. (Full series pulled to compute detection
- *      but not re-stored; history accumulates as grid candles.)
+ *      but not re-stored here; that history now lives in data/cache/ instead — see below.)
  *   4. BACKFILL: the newest BACKFILL_CANDLES grid dates are written if their file is missing,
  *      reconstructed from the same pull (sliced to end at that candle, no look-ahead). Only the
  *      newest CLOSED candle is "live"; older written candles are marked backfilled:true and
  *      their detection FLAGS should be treated as lower-confidence in lead-time analysis.
  *      NOTE: the newest closed candle may be up to ~3 days before the run date (4-day grid).
+ *
+ * INCREMENTAL CACHE (upgrade #1a, 2026-09-17):
+ *   data/cache/<cgId>.json holds each coin's full daily market_chart history and full OHLC
+ *   grid history, append-only (see cache-core.js). The FIRST time a coin has no cache file,
+ *   market_chart is pulled at its old full days=365. Every run after that, market_chart is
+ *   pulled at a narrow days=10 window (MARKET_CHART_INCREMENTAL_DAYS) and merged onto the
+ *   cache; volByDate/capByDate/priceByDate lookups are then served from the merged cache, so
+ *   behavior is unchanged even though far less is downloaded per coin per day. This is the
+ *   foundation upgrade #2 (CCXT daily pass) will build on — same cache file, same merge
+ *   functions, a different fetch behind them.
+ *   NOTE: the /ohlc pull itself stays a full 365-day pull every run — CoinGecko's OHLC
+ *   endpoint has no "since" parameter, so it cannot be made incremental on this source.
+ *   That redundancy is only removed by the source swap in upgrade #2, not by this cache.
+ *   The OHLC series is still merged into the cache (append-only, deduped by date) so that
+ *   swap has continuous history to build on and so the cache is a complete per-coin record,
+ *   not just a bandwidth trick.
  */
 
 const fs = require('fs');
 const path = require('path');
 const U = require('./universe-core.js');   // adjust path if capture.js not in repo root
 const C = require('./channel-core.js');
+const K = require('./cache-core.js');
 
 const CG_BASE = 'https://api.coingecko.com/api/v3';
 const CG_KEY = process.env.CG_KEY;                 // repo Secret
@@ -35,6 +54,9 @@ const UNIVERSE_SIZE = 100;
 const MARKETS_PER_PAGE = 200;
 const BACKFILL_CANDLES = 4;    // how many recent grid-candles (each ~4 days) to backfill if missing
 const DATA_DIR = path.join(__dirname, 'data');
+const CACHE_DIR = path.join(DATA_DIR, 'cache');
+const MARKET_CHART_BACKFILL_DAYS = 365;    // first-ever pull for a coin (no cache yet)
+const MARKET_CHART_INCREMENTAL_DAYS = 10;  // subsequent pulls once cached — 10d overlap for safety
 
 // Display categories (context tags shown on radar/report). Mirrors radar's DISPLAY_CATEGORIES.
 // Each is a CoinGecko category slug + the label to store. 7 extra calls/run (negligible).
@@ -92,20 +114,45 @@ async function fetchCategoryLabels() {
   return labels;
 }
 
-// Pull a coin's 365d OHLC candles + daily price/mcap/volume series.
+// Pull a coin's 365d OHLC candles + daily price/mcap/volume series, using the incremental
+// cache for market_chart (see header). Returns the SAME shape as before the cache existed —
+// rowForCandle() and everything downstream is unchanged.
 async function pullCoin(coin) {
   const ohlcRaw = await cg('/coins/' + coin.id + '/ohlc?vs_currency=usd&days=365');
   await sleep(DELAY_MS);
-  const chart = await cg('/coins/' + coin.id + '/market_chart?vs_currency=usd&days=365&interval=daily');
+
+  let cache = K.loadCache(CACHE_DIR, coin.id) || K.emptyCache(coin.id, coin.symbol);
+  const hasHistory = K.latestMarketChartDate(cache) !== null;
+  const chartDays = hasHistory ? MARKET_CHART_INCREMENTAL_DAYS : MARKET_CHART_BACKFILL_DAYS;
+  const chart = await cg('/coins/' + coin.id + '/market_chart?vs_currency=usd&days=' + chartDays + '&interval=daily');
   await sleep(DELAY_MS);
   if (!Array.isArray(ohlcRaw) || ohlcRaw.length < 30) return null;
 
   const candles = ohlcRaw.map(c => ({ time: Math.floor(c[0] / 1000), open: c[1], high: c[2], low: c[3], close: c[4], date: ymd(c[0]) }));
-  // index market_chart series by date
+
+  // This pull's daily rows, by date, merged onto the cache (append-only — never overwrites).
+  const newRows = {};
+  if (chart && chart.prices) for (const [ms, p] of chart.prices) {
+    const d = ymd(ms); (newRows[d] || (newRows[d] = {})).price = p;
+  }
+  if (chart && chart.total_volumes) for (const [ms, v] of chart.total_volumes) {
+    const d = ymd(ms); (newRows[d] || (newRows[d] = {})).volume = v;
+  }
+  if (chart && chart.market_caps) for (const [ms, m] of chart.market_caps) {
+    const d = ymd(ms); (newRows[d] || (newRows[d] = {})).marketCap = m;
+  }
+  K.mergeMarketChart(cache, newRows);
+  K.mergeOhlc(cache, candles);
+  K.saveCache(CACHE_DIR, cache);
+
+  // Serve lookups from the MERGED cache (has full history even on an incremental-pull day).
   const volByDate = {}, capByDate = {}, priceByDate = {};
-  if (chart && chart.total_volumes) for (const [ms, v] of chart.total_volumes) volByDate[ymd(ms)] = v;
-  if (chart && chart.market_caps)   for (const [ms, m] of chart.market_caps)   capByDate[ymd(ms)] = m;
-  if (chart && chart.prices)        for (const [ms, p] of chart.prices)        priceByDate[ymd(ms)] = p;
+  for (const d in cache.marketChart) {
+    const r = cache.marketChart[d];
+    if (r.volume != null) volByDate[d] = r.volume;
+    if (r.marketCap != null) capByDate[d] = r.marketCap;
+    if (r.price != null) priceByDate[d] = r.price;
+  }
 
   return { coin, candles, volByDate, capByDate, priceByDate };
 }
