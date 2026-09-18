@@ -45,13 +45,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .diag-funnel{font-size:11px;color:var(--muted);line-height:1.8}
 .filters{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface)}
 .filter-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-.bucket-filter{display:flex;gap:3px}
+.bucket-filter{display:flex;gap:3px;flex-wrap:wrap}
 .bbtn{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);font-family:inherit;transition:all .15s}
 .bbtn.a-all{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
 .bbtn.a-high{background:rgba(0,200,150,.15);color:var(--high);border-color:rgba(0,200,150,.3)}
 .bbtn.a-probable{background:rgba(123,110,246,.15);color:var(--probable);border-color:rgba(123,110,246,.3)}
 .bbtn.a-emerging{background:rgba(245,166,35,.12);color:var(--emerging);border-color:rgba(245,166,35,.3)}
 .bbtn.a-watch{background:rgba(232,117,74,.12);color:var(--watch);border-color:rgba(232,117,74,.3)}
+.bbtn.a-confirmed{background:rgba(123,110,246,.15);color:var(--probable);border-color:rgba(123,110,246,.3)}
 .thresh-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .cached-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:rgba(245,166,35,.08);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sincelast-bar{padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -87,6 +88,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .bp{background:rgba(123,110,246,.15);color:var(--probable)}
 .be{background:rgba(245,166,35,.12);color:var(--emerging)}
 .bw{background:rgba(232,117,74,.12);color:var(--watch)}
+.srcbadge{font-size:8px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.03em;margin-left:5px;display:inline-block;vertical-align:middle}
+.src-grid{background:rgba(157,163,180,.15);color:var(--text2)}
+.src-daily{background:rgba(123,110,246,.12);color:var(--accent)}
+.src-both{background:rgba(123,110,246,.22);color:var(--probable);border:1px solid rgba(123,110,246,.4)}
+.src-both.stale{background:rgba(107,114,128,.15);color:var(--muted);border-color:var(--border2)}
 .pos-wrap{display:flex;align-items:center;gap:7px}
 .pos-bar-outer{width:54px;height:6px;background:var(--border2);border-radius:3px;position:relative}
 .pos-marker{position:absolute;top:-3px;width:2px;height:12px;background:var(--accent);border-radius:1px;transform:translateX(-50%)}
@@ -184,6 +190,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <button class="bbtn" id="fb-probable">Probable 75+</button>
     <button class="bbtn" id="fb-emerging">Emerging 60+</button>
     <button class="bbtn" id="fb-watch">Watch 40+</button>
+    <button class="bbtn" id="fb-confirmed">Confirmed</button>
   </div>
   <select class="sort-sel" id="sort-sel">
     <option value="score">Sort: Score</option>
@@ -208,6 +215,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
   <div class="tgroup"><span class="tlabel">Min score</span>
     <select class="tsel" id="t-score"><option value="0">Off</option><option value="40" selected>40+</option><option value="60">60+</option><option value="75">75+</option></select>
+  </div>
+  <div class="tgroup" id="daily-thresh-group" style="display:none"><span class="tlabel" style="color:var(--accent)" title="Applies only to daily-only candidates (not yet confirmed by the 4-day grid pass)">Min score (daily-only)</span>
+    <select class="tsel" id="t-score-daily"><option value="0">Off</option><option value="40">40+</option><option value="60" selected>60+</option><option value="75">75+</option></select>
   </div>
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
     <input type="checkbox" id="show-all"> Show all
@@ -335,6 +345,7 @@ var GITHUB_API = 'https://api.github.com';
 // STATE
 var allResults = [];
 var captureMode = false;   // true when the table is showing the shared daily capture (not a live scan)
+var dailyDataAvailable = false;   // Milestone #2a: true once data/latest-daily.json has merged in
 var filtered = [];
 var activeFilter = 'all';
 var sortCol = 'score';
@@ -424,6 +435,18 @@ function scoreColor(s) {
   if(s>=75) return 'var(--probable)';
   if(s>=60) return 'var(--emerging)';
   return 'var(--watch)';
+}
+// Milestone #2a (2026-09-18): source badge next to the existing bucket badge - never
+// replaces it. 'grid' rows (pre-#2a behavior) render nothing, so a page with no daily
+// data looks exactly as it did before this milestone (degradation requirement).
+function srcBadgeHTML(r) {
+  if(r.source==='daily') return '<span class="srcbadge src-daily" title="Daily-basis pass only (Kraken/Coinbase exchange candles) - not yet corroborated by the 4-day grid pass">1D</span>';
+  if(r.source==='both') {
+    var stale = r.dailyStale ? ' stale' : '';
+    var title = 'Confirmed by both the 4-day grid pass and the daily exchange pass' + (r.dailyStale ? ' (daily pass is stale)' : '');
+    return '<span class="srcbadge src-both'+stale+'" title="'+title+'">\u2713\u2713 CONFIRMED</span>';
+  }
+  return '';
 }
 function setStatus(state, text) {
   var d = document.getElementById('status-dot');
@@ -689,25 +712,51 @@ function renderDiag() {
 }
 
 function getThresh() {
+  var dailySel = document.getElementById('t-score-daily');
   return {
     minTouches: parseInt(document.getElementById('t-touches').value),
     minContain: parseInt(document.getElementById('t-contain').value),
     slopeMode: document.getElementById('t-slope').value,
     minScore: parseInt(document.getElementById('t-score').value),
+    minScoreDaily: dailySel ? parseInt(dailySel.value) : 60,
     showAll: document.getElementById('show-all').checked
   };
 }
 
 function applyFilters() {
+  // Milestone #2a (2026-09-18): merge-UI source gating, folds in #6 (surfacing/bucketing
+  // review). Design approved by Ryan 2026-09-18 with one change: the live latest.json +
+  // latest-daily.json intersection came back at 41 confirmed coins (well above the ~15/25
+  // decision line), so 'both' rows are NOT unconditionally exempt from all filtering -
+  // they still have to clear the existing Min score bar (t.minScore) to get the
+  // always-shown / top-of-bucket / Confirmed-filter treatment. Below that bar they're
+  // ordinary rows like everything else. This keeps CONFIRMED selective instead of just
+  // being "41 of 97 rows", per Ryan's explicit gate.
   var t = getThresh();
   filtered = allResults.filter(function(r) {
+    var confirmedAndQualified = r.source==='both' && r.score >= t.minScore;
+    if(confirmedAndQualified) {
+      // Confirmed by both passes AND clears the quality bar: bypass touches/containment/
+      // slope/bucket filtering entirely - this IS the #6 fix (Dash-type signals get
+      // prominence instead of sitting unfiltered-but-unseen in a sortable row).
+      return true;
+    }
     if(!t.showAll) {
       if(r.supportTouches < t.minTouches) return false;
       if(r.containment < t.minContain) return false;
       if(t.slopeMode==='positive' && r.slope<0) return false;
       if(t.slopeMode==='flat' && r.slope<-0.1) return false;
-      if(r.score < t.minScore) return false;
+      // Daily-only candidates (not yet corroborated by the 4-day grid pass) are noisier -
+      // gated on their own, independently adjustable Min score (daily-only) threshold
+      // instead of the primary Min score control. Grid-only and sub-threshold 'both' rows
+      // keep using the primary threshold, unchanged.
+      if(r.source==='daily') {
+        if(r.score < t.minScoreDaily) return false;
+      } else if(r.score < t.minScore) {
+        return false;
+      }
     }
+    if(activeFilter==='confirmed') return false; // Confirmed filter shows only qualified 'both' rows, handled above
     if(activeFilter==='high' && r.score<90) return false;
     if(activeFilter==='probable' && (r.score<75||r.score>=90)) return false;
     if(activeFilter==='emerging' && (r.score<60||r.score>=75)) return false;
@@ -746,7 +795,7 @@ function renderTable() {
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
-      '<td><span class="bbadge '+bk.cls+'">'+bk.label+'</span></td>'+
+      '<td><span class="bbadge '+bk.cls+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
       '<td style="color:var(--text2);font-variant-numeric:tabular-nums">'+fmtVol(r.volume24h)+'</td>'+
       '<td style="color:var(--bull)">'+r.supportTouches+'</td>'+
       '<td style="color:var(--text2)">'+r.resTouches+'</td>'+
@@ -1118,12 +1167,14 @@ window.addEventListener('load', function() {
   document.getElementById('t-contain').addEventListener('change', applyFilters);
   document.getElementById('t-slope').addEventListener('change', applyFilters);
   document.getElementById('t-score').addEventListener('change', applyFilters);
+  document.getElementById('t-score-daily').addEventListener('change', applyFilters);
   document.getElementById('show-all').addEventListener('change', applyFilters);
   document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
   document.getElementById('fb-high').addEventListener('click', function() { setFilter('high'); });
   document.getElementById('fb-probable').addEventListener('click', function() { setFilter('probable'); });
   document.getElementById('fb-emerging').addEventListener('click', function() { setFilter('emerging'); });
   document.getElementById('fb-watch').addEventListener('click', function() { setFilter('watch'); });
+  document.getElementById('fb-confirmed').addEventListener('click', function() { setFilter('confirmed'); });
   document.getElementById('sincelast-content').addEventListener('click', function(e) {
     var chip = e.target.closest('.sl-add');
     if(chip && chip.dataset.symbol) jumpToAddedCoin(chip.dataset.symbol);
@@ -1166,23 +1217,128 @@ function adaptCaptureCoin(c) {
     explanation:(typeof buildExpl==='function'?buildExpl(d, c.name):'')
   };
 }
+// Milestone #2a (2026-09-18): daily-basis counterpart of adaptCaptureCoin(), reading
+// detectionDaily (data/latest-daily.json) instead of detection (data/latest.json). Same
+// output shape so the rest of the pipeline (getBucket, applyFilters, renderTable,
+// openDetail, buildChart) needs no per-field changes - only the merge step in
+// loadCachedOrResting() needs to know these two functions exist.
+function adaptDailyCoin(c) {
+  if(!c.detectionDaily) return null;
+  var d = c.detectionDaily;
+  var tv = tvLink((c.symbol||'').toUpperCase());
+  return {
+    symbol:(c.symbol||'').toUpperCase(), name:c.name, cgId:c.cgId,
+    price:c.price, change24h:(c.change24h!=null?c.change24h:null),
+    volume24h:(c.volume24h!=null?c.volume24h:null), category:c.category||null,
+    tvExchange:tv.exchange, tvPair:tv.pair,
+    score:d.score, supportTouches:d.supportTouches, resTouches:d.resTouches,
+    containment:d.containment, slope:d.slope, position:d.position,
+    supportNow:d.supportNow, resistNow:d.resistNow, invalidation:d.invalidation,
+    channelH:d.channelH, candles:d.candles, pivotLows:d.pivotLows,
+    supSlope:d.supSlope, supIntercept:d.supIntercept, firstIdx:d.firstIdx, lastIdx:d.lastIdx,
+    isAscending:d.isAscending, isFlat:d.isFlat,
+    emaState:d.emaState, ema21:d.ema21, ema50:d.ema50, emaPts:d.emaPts,
+    bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp,
+    dailySource:c.dailySource,
+    explanation:(typeof buildExpl==='function'?buildExpl(d, c.name):'')
+  };
+}
+// Merge one grid-adapted row and/or one daily-adapted row (either may be null, never
+// both) into a single display row tagged by source. score = max(gridScore,dailyScore) -
+// a coin isn't penalized for the pass that missed it. NOTE (Ryan, 2026-09-18, proceed as
+// designed for v1): this is a cross-basis score comparison (4-day-grid score vs
+// daily-candle score aren't the same measurement) - revisit once Backlog #3 has
+// accumulated daily-vs-grid outcome data to know if one basis should be weighted over
+// the other. supportTouches/containment/slope/position/candles for a 'both' row come
+// from the daily object (higher resolution, same lookback window) when present.
+function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
+  var base = dailyRow || gridRow;
+  var gridScore = gridRow ? gridRow.score : null;
+  var dailyScore = dailyRow ? dailyRow.score : null;
+  var source = (gridRow && dailyRow) ? 'both' : (dailyRow ? 'daily' : 'grid');
+  var merged = {};
+  for(var k in base) merged[k] = base[k];
+  merged.score = Math.max(gridScore!=null?gridScore:-1, dailyScore!=null?dailyScore:-1);
+  merged.gridScore = gridScore;
+  merged.dailyScore = dailyScore;
+  merged.source = source;
+  merged.dailyStale = !!dailyStale;
+  merged.candlesGrid = gridRow ? gridRow.candles : null;
+  merged.candlesDaily = dailyRow ? dailyRow.candles : null;
+  // 4-day-grid metadata isn't on the daily object - carry it over for a 'both' row so the
+  // detail panel's TV link / category still resolve correctly even though geometry fields
+  // came from the daily object above.
+  if(dailyRow && gridRow) { merged.tvExchange = merged.tvExchange || gridRow.tvExchange; merged.tvPair = merged.tvPair || gridRow.tvPair; }
+  return merged;
+}
 
 async function loadCachedOrResting() {
-  // 1) Prefer the shared daily CAPTURE (data/latest.json) — same view on every device, zero API calls.
+  // 1) Prefer the shared daily CAPTURE (data/latest.json), now merged with the parallel
+  // daily-basis stream (data/latest-daily.json, Milestone #2a, 2026-09-18) when it's
+  // present and fresh — same view on every device, zero API calls either way.
   try {
-    var res = await fetch('data/latest.json?t=' + Date.now());
-    if(res.ok) {
-      var cap = await res.json();
+    var gridRes = await fetch('data/latest.json?t=' + Date.now());
+    if(gridRes.ok) {
+      var cap = await gridRes.json();
       if(cap && cap.coins && cap.coins.length) {
-        var adapted = cap.coins.map(adaptCaptureCoin).filter(function(x){return x;});
+        var gridMap = {};
+        cap.coins.forEach(function(c) {
+          var a = adaptCaptureCoin(c);
+          if(a) gridMap[c.cgId] = a;
+        });
+
+        // Daily stream: independent try/catch, absence or failure degrades gracefully
+        // to the exact pre-#2a grid-only view below — never blocks the page.
+        var dailyMap = {}, dailyCap = null, dailyStale = false;
+        try {
+          var dailyRes = await fetch('data/latest-daily.json?t=' + Date.now());
+          if(dailyRes.ok) {
+            dailyCap = await dailyRes.json();
+            if(dailyCap && dailyCap.coins && dailyCap.coins.length) {
+              dailyCap.coins.forEach(function(c) {
+                var a = adaptDailyCoin(c);
+                if(a) dailyMap[c.cgId] = a;
+              });
+              // Staleness: daily pass more than 1 day older than the grid pass's own
+              // capture date -> still render it, just mark it visually muted rather than
+              // hide it (design requirement: never a hard failure for staleness alone).
+              var gd = new Date(cap.date), dd = new Date(dailyCap.date);
+              if(!isNaN(gd) && !isNaN(dd)) {
+                dailyStale = (gd.getTime() - dd.getTime()) > 86400000;
+              }
+            }
+          }
+        } catch(e) { /* dailyMap stays {} — grid-only fallback below */ }
+
+        var cgIds = {};
+        Object.keys(gridMap).forEach(function(k){ cgIds[k]=1; });
+        Object.keys(dailyMap).forEach(function(k){ cgIds[k]=1; });
+        var adapted = Object.keys(cgIds).map(function(cgId) {
+          return mergeCandidateRow(gridMap[cgId]||null, dailyMap[cgId]||null, dailyStale);
+        });
+
         if(adapted.length) {
           allResults = adapted;
+          dailyDataAvailable = Object.keys(dailyMap).length > 0;
+          // Confirmed filter button and the daily-only threshold control only make sense
+          // once there's actually daily data loaded — hidden otherwise (degradation:
+          // page looks exactly like pre-#2a when latest-daily.json is missing/empty).
+          var fbc = document.getElementById('fb-confirmed');
+          if(fbc) fbc.style.display = dailyDataAvailable ? '' : 'none';
+          var dtg = document.getElementById('daily-thresh-group');
+          if(dtg) dtg.style.display = dailyDataAvailable ? '' : 'none';
           applyFilters();
           captureMode = true;
-          setStatus('idle', 'Showing daily capture');
+          setStatus('idle', dailyDataAvailable ? 'Showing daily capture + daily-basis pass' : 'Showing daily capture');
           var capDate = cap.date;
           document.getElementById('last-update').textContent = 'Captured ' + capDate;
-          document.getElementById('cached-bar-text').innerHTML = 'Showing the daily capture from <strong>'+capDate+'</strong> - click Scan for live data. 24h values are as of the capture date.';
+          var barText = 'Showing the daily capture from <strong>'+capDate+'</strong> - click Scan for live data. 24h values are as of the capture date.';
+          if(dailyDataAvailable) {
+            barText += dailyStale
+              ? ' Daily-basis pass ('+dailyCap.date+') is stale - shown muted.'
+              : ' Daily-basis pass ('+dailyCap.date+') merged in - look for the 1D/CONFIRMED tags.';
+          }
+          document.getElementById('cached-bar-text').innerHTML = barText;
           document.getElementById('cached-bar').style.display = 'flex';
           if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
           return;
@@ -1211,9 +1367,9 @@ async function loadCachedOrResting() {
 
 function setFilter(f) {
   activeFilter = f;
-  ['all','high','probable','emerging','watch'].forEach(function(n) {
+  ['all','high','probable','emerging','watch','confirmed'].forEach(function(n) {
     var btn = document.getElementById('fb-'+n);
-    btn.className = 'bbtn' + (n===f?' a-'+f:'');
+    if(btn) btn.className = 'bbtn' + (n===f?' a-'+f:'');
   });
   applyFilters();
 }
