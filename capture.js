@@ -4,6 +4,8 @@
  *   - universe-core.js  (which coins qualify)
  *   - channel-core.js   (channel detection + scoring)
  *   - cache-core.js     (incremental per-coin cache — upgrade #1a, 2026-09-17)
+ *   - exchange-map.js   (CoinGecko id -> exchange ticker — upgrade #2, 2026-09-17)
+ *   - exchange-ohlcv.js (Kraken/Coinbase daily OHLCV pull — upgrade #2, 2026-09-17)
  * so captured data always matches what radar shows. Do NOT reimplement detection or
  * universe filtering here — require the cores.
  *
@@ -23,6 +25,17 @@
  *      newest CLOSED candle is "live"; older written candles are marked backfilled:true and
  *      their detection FLAGS should be treated as lower-confidence in lead-time analysis.
  *      NOTE: the newest closed candle may be up to ~3 days before the run date (4-day grid).
+ *   5. DAILY-BASIS STREAM (upgrade #2, 2026-09-17), ALONGSIDE the 4-day grid, not replacing
+ *      it: /data/daily/YYYY-MM-DD.json, written EVERY run (today's date, not a grid date).
+ *      Same detectChannel() as step 3, fed exchange daily candles (Kraken preferred, then
+ *      Coinbase, then CoinGecko-4d fallback for uncovered coins) instead of the 4-day grid.
+ *      This is a SEPARATE file, not a field added to the step-3 files, because (a) the step-3
+ *      files only get written when a new grid candle closes (~every 4 days) — cramming daily
+ *      detection into them would leave it stale 3 of every 4 days — and (b)
+ *      radar_tools/radar_postmortem.py globs every *.json under a --data root; a shared file
+ *      would silently corrupt its timeline. Written UNFILTERED by score, same principle as
+ *      upgrade #1c's candidates(): a flagged coin here is #3/#4 training data, and any score
+ *      floor (currently 60) is a radar.html DISPLAY default only, never a write-time filter.
  *
  * INCREMENTAL CACHE (upgrade #1a, 2026-09-17):
  *   data/cache/<cgId>.json holds each coin's full daily market_chart history and full OHLC
@@ -30,15 +43,25 @@
  *   market_chart is pulled at its old full days=365. Every run after that, market_chart is
  *   pulled at a narrow days=10 window (MARKET_CHART_INCREMENTAL_DAYS) and merged onto the
  *   cache; volByDate/capByDate/priceByDate lookups are then served from the merged cache, so
- *   behavior is unchanged even though far less is downloaded per coin per day. This is the
- *   foundation upgrade #2 (CCXT daily pass) will build on — same cache file, same merge
- *   functions, a different fetch behind them.
+ *   behavior is unchanged even though far less is downloaded per coin per day.
  *   NOTE: the /ohlc pull itself stays a full 365-day pull every run — CoinGecko's OHLC
- *   endpoint has no "since" parameter, so it cannot be made incremental on this source.
- *   That redundancy is only removed by the source swap in upgrade #2, not by this cache.
- *   The OHLC series is still merged into the cache (append-only, deduped by date) so that
- *   swap has continuous history to build on and so the cache is a complete per-coin record,
- *   not just a bandwidth trick.
+ *   endpoint has no "since" parameter, so it cannot be made incremental on this source. THIS
+ *   IS STILL TRUE AFTER UPGRADE #2: the daily pass runs ALONGSIDE the 4-day grid (see step 5
+ *   above), so it adds exchange calls on top of the unchanged CoinGecko call volume — it does
+ *   NOT reduce the ~210 calls/day CoinGecko quota. #2's value is recall (catching moves the
+ *   4-day grid misses), not quota reduction; nothing in this pipeline reduces the CoinGecko
+ *   quota. Same cache file, cache.ohlcDaily now carries the exchange daily series alongside
+ *   cache.ohlc's 4-day grid series (kept as two separate arrays — see cache-core.js's header
+ *   for why they can't share one).
+ *
+ * EXCHANGE OHLCV (upgrade #2, 2026-09-17): deliberately RAW FETCH against Kraken/Coinbase
+ * public REST, NOT the CCXT library the original backlog wording assumed. Both endpoints'
+ * exact shapes and per-call candle limits were live-verified 2026-09-17 (see exchange-ohlcv.js
+ * header) and are simple enough to hand-roll with the SAME zero-dependency style already used
+ * everywhere else in this file — no new npm dependency, no capture.yml edit, no workflow-scope
+ * blocker to work around. Adds ~2 calls/run (building the exchange map) + ~1 call/coin/run for
+ * every coin with a Kraken or Coinbase mapping (~88 of 97 coins today) — both keyless,
+ * unauthenticated, no documented rate limit that this volume approaches.
  */
 
 const fs = require('fs');
@@ -46,15 +69,19 @@ const path = require('path');
 const U = require('./universe-core.js');   // adjust path if capture.js not in repo root
 const C = require('./channel-core.js');
 const K = require('./cache-core.js');
+const X = require('./exchange-map.js');    // upgrade #2
+const EX = require('./exchange-ohlcv.js'); // upgrade #2
 
 const CG_BASE = 'https://api.coingecko.com/api/v3';
 const CG_KEY = process.env.CG_KEY;                 // repo Secret
 const DELAY_MS = 2200;                             // ~27 calls/min, safely under demo 30/min
+const EXCHANGE_DELAY_MS = 300;                     // polite pacing for Kraken/Coinbase (keyless, no documented limit near this volume)
 const UNIVERSE_SIZE = 100;
 const MARKETS_PER_PAGE = 200;
 const BACKFILL_CANDLES = 4;    // how many recent grid-candles (each ~4 days) to backfill if missing
 const DATA_DIR = path.join(__dirname, 'data');
 const CACHE_DIR = path.join(DATA_DIR, 'cache');
+const DAILY_DIR = path.join(DATA_DIR, 'daily');    // upgrade #2 — parallel daily-basis stream
 const MARKET_CHART_BACKFILL_DAYS = 365;    // first-ever pull for a coin (no cache yet)
 const MARKET_CHART_INCREMENTAL_DAYS = 10;  // subsequent pulls once cached — 10d overlap for safety
 
@@ -115,9 +142,10 @@ async function fetchCategoryLabels() {
 }
 
 // Pull a coin's 365d OHLC candles + daily price/mcap/volume series, using the incremental
-// cache for market_chart (see header). Returns the SAME shape as before the cache existed —
-// rowForCandle() and everything downstream is unchanged.
-async function pullCoin(coin) {
+// cache for market_chart (see header). Also pulls the exchange daily series (upgrade #2) if
+// `mapping` is given, merging it into the SAME per-coin cache file (cache.ohlcDaily).
+// Returns the SAME 4-day-pass shape as before, plus dailySource/dailyCandles for rowForDaily().
+async function pullCoin(coin, mapping) {
   const ohlcRaw = await cg('/coins/' + coin.id + '/ohlc?vs_currency=usd&days=365');
   await sleep(DELAY_MS);
 
@@ -143,7 +171,32 @@ async function pullCoin(coin) {
   }
   K.mergeMarketChart(cache, newRows);
   K.mergeOhlc(cache, candles);
-  K.saveCache(CACHE_DIR, cache);
+
+  // --- Exchange daily pull (upgrade #2, 2026-09-17). Best-effort: a failure here never
+  // aborts the coin's 4-day pass, it just falls back to CoinGecko-4d for the daily stream. ---
+  let dailySource = 'coingecko-4d-fallback';
+  if (mapping) {
+    try {
+      let dailyCandles;
+      if (mapping.exchange === 'kraken') {
+        dailyCandles = await EX.fetchKrakenDaily(mapping.ticker);   // one call covers full backfill, every run
+      } else {
+        const oldestCached = K.oldestOhlcDailyDate(cache);
+        const backfillGapTo = oldestCached === null
+          ? new Date(Date.now() - MARKET_CHART_BACKFILL_DAYS * 86400000).toISOString().slice(0, 10)
+          : null;   // only the first-ever pull for a Coinbase-primary coin needs the gap-fill call
+        dailyCandles = await EX.fetchCoinbaseDaily(mapping.ticker, backfillGapTo ? { backfillGapTo } : {});
+      }
+      K.mergeOhlcDailyCandles(cache, dailyCandles);
+      dailySource = mapping.exchange;
+    } catch (e) {
+      console.warn('daily pull failed for', coin.id, '(' + mapping.exchange + '):', e.message);
+      dailySource = mapping.exchange + '-failed';   // keeps whatever's already cached, if anything
+    }
+    await sleep(EXCHANGE_DELAY_MS);
+  }
+
+  K.saveCache(CACHE_DIR, cache);   // one save, after both the 4-day and daily merges
 
   // Serve lookups from the MERGED cache (has full history even on an incremental-pull day).
   const volByDate = {}, capByDate = {}, priceByDate = {};
@@ -154,7 +207,7 @@ async function pullCoin(coin) {
     if (r.price != null) priceByDate[d] = r.price;
   }
 
-  return { coin, candles, volByDate, capByDate, priceByDate };
+  return { coin, candles, volByDate, capByDate, priceByDate, dailySource, dailyCandles: cache.ohlcDaily };
 }
 
 // Build one coin's row for the candle at index `idx` (from already-pulled series).
@@ -195,6 +248,33 @@ function rowForCandle(pulled, idx, catLabels) {
   };
 }
 
+// Build one coin's row for the DAILY stream (upgrade #2). Unlike rowForCandle(), there's no
+// grid-index slicing — this runs once per calendar day on whatever daily history is cached,
+// so it always uses the full series. Written for EVERY coin, EVERY run, regardless of score —
+// see the header note on why this is unfiltered (same principle as upgrade #1c's candidates()).
+function rowForDaily(pulled, catLabels) {
+  const { coin, dailySource, dailyCandles } = pulled;
+  const base = {
+    cgId: coin.id,
+    symbol: coin.symbol,
+    name: coin.name,
+    rank: coin.market_cap_rank,
+    price: coin.current_price != null ? coin.current_price : null,
+    change24h: coin.price_change_percentage_24h != null ? coin.price_change_percentage_24h : null,
+    volume24h: coin.total_volume != null ? coin.total_volume : null,
+    marketCap: coin.market_cap != null ? coin.market_cap : null,
+    category: (catLabels && catLabels[coin.id]) || null,
+    dailySource: dailySource   // 'kraken' | 'coinbase' | 'coingecko-4d-fallback' | '<exchange>-failed'
+  };
+  if (!dailyCandles || dailyCandles.length < 30) {
+    return Object.assign(base, { detectionDaily: null });
+  }
+  const det = C.detectChannel(dailyCandles);   // SAME shared detection as the 4-day pass —
+                                                // no separate scoring logic, no write-time
+                                                // score filter (see header).
+  return Object.assign(base, { detectionDaily: det });
+}
+
 function dayFilePath(D) {
   const month = D.slice(0, 7);
   return path.join(DATA_DIR, month, D + '.json');
@@ -216,10 +296,21 @@ async function main() {
   const catLabels = await fetchCategoryLabels();
   console.log('category labels for', Object.keys(catLabels).length, 'coins');
 
+  // Exchange ticker map (upgrade #2, 2026-09-17) — 2 calls, rebuilt fresh every run since the
+  // universe rotates. Best-effort: a failure here does NOT abort the run — every coin just
+  // falls back to CoinGecko-4d for the daily stream (see pullCoin/rowForDaily).
+  let exMap = {};
+  try {
+    exMap = await X.buildExchangeMap(universe.map(c => ({ id: c.id, symbol: c.symbol })));
+    console.log('exchange map:', Object.keys(exMap).length, 'of', universe.length, 'coins mapped to Kraken/Coinbase');
+  } catch (e) {
+    console.warn('exchange-map build failed — every coin falls back to CoinGecko-4d for the daily stream:', e.message);
+  }
+
   // Pull each coin's series ONCE.
   const pulls = [];
   for (const coin of universe) {
-    const p = await pullCoin(coin);
+    const p = await pullCoin(coin, exMap[coin.id]);
     if (p) pulls.push(p);
   }
   console.log('pulled series for', pulls.length, 'coins');
@@ -266,6 +357,54 @@ async function main() {
     fs.writeFileSync(path.join(DATA_DIR, 'latest.json'), JSON.stringify(newestPayload, null, 0));
     console.log('wrote data/latest.json ->', newestPayload.date);
   }
+
+  // --- Daily-basis stream (upgrade #2, 2026-09-17): parallel to the 4-day grid above,
+  // written EVERY run under today's date, not a grid date. See header for why this is a
+  // separate file rather than a field added to the grid files.
+  //
+  // FAILURE ISOLATION (required — nothing here has touched a live exchange yet, this run IS
+  // the first live test): this WHOLE block is wrapped in its own try/catch, deliberately AFTER
+  // data/latest.json has already been written above. If anything in here throws — a live
+  // Kraken/Coinbase response shape surprise, a detectChannel edge case on real daily candles, a
+  // disk error — it is caught, logged, and main() still reaches 'done' with exit code 0. This
+  // matters beyond just "don't crash": a non-zero exit here would fail the Action step BEFORE
+  // the "Commit captured data" step runs, which would mean the 4-day grid files and
+  // data/latest.json — already correctly written to disk above — never get committed at all.
+  // Degrading to "no data/daily this run" must never cost the 4-day capture. Per-coin failures
+  // are isolated too (see below) so one bad coin can't blank the whole day's daily stream. ---
+  try {
+    const todayDate = ymd(Date.now());
+    const dailyCoins = pulls.map(p => {
+      try {
+        return rowForDaily(p, catLabels);
+      } catch (e) {
+        console.warn('rowForDaily failed for', p.coin.id, '— writing a safe fallback row:', e.message);
+        return {
+          cgId: p.coin.id, symbol: p.coin.symbol, name: p.coin.name, rank: p.coin.market_cap_rank,
+          price: p.coin.current_price != null ? p.coin.current_price : null,
+          change24h: null, volume24h: null, marketCap: null, category: null,
+          dailySource: 'row-error', detectionDaily: null
+        };
+      }
+    });
+    const dailyPayload = {
+      date: todayDate,
+      captured_at: new Date().toISOString(),
+      universe_count: dailyCoins.length,
+      coins: dailyCoins
+    };
+    const dailyDayPath = path.join(DAILY_DIR, todayDate + '.json');
+    fs.mkdirSync(path.dirname(dailyDayPath), { recursive: true });
+    fs.writeFileSync(dailyDayPath, JSON.stringify(dailyPayload, null, 0));
+    fs.writeFileSync(path.join(DATA_DIR, 'latest-daily.json'), JSON.stringify(dailyPayload, null, 0));
+    const dailyFlagged = dailyCoins.filter(c => c.detectionDaily).length;
+    const fallbackOnly = dailyCoins.filter(c => c.dailySource === 'coingecko-4d-fallback').length;
+    console.log('wrote', dailyDayPath, 'and data/latest-daily.json ->', todayDate,
+      '(' + dailyFlagged + ' daily candidates, ' + fallbackOnly + ' coins on CoinGecko-4d fallback)');
+  } catch (e) {
+    console.error('DAILY-BASIS STREAM FAILED this run (4-day capture above is unaffected and will still be committed):', e);
+  }
+
   console.log('done');
 }
 
