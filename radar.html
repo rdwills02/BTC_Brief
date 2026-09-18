@@ -646,6 +646,36 @@ async function scanCoin(coin) {
   return ch;
 }
 
+// Backlog #10 (2026-09-19): shared daily-stream fetch+adapt, extracted so runScan() can build
+// the same dailyMap/dailyStale that loadCachedOrResting() already builds on initial load.
+// Reads ONLY the static data/latest-daily.json written by the last GitHub Action run - never
+// re-pulls exchange candles live from the browser - so this cannot reintroduce the #7
+// frozen-partial-candle bug (that bug is about re-pulling a still-forming candle mid-day;
+// this is a same-file re-read, at most once per Refresh click). referenceDate is the "now"
+// to compare the daily file's own date against; loadCachedOrResting still does its own inline
+// version of this against the grid CAPTURE's date, since that path has no better "now".
+async function fetchDailyMap(referenceDate) {
+  var dailyMap = {}, dailyCap = null, dailyStale = false;
+  try {
+    var dailyRes = await fetch('data/latest-daily.json?t=' + Date.now());
+    if(dailyRes.ok) {
+      dailyCap = await dailyRes.json();
+      if(dailyCap && dailyCap.coins && dailyCap.coins.length) {
+        dailyCap.coins.forEach(function(c) {
+          var a = adaptDailyCoin(c);
+          if(a) dailyMap[c.cgId] = a;
+        });
+        var rd = referenceDate || new Date();
+        var dd = new Date(dailyCap.date);
+        if(!isNaN(dd)) {
+          dailyStale = (rd.getTime() - dd.getTime()) > 86400000;
+        }
+      }
+    }
+  } catch(e) { /* dailyMap stays {} - caller degrades to the pre-#10 grid-only view */ }
+  return {dailyMap: dailyMap, dailyCap: dailyCap, dailyStale: dailyStale};
+}
+
 async function runScan() {
   if(scanning) return;
   scanning = true;
@@ -669,13 +699,34 @@ async function runScan() {
   }
 
   setStatus('scanning', 'Scanning '+coins.length+' coins...');
+  var gridMap = {};
+  var gridCount = 0;
   for(var i=0; i<coins.length; i++) {
     var r = await scanCoin(coins[i]);
-    if(r) allResults.push(r);
-    setStatus('scanning', (i+1)+'/'+coins.length+' scanned - '+allResults.length+' channels found');
+    if(r) { gridMap[coins[i].id] = r; gridCount++; }
+    setStatus('scanning', (i+1)+'/'+coins.length+' scanned - '+gridCount+' channels found');
     if(document.getElementById('diag-panel').classList.contains('visible')) renderDiag();
     if(i < coins.length-1) await sleep(700);
   }
+
+  // Backlog #10: Refresh used to be pure grid-only, so every click reverted a 'both'/
+  // CONFIRMED/1D-badged row back to a plain grid row until the next full page reload -
+  // merge the just-scanned live grid against the daily-basis stream the same way
+  // loadCachedOrResting() does on initial load, via the same mergeCandidateRow().
+  setStatus('scanning', 'Merging with daily-basis pass...');
+  var daily = await fetchDailyMap();
+  var cgIds = {};
+  Object.keys(gridMap).forEach(function(k){ cgIds[k]=1; });
+  Object.keys(daily.dailyMap).forEach(function(k){ cgIds[k]=1; });
+  allResults = Object.keys(cgIds).map(function(cgId) {
+    return mergeCandidateRow(gridMap[cgId]||null, daily.dailyMap[cgId]||null, daily.dailyStale);
+  });
+
+  dailyDataAvailable = Object.keys(daily.dailyMap).length > 0;
+  var fbc = document.getElementById('fb-confirmed');
+  if(fbc) fbc.style.display = dailyDataAvailable ? '' : 'none';
+  var dtg = document.getElementById('daily-thresh-group');
+  if(dtg) dtg.style.display = dailyDataAvailable ? '' : 'none';
 
   allResults.sort(function(a,b){return b.score-a.score;});
   lastScanDiff = computeScanDiff(getPrevScanHistory(), allResults);
@@ -684,7 +735,17 @@ async function runScan() {
   applyFilters();
   renderDiag();
   setStatus('live', allResults.length+' channels - '+coins.length+' scanned');
-  document.getElementById('last-update').textContent = 'Updated '+new Date().toLocaleTimeString();
+  // Backlog #10: the grid half above is live as of right now, but the daily half is only as
+  // fresh as the last GitHub Action run (<=24h cadence by design - daily bars change once a
+  // day, so re-pulling them live would only reintroduce #7). Label the two halves separately
+  // rather than implying the whole row just went live.
+  var updateLabel = 'Grid updated ' + new Date().toLocaleTimeString();
+  if(dailyDataAvailable) {
+    updateLabel += daily.dailyStale
+      ? ' - daily-basis pass ('+daily.dailyCap.date+') is stale, shown muted'
+      : ' - daily-basis pass as of '+daily.dailyCap.date+' (last Action run)';
+  }
+  document.getElementById('last-update').textContent = updateLabel;
   document.getElementById('cached-bar').style.display = 'none';
   btn.disabled=false; btn.textContent='Refresh';
   scanning=false;
