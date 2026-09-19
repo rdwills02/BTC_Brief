@@ -347,7 +347,11 @@ function detectSymbolCollision(dailyCandles, cgPrice, marketChart) {
   return { collision: false, flagged: false, ratio: sanity.ratio, borderline: sanity.borderline, robust: null };
 }
 
-// Build the live universe using the SHARED filter (no diag needed here).
+// Build the live universe using the SHARED filter. Backlog #13 (2026-09-19): this now tallies
+// volExcluded/catExcluded via qualifiesForUniverse's optional `counts` arg (same mechanism
+// radar.html's live-scan buildUniverse already uses - see universe-core.js) so the capture-
+// sourced funnel isn't missing the two stages that happen here. Selection logic itself
+// (which coins qualify) is completely unchanged - counts is purely an observed tally.
 async function buildUniverse() {
   const excluded = {};
   for (const slug of U.CATEGORY_EXCLUDE) {
@@ -356,8 +360,10 @@ async function buildUniverse() {
     await sleep(DELAY_MS);
   }
   const data = await cg('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=' + MARKETS_PER_PAGE + '&page=1&sparkline=false&price_change_percentage=24h');
-  if (!Array.isArray(data)) return [];
-  return data.filter(c => U.qualifiesForUniverse(c, excluded)).slice(0, UNIVERSE_SIZE);
+  const counts = { volExcluded: 0, catExcluded: 0 };
+  if (!Array.isArray(data)) return { list: [], counts: counts };
+  const list = data.filter(c => U.qualifiesForUniverse(c, excluded, counts)).slice(0, UNIVERSE_SIZE);
+  return { list: list, counts: counts };
 }
 
 // Fetch display-category membership -> { coinId: 'Label' }. 7 calls. Context tags only.
@@ -552,13 +558,17 @@ function resolveDailyCollisions(pulls) {
 // Detection runs on candles UP TO AND INCLUDING idx (no look-ahead).
 // Volume is SUMMED over the candle's span (from the day after the previous candle through
 // this candle's date) so it represents the whole ~4-day bar, not a single day.
-function rowForCandle(pulled, idx, catLabels) {
+function rowForCandle(pulled, idx, catLabels, diag) {
   const { coin, candles, volByDate, capByDate, priceByDate } = pulled;
   if (idx < 0 || idx >= candles.length) return null;
   const bar = candles[idx];
   const D = bar.date;
   const upto = candles.slice(0, idx + 1);
-  const det = C.detectChannel(upto);               // shared detection; null if no channel
+  // Backlog #13 (2026-09-19): diag is optional and, when passed, tallies railPairs/posSlope/
+  // touches/containment INTO THE CALLER'S shared object - same detectChannel() mechanism
+  // radar.html's live scanCoin() already relies on (channel-core.js increments diag by
+  // reference; a coin is counted at most once per stage - see channel-core.js's own comment).
+  const det = C.detectChannel(upto, diag);          // shared detection; null if no channel
 
   // Sum daily volumes across this candle's span (exclusive of the prior candle's date).
   const prevDate = idx > 0 ? candles[idx - 1].date : null;
@@ -588,7 +598,7 @@ function rowForCandle(pulled, idx, catLabels) {
 // grid-index slicing — this runs once per calendar day on whatever daily history is cached,
 // so it always uses the full series. Written for EVERY coin, EVERY run, regardless of score —
 // see the header note on why this is unfiltered (same principle as upgrade #1c's candidates()).
-function rowForDaily(pulled, catLabels) {
+function rowForDaily(pulled, catLabels, diag) {
   const { coin, dailySource, dailyCandles } = pulled;
   const base = {
     cgId: coin.id,
@@ -605,7 +615,12 @@ function rowForDaily(pulled, catLabels) {
   if (!dailyCandles || dailyCandles.length < 30) {
     return Object.assign(base, { detectionDaily: null });
   }
-  const det = C.detectChannel(dailyCandles);   // SAME shared detection as the 4-day pass —
+  // Backlog #13 (2026-09-19): "OHLC loaded" for the daily funnel means "usable daily candle
+  // history reached this point" - counted here, past the length guard above, mirroring where
+  // radar.html's scanCoin() counts diag.ohlcOk (right after a successful fetch, before
+  // detectChannel is even called).
+  if (diag) diag.ohlcOk++;
+  const det = C.detectChannel(dailyCandles, diag);   // SAME shared detection as the 4-day pass —
                                                 // no separate scoring logic, no write-time
                                                 // score filter (see header).
   return Object.assign(base, { detectionDaily: det });
@@ -624,7 +639,7 @@ function writeDayFile(D, obj) {
 }
 
 async function main() {
-  const universe = await buildUniverse();
+  const { list: universe, counts: universeCounts } = await buildUniverse();
   console.log('universe:', universe.length, 'coins');
   if (!universe.length) { console.error('empty universe — aborting, not writing'); process.exit(1); }
 
@@ -670,10 +685,16 @@ async function main() {
   for (const D of recent) {
     if (dayFileExists(D)) { console.log(D, 'already captured - skipping'); continue; }
     const coins = [];
+    // Backlog #13 (2026-09-19): per-date funnel tally - fresh diag per grid date, since
+    // detectChannel runs on a DIFFERENT candle slice (`upto`) for each date and the gate
+    // counts are therefore genuinely date-specific, unlike universeCounts/universe.length
+    // above (computed once for the whole run, reused across every date's payload below).
+    const diag = { ohlcOk: 0, railPairs: 0, posSlope: 0, touches: 0, containment: 0 };
     for (const p of pulls) {
       const idx = p.candles.findIndex(c => c.date === D);
       if (idx < 0) continue;                                   // coin has no candle on this grid date
-      const row = rowForCandle(p, idx, catLabels);
+      diag.ohlcOk++;                                            // coin has a usable candle on this date
+      const row = rowForCandle(p, idx, catLabels, diag);
       if (row) coins.push(row);
     }
     if (!coins.length) { console.log('no coin candles on', D, '- skipping'); continue; }
@@ -683,6 +704,23 @@ async function main() {
       grid_interval_days: 4,
       backfilled: D !== newestGrid,   // only the newest closed candle is "live"; older = backfilled
       universe_count: pulls.length,
+      // Backlog #13: the funnel the live Scan's Details panel already computes client-side
+      // (radar.html's diag object), now computed here too so CACHED mode (the default view -
+      // capture.js drives it, not a live Scan) has real numbers instead of nothing. Deliberately
+      // does NOT repeat 'universe' or 'candidates' here - those already have a single source of
+      // truth elsewhere (universe_count above; the merged allResults.length client-side) and
+      // duplicating them into a second, independently-computed field is exactly the #7 bug
+      // class (two reads of the same fact silently able to disagree) applied to a new pair of
+      // numbers - see the funnel-consumer code in radar.html for how it's kept to one source.
+      funnel: {
+        volExcluded: universeCounts.volExcluded,
+        catExcluded: universeCounts.catExcluded,
+        ohlcOk: diag.ohlcOk,
+        railPairs: diag.railPairs,
+        posSlope: diag.posSlope,
+        touches: diag.touches,
+        containment: diag.containment
+      },
       coins
     };
     writeDayFile(D, payload);
@@ -715,9 +753,14 @@ async function main() {
   // are isolated too (see below) so one bad coin can't blank the whole day's daily stream. ---
   try {
     const todayDate = ymd(Date.now());
+    // Backlog #13 (2026-09-19): funnel tally for the daily pass - separate from the grid
+    // funnel above because it's a genuinely different detection run (different candle source,
+    // no independent universe re-filter, so no volExcluded/catExcluded here - this pass reuses
+    // the grid pass's already-filtered coin list rather than re-running qualifiesForUniverse).
+    const dailyDiag = { ohlcOk: 0, railPairs: 0, posSlope: 0, touches: 0, containment: 0 };
     const dailyCoins = pulls.map(p => {
       try {
-        return rowForDaily(p, catLabels);
+        return rowForDaily(p, catLabels, dailyDiag);
       } catch (e) {
         console.warn('rowForDaily failed for', p.coin.id, '— writing a safe fallback row:', e.message);
         return {
@@ -732,6 +775,13 @@ async function main() {
       date: todayDate,
       captured_at: new Date().toISOString(),
       universe_count: dailyCoins.length,
+      funnel: {
+        ohlcOk: dailyDiag.ohlcOk,
+        railPairs: dailyDiag.railPairs,
+        posSlope: dailyDiag.posSlope,
+        touches: dailyDiag.touches,
+        containment: dailyDiag.containment
+      },
       coins: dailyCoins
     };
     const dailyDayPath = path.join(DAILY_DIR, todayDate + '.json');
