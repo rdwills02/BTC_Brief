@@ -449,6 +449,16 @@ function computeRailAge(candles, pivotLows) {
   var maxPivotTime = -Infinity;
   for(var i=0;i<pivotLows.length;i++) { if(pivotLows[i].time > maxPivotTime) maxPivotTime = pivotLows[i].time; }
   var days = Math.round((basisTime - maxPivotTime) / 86400);
+  // Backlog #12 (R15, 2026-09-19): computeRailAge previously checked only that candles/
+  // pivotLows were PRESENT, never that the resulting days value was sane. A non-numeric
+  // candle/pivot time (e.g. a malformed cache entry) yields NaN here, which fails both band
+  // comparisons below and falls through to 'stale' - and railAgeCellHTML's `== null` check
+  // does not catch NaN, so the cell would render the literal string "NaNd", colour-coded
+  // Stale. A pivot newer than the basis candle (days<0, shouldn't happen but not structurally
+  // prevented) would silently under-report age instead of surfacing as a data problem.
+  // Verified 0 of 83 live rows hit this today (2026-09-19 audit) - this is hardening against
+  // a cache-corruption class of bug, not a fix for an observed one.
+  if(!isFinite(days) || days < 0) return {days:null, band:'unknown'};
   var band = days<=RAIL_AGE_FRESH_MAX ? 'fresh' : (days<=RAIL_AGE_AGING_MAX ? 'aging' : 'stale');
   return {days:days, band:band};
 }
@@ -756,10 +766,73 @@ async function fetchOHLC(cgId) {
 
 
 
+// Backlog #5 (2026-09-19): three fixes to this explanation text, all from the TAO audit.
+// Called from mergeCandidateRow, AFTER rail age is computed there - r.supportRailAgeDays/
+// Band must already be set on r by the time this runs (never Date.now(), never a
+// re-derivation - see computeRailAge). r.resistNow/r.price must also already be set.
+//
+// FIX 1 - TEMPLATE BUG: channel-core.js sets isAscending:slope>=0 and isFlat:
+// Math.abs(slopePct)<0.1 as two INDEPENDENT booleans, so a near-zero positive slope
+// satisfies both at once. The old code picked the structure label from isFlat first (the
+// `structureLabel` line below - unchanged logic) but then separately re-derived "ascending
+// channel" from r.slope>=0 alone, twice, further down - so a flat/near-zero-positive-slope
+// channel could read "shows a flat channel... Near support in ascending channel..." in the
+// same paragraph. Fixed by never re-testing r.slope for wording after this point - every
+// mention of structure below reads `structureLabel`. PRECEDENCE CHOSEN: isFlat wins over
+// slope sign. A near-zero slope is functionally flat regardless of which way it nominally
+// tilts, and calling it "ascending" overstates a trend that isn't really there.
+// FIX 2 - RAIL AGE: with #7's desync fix landed, a stale support rail is the only remaining
+// reason a "near support" read can be wrong - the rail can be real structure from months
+// ago, not where price is testing today. The bare phrase "near support" must never appear
+// without a rail-age qualifier attached - so it no longer appears as its own phrase at all;
+// each mention is replaced by the qualifier itself (day count, or the historical-anchor
+// caveat when stale).
+// FIX 3 - RESISTANCE + RECENCY: channel-core.js emits pivotLows but no pivotHighs (see
+// RADAR STATE "KEY FACTS"), so a resistance rail age is NOT computable from published data.
+// Naming a recency for it would be a guess dressed as a fact. Name the level; say plainly
+// its touch recency isn't tracked, rather than staying silent (old behavior, resistance was
+// never named here at all) or letting "near resistance" imply it's as fresh as the support
+// read.
 function buildExpl(r, name) {
-  var pos = r.position<=0.33?'lower third (near support)':r.position<=0.66?'middle of channel':'upper third (near resistance)';
-  var sl = r.isFlat?'flat':r.slope>0?'ascending':'descending';
-  return name+' shows a '+sl+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. Price is in the '+pos+'. '+(r.position<=0.33&&r.slope>=0?'Near support in ascending channel may offer favorable risk/reward. Validate in TradingView.':'Consider waiting for a pullback toward support before entry.');
+  var structureLabel = r.isFlat ? 'flat' : (r.slope > 0 ? 'ascending' : 'descending');
+  // Fold-in fix (Ryan, 2026-09-19, Round 2 review): "shows a ascending channel" is missing
+  // the "n" - structureLabel starts with a vowel sound only for 'ascending'. Article picked
+  // from structureLabel itself so this never drifts out of sync with new labels later.
+  var structureArticle = /^[aeiou]/i.test(structureLabel) ? 'an' : 'a';
+
+  var railNote;
+  if(r.supportRailAgeDays == null) {
+    railNote = 'support rail age unknown';
+  } else {
+    var approx = (typeof railAgeApprox==='function' && railAgeApprox(r)) ? ' (~4d resolution)' : '';
+    railNote = (r.supportRailAgeBand==='stale')
+      ? 'the support rail was last tested '+r.supportRailAgeDays+'d ago'+approx+' — treat it as a historical anchor, not current structure'
+      : 'support rail last tested '+r.supportRailAgeDays+'d ago'+approx;
+  }
+
+  var resSentence = 'Resistance '+fmt(r.resistNow,4)+' (touch recency not tracked).';
+
+  var posSentence;
+  if(r.position<=0.33) {
+    posSentence = (r.supportRailAgeBand==='stale')
+      ? 'Lower third of channel, but '+railNote+'.'
+      : 'Lower third of channel; '+railNote+'.';
+  } else if(r.position<=0.66) {
+    posSentence = 'Middle of channel.';
+  } else {
+    posSentence = 'Upper third of channel.';
+  }
+
+  // Encouraging read is gated on structure AND an actually-fresh rail (not aging, not
+  // stale, not unknown) - "may offer favorable risk/reward" is exactly the kind of claim
+  // #7's fix note says depends on the rail being current, not just the position number.
+  // This mention of "near support" carries its own rail-age qualifier inline, same as
+  // posSentence above, so it also satisfies FIX 2.
+  var closing = (r.position<=0.33 && structureLabel==='ascending' && r.supportRailAgeBand==='fresh')
+    ? 'Near support with a fresh rail ('+railNote+') in an ascending channel may offer favorable risk/reward. Validate in TradingView.'
+    : 'Consider waiting for a pullback toward support before entry.';
+
+  return name+' shows '+structureArticle+' '+structureLabel+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. '+resSentence+' '+posSentence+' '+closing;
 }
 
 async function scanCoin(coin) {
@@ -775,7 +848,10 @@ async function scanCoin(coin) {
   ch.price = coin.current_price;
   ch.change24h = coin.price_change_percentage_24h || 0;
   ch.volume24h = (coin.total_volume != null ? coin.total_volume : null);
-  ch.explanation = buildExpl(ch, coin.name);
+  // Backlog #5 (2026-09-19): explanation text moved to mergeCandidateRow - buildExpl's
+  // rail-age qualifier needs supportRailAgeDays/Band, which don't exist until this row has
+  // been through mergeCandidateRow (runScan always merges every scanned row, 'grid'-only
+  // included - see runScan). Not set here; left for that call.
   var tv = tvLink(ch.symbol);
   ch.tvExchange = tv.exchange;
   ch.tvPair = tv.pair;
@@ -923,15 +999,34 @@ function getThresh() {
   };
 }
 
+// Backlog #2 (2026-09-19): CONFIRMED needs its OWN threshold, separate from the shared
+// Min-score slider (t.minScore). Measured live 2026-09-19: 38 of 83 rows (45.8%) were
+// CONFIRMED at every Min-score setting from 40 up through 75 - every 'both' row scores
+// >=78, so the slider only shrinks the visible set AROUND a fixed CONFIRMED population;
+// it never tightens which rows count as CONFIRMED. Raising Min-score to 90 dropped it to
+// 4/5 visible rows, which is useless as a control either way. Gate on a dedicated constant
+// instead. CHOSEN VALUE: 89, measured against the same 2026-09-19 data (38 'both' rows,
+// scores clustered 78-92) - the CONFIRMED share of visible rows at each integer cutoff:
+// >=88 -> 27/82 (32.9%), >=89 -> 11/82 (13.4%), >=90 -> 4/82 (4.9%). NO integer threshold
+// lands inside the requested 15-25% band: 16 of the 38 'both' rows are tied at exactly
+// score 88, so the achievable share jumps straight from 32.9% to 13.4% across that one
+// point with nothing in between. 89 is the closer of the two achievable values to the
+// requested band and is the more selective/conservative pick (differentiates CONFIRMED
+// from the ~46% baseline; 88 barely would). This is a single day's score distribution,
+// same caveat as #4 (parked) - the value may need revisiting once there's outcome data to
+// judge it by, not just population shape.
+var CONFIRMED_MIN_SCORE = 89;
+
 function applyFilters() {
   // Milestone #2a (2026-09-18): merge-UI source gating, folds in #6 (surfacing/bucketing
   // review). Design approved by Ryan 2026-09-18 with one change: the live latest.json +
   // latest-daily.json intersection came back at 41 confirmed coins (well above the ~15/25
   // decision line), so 'both' rows are NOT unconditionally exempt from all filtering -
-  // they still have to clear the existing Min score bar (t.minScore) to get the
-  // always-shown / top-of-bucket / Confirmed-filter treatment. Below that bar they're
-  // ordinary rows like everything else. This keeps CONFIRMED selective instead of just
-  // being "41 of 97 rows", per Ryan's explicit gate.
+  // they still have to clear a quality bar to get the always-shown / top-of-bucket /
+  // Confirmed-filter treatment. Below that bar they're ordinary rows like everything else.
+  // Backlog #2 (2026-09-19): that bar is now CONFIRMED_MIN_SCORE (see above), not the
+  // shared t.minScore control - t.minScore does not vary CONFIRMED's population (every
+  // 'both' row clears it), so gating on it here was gating on nothing.
   var t = getThresh();
   filtered = allResults.filter(function(r) {
     // Backlog #3: rail age is a separate axis from score/confirmation - "only fresh-rail
@@ -939,7 +1034,7 @@ function applyFilters() {
     // ahead of the confirmedAndQualified bypass below rather than being folded into it.
     if(t.railAgeMode==='fresh' && r.supportRailAgeBand!=='fresh') return false;
     if(t.railAgeMode==='fresh-aging' && r.supportRailAgeBand!=='fresh' && r.supportRailAgeBand!=='aging') return false;
-    var confirmedAndQualified = r.source==='both' && r.score >= t.minScore;
+    var confirmedAndQualified = r.source==='both' && r.score >= CONFIRMED_MIN_SCORE;
     if(confirmedAndQualified) {
       // Confirmed by both passes AND clears the quality bar: bypass touches/containment/
       // slope/bucket filtering entirely - this IS the #6 fix (Dash-type signals get
@@ -1441,8 +1536,11 @@ function adaptCaptureCoin(c) {
     supSlope:d.supSlope, supIntercept:d.supIntercept, firstIdx:d.firstIdx, lastIdx:d.lastIdx,
     isAscending:d.isAscending, isFlat:d.isFlat,
     emaState:d.emaState, ema21:d.ema21, ema50:d.ema50, emaPts:d.emaPts,
-    bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp,
-    explanation:(typeof buildExpl==='function'?buildExpl(d, c.name):'')
+    bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp
+    // Backlog #5 (2026-09-19): explanation intentionally NOT built here - moved to
+    // mergeCandidateRow, which runs after rail age is known. buildExpl's rail-age
+    // qualifier on "near support" needs supportRailAgeDays/Band, which this function
+    // (pre-merge) has no way to compute.
   };
 }
 // Milestone #2a (2026-09-18): daily-basis counterpart of adaptCaptureCoin(), reading
@@ -1467,8 +1565,9 @@ function adaptDailyCoin(c) {
     isAscending:d.isAscending, isFlat:d.isFlat,
     emaState:d.emaState, ema21:d.ema21, ema50:d.ema50, emaPts:d.emaPts,
     bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp,
-    dailySource:c.dailySource,
-    explanation:(typeof buildExpl==='function'?buildExpl(d, c.name):'')
+    dailySource:c.dailySource
+    // Backlog #5 (2026-09-19): see adaptCaptureCoin above - explanation is built in
+    // mergeCandidateRow instead, after rail age is known.
   };
 }
 // Merge one grid-adapted row and/or one daily-adapted row (either may be null, never
@@ -1498,11 +1597,18 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   // came from the daily object above.
   if(dailyRow && gridRow) { merged.tvExchange = merged.tvExchange || gridRow.tvExchange; merged.tvPair = merged.tvPair || gridRow.tvPair; }
   // Backlog #3: rail age, computed from THIS SAME base object's candles/pivotLows (not
-  // Date.now(), not a re-derivation) - see computeRailAge above. Every row - live scan, cached
-  // grid, cached daily - passes through this one function, so this is the single point that
-  // needs to compute it, rather than duplicating the call in adaptCaptureCoin/adaptDailyCoin/
-  // scanCoin. merged.candles/merged.pivotLows already equal base.candles/base.pivotLows from
-  // the spread above, so this reads exactly what the rails were fitted against.
+  // Date.now(), not a re-derivation) - see computeRailAge above. This is the single point
+  // that computes it for a freshly built/merged row, rather than duplicating the call in
+  // adaptCaptureCoin/adaptDailyCoin/scanCoin. merged.candles/merged.pivotLows already equal
+  // base.candles/base.pivotLows from the spread above, so this reads exactly what the rails
+  // were fitted against.
+  // Backlog #12 (2026-09-19) - CORRECTION to the note this replaces: NOT every row passes
+  // through this function. loadCachedOrResting()'s browser-local-history fallback path
+  // (no data/latest.json this session, restoring localStorage's radar_scan_history instead)
+  // assigns `allResults = prev.candidates` directly and never calls mergeCandidateRow at all -
+  // see the comment at that assignment for why (toLightCandidate strips candles/pivotLows
+  // before those rows are ever saved, so there is nothing here to compute rail age FROM on
+  // that path either way).
   // R14 (2026-09-19): rail age is display-only, but sat unguarded on the load-bearing merge -
   // a throw here would have taken out mergeCandidateRow for every row, on every load, the same
   // failure-isolation gap caught in capture.js before the M2 push. A thrown error degrades ONLY
@@ -1514,6 +1620,16 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   } catch(e) {
     merged.supportRailAgeDays = null;
     merged.supportRailAgeBand = 'unknown';
+  }
+  // Backlog #5 (2026-09-19): the explanation text is built HERE, after rail age above, not
+  // in adaptCaptureCoin/adaptDailyCoin/scanCoin (which no longer set it) - buildExpl's rail-
+  // age-qualified wording needs merged.supportRailAgeDays/Band, which don't exist until the
+  // block directly above this has run. try/catch for the same reason as rail age above: a
+  // throw here must degrade only this row's explanation text, never the merge itself.
+  try {
+    merged.explanation = (typeof buildExpl==='function') ? buildExpl(merged, merged.name) : '';
+  } catch(e) {
+    merged.explanation = '';
   }
   return merged;
 }
@@ -1600,7 +1716,20 @@ async function loadCachedOrResting() {
     document.getElementById('table-body').innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
     return;
   }
-  allResults = prev.candidates;
+  // Backlog #12 (R16, 2026-09-19): toLightCandidate() (see saveScanHistory) strips candles/
+  // pivotLows before a row is ever saved here, to keep localStorage well under 5MB - so a
+  // restored row can NEVER have real rail-age data, by design, not by omission. Call
+  // computeRailAge explicitly anyway (its own guard clause already returns {days:null,
+  // band:'unknown'} for missing candles/pivotLows) rather than leaving the fields simply
+  // absent - this makes "unknown" a deliberate, documented outcome of this path instead of
+  // an accident that happens to render correctly today only because railAgeCellHTML/
+  // sortFiltered/applyFilters all treat `undefined` the same as `null`.
+  allResults = prev.candidates.map(function(r) {
+    var railAge = computeRailAge(r.candles, r.pivotLows);
+    r.supportRailAgeDays = railAge.days;
+    r.supportRailAgeBand = railAge.band;
+    return r;
+  });
   if(prev.diag) diag = prev.diag;
   applyFilters();
   captureMode = false;
