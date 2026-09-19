@@ -375,6 +375,16 @@ var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope
 // report's diff bar instead of independently re-deriving it from GitHub - single
 // source of truth, computed once, used in both places.
 var lastScanDiff = {hasPrevious:false, dropped:[], added:[]};
+// Backlog #9 (2026-09-19, Round 3): the 1D/4-Day capture dates behind whatever is currently in
+// allResults, so publishReport() can pass them through to buildReportHTML for the report's own
+// #11-vocabulary header chips - see renderHeaderTimestamp above for the live-panel equivalent.
+// null until either loadCachedOrResting() or runScan() has run at least once. lastGridDate is a
+// live scan's own run date for a fresh scan (there is no separate "grid capture date" once
+// today's grid was just fetched), or the shared capture file's date when showing cached/capture
+// data - mirrors the distinction 'Grid updated <time>' vs '<capture date>' already draws elsewhere.
+var lastGridDate = null;
+var lastDailyDate = null;
+var lastDailyStale = false;
 
 // TV link fallback chain: Kraken primary, Coinbase secondary, Binance last resort.
 // Verified live 2026-07-03: 4/34 candidates (DEXE, BSV, KITE, GRAM) had no Kraken pair
@@ -621,13 +631,37 @@ var SCAN_HISTORY_KEY = 'radar_scan_history';
 // radar-report.html - kept identical so both stay in sync automatically. Excludes
 // chart-only geometry (candles/pivotLows/supSlope/supIntercept) to keep the cache well
 // under 5MB. Detail charts require a fresh in-session scan - see openDetail().
+// Backlog #9 (2026-09-19, Round 3): added source/gridScore/dailyScore/dailyStale/
+// supportRailAgeDays/supportRailAgeBand - all small scalars (no size-budget impact), but
+// previously MISSING here entirely. That is a real gap this round's trace turned up: r.score
+// on a merged row already reflects the merge (mergeCandidateRow sets merged.score =
+// max(gridScore,dailyScore)) and DID survive into reportData.candidates via this function
+// before today - but the CONFIRMED/1D-4-Day source badge, the dual grid-vs-daily score
+// breakdown, and rail age could NOT have been rendered by buildReportHTML even if it tried,
+// because toLightCandidate silently dropped every field they need. Fixing this here is what
+// makes the Round 3 merge-layer/rail-age additions to buildReportHTML possible at all - see
+// buildReportHTML's own comment on the traced "does the report's score reflect the merge"
+// question for the full answer.
+//
+// CAVEAT (Ryan's Round 3 review, traced): this function has TWO consumers, and only one of
+// them can use supportRailAgeDays/supportRailAgeBand. publishReport() reads allResults
+// directly and depends on these two fields for the report's rail-age display. The OTHER
+// consumer - saveScanHistory(), whose output is read back by loadCachedOrResting()'s
+// localStorage-restore fallback path - persists these two fields but then immediately
+// overwrites them with 'unknown' on every restore (see the comment at that overwrite for why
+// that stays as-is: the restored value would be stale by an unknown number of days, and
+// 'unknown' is this project's correct answer for a value that can't be honestly retrieved, not
+// a gap to paper over). So on the restore path specifically, these two fields are write-only -
+// harmless, and necessary for the other consumer, but never rendered from a restored row.
 function toLightCandidate(r) {
   return {symbol:r.symbol,name:r.name,cgId:r.cgId,price:r.price,change24h:r.change24h,volume24h:r.volume24h,score:r.score,
     supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,
     position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,
     channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,
     explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,
-    threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category};
+    threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category,
+    source:r.source,gridScore:r.gridScore,dailyScore:r.dailyScore,dailyStale:r.dailyStale,
+    supportRailAgeDays:r.supportRailAgeDays,supportRailAgeBand:r.supportRailAgeBand};
 }
 function getPrevScanHistory() {
   try {
@@ -812,6 +846,11 @@ async function fetchOHLC(cgId) {
 // test-round1.js's exact-string assertions after this change, 0 regressions).
 function structureLabelFor(r) { return r.isFlat ? 'flat' : (r.slope > 0 ? 'ascending' : 'descending'); }
 function structureArticleFor(structureLabel) { return /^[aeiou]/i.test(structureLabel) ? 'an' : 'a'; }
+// Backlog #9 (2026-09-19, Round 3): extracted from openDetail()'s dp-pos-label line so
+// buildReportHTML can render an identical position label instead of hand-rolling a similar-
+// but-not-guaranteed-identical version - same one-implementation-two-call-sites reasoning as
+// structureLabelFor/railNoteFor above.
+function positionLabelFor(r) { return r.position<=0.33 ? 'Lower third' : (r.position<=0.66 ? 'Middle' : 'Upper third'); }
 function railNoteFor(r) {
   if(r.supportRailAgeDays == null) return 'support rail age unknown';
   var approx = (typeof railAgeApprox==='function' && railAgeApprox(r)) ? ' (~4d resolution)' : '';
@@ -1062,6 +1101,12 @@ async function runScan() {
   allResults = Object.keys(cgIds).map(function(cgId) {
     return mergeCandidateRow(gridMap[cgId]||null, daily.dailyMap[cgId]||null, daily.dailyStale);
   });
+  // Backlog #9 (2026-09-19, Round 3): a live scan has no separate "grid capture date" - the
+  // grid was just fetched this instant, same distinction the 'Grid updated <time>' status label
+  // below already draws. The 1D pass is still only as fresh as the last Action run.
+  lastGridDate = new Date().toISOString().slice(0,10);
+  lastDailyDate = daily.dailyCap ? daily.dailyCap.date : null;
+  lastDailyStale = daily.dailyStale;
 
   dailyDataAvailable = Object.keys(daily.dailyMap).length > 0;
   var fbc = document.getElementById('fb-confirmed');
@@ -1267,7 +1312,7 @@ function openDetail(r) {
     '<div class="score-item"><div class="si-label">Price vs EMA</div><div class="si-value" style="color:'+(r.emaState==='above_both'?'var(--bull)':r.emaState==='above_50'?'var(--neut)':'var(--bear)')+'">'+(r.emaState==='above_both'?'Above 21 & 50':r.emaState==='above_50'?'Above 50':'Below 50')+'</div></div>'+
     '<div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:'+sc+'">'+r.score+'/100</div></div>';
   var pw=Math.round(r.position*100);
-  document.getElementById('dp-pos-label').textContent=r.position<=0.33?'Lower third':r.position<=0.66?'Middle':'Upper third';
+  document.getElementById('dp-pos-label').textContent=positionLabelFor(r);
   document.getElementById('dp-pos-bar').style.width=pw+'%';
   document.getElementById('dp-sup').textContent=fmt(r.supportNow,4);
   document.getElementById('dp-cur').textContent=fmt(r.price,4);
@@ -1356,31 +1401,65 @@ function buildReportHTML(data) {
     var bk = r.score>=90?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'};
     var sc = r.score>=90?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
     var pw = Math.round(r.position*100);
-    var posLbl = r.position<=0.33?'Lower third (near support)':r.position<=0.66?'Middle of channel':'Upper third (near resistance)';
+    // Backlog #9 (2026-09-19, Round 3): posLbl/chType used to be independently re-derived here
+    // (their own isFlat/slope/position ternaries) instead of reusing positionLabelFor/
+    // structureLabelFor - the exact #7 bug class the Round 2 refactor comment warns about,
+    // just not yet applied to this function. Reusing them here is what makes acceptance
+    // criterion 2 (character-identical position/level wording vs the live panel) true by
+    // construction rather than by coincidence.
+    var posLbl = positionLabelFor(r);
+    var structureLabel = structureLabelFor(r);
+    var chType = structureLabel.charAt(0).toUpperCase()+structureLabel.slice(1)+' channel';
     var slopeColor = r.slope>0.05?'#00c896':r.slope<-0.05?'#e8754a':'#6b7280';
-    var chType = r.isFlat?'Flat channel':r.slope>=0?'Ascending channel':'Descending channel';
     var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
     var cgUrl='https://www.coingecko.com/en/coins/'+r.cgId;
     var invPct = ((r.invalidation-r.price)/r.price*100).toFixed(1);
+    // Backlog #9 (2026-09-19, Round 3): merge-layer surfacing - reuses srcBadgeHTML (the exact
+    // function the live table calls) rather than a re-derived badge, and only shows the dual-
+    // score breakdown when both passes actually scored this coin (never a blank/n/a half, same
+    // rule #11 established for the header chips).
+    var dualScoreLine = (r.gridScore!=null && r.dailyScore!=null)
+      ? '<div style="font-size:9px;color:#6b7280;margin-top:3px;text-align:right">Grid '+r.gridScore+' &middot; Daily '+r.dailyScore+'</div>'
+      : '';
+    // Backlog #9 (2026-09-19, Round 3): Recommended View - calls buildAction(r) directly (the
+    // exact Round 2 function, FIX A/FIX B included), never a re-derived summary. This is the
+    // "including both new caveats" half of Ryan's Round 3 wording instruction - the explanation
+    // block below already carried #5's wording verbatim (r.explanation is stored once in
+    // mergeCandidateRow and never rebuilt here), but nothing in this report previously surfaced
+    // #6/Round 2's action line or its caveats at all.
+    var actionHTML = '';
+    if(typeof buildAction==='function') {
+      var action = buildAction(r);
+      var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
+      actionHTML = '<div style="margin-bottom:12px">'+
+        '<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Recommended View</div>'+
+        '<div style="margin-bottom:8px"><span class="vbadge '+vcls+'">'+action.verdict+'</span></div>'+
+        '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6">'+action.text+'</div>'+
+      '</div>';
+    }
     return '<div class="radar-card" id="card-'+r.symbol+'" data-score="'+r.score+'" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
         '<div style="display:flex;align-items:center;gap:10px">'+
           '<div style="width:32px;height:32px;border-radius:50%;background:#20223a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#7b6ef6">'+r.symbol.substring(0,3)+'</div>'+
           '<div><div style="font-size:16px;font-weight:700">'+r.symbol+'</div><div style="font-size:11px;color:#6b7280">'+r.name+' - Daily - '+chType+'</div></div>'+
         '</div>'+
-        '<div style="display:flex;align-items:center;gap:10px">'+
-          (r.category?'<span class="cat-tip" data-tip="'+categoryTip(r.category)+'" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(157,163,180,.12);color:#9da3b4;border:1px solid rgba(157,163,180,.25)">'+r.category+'</span>':'')+
-          '<div style="font-size:22px;font-weight:700;color:'+sc+'">'+r.score+'</div>'+
-          '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+bk.c+';color:'+bk.tc+'">'+bk.l+'</span>'+
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:0">'+
+          '<div style="display:flex;align-items:center;gap:10px">'+
+            (r.category?'<span class="cat-tip" data-tip="'+categoryTip(r.category)+'" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(157,163,180,.12);color:#9da3b4;border:1px solid rgba(157,163,180,.25)">'+r.category+'</span>':'')+
+            '<div style="font-size:22px;font-weight:700;color:'+sc+'">'+r.score+'</div>'+
+            '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+bk.c+';color:'+bk.tc+'">'+bk.l+'</span>'+srcBadgeHTML(r)+
+          '</div>'+
+          dualScoreLine+
         '</div>'+
       '</div>'+
-      '<div class="report-metrics" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px">'+
+      '<div class="report-metrics" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:12px">'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Price change over the last 24 hours." style="font-size:10px;color:#6b7280;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:600">'+fmt2(r.price,4)+'</div><div style="font-size:10px;color:'+(r.change24h>=0?'#00c896':'#e8754a')+'">'+fmtP2(r.change24h)+' 24h</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Total US-dollar trading volume over the last 24 hours." style="font-size:10px;color:#6b7280;margin-bottom:2px">24h Vol</div><div style="font-size:13px;font-weight:600;color:#9da3b4">'+fmtVol(r.volume24h)+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Support touches: times price tested the lower rail. More = a more established channel." style="font-size:10px;color:#6b7280;margin-bottom:2px">S Touches</div><div style="font-size:13px;font-weight:600;color:#00c896">'+r.supportTouches+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Resistance touches: times price tested the upper rail." style="font-size:10px;color:#6b7280;margin-bottom:2px">R Touches</div><div style="font-size:13px;font-weight:600">'+r.resTouches+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Containment: percent of candles that stayed inside the channel rails. Higher = cleaner channel." style="font-size:10px;color:#6b7280;margin-bottom:2px">Containment</div><div style="font-size:13px;font-weight:600;color:'+(r.containment>75?'#00c896':'#f5a623')+'">'+r.containment+'%</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Upward tilt of the channel per bar. Positive = ascending channel." style="font-size:10px;color:#6b7280;margin-bottom:2px">Slope/bar</div><div style="font-size:13px;font-weight:600;color:'+slopeColor+'">'+(r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="How many days since the support rail'+"'"+'s most recent touch. Fresh (<=14d) is live structure; Aging (15-28d) is still plausible; Stale (>28d) is a historical anchor, not where price is reacting today." style="font-size:10px;color:#6b7280;margin-bottom:2px">Rail Age</div><div style="font-size:13px;font-weight:600">'+railAgeCellHTML(r)+'</div></div>'+
       '</div>'+
       '<div style="margin-bottom:12px">'+
         '<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-bottom:4px"><span>Support '+fmt2(r.supportNow,4)+'</span><span style="color:#7b6ef6;font-weight:600">'+posLbl+'</span><span>Resistance '+fmt2(r.resistNow,4)+'</span></div>'+
@@ -1392,6 +1471,7 @@ function buildReportHTML(data) {
         '<div class="report-chart" id="rchart-'+r.symbol+'" style="width:100%;height:100%"></div>'+
       '</div>'+
       '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6;margin-bottom:12px">'+r.explanation+'</div>'+
+      actionHTML+
       '<div style="margin-bottom:12px">'+
         '<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Confluence (daily OHLC)</div>'+
         confluenceHTML(r)+
@@ -1430,8 +1510,32 @@ function buildReportHTML(data) {
     '</div>';
   }
 
+  // Backlog #9 (2026-09-19, Round 3): #11 header vocabulary for the report - reuses headerChip
+  // (already a pure function returning {fresh,html}, no DOM access) exactly as
+  // renderHeaderTimestamp does for the live header, just joined into a string here instead of
+  // written to a DOM node. Only the chip for a date that is actually present renders (never a
+  // blank/n/a for a missing stream) - same rule #11 established. data.gridDate/data.dailyDate
+  // come from publishReport() via lastGridDate/lastDailyDate (see their declaration comment);
+  // both can be null (e.g. published from the localStorage-only fallback), in which case this
+  // is simply empty and the report shows only its own "Generated" publish timestamp.
+  var headerChipsHTML = '';
+  if(data.dailyDate) headerChipsHTML += headerChip('1D', data.dailyDate, HEADER_FRESH_1D_DAYS,
+    '1D: Kraken/Coinbase exchange candles, refreshed by the last GitHub Action run. Fresh within '+HEADER_FRESH_1D_DAYS+' day.').html;
+  if(data.gridDate) headerChipsHTML += (headerChipsHTML?' &middot; ':'') + headerChip('4-Day', data.gridDate, HEADER_FRESH_4D_DAYS,
+    '4-Day: the OHLC grid pass. A new candle lands every 4 days, so up to '+HEADER_FRESH_4D_DAYS+' days old is current, not stale.').html;
+
   return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Channel Radar Report</title><script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"><\/script>'+
-  '<style>.cat-tip{position:relative;cursor:help}.cat-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1e2035;color:#e2e4ef;border:1px solid #2a2b3d;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:400;line-height:1.4;width:220px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:200;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}.cat-tip:hover::after{opacity:1;visibility:visible}@media (max-width:640px){.report-metrics{grid-template-columns:repeat(3,1fr) !important}}<\/style>'+
+  '<style>:root{--bg:#0b0c14;--surface:#13141f;--surface2:#1a1b2a;--surface3:#20223a;--border:#1e2035;--border2:#2a2b3d;--text:#e2e4ef;--text2:#9da3b4;--muted:#6b7280;--bull:#00c896;--bear:#e8754a;--bear-bg:rgba(232,117,74,0.1);--neut:#f5a623;--accent:#7b6ef6;--accent-bg:rgba(123,110,246,0.12);--accent-border:rgba(123,110,246,0.3);--high:#00c896;--probable:#7b6ef6;--emerging:#f5a623;--watch:#e8754a}'+
+  // Backlog #9 (2026-09-19, Round 3): the report page never had these :root variables (it is a
+  // separate standalone document from radar.html - see buildReportHTML's returned HTML, which
+  // starts its own <!DOCTYPE html>). srcBadgeHTML/railAgeColor/railAgeCellHTML/the vbadge
+  // classes all emit var(--...) tokens that only resolve if this page defines them - copied
+  // verbatim from radar.html's own :root/.srcbadge/.src-*/.vbadge/.va-* rules (same reasoning
+  // as reusing the functions themselves: one definition, not a hand-resolved-hex duplicate that
+  // could drift from the live page's palette).
+  '.srcbadge{font-size:8px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.03em;margin-left:5px;display:inline-block;vertical-align:middle}.src-grid{background:rgba(157,163,180,.15);color:var(--text2)}.src-daily{background:rgba(123,110,246,.12);color:var(--accent)}.src-both{background:rgba(123,110,246,.22);color:var(--probable);border:1px solid rgba(123,110,246,.4)}.src-both.stale{background:rgba(107,114,128,.15);color:var(--muted);border-color:var(--border2)}'+
+  '.vbadge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;display:inline-block}.va-act{background:rgba(0,200,150,.15);color:var(--bull)}.va-watch{background:rgba(245,166,35,.12);color:var(--neut)}.va-wait{background:rgba(107,114,128,.15);color:var(--muted)}'+
+  '.cat-tip{position:relative;cursor:help}.cat-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1e2035;color:#e2e4ef;border:1px solid #2a2b3d;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:400;line-height:1.4;width:220px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:200;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}.cat-tip:hover::after{opacity:1;visibility:visible}@media (max-width:640px){.report-metrics{grid-template-columns:repeat(3,1fr) !important}}<\/style>'+
   '</head>'+
   '<body style="background:#0b0c14;color:#e2e4ef;font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;margin:0">'+
   '<div style="background:#13141f;border-bottom:1px solid #1e2035;padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100">'+
@@ -1456,6 +1560,7 @@ function buildReportHTML(data) {
     '<div style="background:#13141f;border:1px solid #1e2035;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #7b6ef6">'+
       '<div style="font-size:18px;font-weight:700;margin-bottom:4px">Altcoin Channel Radar</div>'+
       '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">Generated: '+ts+' - '+data.scanned+' coins scanned - '+cands.length+' channels found'+(data.btcPrice?' - BTC '+fmt2(data.btcPrice)+' ('+fmtP2(data.btcChange)+' 24h)':'')+'</div>'+
+      (headerChipsHTML?'<div style="font-size:11px;margin-bottom:8px">'+headerChipsHTML+'</div>':'')+
       '<div style="font-size:13px;color:#9da3b4;line-height:1.6">'+cands.length+' channel candidates found. '+highCount+' high-confidence, '+probCount+' probable. '+lowerThird+' candidate'+(lowerThird!==1?'s':'')+' in the lower third of an ascending channel. Validate all candidates in TradingView before acting.</div>'+
     '</div>'+
     diffBar+
@@ -1557,7 +1662,16 @@ async function publishReport() {
       // of truth, computed once in runScan(), used for both the live bar and the report.
       hasPrevious: lastScanDiff.hasPrevious,
       dropped: lastScanDiff.dropped,
-      added: lastScanDiff.added
+      added: lastScanDiff.added,
+      // Backlog #9 (2026-09-19, Round 3): pass through the same 1D/4-Day dates the live header
+      // uses (set in runScan()/loadCachedOrResting() - see lastGridDate's declaration comment)
+      // so buildReportHTML can render the #11-vocabulary chips instead of only a publish
+      // timestamp. Either can be null (e.g. published straight from the localStorage-only
+      // fallback path) - buildReportHTML must render only the chip for a present date, same
+      // rule renderHeaderTimestamp already follows for the live header.
+      gridDate: lastGridDate,
+      dailyDate: lastDailyDate,
+      dailyStale: lastDailyStale
     };
     // Embed lightweight chart geometry per candidate so the static report can draw charts
     // (report has no API access — data must be baked in at publish). ~90 candles/coin.
@@ -1830,6 +1944,12 @@ async function loadCachedOrResting() {
           applyFilters();
           captureMode = true;
           var capDate = cap.date;
+          // Backlog #9 (2026-09-19, Round 3): mirror these into the module-level lastGridDate/
+          // lastDailyDate/lastDailyStale so publishReport() can hand the same dates to the
+          // report's own #11-vocabulary header chips - see the comment at their declaration.
+          lastGridDate = capDate;
+          lastDailyDate = dailyDataAvailable ? dailyCap.date : null;
+          lastDailyStale = dailyStale;
           // Backlog #11: render both dates under the same 1D/4-Day vocabulary the row badges
           // use, each judged against its OWN cadence window (see renderHeaderTimestamp above).
           // This replaces the old single "Captured <gridDate>" line, which read as broken once
@@ -1862,6 +1982,36 @@ async function loadCachedOrResting() {
   // absent - this makes "unknown" a deliberate, documented outcome of this path instead of
   // an accident that happens to render correctly today only because railAgeCellHTML/
   // sortFiltered/applyFilters all treat `undefined` the same as `null`.
+  //
+  // Backlog #9 (2026-09-19, Round 3) - traced on Ryan's review: toLightCandidate now ALSO
+  // persists supportRailAgeDays/supportRailAgeBand (added for the report - see toLightCandidate's
+  // own comment), so a restored `r` here briefly carries real, persisted values (e.g. fresh/5d)
+  // read straight out of localStorage. This loop OVERWRITES them unconditionally on every row,
+  // before applyFilters()/renderTable() ever run - since r.candles/r.pivotLows are still never
+  // present on a light candidate, computeRailAge always falls through its very first guard
+  // clause to {days:null,band:'unknown'} regardless of what was just read. So the persisted
+  // rail-age fields are inert (read, then immediately clobbered) on THIS path specifically -
+  // the rendered table is unchanged from pre-Round-3 behavior here. They are NOT dead code
+  // overall: publishReport() reads allResults directly (never through this restore branch) and
+  // depends on them for the report's CONFIRMED/dual-score/rail-age display.
+  //
+  // Deliberately NOT changed to prefer the persisted value instead of overwriting it: a
+  // restored rail age would have been computed against the ORIGINAL capture's basis candle
+  // (see computeRailAge's own basisTime comment), not "now" - by the time a user reopens the
+  // tab, that number is silently wrong by however many days have elapsed, the exact frozen-
+  // candle class of bug (right when written, wrong when read). None of the three fixes for that
+  // are a clean fit here: recomputing needs candles/pivotLows, which are never persisted, by
+  // design, to keep localStorage lean (Ryan, 2026-07-03); aging the stored number by elapsed
+  // wall-clock time reintroduces exactly the real-time-drift problem computeRailAge's basisTime
+  // choice exists to avoid (its own comment: "using the wall clock would make the number drift
+  // ... and conflate data staleness with rail staleness"); attaching the last-scan date to the
+  // display is defensible but adds plumbing to every rail-age render call site for a path that
+  // only fires when the shared capture file is unreachable at all - already the most degraded,
+  // least-trafficked view in the app, and already labeled "cached, click Scan for live data" in
+  // its own status bar. Per this project's own data-integrity rule (never estimate a value that
+  // can't be retrieved - write unknown instead), 'unknown' is the CORRECT answer given the
+  // inputs actually available here, not a placeholder standing in for something better - so the
+  // overwrite stays exactly as it was.
   allResults = prev.candidates.map(function(r) {
     var railAge = computeRailAge(r.candles, r.pivotLows);
     r.supportRailAgeDays = railAge.days;
@@ -1871,6 +2021,13 @@ async function loadCachedOrResting() {
   if(prev.diag) diag = prev.diag;
   applyFilters();
   captureMode = false;
+  // Backlog #9 (2026-09-19, Round 3): this fallback path has no capture-file grid/daily dates
+  // at all (prev.timestamp is a single "last scanned" epoch, not a per-stream date) - null out
+  // both so a report published from this degraded state omits the chips entirely rather than
+  // showing stale dates from whatever the last capture-file load happened to be.
+  lastGridDate = null;
+  lastDailyDate = null;
+  lastDailyStale = false;
   setStatus('idle', 'Showing cached results');
   document.getElementById('last-update').textContent = 'Last scanned ' + new Date(prev.timestamp).toLocaleString();
   document.getElementById('cached-bar-text').innerHTML = 'Showing results from <strong>'+new Date(prev.timestamp).toLocaleString()+'</strong> - click Scan for live data.';
