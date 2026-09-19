@@ -130,6 +130,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .ch-bar-fill{position:absolute;top:0;left:0;bottom:0;border-right:2px solid var(--bull);background:rgba(0,200,150,.06)}
 .ch-prices{display:flex;justify-content:space-between;font-size:10px;margin-top:6px}
 .expl{font-size:12px;color:var(--text2);line-height:1.6;background:var(--surface2);border-radius:6px;padding:10px 12px;border-left:3px solid var(--accent)}
+.vbadge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;display:inline-block}
+.va-act{background:rgba(0,200,150,.15);color:var(--bull)}
+.va-watch{background:rgba(245,166,35,.12);color:var(--neut)}
+.va-wait{background:rgba(107,114,128,.15);color:var(--muted)}
 .inv-box{display:flex;align-items:center;justify-content:space-between;background:var(--bear-bg);border:1px solid rgba(232,117,74,.25);border-radius:6px;padding:10px 14px}
 .inv-label{font-size:11px;color:var(--muted)}
 .inv-value{font-size:15px;font-weight:700;color:var(--bear)}
@@ -301,6 +305,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         </div>
       </div>
       <div class="ds"><div class="ds-title">Analysis</div><div class="expl" id="dp-expl"></div></div>
+      <div class="ds">
+        <div class="ds-title cat-tip" data-tip="A rules-derived read, not a trade instruction: Act/Watch/Wait, plus zone, invalidation, and first target, all conditional on rail freshness. Always validate in TradingView before acting.">Recommended View</div>
+        <div style="margin-bottom:8px" id="dp-action-badge"></div>
+        <div class="expl" id="dp-action-text"></div>
+      </div>
       <div class="ds">
         <div class="ds-title">Confluence Signals (from daily OHLC)</div>
         <div id="dp-confluence"></div>
@@ -793,22 +802,27 @@ async function fetchOHLC(cgId) {
 // its touch recency isn't tracked, rather than staying silent (old behavior, resistance was
 // never named here at all) or letting "near resistance" imply it's as fresh as the support
 // read.
+//
+// Backlog #6 (2026-09-19, Round 2): structureLabelFor/structureArticleFor/railNoteFor were
+// factored OUT of buildExpl (below) into standalone functions so buildAction (further down)
+// can reuse the identical logic instead of re-deriving "is this ascending" or "how stale is
+// this rail" a second time. That is exactly the #7 bug class - two independent copies of the
+// same read drifting apart - applied to a NEW piece of text instead of a NEW data pass. This
+// refactor is behavior-preserving: buildExpl's output is unchanged (re-verified by
+// test-round1.js's exact-string assertions after this change, 0 regressions).
+function structureLabelFor(r) { return r.isFlat ? 'flat' : (r.slope > 0 ? 'ascending' : 'descending'); }
+function structureArticleFor(structureLabel) { return /^[aeiou]/i.test(structureLabel) ? 'an' : 'a'; }
+function railNoteFor(r) {
+  if(r.supportRailAgeDays == null) return 'support rail age unknown';
+  var approx = (typeof railAgeApprox==='function' && railAgeApprox(r)) ? ' (~4d resolution)' : '';
+  return (r.supportRailAgeBand==='stale')
+    ? 'the support rail was last tested '+r.supportRailAgeDays+'d ago'+approx+' — treat it as a historical anchor, not current structure'
+    : 'support rail last tested '+r.supportRailAgeDays+'d ago'+approx;
+}
 function buildExpl(r, name) {
-  var structureLabel = r.isFlat ? 'flat' : (r.slope > 0 ? 'ascending' : 'descending');
-  // Fold-in fix (Ryan, 2026-09-19, Round 2 review): "shows a ascending channel" is missing
-  // the "n" - structureLabel starts with a vowel sound only for 'ascending'. Article picked
-  // from structureLabel itself so this never drifts out of sync with new labels later.
-  var structureArticle = /^[aeiou]/i.test(structureLabel) ? 'an' : 'a';
-
-  var railNote;
-  if(r.supportRailAgeDays == null) {
-    railNote = 'support rail age unknown';
-  } else {
-    var approx = (typeof railAgeApprox==='function' && railAgeApprox(r)) ? ' (~4d resolution)' : '';
-    railNote = (r.supportRailAgeBand==='stale')
-      ? 'the support rail was last tested '+r.supportRailAgeDays+'d ago'+approx+' — treat it as a historical anchor, not current structure'
-      : 'support rail last tested '+r.supportRailAgeDays+'d ago'+approx;
-  }
+  var structureLabel = structureLabelFor(r);
+  var structureArticle = structureArticleFor(structureLabel);
+  var railNote = railNoteFor(r);
 
   var resSentence = 'Resistance '+fmt(r.resistNow,4)+' (touch recency not tracked).';
 
@@ -833,6 +847,120 @@ function buildExpl(r, name) {
     : 'Consider waiting for a pullback toward support before entry.';
 
   return name+' shows '+structureArticle+' '+structureLabel+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. '+resSentence+' '+posSentence+' '+closing;
+}
+
+// Backlog #6 (2026-09-19, Round 2): recommended-action synthesis line for the detail panel -
+// Act/Watch/Wait, plus zone, invalidation, and first target. Derived ONLY from fields already
+// on the row (position, structureLabelFor/railNoteFor above, score, invalidation/supportNow/
+// resistNow) - no new data, no fetches, no rail recomputation (Round 2 constraint 4). Reuses
+// structureLabelFor/railNoteFor rather than re-deriving them (constraint 3 - see the comment
+// above buildExpl on why that matters).
+//
+// NON-NEGOTIABLE (Ryan, Round 2 spec): advisory/conditional phrasing only - never an
+// imperative buy/sell instruction. "Watch for X" and "invalidated below Y" are the allowed
+// style; the word "buy"/"sell" never appears as a directive in any branch below.
+//
+// RAIL AGE GATE (constraint 2): a Stale (or Unknown) rail can NEVER produce an ACT verdict
+// anchored on it - this is the #7-class "confidently-wrong output" risk named in the work
+// order (e.g. reading "act near $197" off a level that hasn't been tested in a month). Stale/
+// unknown rails are downgraded to WATCH with an explicit "unconfirmed level" caveat instead of
+// silently keeping the ACT framing - see the last branch below.
+//
+// FIX (Ryan, Round 2 review, 2026-09-19): two defects in the first version of this function.
+//
+// FIX A - ONE-SIDED CAVEAT: supportNow/resistNow/channelH all come from the SAME fitted line
+// (one supSlope/supIntercept/channelH pair - see mergeCandidateRow/detectChannel). Rail age
+// measures only the support pivot's last touch, but that's a proxy for how current the WHOLE
+// fit is - there is no separate resistance-rail age (channel-core.js emits pivotLows but no
+// pivotHighs, see buildExpl's FIX 3 comment above). The original version disclaimed the
+// support side on a non-fresh rail ("historical anchor", "unconfirmed level") but then quoted
+// "first target $resistNow" from that identical geometry with NO caveat - live-verified on
+// NEAR 2026-09-19 (aging rail, 21d): support disclaimed, but "first target $8.35" (+135% from
+// spot) read as trustworthy. One fit cannot be unreliable at the bottom and authoritative at
+// the top. geometryStale below is true whenever the support side would be caveated (every
+// branch except the fresh-rail ACT case) - targetPhrase() applies the identical caveat to
+// whatever level it quotes as a target.
+//
+// FIX B - WIDE CHANNELS AREN'T COILS: channelH/price is the width of the SAME fitted channel
+// as a fraction of price. The #4 width-in-score analysis (parked, RADAR STATE) found the
+// live universe's median channel is ~85%+ of price wide - "first target" on a channel that
+// wide isn't a coil breakout target, it's the far edge of a huge range. WIDE_CHANNEL_PCT=50 is
+// Ryan's suggested starting point (well below that measured median so it actually screens
+// something out; see the comment at its definition for the row counts this affects).
+// Live-verified 2026-09-19: NEAR at 177.2% width vs XLM at 14.2% - same "first target" wording
+// would be nonsense for one and a sensible target for the other. isWide takes precedence over
+// geometryStale in targetPhrase() below: a channel this wide isn't a meaningful target
+// regardless of how fresh the rail is (a fresh-rail ACT row could still be this wide).
+function buildAction(r) {
+  var structureLabel = structureLabelFor(r);
+  var railBand = r.supportRailAgeBand;
+  var railNote = railNoteFor(r);
+  var supStr = fmt(r.supportNow,4), resStr = fmt(r.resistNow,4), invStr = fmt(r.invalidation,4);
+  var third = r.position<=0.33 ? 'lower' : (r.position<=0.66 ? 'middle' : 'upper');
+  var actionVerb = structureLabel==='ascending' ? 'a continuation move' : 'a bounce';
+
+  // WIDE_CHANNEL_PCT=50: measured against the 2026-09-19 live pull (83 merged rows), 56/83
+  // (67.5%) are wide by this threshold, 54/71 of lower-third rows specifically - a MAJORITY,
+  // consistent with #4's population-level finding that this universe's channels run very wide
+  // in general. That is a lot of rows losing an unqualified numeric target, which is exactly
+  // the point: #4 already established that "first target" read as precise on a channel this
+  // wide is presenting range-boundary noise as a number worth trading off.
+  var WIDE_CHANNEL_PCT = 50;
+  var widthPct = (r.channelH!=null && r.price) ? (r.channelH/r.price*100) : null;
+  var isWide = widthPct!=null && widthPct > WIDE_CHANNEL_PCT;
+  // geometryStale: true whenever the support side of this row is about to be presented with a
+  // rail-age caveat (i.e. every branch below except the fresh-rail ACT case) - see FIX A above.
+  var geometryStale = railBand !== 'fresh';
+
+  // Applies FIX A and FIX B uniformly to every place this function quotes resistance as a
+  // target/reference level, so a future new branch can't reintroduce the one-sided caveat by
+  // hand-rolling its own resistance mention instead of calling this. valuePhrase() is the
+  // number plus caveat, for use inside an existing sentence that already supplies the word
+  // "resistance" (the middle-third branch); targetClause() is the full ", first target ..."
+  // fragment (including the leading label) for the ACT/aging/stale/unknown branches, which
+  // switches the label itself from "first target resistance" to "channel resistance" when the
+  // channel is too wide for "target" to mean anything (FIX B) - isWide takes precedence over
+  // geometryStale, since a channel this wide isn't a meaningful target at ANY rail freshness.
+  function valuePhrase() {
+    if(isWide) return resStr+' (channel is unusually wide - treat as a range boundary, not a price target)';
+    if(geometryStale) return resStr+' (same fit as the support rail above - equally unconfirmed until a fresh test)';
+    return resStr;
+  }
+  function targetClause() {
+    return isWide ? ', channel resistance '+valuePhrase() : ', first target resistance '+valuePhrase();
+  }
+
+  // Upper third: never framed as an entry zone, regardless of structure or rail age - the
+  // setup this line describes only exists near support, same position gate #5 uses to decide
+  // when "near support" language is even on the table. Purely descriptive ("near resistance"),
+  // not a target claim, so FIX A/B don't apply here.
+  if(third==='upper') {
+    return {verdict:'WAIT', text:'Wait: price is in the upper third, near resistance '+resStr+' - not a favorable entry zone. Watch for a pullback toward support near '+supStr+' instead, invalidated below '+invStr+'.'};
+  }
+  // Descending structure: there is no ascending setup to watch for at any position - mirrors
+  // buildExpl's closing sentence, which gates its own encouraging read on structureLabel==='ascending'.
+  // No target quoted at all here, so FIX A/B don't apply.
+  if(structureLabel==='descending') {
+    return {verdict:'WAIT', text:'Wait: channel is descending, so there is no ascending setup to watch for here. Support near '+supStr+' has not held a clear uptrend structure; invalidated below '+invStr+'.'};
+  }
+  if(third==='middle') {
+    return {verdict:'WATCH', text:'Watch: price is mid-channel. Watch for a pullback toward support near '+supStr+' (would need a fresh test to qualify) or a break toward resistance '+valuePhrase()+' before assessing risk/reward.'};
+  }
+  // From here: third==='lower' and structureLabel is 'ascending' or 'flat'. Verdict now turns
+  // entirely on rail freshness - the RAIL AGE GATE described above.
+  if(railBand==='fresh') {
+    return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+  }
+  if(railBand==='aging') {
+    return {verdict:'WATCH', text:'Watch: price is in the lower third, but '+railNote+' - watch for a fresh test before treating '+supStr+' as active support. Invalidated below '+invStr+targetClause()+'.'};
+  }
+  // railBand is 'stale' or 'unknown' - MUST NOT be an ACT verdict anchored on this rail.
+  // Worded separately (rather than one shared sentence) so the stale case doesn't repeat
+  // railNoteFor's own "historical anchor, not current structure" phrasing back at itself.
+  if(railBand==='stale') {
+    return {verdict:'WATCH', text:'Watch, unconfirmed level: price is in the lower third, but '+railNote+'. Wait for a fresh test before treating '+supStr+' as active support. Invalidated below '+invStr+targetClause()+'.'};
+  }
+  return {verdict:'WATCH', text:'Watch, unconfirmed level: price is in the lower third, but '+railNote+' - treat '+supStr+' as an unconfirmed level, not active support, until a fresh test occurs. Invalidated below '+invStr+targetClause()+'.'};
 }
 
 async function scanCoin(coin) {
@@ -1156,6 +1284,16 @@ function openDetail(r) {
     }
   }
   document.getElementById('dp-expl').textContent=r.explanation;
+  // Backlog #6 (2026-09-19, Round 2): recommended-action synthesis line - see buildAction
+  // above. Computed fresh on every openDetail() call from fields already on r; never cached
+  // on the row itself (unlike r.explanation), since it's cheap and purely a display concern.
+  var actionEl = document.getElementById('dp-action-badge'), actionTextEl = document.getElementById('dp-action-text');
+  if(actionEl && actionTextEl && typeof buildAction==='function') {
+    var action = buildAction(r);
+    var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
+    actionEl.innerHTML = '<span class="vbadge '+vcls+'">'+action.verdict+'</span>';
+    actionTextEl.textContent = action.text;
+  }
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
   document.getElementById('dp-inv').textContent=fmt(r.invalidation,4);
   document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
