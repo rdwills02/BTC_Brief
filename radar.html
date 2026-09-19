@@ -34,6 +34,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .status-dot.scanning{animation:pulse 1s infinite;background:var(--neut)}
 .status-dot.error{background:var(--bear)}
 .status-dot.idle{background:var(--muted)}
+.status-dot.stale{background:var(--neut)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .diag-panel{background:var(--surface);border-bottom:2px solid var(--accent);padding:14px 20px;display:none}
 .diag-panel.visible{display:block}
@@ -490,7 +491,7 @@ function scoreColor(s) {
 // replaces it. 'grid' rows (pre-#2a behavior) render nothing, so a page with no daily
 // data looks exactly as it did before this milestone (degradation requirement).
 function srcBadgeHTML(r) {
-  if(r.source==='daily') return '<span class="srcbadge src-daily" title="Daily-basis pass only (Kraken/Coinbase exchange candles) - not yet corroborated by the 4-day grid pass">1D</span>';
+  if(r.source==='daily') return '<span class="srcbadge src-daily" title="1D pass only (Kraken/Coinbase exchange candles) - not yet corroborated by the 4-Day grid pass">1D</span>';
   if(r.source==='both') {
     var stale = r.dailyStale ? ' stale' : '';
     var title = 'Confirmed by both the 4-day grid pass and the daily exchange pass' + (r.dailyStale ? ' (daily pass is stale)' : '');
@@ -500,10 +501,96 @@ function srcBadgeHTML(r) {
 }
 function setStatus(state, text) {
   var d = document.getElementById('status-dot');
-  d.className = 'status-dot' + (state==='scanning'?' scanning':state==='error'?' error':state==='idle'?' idle':'');
+  d.className = 'status-dot' + (state==='scanning'?' scanning':state==='error'?' error':state==='stale'?' stale':state==='idle'?' idle':'');
   document.getElementById('status-text').textContent = text;
 }
 function getToken() { return localStorage.getItem('gh_token_radar'); }
+
+// Backlog #11 (2026-09-19): the header used to show a single date labelled "Captured", which
+// is the OLDER of the two data products (the 4-Day grid) with no sign a newer 1D pass existed.
+// Ryan opened the radar, saw "Captured 9/16" and concluded it had stopped working, when the 1D
+// pass was current as of today - the grid only produces a new candle every ~4 days, so a
+// 3-4-day-old grid date is NORMAL, not stale. Fixed by adopting the same 1D/4-Day vocabulary
+// the row badges already use (see srcBadgeHTML above) everywhere the header/bar appear, and by
+// giving each stream its OWN freshness window instead of one shared read of "is this recent" -
+// see HEADER_FRESH_1D_DAYS/HEADER_FRESH_4D_DAYS. Display-only: does not touch dailyStale,
+// mergeCandidateRow, scoring, or the row-level 1D/CONFIRMED badges - those keep their existing
+// definition and behavior unchanged.
+var HEADER_FRESH_1D_DAYS = 1;   // 1D pass: a new daily candle lands once a day
+var HEADER_FRESH_4D_DAYS = 4;   // 4-Day grid: a new candle lands only once every 4 days
+
+function headerDateAgeDays(dateStr) {
+  var d = new Date(dateStr);
+  if(isNaN(d)) return null;
+  return (new Date().getTime() - d.getTime()) / 86400000;
+}
+function formatShortDate(dateStr) {
+  var d = new Date(dateStr);
+  if(isNaN(d)) return dateStr;
+  // UTC getters, not local: dateStr is a bare 'YYYY-MM-DD' calendar date (parsed as UTC
+  // midnight), and this project's users sit behind UTC (Central Time). Reading local
+  // getMonth()/getDate() off a UTC-midnight instant rolls the displayed date back a full day
+  // for anyone west of Greenwich - the exact "looks broken" failure Backlog #11 exists to fix,
+  // reintroduced. Always read the calendar fields back out in UTC to match how they went in.
+  return (d.getUTCMonth()+1)+'/'+d.getUTCDate();
+}
+// One "1D 9/19" or "4-Day 9/16" chip, coloured against its OWN freshness window (never the
+// other stream's window). fresh is null when the date can't be parsed, so a bad date is never
+// counted as a staleness hit by renderHeaderTimestamp below.
+function headerChip(label, dateStr, freshMaxDays, cadenceTitle) {
+  var age = headerDateAgeDays(dateStr);
+  var fresh = age==null ? null : age <= freshMaxDays;
+  var color = fresh==null ? 'var(--muted)' : (fresh ? 'var(--bull)' : 'var(--bear)');
+  return {fresh: fresh, html: '<span title="'+cadenceTitle+'" style="color:'+color+'">'+label+' '+formatShortDate(dateStr)+'</span>'};
+}
+// Renders the #last-update header from whichever stream(s) are present - only the chip for a
+// present stream renders (no blank/"n/a" for a missing one, per the work order) - and returns
+// true when either stream is stale, so the caller can set the status dot to the worse of the
+// two ("is this working?" answered before parsing dates).
+function renderHeaderTimestamp(dailyDate, gridDate) {
+  var chips = [];
+  var anyStale = false;
+  if(dailyDate) {
+    var c1 = headerChip('1D', dailyDate, HEADER_FRESH_1D_DAYS,
+      '1D: Kraken/Coinbase exchange candles, refreshed by the last GitHub Action run. Fresh within '+HEADER_FRESH_1D_DAYS+' day.');
+    chips.push(c1.html);
+    if(c1.fresh===false) anyStale = true;
+  }
+  if(gridDate) {
+    var c2 = headerChip('4-Day', gridDate, HEADER_FRESH_4D_DAYS,
+      '4-Day: the OHLC grid pass. A new candle lands every 4 days, so up to '+HEADER_FRESH_4D_DAYS+' days old is current, not stale.');
+    chips.push(c2.html);
+    if(c2.fresh===false) anyStale = true;
+  }
+  document.getElementById('last-update').innerHTML = chips.join(' &middot; ');
+  return anyStale;
+}
+// The date the NEXT 4-Day grid candle lands, for the scan-details explainer below - the line
+// that would have prevented the #11 report ("is this broken?") in the first place.
+function nextGridCandleLabel(gridDateStr) {
+  var d = new Date(gridDateStr);
+  if(isNaN(d)) return null;
+  d.setUTCDate(d.getUTCDate() + HEADER_FRESH_4D_DAYS); // UTC, to match formatShortDate above
+  return formatShortDate(d.toISOString());
+}
+// Scan-details / cached-bar copy - explains only what the header chips don't already say (the
+// cadence), rather than restating the same two dates a second time.
+function buildStreamExplainer(gridDate, dailyDate, dailyStaleFlag) {
+  var nextGrid = nextGridCandleLabel(gridDate);
+  if(!dailyDate) {
+    return '4-Day grid only (' + formatShortDate(gridDate) + ') - no 1D pass available. ' +
+      'The grid advances every 4 days, so this date is current' + (nextGrid ? ' - next candle ~'+nextGrid : '') + '. ' +
+      'Click Scan for live data.';
+  }
+  var parts = [
+    'Two passes merged: 1D (daily candles, '+formatShortDate(dailyDate)+') and 4-Day (grid, '+formatShortDate(gridDate)+').',
+    'The 4-Day grid advances every 4 days, so '+formatShortDate(gridDate)+' is current' + (nextGrid ? ' - next candle ~'+nextGrid : '') + '.',
+    'Scan pulls a fresh 4-Day pass only; the 1D pass stays as of the last capture run.',
+    'Rows tagged CONFIRMED were found by both passes.'
+  ];
+  if(dailyStaleFlag) parts.splice(1, 0, 'The 1D pass ('+formatShortDate(dailyDate)+') is stale, shown muted.');
+  return parts.join(' ');
+}
 
 // Since-last-scan tracking, local to radar.html only. Deliberately independent of
 // radar-report.html/GitHub - radar.html is the source of truth Ryan actually uses, and
@@ -763,7 +850,7 @@ async function runScan() {
   // CONFIRMED/1D-badged row back to a plain grid row until the next full page reload -
   // merge the just-scanned live grid against the daily-basis stream the same way
   // loadCachedOrResting() does on initial load, via the same mergeCandidateRow().
-  setStatus('scanning', 'Merging with daily-basis pass...');
+  setStatus('scanning', 'Merging with 1D pass...');
   var daily = await fetchDailyMap();
   var cgIds = {};
   Object.keys(gridMap).forEach(function(k){ cgIds[k]=1; });
@@ -792,8 +879,8 @@ async function runScan() {
   var updateLabel = 'Grid updated ' + new Date().toLocaleTimeString();
   if(dailyDataAvailable) {
     updateLabel += daily.dailyStale
-      ? ' - daily-basis pass ('+daily.dailyCap.date+') is stale, shown muted'
-      : ' - daily-basis pass as of '+daily.dailyCap.date+' (last Action run)';
+      ? ' - 1D pass ('+daily.dailyCap.date+') is stale, shown muted'
+      : ' - 1D pass as of '+daily.dailyCap.date+' (last Action run)';
   }
   document.getElementById('last-update').textContent = updateLabel;
   document.getElementById('cached-bar').style.display = 'none';
@@ -1488,16 +1575,16 @@ async function loadCachedOrResting() {
           if(dtg) dtg.style.display = dailyDataAvailable ? '' : 'none';
           applyFilters();
           captureMode = true;
-          setStatus('idle', dailyDataAvailable ? 'Showing daily capture + daily-basis pass' : 'Showing daily capture');
           var capDate = cap.date;
-          document.getElementById('last-update').textContent = 'Captured ' + capDate;
-          var barText = 'Showing the daily capture from <strong>'+capDate+'</strong> - click Scan for live data. 24h values are as of the capture date.';
-          if(dailyDataAvailable) {
-            barText += dailyStale
-              ? ' Daily-basis pass ('+dailyCap.date+') is stale - shown muted.'
-              : ' Daily-basis pass ('+dailyCap.date+') merged in - look for the 1D/CONFIRMED tags.';
-          }
-          document.getElementById('cached-bar-text').innerHTML = barText;
+          // Backlog #11: render both dates under the same 1D/4-Day vocabulary the row badges
+          // use, each judged against its OWN cadence window (see renderHeaderTimestamp above).
+          // This replaces the old single "Captured <gridDate>" line, which read as broken once
+          // the grid passed its own ~4-day cadence even though the 1D pass was current.
+          var headerStale = renderHeaderTimestamp(dailyDataAvailable ? dailyCap.date : null, capDate);
+          setStatus(headerStale ? 'stale' : 'idle',
+            dailyDataAvailable ? 'Showing 4-Day grid + 1D pass' : 'Showing 4-Day grid');
+          document.getElementById('cached-bar-text').innerHTML =
+            buildStreamExplainer(capDate, dailyDataAvailable ? dailyCap.date : null, dailyStale);
           document.getElementById('cached-bar').style.display = 'flex';
           if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
           return;
