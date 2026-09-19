@@ -198,6 +198,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <button class="bbtn" id="fb-confirmed">Confirmed</button>
   </div>
   <select class="sort-sel" id="sort-sel">
+    <option value="default" selected>Sort: Recommended (Verdict, then Volume)</option>
     <option value="score">Sort: Score</option>
     <option value="position">Sort: Position (lower first)</option>
     <option value="slope">Sort: Slope</option>
@@ -364,7 +365,7 @@ var captureMode = false;   // true when the table is showing the shared daily ca
 var dailyDataAvailable = false;   // Milestone #2a: true once data/latest-daily.json has merged in
 var filtered = [];
 var activeFilter = 'all';
-var sortCol = 'score';
+var sortCol = 'default';
 var sortDir = -1;
 var selectedKey = null;
 var detailChart = null;
@@ -1002,6 +1003,35 @@ function buildAction(r) {
   return {verdict:'WATCH', text:'Watch, unconfirmed level: price is in the lower third, but '+railNote+' - treat '+supStr+' as an unconfirmed level, not active support, until a fresh test occurs. Invalidated below '+invStr+targetClause()+'.'};
 }
 
+// Backlog #14 (2026-09-19): shared row comparator - the tool computes a verdict via
+// buildAction() and then, pre-#14, hid it by sorting on score alone: an ACT row could rank
+// behind nine WATCH rows because they happened to score higher (see RADAR STATE, the 22-row
+// ACT set spanning score 92 down to 87). verdictRankFor() wraps buildAction() in try/catch -
+// same failure-isolation pattern as mergeCandidateRow's rail-age/explanation guards - so one
+// malformed row's crash degrades only that row's rank, never the whole sort. Ordering: verdict
+// (ACT > WATCH > WAIT > no-verdict, i.e. a row whose verdict can't be computed always sorts
+// last), then 24h volume descending (the direct fill-ability constraint, already a column and
+// deliberately market-cap-blind - see RADAR STATE's ACT-set volume spread), then score
+// descending as a tiebreak only. sortRowsByVerdict() returns a NEW array (does not mutate its
+// input) so it's safe to call on both the live `filtered` array (sortFiltered) and the report's
+// `data.candidates` (buildReportHTML) - ONE function, called from both places, so the two
+// orderings cannot drift the way buildReportHTML's previously-unsorted iteration let them.
+var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
+function verdictRankFor(r) {
+  var v = null;
+  try { v = buildAction(r).verdict; } catch(e) {}
+  return VERDICT_RANK.hasOwnProperty(v) ? VERDICT_RANK[v] : 3;
+}
+function sortRowsByVerdict(rows) {
+  return rows.map(function(r){
+    return {r:r, vr:verdictRankFor(r), vol:(r.volume24h!=null ? r.volume24h : -1)};
+  }).sort(function(a,b){
+    if(a.vr!==b.vr) return a.vr-b.vr;
+    if(a.vol!==b.vol) return b.vol-a.vol;
+    return (b.r.score||0)-(a.r.score||0);
+  }).map(function(x){ return x.r; });
+}
+
 async function scanCoin(coin) {
   var ohlc = await fetchOHLC(coin.id);
   if(!ohlc) return null;
@@ -1242,6 +1272,10 @@ function applyFilters() {
 }
 
 function sortFiltered() {
+  // Backlog #14: 'default' is the Recommended ordering (verdict > 24h volume > score) -
+  // see sortRowsByVerdict above. Every other sortCol keeps its prior column-sort behavior
+  // untouched below.
+  if(sortCol==='default') { filtered = sortRowsByVerdict(filtered); return; }
   filtered.sort(function(a,b) {
     var av=a[sortCol], bv=b[sortCol];
     if(sortCol==='position') return av-bv;
@@ -1394,7 +1428,11 @@ function buildChart(r) {
 
 function buildReportHTML(data) {
   var ts = data.timestamp;
-  var cands = data.candidates;
+  // Backlog #14: report candidates were previously iterated in whatever order
+  // data.candidates arrived in (allResults / merge order, i.e. market-cap order) - never
+  // sorted at all. Same shared comparator the live table's default sort uses (see
+  // sortRowsByVerdict above), so the report can no longer diverge from the table's ordering.
+  var cands = sortRowsByVerdict(data.candidates);
   var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
   var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
   var rows = cands.map(function(r) {
