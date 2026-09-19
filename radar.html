@@ -198,6 +198,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <option value="slope">Sort: Slope</option>
     <option value="supportTouches">Sort: Touches</option>
     <option value="containment">Sort: Containment</option>
+    <option value="supportRailAgeDays">Sort: Rail Age (freshest first)</option>
   </select>
   <span class="scan-count" id="scan-count"></span>
 </div>
@@ -218,6 +219,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
   <div class="tgroup" id="daily-thresh-group" style="display:none"><span class="tlabel" style="color:var(--accent)" title="Applies only to daily-only candidates (not yet confirmed by the 4-day grid pass)">Min score (daily-only)</span>
     <select class="tsel" id="t-score-daily"><option value="0">Off</option><option value="40">40+</option><option value="60" selected>60+</option><option value="75">75+</option></select>
+  </div>
+  <div class="tgroup"><span class="tlabel" title="How old the support rail's most recent touch is. Fresh <=14d, Aging 15-28d, Stale >28d.">Rail age</span>
+    <select class="tsel" id="t-railage"><option value="any" selected>Any</option><option value="fresh">Fresh only</option><option value="fresh-aging">Fresh + Aging</option></select>
   </div>
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
     <input type="checkbox" id="show-all"> Show all
@@ -248,11 +252,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <th class="cat-tip tip-down" data-tip="Containment: percent of candles that stayed inside the channel rails. Higher = cleaner channel.">Contain</th>
           <th class="cat-tip tip-down" data-tip="The channel's upward tilt per bar. Positive = ascending channel.">Slope/bar</th>
           <th class="cat-tip tip-down" data-tip="Where price currently sits within the channel: Lower, Mid, or Upper.">Position</th>
+          <th class="cat-tip tip-down" data-tip="How many days since the support rail's most recent touch. Fresh (<=14d) is live structure; Aging (15-28d) is still plausible; Stale (>28d) is a historical anchor, not where price is reacting today. Does not change the rail value shown - display only.">Rail Age</th>
           <th id="th-24h" class="cat-tip tip-down" data-tip="Price change over the last 24 hours.">24h Price</th>
           <th>TV</th>
         </tr></thead>
         <tbody id="table-body">
-          <tr><td colspan="11"><div class="state-view">
+          <tr><td colspan="12"><div class="state-view">
             <div class="spinner"></div>
             <div class="state-title">Scanning...</div>
             <div class="state-sub">Fetching top 100 alts from CoinGecko then detecting channels. Takes about 90 seconds.</div>
@@ -291,6 +296,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <div class="ch-labels"><span>Support</span><span id="dp-pos-label" style="color:var(--accent);font-weight:600"></span><span>Resistance</span></div>
           <div class="ch-bar-wrap"><div class="ch-bar-fill" id="dp-pos-bar"></div></div>
           <div class="ch-prices"><span id="dp-sup"></span><span style="color:var(--accent);font-weight:600" id="dp-cur"></span><span id="dp-res"></span></div>
+          <div id="dp-rail-age" style="font-size:11px;margin-top:8px"></div>
         </div>
       </div>
       <div class="ds"><div class="ds-title">Analysis</div><div class="expl" id="dp-expl"></div></div>
@@ -421,6 +427,50 @@ function confluenceHTML(r) {
   var b=confluenceList(r);
   if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
   return b.map(function(x){return '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px">'+x.t+'</span>';}).join('');
+}
+
+// Backlog #3 (2026-09-19): rail age. Surfaces how OLD the support rail's most recent touch is -
+// it does NOT replace or recompute the rail itself (that was the version killed by the XLM
+// validation: XLM's rail was touched 7 days before the read and sat inside the zone price was
+// actually respecting - swapping rails for recent swing points would have been wrong on 31% of
+// the universe that has a rail younger than 14 days). Display-only: never touches score, never
+// touches supportNow/resistNow/containment/position - see the work-order's HARD CONSTRAINTS.
+//
+// railAgeDays = (basisDate - max(pivotLows[].time)) / 86400, rounded. basisDate is the LAST
+// candle of the SAME detection object the rails came from - not Date.now() - because the
+// geometry was fitted against that bar; using the wall clock would make the number drift while
+// the page sits open and conflate data staleness with rail staleness.
+var RAIL_AGE_FRESH_MAX = 14;   // days - measured bands, n=83: Fresh <=14d (31%), Aging 15-28d (27%), Stale >28d (41%)
+var RAIL_AGE_AGING_MAX = 28;
+function computeRailAge(candles, pivotLows) {
+  if(!candles || !candles.length || !pivotLows || !pivotLows.length) return {days:null, band:'unknown'};
+  var basisTime = candles[candles.length-1].time;
+  var maxPivotTime = -Infinity;
+  for(var i=0;i<pivotLows.length;i++) { if(pivotLows[i].time > maxPivotTime) maxPivotTime = pivotLows[i].time; }
+  var days = Math.round((basisTime - maxPivotTime) / 86400);
+  var band = days<=RAIL_AGE_FRESH_MAX ? 'fresh' : (days<=RAIL_AGE_AGING_MAX ? 'aging' : 'stale');
+  return {days:days, band:band};
+}
+function railAgeColor(band) {
+  if(band==='fresh') return 'var(--bull)';
+  if(band==='aging') return 'var(--neut)';
+  if(band==='stale') return 'var(--muted)';
+  return 'var(--muted)';
+}
+function railAgeLabel(band) {
+  if(band==='fresh') return 'Fresh';
+  if(band==='aging') return 'Aging';
+  if(band==='stale') return 'Stale';
+  return 'Unknown';
+}
+// 'grid' rows fit rails against the 4-day OHLC grid, so a rail's last-touch date only has
+// +/-4-day resolution there (vs daily precision for 'daily'/'both' rows, which read the rail
+// from detectionDaily). Never implied as daily precision - see the work-order's THE COMPUTATION.
+function railAgeApprox(r) { return r.source==='grid'; }
+function railAgeCellHTML(r) {
+  if(r.supportRailAgeDays==null) return '<span style="color:var(--muted)">unknown</span>';
+  var approx = railAgeApprox(r) ? ' <span style="color:var(--muted)" title="4-day grid pivots - resolution is +/-4 days, not daily precision">(~4d)</span>' : '';
+  return '<span style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">'+r.supportRailAgeDays+'d</span>'+approx;
 }
 
 function getBucket(s) {
@@ -774,12 +824,14 @@ function renderDiag() {
 
 function getThresh() {
   var dailySel = document.getElementById('t-score-daily');
+  var railSel = document.getElementById('t-railage');
   return {
     minTouches: parseInt(document.getElementById('t-touches').value),
     minContain: parseInt(document.getElementById('t-contain').value),
     slopeMode: document.getElementById('t-slope').value,
     minScore: parseInt(document.getElementById('t-score').value),
     minScoreDaily: dailySel ? parseInt(dailySel.value) : 60,
+    railAgeMode: railSel ? railSel.value : 'any',
     showAll: document.getElementById('show-all').checked
   };
 }
@@ -795,6 +847,11 @@ function applyFilters() {
   // being "41 of 97 rows", per Ryan's explicit gate.
   var t = getThresh();
   filtered = allResults.filter(function(r) {
+    // Backlog #3: rail age is a separate axis from score/confirmation - "only fresh-rail
+    // setups" should mean that, even for a CONFIRMED row, so this runs unconditionally,
+    // ahead of the confirmedAndQualified bypass below rather than being folded into it.
+    if(t.railAgeMode==='fresh' && r.supportRailAgeBand!=='fresh') return false;
+    if(t.railAgeMode==='fresh-aging' && r.supportRailAgeBand!=='fresh' && r.supportRailAgeBand!=='aging') return false;
     var confirmedAndQualified = r.source==='both' && r.score >= t.minScore;
     if(confirmedAndQualified) {
       // Confirmed by both passes AND clears the quality bar: bypass touches/containment/
@@ -833,6 +890,16 @@ function sortFiltered() {
   filtered.sort(function(a,b) {
     var av=a[sortCol], bv=b[sortCol];
     if(sortCol==='position') return av-bv;
+    // Backlog #3: "unknown" (null) rail ages have no meaningful order - always sort last,
+    // regardless of sortDir, rather than coercing null to 0 (which would rank them as the
+    // freshest possible rail via the generic (av||0)-(bv||0) path below).
+    if(sortCol==='supportRailAgeDays') {
+      var aNull = av==null, bNull = bv==null;
+      if(aNull && bNull) return 0;
+      if(aNull) return 1;
+      if(bNull) return -1;
+      return sortDir*(av-bv);
+    }
     if(typeof av==='string') return sortDir*av.localeCompare(bv);
     return sortDir*((av||0)-(bv||0));
   });
@@ -843,7 +910,7 @@ function renderTable() {
   var th24 = document.getElementById('th-24h');
   if(th24) th24.textContent = captureMode ? '24h Price*' : '24h Price';
   if(!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="11"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
     return;
   }
   tbody.innerHTML = filtered.map(function(r) {
@@ -863,6 +930,7 @@ function renderTable() {
       '<td style="color:'+(r.containment>75?'var(--bull)':'var(--text2)')+'">'+r.containment+'%</td>'+
       '<td class="'+scls+'">'+(r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</td>'+
       '<td><div class="pos-wrap"><div class="pos-bar-outer"><div class="pos-marker" style="left:'+pw+'%"></div></div><span style="font-size:11px;color:var(--text2)">'+posLbl+'</span></div></td>'+
+      '<td>'+railAgeCellHTML(r)+'</td>'+
       '<td class="'+cc+'">'+fmtP(r.change24h)+'</td>'+
       '<td><a class="tv-link" href="'+tvUrl+'" target="_blank" onclick="event.stopPropagation()">TV</a></td>'+
     '</tr>';
@@ -894,6 +962,17 @@ function openDetail(r) {
   document.getElementById('dp-sup').textContent=fmt(r.supportNow,4);
   document.getElementById('dp-cur').textContent=fmt(r.price,4);
   document.getElementById('dp-res').textContent=fmt(r.resistNow,4);
+  // Backlog #3: rail age - how old the support rail's most recent touch is, not a replacement
+  // for the rail value shown above (which stays exactly as the detector emits it).
+  var raEl = document.getElementById('dp-rail-age');
+  if(raEl) {
+    if(r.supportRailAgeDays==null) {
+      raEl.innerHTML = '<span style="color:var(--muted)">Support rail age: unknown</span>';
+    } else {
+      var approxNote = railAgeApprox(r) ? ' <span style="color:var(--muted)">(4-day grid resolution, +/-4d)</span>' : '';
+      raEl.innerHTML = '<span style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">Support last tested '+r.supportRailAgeDays+'d ago — '+railAgeLabel(r.supportRailAgeBand)+'</span>'+approxNote;
+    }
+  }
   document.getElementById('dp-expl').textContent=r.explanation;
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
   document.getElementById('dp-inv').textContent=fmt(r.invalidation,4);
@@ -1222,13 +1301,14 @@ window.addEventListener('load', function() {
     }
   });
   document.getElementById('sort-sel').addEventListener('change', function() {
-    sortCol=this.value; sortDir=sortCol==='position'?1:-1; sortFiltered(); renderTable();
+    sortCol=this.value; sortDir=(sortCol==='position'||sortCol==='supportRailAgeDays')?1:-1; sortFiltered(); renderTable();
   });
   document.getElementById('t-touches').addEventListener('change', applyFilters);
   document.getElementById('t-contain').addEventListener('change', applyFilters);
   document.getElementById('t-slope').addEventListener('change', applyFilters);
   document.getElementById('t-score').addEventListener('change', applyFilters);
   document.getElementById('t-score-daily').addEventListener('change', applyFilters);
+  document.getElementById('t-railage').addEventListener('change', applyFilters);
   document.getElementById('show-all').addEventListener('change', applyFilters);
   document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
   document.getElementById('fb-high').addEventListener('click', function() { setFilter('high'); });
@@ -1330,6 +1410,24 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   // detail panel's TV link / category still resolve correctly even though geometry fields
   // came from the daily object above.
   if(dailyRow && gridRow) { merged.tvExchange = merged.tvExchange || gridRow.tvExchange; merged.tvPair = merged.tvPair || gridRow.tvPair; }
+  // Backlog #3: rail age, computed from THIS SAME base object's candles/pivotLows (not
+  // Date.now(), not a re-derivation) - see computeRailAge above. Every row - live scan, cached
+  // grid, cached daily - passes through this one function, so this is the single point that
+  // needs to compute it, rather than duplicating the call in adaptCaptureCoin/adaptDailyCoin/
+  // scanCoin. merged.candles/merged.pivotLows already equal base.candles/base.pivotLows from
+  // the spread above, so this reads exactly what the rails were fitted against.
+  // R14 (2026-09-19): rail age is display-only, but sat unguarded on the load-bearing merge -
+  // a throw here would have taken out mergeCandidateRow for every row, on every load, the same
+  // failure-isolation gap caught in capture.js before the M2 push. A thrown error degrades ONLY
+  // this row's rail age to 'unknown'; it must never propagate out of mergeCandidateRow.
+  try {
+    var railAge = computeRailAge(merged.candles, merged.pivotLows);
+    merged.supportRailAgeDays = railAge.days;
+    merged.supportRailAgeBand = railAge.band;
+  } catch(e) {
+    merged.supportRailAgeDays = null;
+    merged.supportRailAgeBand = 'unknown';
+  }
   return merged;
 }
 
@@ -1412,7 +1510,7 @@ async function loadCachedOrResting() {
   var prev = getPrevScanHistory();
   if(!prev || !prev.candidates || !prev.candidates.length) {
     setStatus('idle', 'Ready - click Scan');
-    document.getElementById('table-body').innerHTML = '<tr><td colspan="11"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
+    document.getElementById('table-body').innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
     return;
   }
   allResults = prev.candidates;
