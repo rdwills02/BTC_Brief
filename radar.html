@@ -13,6 +13,10 @@
   --bull:#00c896;--bear:#e8754a;--bear-bg:rgba(232,117,74,0.1);
   --neut:#f5a623;--accent:#7b6ef6;--accent-bg:rgba(123,110,246,0.12);--accent-border:rgba(123,110,246,0.3);
   --high:#00c896;--probable:#7b6ef6;--emerging:#f5a623;--watch:#e8754a;
+  /* Indicator Upgrades Group 2, item 6 (2026-09-20): detail-panel drag-to-resize. Default
+     matches the fixed width this replaces; JS overrides from localStorage if a width was
+     persisted (see DETAIL_W_KEY). */
+  --detail-w:460px;
 }
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden}
 .header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
@@ -66,7 +70,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .sort-sel{margin-left:auto;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;color:var(--text2);font-size:12px;font-family:inherit;outline:none;cursor:pointer}
 .scan-count{font-size:11px;color:var(--muted)}
 .layout{display:grid;grid-template-columns:1fr;height:calc(100vh - 116px);transition:grid-template-columns .3s ease}
-.layout.open{grid-template-columns:1fr 460px}
+/* Indicator Upgrades Group 2, item 6 (2026-09-20): fixed 460px swapped for --detail-w so the
+   panel is draggable. transition stays for the open/close animation; a drag itself sets the
+   var directly on #layout (see the drag handler below), which briefly disables the transition
+   so the resize tracks the pointer instead of easing behind it. */
+.layout.open{grid-template-columns:1fr var(--detail-w)}
+.layout.resizing{transition:none}
 .main-panel{display:flex;flex-direction:column;overflow:hidden}
 .table-wrap{flex:1;overflow-y:auto}
 .radar-table{width:100%;border-collapse:collapse}
@@ -99,7 +108,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .pos-marker{position:absolute;top:-3px;width:2px;height:12px;background:var(--accent);border-radius:1px;transform:translateX(-50%)}
 .tv-link{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--accent);text-decoration:none;padding:3px 7px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-bg)}
 .up{color:var(--bull)}.dn{color:var(--bear)}.sp{color:var(--bull)}.sn{color:var(--bear)}.sf{color:var(--muted)}
-.detail-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.detail-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;position:relative}
+/* Indicator Upgrades Group 2, item 6 (2026-09-20): drag handle on the panel's left edge.
+   Straddles the border (-3px to +3px) so the hit target isn't razor-thin. Hover/active
+   feedback only - no visible chrome at rest, matches the app's otherwise-flat panel edges. */
+.detail-resize-handle{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:20;background:transparent}
+.detail-resize-handle:hover,.detail-resize-handle.active{background:var(--accent-border)}
 .detail-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .detail-coin{display:flex;align-items:center;gap:10px}
 .detail-symbol{font-size:17px;font-weight:700}
@@ -282,6 +296,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 
   <div class="detail-panel" id="detail-panel" style="display:none">
+    <div class="detail-resize-handle" id="detail-resize-handle"></div>
     <div class="detail-header">
       <div class="detail-coin">
         <div class="coin-icon" id="dp-icon"></div>
@@ -507,6 +522,14 @@ function confluenceList(r) {
   // pattern flags above) since this is an aggregate "extra confidence" signal, not a pattern of
   // its own - deliberately visually distinct so it doesn't read as a 5th pattern type.
   if(r.multiSignal) b.push({t:'Multiple signals aligned',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Two or more of the pattern signals above (3BB mean-reversion, bullish engulfing, 3 Inside Up, Rocket at support) triggered on the same or an adjacent candle.'});
+  // Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirrors - display-only flags
+  // on an existing long, not a short-entry signal (see Radar Indicator Upgrades.md's BUILD
+  // PLAN). Bearish/red styling (#e8754a, the app's existing --bear token, already used for
+  // WATCH/resistance-line styling elsewhere) so these read as visually distinct from every
+  // Group 1 pill (all green/purple/amber). Resolved 2026-09-20: static/non-interactive, no
+  // `key` - same treatment as the threshold pills above, no click-to-toggle overlay this batch.
+  if(r.bb3UpperReversion) b.push({t:'3BB upper reversion',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Price pushed above the upper 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a bearish exit-warning signal on an existing long, not a short-entry signal.'});
+  if(r.threeInsideDown) b.push({t:'3 Inside Down',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'A bullish candle, then a smaller bearish candle inside its range, then a lower close - a 3-candle bearish reversal pattern. Exit-warning on an existing long, not a short-entry signal.'});
   return b;
 }
 function confluenceHTML(r) {
@@ -771,7 +794,11 @@ function toLightCandidate(r) {
     // consumers (localStorage restore, reportData.candidates), so a restored/reported row never
     // has a chart to overlay a trigger marker onto - see "Scoring + report parity" in Radar
     // Indicator Upgrades.md, confirmed with Ryan the overlay does not need to carry over here.
-    rocket:r.rocket, multiSignal:r.multiSignal};
+    rocket:r.rocket, multiSignal:r.multiSignal,
+    // Indicator Upgrades Group 2, item 5 (2026-09-20), waypoint (c): bearish exit-warning
+    // mirrors - booleans only, same "pills survive, chart doesn't" rule. No overlay this batch
+    // (item 4 skipped) so there'd be nothing to point a trigger at here even if it were kept.
+    bb3UpperReversion:r.bb3UpperReversion, threeInsideDown:r.threeInsideDown};
 }
 function getPrevScanHistory() {
   try {
@@ -2109,6 +2136,66 @@ window.addEventListener('load', function() {
       detailChart.timeScale().fitContent();
     }
   });
+  // Indicator Upgrades Group 2, item 6 (2026-09-20): detail-panel drag-to-resize. Pointer
+  // events (not mouse events) so this works with touch/pen too; setPointerCapture keeps
+  // move/up events targeting the handle even once the cursor leaves its 6px hit area, so no
+  // document-level listeners are needed. #detail-chart already has a ResizeObserver
+  // (buildChart above) - it fires on its own as --detail-w changes the grid track width down
+  // the chain (.layout -> .detail-panel -> .detail-body -> .chart-wrap -> #detail-chart), so
+  // nothing new is wired for chart resize here. .radar-table needs no change either - no
+  // fixed column widths + nowrap cells means .table-wrap's own overflow-y:auto already
+  // computes overflow-x:auto per the CSS overflow spec (only one axis set non-visible), and
+  // .main-panel's overflow:hidden already zeroes its automatic grid-item min-width, so the
+  // 1fr column can shrink and the table scrolls horizontally instead of squeezing - reasoned
+  // from the CSS spec and this codebase's own prior analysis (Radar Indicator Upgrades.md),
+  // NOT verified in a live render this session (no browser could reach this local file before
+  // push) - flag this specific claim for a visual check once it's live. The drag-logic itself
+  // (clamping, persistence, class toggling) WAS verified, against the actual code in this file,
+  // via a scripted pointerdown/move/up sequence - see the batch report.
+  (function() {
+    var DETAIL_W_KEY = 'radar_detail_width';
+    var DETAIL_W_MIN = 380;
+    var DETAIL_W_MAX_PCT = 0.72; // ~70-75% of viewport per the spec; keeps the table from disappearing
+    (function restoreDetailWidth() {
+      try {
+        var saved = parseFloat(localStorage.getItem(DETAIL_W_KEY));
+        if (saved) {
+          var max = window.innerWidth * DETAIL_W_MAX_PCT;
+          var w = Math.max(DETAIL_W_MIN, Math.min(max, saved));
+          document.documentElement.style.setProperty('--detail-w', w + 'px');
+        }
+      } catch(e) {}
+    })();
+    var handle = document.getElementById('detail-resize-handle');
+    var layout = document.getElementById('layout');
+    var dragging = false, startX = 0, startW = 0, lastW = 0;
+    handle.addEventListener('pointerdown', function(e) {
+      dragging = true;
+      startX = e.clientX;
+      startW = document.getElementById('detail-panel').getBoundingClientRect().width;
+      lastW = startW;
+      layout.classList.add('resizing'); // suspends the .3s grid-template-columns transition so drag tracks the pointer, not eases behind it
+      handle.classList.add('active');
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', function(e) {
+      if (!dragging) return;
+      var max = window.innerWidth * DETAIL_W_MAX_PCT;
+      // Panel is on the right: dragging the handle LEFT (clientX decreases) should WIDEN it.
+      lastW = Math.max(DETAIL_W_MIN, Math.min(max, startW + (startX - e.clientX)));
+      document.documentElement.style.setProperty('--detail-w', lastW + 'px');
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      layout.classList.remove('resizing');
+      handle.classList.remove('active');
+      try { localStorage.setItem(DETAIL_W_KEY, String(lastW)); } catch(e) {}
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+  })();
   document.getElementById('sort-sel').addEventListener('change', function() {
     sortCol=this.value; sortDir=(sortCol==='position'||sortCol==='supportRailAgeDays')?1:-1; sortFiltered(); renderTable();
   });
@@ -2170,7 +2257,13 @@ function adaptCaptureCoin(c) {
     // and needs the trigger data for the overlay toggle to work on it, same as a fresh-scan row.
     rocket:d.rocket, multiSignal:d.multiSignal,
     bb3Trigger:d.bb3Trigger, bullEngulfTrigger:d.bullEngulfTrigger, threeInsideUpTrigger:d.threeInsideUpTrigger,
-    rocketTrigger:d.rocketTrigger, multiSignalTrigger:d.multiSignalTrigger
+    rocketTrigger:d.rocketTrigger, multiSignalTrigger:d.multiSignalTrigger,
+    // Indicator Upgrades Group 2, item 5 (2026-09-20), waypoint (a): bearish exit-warning
+    // mirrors - booleans (pills) plus *Trigger objects, same convention as the bull-side fields
+    // above, even though nothing consumes the trigger data this batch (no overlay - item 4 is
+    // skipped). Costs nothing to carry, keeps the door open per channel-core.js's own comment.
+    bb3UpperReversion:d.bb3UpperReversion, threeInsideDown:d.threeInsideDown,
+    bb3UpperReversionTrigger:d.bb3UpperReversionTrigger, threeInsideDownTrigger:d.threeInsideDownTrigger
     // Backlog #5 (2026-09-19): explanation intentionally NOT built here - moved to
     // mergeCandidateRow, which runs after rail age is known. buildExpl's rail-age
     // qualifier on "near support" needs supportRailAgeDays/Band, which this function
@@ -2204,6 +2297,10 @@ function adaptDailyCoin(c) {
     rocket:d.rocket, multiSignal:d.multiSignal,
     bb3Trigger:d.bb3Trigger, bullEngulfTrigger:d.bullEngulfTrigger, threeInsideUpTrigger:d.threeInsideUpTrigger,
     rocketTrigger:d.rocketTrigger, multiSignalTrigger:d.multiSignalTrigger,
+    // Indicator Upgrades Group 2, item 5 (2026-09-20), waypoint (a): see adaptCaptureCoin above
+    // - same fields, same reason.
+    bb3UpperReversion:d.bb3UpperReversion, threeInsideDown:d.threeInsideDown,
+    bb3UpperReversionTrigger:d.bb3UpperReversionTrigger, threeInsideDownTrigger:d.threeInsideDownTrigger,
     dailySource:c.dailySource
     // Backlog #5 (2026-09-19): see adaptCaptureCoin above - explanation is built in
     // mergeCandidateRow instead, after rail age is known.
