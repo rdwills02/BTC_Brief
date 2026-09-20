@@ -152,6 +152,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .cat-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1e2035;color:#e2e4ef;border:1px solid #2a2b3d;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:400;line-height:1.4;width:220px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:200;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}
 .cat-tip:hover::after{opacity:1;visibility:visible}
 .cat-tip.tip-down::after{bottom:auto;top:calc(100% + 8px)}
+/* Indicator Upgrades Group 1, item 6 (2026-09-20): click-to-toggle pill state - dim = clickable
+   but off, full opacity = currently toggled on. Hover/click are separate concerns on the same
+   element (cat-tip's hover tooltip is unaffected, just visually renders at the pill's current
+   opacity too - a minor cosmetic side effect of reusing opacity for the dim/active state, not a
+   functional issue). */
+.cat-toggle{opacity:.62;transition:opacity .12s}
+.cat-toggle:hover{opacity:.85}
+.cat-toggle.active{opacity:1;box-shadow:0 0 0 1px currentColor inset}
 @media (max-width: 640px) {
   .header{height:auto;min-height:52px;flex-wrap:wrap;padding:8px 12px;gap:6px}
   .nav-links{display:none}
@@ -383,6 +391,12 @@ var sortCol = 'default';
 var sortDir = -1;
 var selectedKey = null;
 var detailChart = null;
+// Indicator Upgrades Group 1, item 6 (2026-09-20): overlay-toggle state for the live detail
+// panel's single chart instance. Reset fresh in buildChart() on every openDetail() call (chart
+// opens clean - see design discussion in Radar Indicator Upgrades.md), matching the report's
+// per-card equivalent (el._overlay*, set in drawReportChart() - see buildReportHTML below).
+var detailOverlay = null;
+var detailCS = null, detailEmaSeries = null, detailPivotMarkers = null, detailTriggers = null;
 var scanning = false;
 var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
 // Computed once per scan in runScan() from radar.html's own localStorage history (see
@@ -456,14 +470,22 @@ function sleep(ms) { return new Promise(function(r){setTimeout(r,ms);}); }
 // against channel-core.js's actual implementation, not guessed from the label.
 function confluenceList(r) {
   var b=[];
-  if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'Price is above both the 21-day and 50-day EMA - a bullish trend filter.'});
-  else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)',tip:'Price is above the 50-day EMA but not the 21-day EMA.'});
-  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal.'});
-  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern.'});
-  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern.'});
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): pills that map to a chart overlay carry a
+  // `key` field (matched by toggleOverlay() below) - clicking them toggles that overlay. Only
+  // the 5 pills with a defined overlay in this batch (EMA line, and the 4 pattern-flag markers)
+  // get a key; the threshold pills (already permanently visible as the support/resistance rail
+  // lines) and the multi-signal meta-pill (no overlay content of its own beyond its constituent
+  // pattern markers, already toggleable individually) stay informational/non-clickable. Flagged
+  // as a scope call - the batch spec said "each pill clickable" but only detailed overlay
+  // content for these 5; revisit if Ryan wants the others interactive too.
+  if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'Price is above both the 21-day and 50-day EMA - a bullish trend filter. Click to show the EMA lines on the chart.',key:'ema'});
+  else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)',tip:'Price is above the 50-day EMA but not the 21-day EMA. Click to show the EMA lines on the chart.',key:'ema'});
+  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal. Click to mark the triggering candle on the chart.',key:'bb3'});
+  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering candle on the chart.',key:'bullEngulf'});
+  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering candle on the chart.',key:'threeInsideUp'});
   // Indicator Upgrades Group 1, item 2 (2026-09-20): Rocket-at-support - channel-core.js's
   // rocketAtSupport(), same show-only-what-applies pattern as the three pattern flags above.
-  if(r.rocket) b.push({t:'Rocket at support',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar’s high - a bullish reversal-off-support pattern.'});
+  if(r.rocket) b.push({t:'Rocket at support',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering candle on the chart.',key:'rocket'});
   // Indicator Upgrades Group 1, item 3 (2026-09-20): threshold pills off fields detectChannel
   // already computes - r.position is the same 0-1 clamped value the position bar/label already
   // use, no new math. position>0 means price sits above the fitted support rail (clamp makes
@@ -490,7 +512,18 @@ function confluenceList(r) {
 function confluenceHTML(r) {
   var b=confluenceList(r);
   if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
-  return b.map(function(x){return '<span class="cat-tip" data-tip="'+x.tip+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px">'+x.t+'</span>';}).join('');
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): keyed pills (see confluenceList above) get
+  // the cat-toggle class + data-key/data-symbol, read by the delegated click handler wired in
+  // openDetail() (live) and the report's own embedded script (buildReportHTML below) - same
+  // toggleOverlay() function in both, see its own comment for why data-symbol is here even
+  // though the live panel only ever has one chart open (keeps this one function identical for
+  // both consumers, rather than a live-only and report-only variant).
+  return b.map(function(x){
+    var cls = x.key ? 'cat-tip cat-toggle' : 'cat-tip';
+    var attrs = x.key ? ' data-key="'+x.key+'" data-symbol="'+r.symbol+'"' : '';
+    var cursor = x.key ? 'cursor:pointer' : 'cursor:help';
+    return '<span class="'+cls+'" data-tip="'+x.tip+'"'+attrs+' style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;'+cursor+'">'+x.t+'</span>';
+  }).join('');
 }
 
 // Backlog #3 (2026-09-19): rail age. Surfaces how OLD the support rail's most recent touch is -
@@ -1553,6 +1586,61 @@ function closePanel() {
   if(detailChart){detailChart.remove();detailChart=null;}
 }
 
+// Indicator Upgrades Group 1, item 6 (2026-09-20): full per-candle EMA series for the chart
+// overlay line. channel-core.js's emaLast()/emaState() only return the FINAL EMA value (what
+// scoring needs) - a chart line needs the value at every candle, a different computation this
+// batch's spec assumed was "already there" but isn't. Kept local to radar.html (display-only,
+// not detection) rather than reopening channel-core.js for a display-only need - same EMA
+// recurrence as emaLast(), just keeping every step instead of only the last.
+function emaSeriesFor(candles, period) {
+  var out = [];
+  if(!candles || !candles.length) return out;
+  var k = 2/(period+1), e = candles[0].close;
+  out.push({time:candles[0].time, value:e});
+  for(var i=1;i<candles.length;i++) {
+    e = candles[i].close*k + e*(1-k);
+    out.push({time:candles[i].time, value:e});
+  }
+  return out;
+}
+// Indicator Upgrades Group 1, item 6 (2026-09-20): shared click-to-toggle overlay logic - used
+// by BOTH the live detail panel (buildChart() below, wired from openDetail()'s click handler)
+// and the published report (drawReportChart(), wired from its own click handler inside
+// buildReportHTML() below). The report is a standalone static file with no access to radar.html's
+// live JS, so "shared" here means this function's own source is injected into the report's
+// embedded <script> via toggleOverlay.toString() (see buildReportHTML) - the only way to run the
+// exact same code in two separate JS runtimes without hand-duplicating it. That only works if
+// this function is self-contained: every dependency comes in as a parameter, nothing reaches
+// into an outer closure or a global only radar.html's own page defines.
+//   key: which pill was clicked ('ema'|'bb3'|'bullEngulf'|'threeInsideUp'|'rocket')
+//   state: the per-chart {} of currently-active keys, mutated in place
+//   cs: the candlestick series (markers are set on this)
+//   emaSeries: {ema21, ema50} line series refs, already added hidden at chart-build time
+//   pivotMarkers: the permanent support-pivot "S" markers, unaffected by toggling
+//   triggers: {bb3,bullEngulf,threeInsideUp,rocket} -> {time} or null (from *Trigger fields)
+function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers) {
+  state[key] = !state[key];
+  if(key === 'ema') {
+    if(emaSeries.ema21) emaSeries.ema21.applyOptions({visible: !!state.ema});
+    if(emaSeries.ema50) emaSeries.ema50.applyOptions({visible: !!state.ema});
+    return;
+  }
+  // Pattern-flag markers: cs.setMarkers() REPLACES the whole array, so every toggle rebuilds it
+  // from scratch - permanent pivot markers plus whichever pattern markers are currently active.
+  var patternDefs = [
+    {key:'bb3', color:'#7b6ef6', text:'B'},
+    {key:'bullEngulf', color:'#00c896', text:'E'},
+    {key:'threeInsideUp', color:'#00c896', text:'3'},
+    {key:'rocket', color:'#00c896', text:'R'}
+  ];
+  var patternMarkers = [];
+  for(var i=0;i<patternDefs.length;i++) {
+    var pd = patternDefs[i], t = triggers[pd.key];
+    if(state[pd.key] && t) patternMarkers.push({time:t.time, position:'aboveBar', color:pd.color, shape:'circle', text:pd.text, size:1});
+  }
+  var all = (pivotMarkers||[]).concat(patternMarkers).sort(function(a,b){return a.time-b.time;});
+  cs.setMarkers(all);
+}
 function buildChart(r) {
   var container=document.getElementById('detail-chart');
   container.innerHTML='';
@@ -1576,6 +1664,22 @@ function buildChart(r) {
   chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
   var markers=r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
   if(markers.length) cs.setMarkers(markers);
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): EMA 21/50 lines, added once here (hidden)
+  // per the batch spec - toggled via applyOptions({visible}) in toggleOverlay above, never
+  // removed/re-added on click. detailOverlay/detailCS/etc. are module-level (single live chart
+  // instance) so the click handler wired in openDetail() can reach them without a closure per
+  // pill.
+  var emaSeries = {
+    ema21: chart.addLineSeries({color:'#f5a623',lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,visible:false,title:'EMA 21'}),
+    ema50: chart.addLineSeries({color:'#7b6ef6',lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,visible:false,title:'EMA 50'})
+  };
+  emaSeries.ema21.setData(emaSeriesFor(r.candles, 21));
+  emaSeries.ema50.setData(emaSeriesFor(r.candles, 50));
+  detailCS = cs;
+  detailEmaSeries = emaSeries;
+  detailPivotMarkers = markers;
+  detailTriggers = {bb3:r.bb3Trigger, bullEngulf:r.bullEngulfTrigger, threeInsideUp:r.threeInsideUpTrigger, rocket:r.rocketTrigger};
+  detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
   new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++)chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});}).observe(container);
 }
@@ -1730,7 +1834,12 @@ function buildReportHTML(data) {
   // could drift from the live page's palette).
   '.srcbadge{font-size:8px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.03em;margin-left:5px;display:inline-block;vertical-align:middle}.src-grid{background:rgba(157,163,180,.15);color:var(--text2)}.src-daily{background:rgba(123,110,246,.12);color:var(--accent)}.src-both{background:rgba(123,110,246,.22);color:var(--probable);border:1px solid rgba(123,110,246,.4)}.src-both.stale{background:rgba(107,114,128,.15);color:var(--muted);border-color:var(--border2)}'+
   '.vbadge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;display:inline-block}.va-act{background:rgba(0,200,150,.15);color:var(--bull)}.va-watch{background:rgba(245,166,35,.12);color:var(--neut)}.va-wait{background:rgba(107,114,128,.15);color:var(--muted)}'+
-  '.cat-tip{position:relative;cursor:help}.cat-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1e2035;color:#e2e4ef;border:1px solid #2a2b3d;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:400;line-height:1.4;width:220px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:200;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}.cat-tip:hover::after{opacity:1;visibility:visible}@media (max-width:640px){.report-metrics{grid-template-columns:repeat(3,1fr) !important}}<\/style>'+
+  '.cat-tip{position:relative;cursor:help}.cat-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1e2035;color:#e2e4ef;border:1px solid #2a2b3d;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:400;line-height:1.4;width:220px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:200;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}.cat-tip:hover::after{opacity:1;visibility:visible}'+
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): same cat-toggle CSS as radar.html's own
+  // <style> block (duplicated, not shared - CSS text, not a function toggleOverlay() below can
+  // toString() into this script; .cat-tip itself is already duplicated the same way above).
+  '.cat-toggle{opacity:.62;transition:opacity .12s}.cat-toggle:hover{opacity:.85}.cat-toggle.active{opacity:1;box-shadow:0 0 0 1px currentColor inset}'+
+  '@media (max-width:640px){.report-metrics{grid-template-columns:repeat(3,1fr) !important}}<\/style>'+
   '</head>'+
   '<body style="background:#0b0c14;color:#e2e4ef;font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;margin:0">'+
   '<div style="background:#13141f;border-bottom:1px solid #1e2035;padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100">'+
@@ -1804,6 +1913,13 @@ function buildReportHTML(data) {
   '});}'+
   // --- Embedded channel charts (lazy: draw when a card scrolls into view) ---
   'var CHARTDATA={};try{CHARTDATA=JSON.parse(document.getElementById("chart-data").textContent);}catch(e){}'+
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): emaSeriesFor/toggleOverlay injected as
+  // plain function declarations (their own source, via .toString()) so this standalone report
+  // page runs the EXACT SAME toggle logic as the live buildChart() above - not a re-implementation.
+  // Neither function's body contains a raw "<" character or a script-closing tag, so no
+  // escaping is needed on the way in.
+  '\n'+emaSeriesFor.toString()+'\n'+
+  '\n'+toggleOverlay.toString()+'\n'+
   'function drawReportChart(symbol){'+
     'var cd=CHARTDATA[symbol];if(!cd||!cd.candles)return;'+
     'var el=document.getElementById("rchart-"+symbol);'+
@@ -1819,7 +1935,23 @@ function buildReportHTML(data) {
     'chart.addLineSeries({color:"#00c896",lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false}).setData(supData);'+
     'chart.addLineSeries({color:"#e8754a",lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false}).setData(resData);'+
     'chart.addLineSeries({color:"rgba(232,117,74,0.4)",lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:cd.candles[0].time,value:cd.invalidation},{time:cd.candles[n-1].time,value:cd.invalidation}]);'+
-    'if(cd.pivotLows&&cd.pivotLows.length){var mk=cd.pivotLows.filter(function(p){return cd.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:"belowBar",color:"#00c896",shape:"circle",text:"S",size:1};}).sort(function(a,b){return a.time-b.time;});if(mk.length)cs.setMarkers(mk);}'+
+    'var mk=[];'+
+    'if(cd.pivotLows&&cd.pivotLows.length){mk=cd.pivotLows.filter(function(p){return cd.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:"belowBar",color:"#00c896",shape:"circle",text:"S",size:1};}).sort(function(a,b){return a.time-b.time;});if(mk.length)cs.setMarkers(mk);}'+
+    // Same hidden EMA-21/50 lines as the live buildChart() above, plus per-card toggle state
+    // stashed on the DOM element itself (el._cs etc.) - there's no module-level "current chart"
+    // here like the live panel's detailCS, since many report cards can be drawn at once, so the
+    // click handler below looks the state up per-symbol from the element instead.
+    'var emaSeries={'+
+      'ema21:chart.addLineSeries({color:"#f5a623",lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,visible:false,title:"EMA 21"}),'+
+      'ema50:chart.addLineSeries({color:"#7b6ef6",lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,visible:false,title:"EMA 50"})'+
+    '};'+
+    'emaSeries.ema21.setData(emaSeriesFor(cd.candles,21));'+
+    'emaSeries.ema50.setData(emaSeriesFor(cd.candles,50));'+
+    'el._cs=cs;'+
+    'el._emaSeries=emaSeries;'+
+    'el._pivotMarkers=mk;'+
+    'el._triggers={bb3:cd.bb3Trigger,bullEngulf:cd.bullEngulfTrigger,threeInsideUp:cd.threeInsideUpTrigger,rocket:cd.rocketTrigger};'+
+    'el._overlay={};'+
     'chart.timeScale().fitContent();'+
   '}'+
   'if("IntersectionObserver" in window){'+
@@ -1833,6 +1965,25 @@ function buildReportHTML(data) {
     'wrap.style.height=big?"220px":"480px";btn.textContent=big?"Expand":"Collapse";'+
     'var el=document.getElementById("rchart-"+btn.dataset.symbol);'+
     'if(el){if(!el.dataset.drawn)drawReportChart(btn.dataset.symbol);if(el._chart){el._chart.applyOptions({width:el.clientWidth,height:el.clientHeight});el._chart.timeScale().fitContent();}}'+
+  '});'+
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): click-to-toggle confluence pills, report
+  // side. Delegated on document since cards are static markup (no re-render to lose listeners
+  // to). Per-card state lives on the chart element (el._cs/_emaSeries/_pivotMarkers/_triggers/
+  // _overlay, set by drawReportChart above) rather than a module-level var like the live panel's
+  // detailCS, because multiple report cards can have charts drawn at once. If the card's chart
+  // hasn't been drawn yet (lazy IntersectionObserver draw, or below the fold and never scrolled
+  // to), el._cs is unset and the click is a no-op - there's nothing to toggle on an undrawn chart.
+  'document.addEventListener("click",function(e){'+
+    'var pill=e.target.closest(".cat-toggle");if(!pill)return;'+
+    'var symbol=pill.dataset.symbol,key=pill.dataset.key;'+
+    'var el=document.getElementById("rchart-"+symbol);'+
+    'if(!el||!el._cs)return;'+
+    'toggleOverlay(key,el._overlay,el._cs,el._emaSeries,el._pivotMarkers,el._triggers);'+
+    'if(key==="ema"){'+
+      'pill.parentElement.querySelectorAll(".cat-toggle").forEach(function(p){if(p.dataset.key==="ema")p.classList.toggle("active",!!el._overlay.ema);});'+
+    '}else{'+
+      'pill.classList.toggle("active",!!el._overlay[key]);'+
+    '}'+
   '});'+
   '<\/script>'+
   '</body></html>';
@@ -1928,6 +2079,24 @@ window.addEventListener('load', function() {
   document.getElementById('refresh-btn').addEventListener('click', runScan);
   document.getElementById('publish-btn').addEventListener('click', publishReport);
   document.getElementById('close-btn').addEventListener('click', closePanel);
+  // Indicator Upgrades Group 1, item 6 (2026-09-20): delegated on the stable dp-confluence
+  // container (its innerHTML is replaced every openDetail() call, but the element itself
+  // persists, so attaching once here - not inside openDetail() - avoids piling up duplicate
+  // listeners). See toggleOverlay() above for the shared toggle logic itself.
+  document.getElementById('dp-confluence').addEventListener('click', function(e) {
+    var pill = e.target.closest('.cat-toggle');
+    if(!pill || !detailCS) return;
+    var key = pill.dataset.key;
+    toggleOverlay(key, detailOverlay, detailCS, detailEmaSeries, detailPivotMarkers, detailTriggers);
+    if(key === 'ema') {
+      // "Above 21 & 50 EMA" and "Above 50 EMA" are mutually exclusive pills (only one renders
+      // per row - see confluenceList) but both share key 'ema', so there's only ever one to
+      // toggle here; still guard with querySelectorAll in case that ever changes.
+      document.querySelectorAll('#dp-confluence .cat-toggle[data-key="ema"]').forEach(function(el){ el.classList.toggle('active', !!detailOverlay.ema); });
+    } else {
+      pill.classList.toggle('active', !!detailOverlay[key]);
+    }
+  });
   document.getElementById('chart-expand-btn').addEventListener('click', function() {
     var wrap = document.getElementById('chart-wrap');
     var btn = document.getElementById('chart-expand-btn');
