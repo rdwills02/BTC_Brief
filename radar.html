@@ -461,6 +461,30 @@ function confluenceList(r) {
   if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal.'});
   if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern.'});
   if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern.'});
+  // Indicator Upgrades Group 1, item 2 (2026-09-20): Rocket-at-support - channel-core.js's
+  // rocketAtSupport(), same show-only-what-applies pattern as the three pattern flags above.
+  if(r.rocket) b.push({t:'Rocket at support',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar’s high - a bullish reversal-off-support pattern.'});
+  // Indicator Upgrades Group 1, item 3 (2026-09-20): threshold pills off fields detectChannel
+  // already computes - r.position is the same 0-1 clamped value the position bar/label already
+  // use, no new math. position>0 means price sits above the fitted support rail (clamp makes
+  // position===0 exactly when price<=supportNow).
+  if(r.position>0) b.push({t:'Above support rail',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'Price is trading above the fitted support rail, not sitting right on it.'});
+  // "Approaching resistance" - analysis-thread review (2026-09-20): a literal "breaking
+  // resistance" (position>=1) is structurally impossible for anything on Radar's candidate
+  // list - detectChannel's own gate (`if(position > 0.75) continue`) caps every candidate,
+  // present and future, below 0.75. Brett's checklist item is written for a general-purpose
+  // scanner without that gate; Radar's is a pre-breakout coil detector that stops flagging a
+  // coin once it runs, so the literal wording doesn't fit this app's niche. Deliberately
+  // adapted, not a literal transcription: reuses 0.66, Radar's OWN existing "near the top of
+  // the channel" boundary from detectChannel's score formula (`position<=0.66?3:0`) - not a
+  // new number - and the label says what it actually measures. Do not "fix" this back to
+  // 0.75/1.0 or the literal "Breaking resistance" wording without re-opening this call.
+  if(r.position>0.66) b.push({t:'Approaching resistance',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'Price is in the upper part of the channel, nearing the fitted resistance rail.'});
+  // Indicator Upgrades Group 1, item 2 (2026-09-20): multi-signal meta-flag - channel-core.js's
+  // multiSignalOnOneCandle(). Distinct amber/gold styling (not the green used by the individual
+  // pattern flags above) since this is an aggregate "extra confidence" signal, not a pattern of
+  // its own - deliberately visually distinct so it doesn't read as a 5th pattern type.
+  if(r.multiSignal) b.push({t:'Multiple signals aligned',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Two or more of the pattern signals above (3BB mean-reversion, bullish engulfing, 3 Inside Up, Rocket at support) triggered on the same or an adjacent candle.'});
   return b;
 }
 function confluenceHTML(r) {
@@ -706,7 +730,15 @@ function toLightCandidate(r) {
     explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,
     threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category,
     source:r.source,gridScore:r.gridScore,dailyScore:r.dailyScore,dailyStale:r.dailyStale,
-    supportRailAgeDays:r.supportRailAgeDays,supportRailAgeBand:r.supportRailAgeBand};
+    supportRailAgeDays:r.supportRailAgeDays,supportRailAgeBand:r.supportRailAgeBand,
+    // Indicator Upgrades Group 1, item 5 (2026-09-20): rocket/multiSignal booleans only - same
+    // "pills survive, chart doesn't" rule this function already applies to bb3/bullEngulf/
+    // threeInsideUp above. The *Trigger objects are deliberately left OUT here (unlike
+    // adaptCaptureCoin/adaptDailyCoin): this function strips candles/pivotLows for both its
+    // consumers (localStorage restore, reportData.candidates), so a restored/reported row never
+    // has a chart to overlay a trigger marker onto - see "Scoring + report parity" in Radar
+    // Indicator Upgrades.md, confirmed with Ryan the overlay does not need to carry over here.
+    rocket:r.rocket, multiSignal:r.multiSignal};
 }
 function getPrevScanHistory() {
   try {
@@ -1840,13 +1872,23 @@ async function publishReport() {
     // Embed lightweight chart geometry per candidate so the static report can draw charts
     // (report has no API access — data must be baked in at publish). ~90 candles/coin.
     var chartData = {};
+    // Indicator Upgrades Group 1, item 5 (2026-09-20), waypoint (d): this is a SEPARATE
+    // pipeline from adaptCaptureCoin/adaptDailyCoin/mergeCandidateRow/toLightCandidate above -
+    // feeds the report's own embedded charts, not the pills. Trigger-candle data trimmed to
+    // {time:...} per flag, same treatment pivotLows already gets on the line below (drop
+    // everything except what a lightweight-charts marker needs); null when that flag didn't
+    // hit, mirroring how pivotLows is simply empty when there are none.
+    function triggerTime(t) { return (t && t.hit) ? {time: t.time} : null; }
     allResults.forEach(function(r){
       if(r.candles && r.candles.length) {
         chartData[r.symbol] = {
           candles: r.candles,
           supSlope: r.supSlope, supIntercept: r.supIntercept, channelH: r.channelH,
           lastIdx: r.lastIdx, invalidation: r.invalidation,
-          pivotLows: (r.pivotLows||[]).map(function(p){return {time:p.time};})
+          pivotLows: (r.pivotLows||[]).map(function(p){return {time:p.time};}),
+          bb3Trigger: triggerTime(r.bb3Trigger), bullEngulfTrigger: triggerTime(r.bullEngulfTrigger),
+          threeInsideUpTrigger: triggerTime(r.threeInsideUpTrigger), rocketTrigger: triggerTime(r.rocketTrigger),
+          multiSignalTrigger: triggerTime(r.multiSignalTrigger)
         };
       }
     });
@@ -1952,7 +1994,14 @@ function adaptCaptureCoin(c) {
     supSlope:d.supSlope, supIntercept:d.supIntercept, firstIdx:d.firstIdx, lastIdx:d.lastIdx,
     isAscending:d.isAscending, isFlat:d.isFlat,
     emaState:d.emaState, ema21:d.ema21, ema50:d.ema50, emaPts:d.emaPts,
-    bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp
+    bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp,
+    // Indicator Upgrades Group 1, item 5 (2026-09-20): rocket/multiSignal booleans (pills) plus
+    // the *Trigger objects (chart-overlay marker data, item 6) - this function keeps candles/
+    // pivotLows (unlike toLightCandidate below), so a captured-mode row still gets a real chart
+    // and needs the trigger data for the overlay toggle to work on it, same as a fresh-scan row.
+    rocket:d.rocket, multiSignal:d.multiSignal,
+    bb3Trigger:d.bb3Trigger, bullEngulfTrigger:d.bullEngulfTrigger, threeInsideUpTrigger:d.threeInsideUpTrigger,
+    rocketTrigger:d.rocketTrigger, multiSignalTrigger:d.multiSignalTrigger
     // Backlog #5 (2026-09-19): explanation intentionally NOT built here - moved to
     // mergeCandidateRow, which runs after rail age is known. buildExpl's rail-age
     // qualifier on "near support" needs supportRailAgeDays/Band, which this function
@@ -1981,6 +2030,11 @@ function adaptDailyCoin(c) {
     isAscending:d.isAscending, isFlat:d.isFlat,
     emaState:d.emaState, ema21:d.ema21, ema50:d.ema50, emaPts:d.emaPts,
     bb3:d.bb3, bullEngulf:d.bullEngulf, threeInsideUp:d.threeInsideUp,
+    // Indicator Upgrades Group 1, item 5 (2026-09-20): see adaptCaptureCoin above - same fields,
+    // same reason (this function also keeps candles/pivotLows).
+    rocket:d.rocket, multiSignal:d.multiSignal,
+    bb3Trigger:d.bb3Trigger, bullEngulfTrigger:d.bullEngulfTrigger, threeInsideUpTrigger:d.threeInsideUpTrigger,
+    rocketTrigger:d.rocketTrigger, multiSignalTrigger:d.multiSignalTrigger,
     dailySource:c.dailySource
     // Backlog #5 (2026-09-19): see adaptCaptureCoin above - explanation is built in
     // mergeCandidateRow instead, after rail age is known.
@@ -1999,6 +2053,11 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   var gridScore = gridRow ? gridRow.score : null;
   var dailyScore = dailyRow ? dailyRow.score : null;
   var source = (gridRow && dailyRow) ? 'both' : (dailyRow ? 'daily' : 'grid');
+  // Indicator Upgrades Group 1, item 5 (2026-09-20), waypoint (b), traced not assumed: this
+  // `for(var k in base)` spread is generic - it copies every field adaptCaptureCoin/
+  // adaptDailyCoin put on `base` (gridRow/dailyRow), including the new rocket/multiSignal/
+  // *Trigger fields those functions were just given above. No change needed HERE for those
+  // fields to survive the merge; confirmed with a live-shape test, not just by reading this.
   var merged = {};
   for(var k in base) merged[k] = base[k];
   merged.score = Math.max(gridScore!=null?gridScore:-1, dailyScore!=null?dailyScore:-1);
