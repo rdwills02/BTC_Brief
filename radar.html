@@ -996,8 +996,18 @@ function buildAction(r) {
   }
   // From here: third==='lower' and structureLabel is 'ascending' or 'flat'. Verdict now turns
   // entirely on rail freshness - the RAIL AGE GATE described above.
+  // Backlog #18 (2026-09-20): this branch used to read only railBand, never r.score - a row
+  // could clear every structural gate and still get ACT regardless of channel quality (live-
+  // confirmed: GRAM, score 74/Emerging, returned ACT). ACT_SCORE_FLOOR=75 matches the
+  // Probable-tier cutoff already used elsewhere as "good enough to act on" (getBucket/#17a).
+  // Gates ONLY this fresh-rail branch - aging/stale/unknown already fall through to WATCH via
+  // the rail-age gate below and are untouched by this change.
+  var ACT_SCORE_FLOOR = 75;
   if(railBand==='fresh') {
-    return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+    if(r.score>=ACT_SCORE_FLOOR) {
+      return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+    }
+    return {verdict:'WATCH', text:'Watch: would be an act zone, but the channel score ('+r.score+') is below the Probable threshold - watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
   }
   if(railBand==='aging') {
     return {verdict:'WATCH', text:'Watch: price is in the lower third, but '+railNote+' - watch for a fresh test before treating '+supStr+' as active support. Invalidated below '+invStr+targetClause()+'.'};
