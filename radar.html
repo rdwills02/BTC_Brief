@@ -182,7 +182,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 </header>
 
 <div class="diag-panel" id="diag-panel">
-  <div class="diag-title">Scan Details — live updating</div>
+  <div class="diag-title" id="diag-title">Scan Details — live updating</div>
   <div class="diag-grid" id="diag-grid"></div>
   <div class="diag-funnel" id="diag-funnel"></div>
 </div>
@@ -363,6 +363,14 @@ var GITHUB_API = 'https://api.github.com';
 var allResults = [];
 var captureMode = false;   // true when the table is showing the shared daily capture (not a live scan)
 var dailyDataAvailable = false;   // Milestone #2a: true once data/latest-daily.json has merged in
+// Backlog #13 (2026-09-19): the cached-mode Scan Details source. capture.js runs detection
+// server-side, so there is no live diag object to show when captureMode is true - these hold
+// what the loaded capture itself published instead (null/'' until a capture with a `funnel`
+// field is actually loaded - an older capture that predates Backlog #13 leaves cachedFunnel
+// null, and renderDiag() omits those cards rather than showing a fabricated zero).
+var cachedFunnel = null;
+var cachedUniverseCount = null;
+var cachedFunnelDate = '';
 var filtered = [];
 var activeFilter = 'all';
 var sortCol = 'default';
@@ -1168,18 +1176,60 @@ async function runScan() {
   if(getToken() && allResults.length > 0) document.getElementById('publish-btn').style.display='';
 }
 
+// Backlog #13 (2026-09-19): this panel used to read ONLY the live `diag` object, which is
+// never touched at all in cached mode (capture.js runs detection server-side - see its own
+// funnel comment) - so 6 of 9 cards read a permanent 0 in the view most people see most of the
+// time, under a header that claimed "live updating" even then. Now source-aware: live/restored-
+// scan mode still reads `diag` exactly as before (unchanged - this is the path that was already
+// correct, traced and live-verified against real data, see RADAR STATE); cached mode reads what
+// THIS capture actually published (cachedFunnel/cachedUniverseCount, set in
+// loadCachedOrResting()) and never renders a funnel-gate card unless the loaded capture actually
+// has one, rather than showing a 0 nothing computed.
 function renderDiag() {
-  var items = [
-    {label:'Universe',value:diag.universe,c:'var(--text)'},
-    {label:'Coins Excluded (low 24h volume)',value:diag.volExcluded,c:'var(--bear)'},
-    {label:'Category excl',value:diag.catExcluded,c:'var(--bear)'},
-    {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
-    {label:'Rail pairs',value:diag.railPairs,c:'var(--text2)'},
-    {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
-    {label:'3+ touches',value:diag.touches,c:'var(--neut)'},
-    {label:'Contain 55%+',value:diag.containment,c:'var(--neut)'},
-    {label:'Candidates',value:diag.candidates,c:'var(--high)'}
-  ];
+  var titleEl = document.getElementById('diag-title');
+  var items, sourceNote;
+  if(!captureMode) {
+    // Live scan (this session, possibly still running) OR the localStorage-restore fallback,
+    // which already restores a REAL previously-live-scanned diag object (see saveScanHistory /
+    // loadCachedOrResting's `if(prev.diag) diag = prev.diag;`) - diag is the single source of
+    // truth on this path, exactly as before this backlog item.
+    sourceNote = scanning ? 'live updating' : 'from your last live scan';
+    items = [
+      {label:'Universe',value:diag.universe,c:'var(--text)'},
+      {label:'Coins Excluded (low 24h volume)',value:diag.volExcluded,c:'var(--bear)'},
+      {label:'Category excl',value:diag.catExcluded,c:'var(--bear)'},
+      {label:'OHLC loaded',value:diag.ohlcOk,c:'var(--bull)'},
+      {label:'Rail pairs',value:diag.railPairs,c:'var(--text2)'},
+      {label:'Positive slope',value:diag.posSlope,c:'var(--neut)'},
+      {label:'3+ touches',value:diag.touches,c:'var(--neut)'},
+      {label:'Contain 55%+',value:diag.containment,c:'var(--neut)'},
+      {label:'Candidates',value:diag.candidates,c:'var(--high)'}
+    ];
+  } else {
+    // Cached mode. Universe/Candidates always have a real, single-source value - the same
+    // universe_count and merged allResults.length the rest of the page already shows, never a
+    // second independently-computed copy (see capture.js's funnel comment for why those two
+    // are deliberately NOT part of the funnel object). The 7 gate stages only render when this
+    // capture actually published a funnel object.
+    sourceNote = cachedFunnel ? ('from the ' + (cachedFunnelDate || 'last') + ' capture')
+                               : ('from the ' + (cachedFunnelDate || 'last') + ' capture (funnel not in this capture yet)');
+    items = [
+      {label:'Universe',value:(cachedUniverseCount!=null?cachedUniverseCount:allResults.length),c:'var(--text)'}
+    ];
+    if(cachedFunnel) {
+      items.push(
+        {label:'Coins Excluded (low 24h volume)',value:cachedFunnel.volExcluded,c:'var(--bear)'},
+        {label:'Category excl',value:cachedFunnel.catExcluded,c:'var(--bear)'},
+        {label:'OHLC loaded',value:cachedFunnel.ohlcOk,c:'var(--bull)'},
+        {label:'Rail pairs',value:cachedFunnel.railPairs,c:'var(--text2)'},
+        {label:'Positive slope',value:cachedFunnel.posSlope,c:'var(--neut)'},
+        {label:'3+ touches',value:cachedFunnel.touches,c:'var(--neut)'},
+        {label:'Contain 55%+',value:cachedFunnel.containment,c:'var(--neut)'}
+      );
+    }
+    items.push({label:'Candidates',value:allResults.length,c:'var(--high)'});
+  }
+  if(titleEl) titleEl.textContent = 'Scan Details — ' + sourceNote;
   document.getElementById('diag-grid').innerHTML = items.map(function(i) {
     return '<div class="diag-item"><div class="diag-label">'+i.label+'</div><div class="diag-value" style="color:'+i.c+'">'+i.value+'</div></div>';
   }).join('');
@@ -1982,6 +2032,17 @@ async function loadCachedOrResting() {
           applyFilters();
           captureMode = true;
           var capDate = cap.date;
+          // Backlog #13 (2026-09-19): source the cached-mode Scan Details panel from what
+          // THIS capture actually published - never from the live `diag` object, which stays
+          // at its all-zero initial state on this path (no live scan ran). cap.universe_count
+          // is the SAME field the header/report already treat as authoritative (see capture.js
+          // funnel comment) - not re-derived here, so it can't disagree with itself elsewhere
+          // on the page. cap.funnel is only present once a capture built after Backlog #13 has
+          // run; older captures leave cachedFunnel null and renderDiag() renders those 7 cards
+          // as not-rendered rather than fabricating zeros.
+          cachedFunnel = cap.funnel || null;
+          cachedUniverseCount = (cap.universe_count != null) ? cap.universe_count : null;
+          cachedFunnelDate = capDate;
           // Backlog #9 (2026-09-19, Round 3): mirror these into the module-level lastGridDate/
           // lastDailyDate/lastDailyStale so publishReport() can hand the same dates to the
           // report's own #11-vocabulary header chips - see the comment at their declaration.
