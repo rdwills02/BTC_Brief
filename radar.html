@@ -195,7 +195,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <button class="bbtn" id="fb-probable">Probable 75+</button>
     <button class="bbtn" id="fb-emerging">Emerging 60+</button>
     <button class="bbtn" id="fb-watch">Watch 40+</button>
-    <button class="bbtn" id="fb-confirmed">Confirmed</button>
+    <button class="bbtn" id="fb-confirmed">Confirmed 89+</button>
   </div>
   <select class="sort-sel" id="sort-sel">
     <option value="default" selected>Sort: Recommended (Verdict, then Volume)</option>
@@ -251,7 +251,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <thead><tr>
           <th>Coin</th>
           <th class="cat-tip tip-down" data-tip="Channel quality 0-100: combines support/resistance touches, containment, slope, position, and confluence signals.">Score</th>
-          <th class="cat-tip tip-down" data-tip="Quality tier from the score: High (90+), Probable (75+), Emerging (60+), Watch (40+).">Channel Status</th>
+          <th class="cat-tip tip-down" data-tip="Quality tier from the score: High (89+), Probable (75+), Emerging (60+), Watch (40+), Weak (below 40).">Channel Status</th>
           <th class="cat-tip tip-down" data-tip="Total US-dollar trading volume over the last 24 hours.">24h Vol</th>
           <th class="cat-tip tip-down" data-tip="Support touches: number of times price tested the lower rail. More touches = a more established channel.">S Touches</th>
           <th class="cat-tip tip-down" data-tip="Resistance touches: number of times price tested the upper rail.">R Touches</th>
@@ -362,6 +362,12 @@ var GITHUB_API = 'https://api.github.com';
 // STATE
 var allResults = [];
 var captureMode = false;   // true when the table is showing the shared daily capture (not a live scan)
+// Backlog #17f/#17g (2026-09-20): true only on the localStorage-restore fallback
+// (loadCachedOrResting's resting branch) - distinguishes "this session's own live scan" from
+// "a prior session's scan, restored" without overloading captureMode (false for both). Used
+// by openDetail's price staleness marker (#17f); renderDiag's sourceNote (#17g) instead reads
+// the restored timestamp directly off getPrevScanHistory() - see that function for why.
+var restingMode = false;
 var dailyDataAvailable = false;   // Milestone #2a: true once data/latest-daily.json has merged in
 // Backlog #13 (2026-09-19): the cached-mode Scan Details source. capture.js runs detection
 // server-side, so there is no live diag object to show when captureMode is true - these hold
@@ -443,19 +449,24 @@ function fmtVol(n) {
 function sleep(ms) { return new Promise(function(r){setTimeout(r,ms);}); }
 
 // --- Confluence signals (all computed from daily OHLC we already fetch) ---
+// Backlog #15/#17c (2026-09-20): these pills compress a real computed signal into a word or
+// two with zero explanation of what triggered them - confirmed live data, not dead fields
+// (channel-core.js's emaState/bb3Reversion/bullEngulfing/threeInsideUp), so #15's rule
+// applies here exactly as it does to the bucket/verdict/rail-age badges. tip text traced
+// against channel-core.js's actual implementation, not guessed from the label.
 function confluenceList(r) {
   var b=[];
-  if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)'});
-  else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)'});
-  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)'});
-  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)'});
-  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)'});
+  if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'Price is above both the 21-day and 50-day EMA - a bullish trend filter.'});
+  else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)',tip:'Price is above the 50-day EMA but not the 21-day EMA.'});
+  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal.'});
+  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern.'});
+  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern.'});
   return b;
 }
 function confluenceHTML(r) {
   var b=confluenceList(r);
   if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
-  return b.map(function(x){return '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px">'+x.t+'</span>';}).join('');
+  return b.map(function(x){return '<span class="cat-tip" data-tip="'+x.tip+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px">'+x.t+'</span>';}).join('');
 }
 
 // Backlog #3 (2026-09-19): rail age. Surfaces how OLD the support rail's most recent touch is -
@@ -506,10 +517,20 @@ function railAgeLabel(band) {
 // +/-4-day resolution there (vs daily precision for 'daily'/'both' rows, which read the rail
 // from detectionDaily). Never implied as daily precision - see the work-order's THE COMPUTATION.
 function railAgeApprox(r) { return r.source==='grid'; }
+// Backlog #15 (2026-09-20): the Fresh/Aging/Stale reading is a badge like any other - the
+// <th> already explains the bands (see the Rail Age header's own data-tip), the cell value
+// didn't. Converts the (~4d) marker's tooltip to the same cat-tip mechanism while here, for
+// mechanism consistency (#15's other half) - same content, no behavior change.
+function railAgeTip(band) {
+  if(band==='fresh') return 'Fresh (<=14d since last touch): the support rail was tested recently - live structure.';
+  if(band==='aging') return 'Aging (15-28d since last touch): still plausible, but wants a fresh test before treating the rail as fully active.';
+  if(band==='stale') return 'Stale (>28d since last touch): a historical anchor, not where price is reacting today.';
+  return 'Rail age unknown.';
+}
 function railAgeCellHTML(r) {
   if(r.supportRailAgeDays==null) return '<span style="color:var(--muted)">unknown</span>';
-  var approx = railAgeApprox(r) ? ' <span style="color:var(--muted)" title="4-day grid pivots - resolution is +/-4 days, not daily precision">(~4d)</span>' : '';
-  return '<span style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">'+r.supportRailAgeDays+'d</span>'+approx;
+  var approx = railAgeApprox(r) ? ' <span class="cat-tip" data-tip="4-day grid pivots - resolution is +/-4 days, not daily precision" style="color:var(--muted)">(~4d)</span>' : '';
+  return '<span class="cat-tip" data-tip="'+railAgeTip(r.supportRailAgeBand)+'" style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">'+r.supportRailAgeDays+'d</span>'+approx;
 }
 
 function getBucket(s) {
@@ -525,15 +546,30 @@ function scoreColor(s) {
   if(s>=60) return 'var(--emerging)';
   return 'var(--watch)';
 }
+// Backlog #15 (2026-09-20): the bucket badge (HIGH/Probable/Emerging/Watch/Weak) compresses a
+// score rule into one word with no way to read the rule back off the badge itself - the
+// CHANNEL STATUS column header already explains it, but the badge is what the eye lands on.
+// One function, called everywhere getBucket()'s label is rendered as a badge, so the tooltip
+// can never drift from getBucket()'s own boundaries.
+function bucketTip(label) {
+  if(label==='High') return 'High: score 89 or above.';
+  if(label==='Probable') return 'Probable: score 75-88.';
+  if(label==='Emerging') return 'Emerging: score 60-74.';
+  if(label==='Watch') return 'Watch: score 40-59.';
+  return 'Weak: score below 40.';
+}
 // Milestone #2a (2026-09-18): source badge next to the existing bucket badge - never
 // replaces it. 'grid' rows (pre-#2a behavior) render nothing, so a page with no daily
 // data looks exactly as it did before this milestone (degradation requirement).
 function srcBadgeHTML(r) {
-  if(r.source==='daily') return '<span class="srcbadge src-daily" title="1D pass only (Kraken/Coinbase exchange candles) - not yet corroborated by the 4-Day grid pass">1D</span>';
+  // Backlog #15 (2026-09-20): converted from native title= to the cat-tip mechanism for
+  // mechanism consistency - same wording, same badges, styled tooltip instead of the
+  // unstyleable native one (see #15's own finding: two tooltip mechanisms coexisted here).
+  if(r.source==='daily') return '<span class="srcbadge src-daily cat-tip" data-tip="1D pass only (Kraken/Coinbase exchange candles) - not yet corroborated by the 4-Day grid pass">1D</span>';
   if(r.source==='both') {
     var stale = r.dailyStale ? ' stale' : '';
-    var title = 'Confirmed by both the 4-day grid pass and the daily exchange pass' + (r.dailyStale ? ' (daily pass is stale)' : '');
-    return '<span class="srcbadge src-both'+stale+'" title="'+title+'">\u2713\u2713 CONFIRMED</span>';
+    var tip = 'Confirmed by both the 4-day grid pass and the daily exchange pass' + (r.dailyStale ? ' (daily pass is stale)' : '');
+    return '<span class="srcbadge src-both'+stale+' cat-tip" data-tip="'+tip+'">\u2713\u2713 CONFIRMED</span>';
   }
   return '';
 }
@@ -1034,6 +1070,11 @@ function buildAction(r) {
 // input) so it's safe to call on both the live `filtered` array (sortFiltered) and the report's
 // `data.candidates` (buildReportHTML) - ONE function, called from both places, so the two
 // orderings cannot drift the way buildReportHTML's previously-unsorted iteration let them.
+// Backlog #15 (2026-09-20): the ACT/WATCH/WAIT verdict badge is buildAction()'s primary
+// output and, per #18's own finding, the single most prominent claim on the page - it had no
+// tooltip at all. One shared string (not per-verdict) so a user seeing any of the three can
+// read the whole rule, not just the branch that produced what they're looking at.
+var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 75 or above. WATCH means one of those conditions is not met, or the score is below 75. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
 function verdictRankFor(r) {
   var v = null;
@@ -1108,6 +1149,7 @@ async function runScan() {
   if(scanning) return;
   scanning = true;
   captureMode = false;
+  restingMode = false;
   var cbar = document.getElementById('cached-bar'); if(cbar) cbar.style.display = 'none';
   diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
   var btn = document.getElementById('refresh-btn');
@@ -1203,7 +1245,17 @@ function renderDiag() {
     // which already restores a REAL previously-live-scanned diag object (see saveScanHistory /
     // loadCachedOrResting's `if(prev.diag) diag = prev.diag;`) - diag is the single source of
     // truth on this path, exactly as before this backlog item.
-    sourceNote = scanning ? 'live updating' : 'from your last live scan';
+    // Backlog #17g (2026-09-20): 'from your last live scan' used to say nothing about WHEN -
+    // on the resting/restore path that can be an arbitrarily old local session with no age
+    // indicator, under a title block that (before this fix) never distinguished it from a
+    // scan that just finished. getPrevScanHistory() already persists a real timestamp on
+    // every scan (saveScanHistory) and is what populated `diag`/`allResults` on this exact
+    // path (loadCachedOrResting's `if(prev.diag) diag = prev.diag;`) - reading it fresh here
+    // rather than threading a second copy through more globals keeps this to one source.
+    sourceNote = scanning ? 'live updating' : (function() {
+      var prev = getPrevScanHistory();
+      return 'from your last live scan' + (prev && prev.timestamp ? ' (' + new Date(prev.timestamp).toLocaleString() + ')' : '');
+    })();
     items = [
       {label:'Universe',value:diag.universe,c:'var(--text)'},
       {label:'Coins Excluded (low 24h volume)',value:diag.volExcluded,c:'var(--bear)'},
@@ -1365,14 +1417,20 @@ function renderTable() {
   tbody.innerHTML = filtered.map(function(r) {
     var bk=getBucket(r.score), sc=scoreColor(r.score);
     var pw=Math.round(r.position*100);
-    var posLbl=r.position<=0.33?'Lower':r.position<=0.66?'Mid':'Upper';
+    // Backlog #17d (2026-09-20): was a third independent position-label ternary (Round 3
+    // already folded openDetail/buildReportHTML onto positionLabelFor() specifically to stop
+    // this class of drift - this was the copy Round 3 didn't reach). Numerically identical
+    // thresholds (0.33/0.66), so this only changes the live table's own wording to match the
+    // detail panel and report ('Lower third'/'Middle'/'Upper third' vs the old abbreviated
+    // 'Lower'/'Mid'/'Upper') - not a behavior change.
+    var posLbl=positionLabelFor(r);
     var cc=r.change24h>=0?'up':'dn';
     var scls=r.slope>0.05?'sp':r.slope<-0.05?'sn':'sf';
     var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
-      '<td><span class="bbadge '+bk.cls+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
+      '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
       '<td style="color:var(--text2);font-variant-numeric:tabular-nums">'+fmtVol(r.volume24h)+'</td>'+
       '<td style="color:var(--bull)">'+r.supportTouches+'</td>'+
       '<td style="color:var(--text2)">'+r.resTouches+'</td>'+
@@ -1391,11 +1449,15 @@ function openDetail(r) {
   document.getElementById('layout').classList.add('open');
   document.getElementById('dp-icon').textContent=r.symbol.substring(0,3);
   document.getElementById('dp-symbol').textContent=r.symbol;
-  document.getElementById('dp-price').textContent=fmt(r.price,4)+'  '+fmtP(r.change24h)+'   Vol '+fmtVol(r.volume24h)+(captureMode?' (as of capture)':'');
+  // Backlog #17f (2026-09-20): cached mode already marks this price as of-capture; the
+  // resting/restore fallback (captureMode false, same as a genuine live scan) could be just
+  // as stale and had no marker at all - restingMode (set in loadCachedOrResting's restore
+  // branch) distinguishes the two false-captureMode cases.
+  document.getElementById('dp-price').textContent=fmt(r.price,4)+'  '+fmtP(r.change24h)+'   Vol '+fmtVol(r.volume24h)+(captureMode?' (as of capture)':(restingMode?' (from last scan)':''));
   var sc=scoreColor(r.score), bk=getBucket(r.score);
   document.getElementById('dp-score').textContent=r.score;
   document.getElementById('dp-score').style.color=sc;
-  document.getElementById('dp-badge').innerHTML='<span class="bbadge '+bk.cls+'">'+bk.label+'</span>'+(r.category?' <span class="bbadge cat-tip" data-tip="'+categoryTip(r.category)+'" style="background:rgba(157,163,180,.12);color:var(--text2)">'+r.category+'</span>':'');
+  document.getElementById('dp-badge').innerHTML='<span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+(r.category?' <span class="bbadge cat-tip" data-tip="'+categoryTip(r.category)+'" style="background:rgba(157,163,180,.12);color:var(--text2)">'+r.category+'</span>':'');
   document.getElementById('dp-tf').textContent='Daily - '+r.name;
   document.getElementById('dp-score-grid').innerHTML=
     '<div class="score-item"><div class="si-label">Support touches</div><div class="si-value" style="color:var(--bull)">'+r.supportTouches+'</div></div>'+
@@ -1430,7 +1492,7 @@ function openDetail(r) {
   if(actionEl && actionTextEl && typeof buildAction==='function') {
     var action = buildAction(r);
     var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-    actionEl.innerHTML = '<span class="vbadge '+vcls+'">'+action.verdict+'</span>';
+    actionEl.innerHTML = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
     actionTextEl.textContent = action.text;
   }
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
@@ -1496,7 +1558,10 @@ function buildReportHTML(data) {
   var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
   var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
   var rows = cands.map(function(r) {
-    var bk = r.score>=89?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'};
+    // Backlog #17e (2026-09-20): missing the Weak tier getBucket() (radar.html's own
+    // canonical bucket function) has - not reachable against live data today (min live score
+    // is 59), fixed anyway per Ryan's call while already in this ternary for Group 1.
+    var bk = r.score>=89?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:r.score>=40?{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'}:{l:'Weak',c:'rgba(107,114,128,.15)',tc:'#6b7280'};
     var sc = r.score>=89?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
     var pw = Math.round(r.position*100);
     // Backlog #9 (2026-09-19, Round 3): posLbl/chType used to be independently re-derived here
@@ -1531,7 +1596,7 @@ function buildReportHTML(data) {
       var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
       actionHTML = '<div style="margin-bottom:12px">'+
         '<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Recommended View</div>'+
-        '<div style="margin-bottom:8px"><span class="vbadge '+vcls+'">'+action.verdict+'</span></div>'+
+        '<div style="margin-bottom:8px"><span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span></div>'+
         '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6">'+action.text+'</div>'+
       '</div>';
     }
@@ -1545,7 +1610,7 @@ function buildReportHTML(data) {
           '<div style="display:flex;align-items:center;gap:10px">'+
             (r.category?'<span class="cat-tip" data-tip="'+categoryTip(r.category)+'" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(157,163,180,.12);color:#9da3b4;border:1px solid rgba(157,163,180,.25)">'+r.category+'</span>':'')+
             '<div style="font-size:22px;font-weight:700;color:'+sc+'">'+r.score+'</div>'+
-            '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+bk.c+';color:'+bk.tc+'">'+bk.l+'</span>'+srcBadgeHTML(r)+
+            '<span class="cat-tip" data-tip="'+bucketTip(bk.l)+'" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+bk.c+';color:'+bk.tc+'">'+bk.l+'</span>'+srcBadgeHTML(r)+
           '</div>'+
           dualScoreLine+
         '</div>'+
@@ -1649,6 +1714,7 @@ function buildReportHTML(data) {
     '<span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Filter by score:</span>'+
     '<select id="score-filter" style="background:#13141f;border:1px solid #2a2b3d;border-radius:6px;padding:4px 10px;color:#9da3b4;font-size:12px;font-family:inherit;outline:none;cursor:pointer">'+
       '<option value="0">All scores</option>'+
+      '<option value="89">89+ High</option>'+
       '<option value="75">75+ Probable</option>'+
       '<option value="60">60+ Emerging</option>'+
       '<option value="40">40+ Watch</option>'+
@@ -2041,6 +2107,7 @@ async function loadCachedOrResting() {
           if(dtg) dtg.style.display = dailyDataAvailable ? '' : 'none';
           applyFilters();
           captureMode = true;
+          restingMode = false;
           var capDate = cap.date;
           // Backlog #13 (2026-09-19): source the cached-mode Scan Details panel from what
           // THIS capture actually published - never from the live `diag` object, which stays
@@ -2130,6 +2197,7 @@ async function loadCachedOrResting() {
   if(prev.diag) diag = prev.diag;
   applyFilters();
   captureMode = false;
+  restingMode = true;
   // Backlog #9 (2026-09-19, Round 3): this fallback path has no capture-file grid/daily dates
   // at all (prev.timestamp is a single "last scanned" epoch, not a per-stream date) - null out
   // both so a report published from this degraded state omits the chips entirely rather than
