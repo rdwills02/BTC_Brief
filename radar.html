@@ -191,7 +191,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <span class="filter-label">Channel Status</span>
   <div class="bucket-filter">
     <button class="bbtn a-all" id="fb-all">All</button>
-    <button class="bbtn" id="fb-high">High 90+</button>
+    <button class="bbtn" id="fb-high">High 89+</button>
     <button class="bbtn" id="fb-probable">Probable 75+</button>
     <button class="bbtn" id="fb-emerging">Emerging 60+</button>
     <button class="bbtn" id="fb-watch">Watch 40+</button>
@@ -513,14 +513,14 @@ function railAgeCellHTML(r) {
 }
 
 function getBucket(s) {
-  if(s>=90) return {label:'High',cls:'bh'};
+  if(s>=89) return {label:'High',cls:'bh'};
   if(s>=75) return {label:'Probable',cls:'bp'};
   if(s>=60) return {label:'Emerging',cls:'be'};
   if(s>=40) return {label:'Watch',cls:'bw'};
   return {label:'Weak',cls:''};
 }
 function scoreColor(s) {
-  if(s>=90) return 'var(--high)';
+  if(s>=89) return 'var(--high)';
   if(s>=75) return 'var(--probable)';
   if(s>=60) return 'var(--emerging)';
   return 'var(--watch)';
@@ -1310,8 +1310,8 @@ function applyFilters() {
       }
     }
     if(activeFilter==='confirmed') return false; // Confirmed filter shows only qualified 'both' rows, handled above
-    if(activeFilter==='high' && r.score<90) return false;
-    if(activeFilter==='probable' && (r.score<75||r.score>=90)) return false;
+    if(activeFilter==='high' && r.score<89) return false;
+    if(activeFilter==='probable' && (r.score<75||r.score>=89)) return false;
     if(activeFilter==='emerging' && (r.score<60||r.score>=75)) return false;
     if(activeFilter==='watch' && (r.score<40||r.score>=60)) return false;
     return true;
@@ -1486,8 +1486,8 @@ function buildReportHTML(data) {
   var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
   var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
   var rows = cands.map(function(r) {
-    var bk = r.score>=90?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'};
-    var sc = r.score>=90?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
+    var bk = r.score>=89?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'};
+    var sc = r.score>=89?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
     var pw = Math.round(r.position*100);
     // Backlog #9 (2026-09-19, Round 3): posLbl/chType used to be independently re-derived here
     // (their own isFlat/slope/position ternaries) instead of reusing positionLabelFor/
@@ -1572,8 +1572,8 @@ function buildReportHTML(data) {
     '</div>';
   }).join('');
 
-  var highCount = cands.filter(function(c){return c.score>=90;}).length;
-  var probCount = cands.filter(function(c){return c.score>=75&&c.score<90;}).length;
+  var highCount = cands.filter(function(c){return c.score>=89;}).length;
+  var probCount = cands.filter(function(c){return c.score>=75&&c.score<89;}).length;
   var lowerThird = cands.filter(function(c){return c.position<=0.33&&c.slope>=0;}).length;
 
   // Since-last-scan diff bar: dropped candidates (channel no longer tradable - fell out
