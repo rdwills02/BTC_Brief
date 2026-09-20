@@ -95,6 +95,45 @@ function threeInsideUp(candles) {
   return hit ? {hit:true, idx:n-1, time:c3.time} : {hit:false, idx:null, time:null};
 }
 
+// Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirror of bb3Reversion, band
+// inverted. Same 20-bar window, same 3-std-dev multiplier, same "last ~5 bars" trigger-search
+// window as bb3Reversion - sign-flipped, not re-derived. Display-only exit-warning flag on an
+// existing long (see Radar Indicator Upgrades.md's "Correction - bearish detection isn't gated
+// on execution"), not part of any independent bearish/short-channel detector (that stays
+// deferred to the future paper-trade project - not touched here).
+function bb3UpperReversion(candles) {
+  // Pushed above the upper 3-std Bollinger Band in the last ~5 bars, now retraced back inside.
+  var n = candles.length; if(n < 21) return {hit:false, idx:null, time:null};
+  function upperAt(i) {
+    var sum=0; for(var j=i-19;j<=i;j++) sum+=candles[j].close;
+    var mean=sum/20, v=0;
+    for(var j=i-19;j<=i;j++){ var d=candles[j].close-mean; v+=d*d; }
+    return mean + 3*Math.sqrt(v/20);
+  }
+  var cur=n-1;
+  if(candles[cur].close > upperAt(cur)) return {hit:false, idx:null, time:null}; // still above band, not retraced yet
+  var start=Math.max(20, cur-4);
+  // Trigger candle = the most recent bar (closest to `cur`) whose high actually pierced the
+  // band - same "most recent dip" convention as bb3Reversion's own loop, mirrored to the upper
+  // side. Loop runs newest-to-oldest so the first hit found is the most recent push.
+  for(var i=cur;i>=start;i--){
+    if(candles[i].high > upperAt(i)) return {hit:true, idx:i, time:candles[i].time};
+  }
+  return {hit:false, idx:null, time:null};
+}
+// Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirror of threeInsideUp,
+// inverted. c1 bullish, c2 bearish and inside c1's body, c3 closes LOWER than c2's close.
+function threeInsideDown(candles) {
+  var n=candles.length; if(n<3) return {hit:false, idx:null, time:null};
+  var c1=candles[n-3], c2=candles[n-2], c3=candles[n-1];
+  var c1Bull = c1.close>c1.open;
+  var c2Bear = c2.close<c2.open;
+  var c2Inside = Math.max(c2.open,c2.close)<=c1.close && Math.min(c2.open,c2.close)>=c1.open;
+  var c3Down = c3.close<c2.close;
+  var hit = c1Bull && c2Bear && c2Inside && c3Down;
+  return hit ? {hit:true, idx:n-1, time:c3.time} : {hit:false, idx:null, time:null};
+}
+
 // Indicator Upgrades Group 1 (2026-09-20): new pattern function. "Rocket at support" per
 // Brett's checklist (Radar Indicator Upgrades.md): green candle, real body resting at/near
 // the fitted support rail, a lower wick below the body, closes at or near the bar's high.
@@ -175,7 +214,8 @@ function detectChannel(candles, diag) {
 
   // Confluence signals are properties of the coin (not the rail pair): compute once.
   var ema = emaState(candles);
-  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles)};
+  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles),
+    bb3UpperReversion:bb3UpperReversion(candles), threeInsideDown:threeInsideDown(candles)};
 
   // Per-coin flags, not per-rail-pair counts. detectChannel() tests every pair of low
   // pivots as a candidate rail - a single coin can produce dozens of pair-evaluations,
@@ -277,7 +317,12 @@ function detectChannel(candles, diag) {
           // only conf.bb3/conf.bullEngulf/conf.threeInsideUp (this function's internal locals)
           // are now {hit,idx,time} objects. Trigger data goes on separate *Trigger fields.
           bb3:conf.bb3.hit, bullEngulf:conf.bullEngulf.hit, threeInsideUp:conf.threeInsideUp.hit,
-          bb3Trigger:conf.bb3, bullEngulfTrigger:conf.bullEngulf, threeInsideUpTrigger:conf.threeInsideUp
+          bb3Trigger:conf.bb3, bullEngulfTrigger:conf.bullEngulf, threeInsideUpTrigger:conf.threeInsideUp,
+          // Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirrors. Display-only,
+          // same row-level boolean + separate *Trigger convention as the bull-side flags above.
+          // Not fed into score/getBucket/buildAction - see the batch's hard constraint.
+          bb3UpperReversion:conf.bb3UpperReversion.hit, threeInsideDown:conf.threeInsideDown.hit,
+          bb3UpperReversionTrigger:conf.bb3UpperReversion, threeInsideDownTrigger:conf.threeInsideDown
         };
       }
     }
@@ -318,6 +363,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PIVOT_LB: PIVOT_LB, TOUCH_TOL: TOUCH_TOL, ROCKET_CLOSE_TOL: ROCKET_CLOSE_TOL,
     clamp: clamp, emaLast: emaLast, emaState: emaState,
     bb3Reversion: bb3Reversion, bullEngulfing: bullEngulfing, threeInsideUp: threeInsideUp,
+    bb3UpperReversion: bb3UpperReversion, threeInsideDown: threeInsideDown,
     rocketAtSupport: rocketAtSupport, multiSignalOnOneCandle: multiSignalOnOneCandle,
     findPivots: findPivots, railAt: railAt, detectChannel: detectChannel
   };
