@@ -1445,6 +1445,26 @@ function renderDiag() {
   document.getElementById('diag-funnel').innerHTML = items.map(function(i) {
     return '<span style="color:'+i.c+';font-weight:600">'+i.value+' '+i.label+'</span>';
   }).join(' -> ');
+
+  // Group 5 item 5 (2026-09-21): Act/Watch/Wait breakdown strip, appended AFTER the Candidates
+  // endpoint in both #diag-grid and #diag-funnel - deliberately NOT interleaved into `items`
+  // itself (that array/chain is the funnel's own gate sequence; Act/Watch/Wait is an exact
+  // three-way partition of Candidates, not a further gate). Counted over allResults - the same
+  // array Candidates itself counts in both live and cached mode, see the `items` construction
+  // above - never `filtered`, so these stay pinned to the raw scan output and don't drift when
+  // a filter slider is touched. Reuses the existing vbadge/va-act/va-watch/va-wait classes as-is
+  // (already defined, same colors as the Action column) - zero new CSS.
+  var vaCounts = {ACT:0, WATCH:0, WAIT:0};
+  allResults.forEach(function(r) {
+    var v = buildAction(r).verdict;
+    vaCounts[v] = (vaCounts[v]||0) + 1;
+  });
+  document.getElementById('diag-grid').innerHTML +=
+    '<div class="diag-item va-act"><div class="diag-label">Act</div><div class="diag-value">'+vaCounts.ACT+'</div></div>' +
+    '<div class="diag-item va-watch"><div class="diag-label">Watch</div><div class="diag-value">'+vaCounts.WATCH+'</div></div>' +
+    '<div class="diag-item va-wait"><div class="diag-label">Wait</div><div class="diag-value">'+vaCounts.WAIT+'</div></div>';
+  document.getElementById('diag-funnel').innerHTML +=
+    ' &nbsp;|&nbsp; <span class="vbadge va-act">'+vaCounts.ACT+' Act</span> <span class="vbadge va-watch">'+vaCounts.WATCH+' Watch</span> <span class="vbadge va-wait">'+vaCounts.WAIT+' Wait</span>';
 }
 
 function getThresh() {
