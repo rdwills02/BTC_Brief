@@ -240,7 +240,7 @@ function detectChannel(candles, diag) {
 
       var supTouches = lows.filter(function(l) {
         var exp = railAt(slope,intercept,l.idx);
-        return Math.abs(l.price-exp)/exp <= TOUCH_TOL;
+        return exp > 0 && Math.abs(l.price-exp)/exp <= TOUCH_TOL;
       });
       if(supTouches.length < 3) continue;
       had3Touches = true;
@@ -258,7 +258,7 @@ function detectChannel(candles, diag) {
 
       var resTouches = relHighs.filter(function(h) {
         var exp = railAt(slope,intercept,h.idx)+channelH;
-        return Math.abs(h.price-exp)/exp <= TOUCH_TOL;
+        return exp > 0 && Math.abs(h.price-exp)/exp <= TOUCH_TOL;
       });
 
       var supNow = railAt(slope,intercept,lastIdx);
