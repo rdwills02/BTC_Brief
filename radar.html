@@ -1714,7 +1714,14 @@ function buildChart(r) {
   detailTriggers = {bb3:r.bb3Trigger, bullEngulf:r.bullEngulfTrigger, threeInsideUp:r.threeInsideUpTrigger, rocket:r.rocketTrigger};
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
-  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++)chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});}).observe(container);
+  // Indicator Upgrades Group 4, item 4 (2026-09-21), confirmed live by Ryan: applyOptions
+  // alone resizes the canvas but never recomputes bar spacing, so growing the panel left
+  // blank canvas past the real data and shrinking it clipped the oldest candles off-screen
+  // instead of rescaling. fitContent() is what buildChart()'s own last line already calls
+  // on a fresh build (reopening a coin 'fixed' it by luck, not by design) - calling it again
+  // here after every resize keeps the full candle range fit to whatever width the panel is
+  // dragged to, growing or shrinking, same as a fresh build would.
+  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++){chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});chart.timeScale().fitContent();}}).observe(container);
 }
 
 function buildReportHTML(data) {
