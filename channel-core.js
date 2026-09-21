@@ -295,6 +295,16 @@ function detectChannel(candles, diag) {
       if(sa > 5) score -= 10;
       if(slope < 0) score -= 5;
       score += ema.pts; // EMA 21/50 confluence: +10/+8 above both, +5 above 50 only, 0 below
+      // Group 5 item 6 (2026-09-21), OPTION A per Ryan's explicit direction (2026-09-21):
+      // n counts only bb3/bullEngulf/threeInsideUp, the three pass-level pattern signals
+      // already known at this point in the loop. rocket is deliberately excluded - it isn't
+      // computed until AFTER `best` is chosen (rocketAtSupport() runs once, post-loop, against
+      // the WINNING rail only - see the `if(best)` block below), so it structurally cannot
+      // feed a per-candidate-pair bonus computed here. Feeding rocket into score is a distinct,
+      // not-yet-approved ask - filed separately as its own backlog item, not built here.
+      var patternN = (conf.bb3.hit?1:0) + (conf.bullEngulf.hit?1:0) + (conf.threeInsideUp.hit?1:0);
+      var patternBonus = patternN > 0 ? (2*patternN - 1) : 0;
+      score += patternBonus;
       score = Math.round(clamp(score,0,100));
       // NOTE: no per-coin "scored" counter here - a coin only reaches this line at all
       // if some pair passed every gate through position, which is exactly the condition
