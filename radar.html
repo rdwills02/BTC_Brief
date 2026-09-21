@@ -126,6 +126,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .chart-expand-btn{position:absolute;top:8px;right:8px;z-index:5;background:rgba(30,32,53,.85);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}
 .chart-expand-btn:hover{color:var(--text);border-color:#7b6ef6}
 #detail-chart{width:100%;height:100%}
+/* Indicator Upgrades Group 5, item 1 (2026-09-21): 4-Day pattern-band overlay. Sits on top of
+   the chart canvas (z-index above the chart's own canvas, below the legend/expand-btn chrome)
+   but never intercepts clicks/scroll/crosshair - band divs are appended/cleared by
+   renderPatternBands() in toggleOverlay's module, never by buildChart's container.innerHTML
+   reset (this element is a SIBLING of #detail-chart, not a child, so it survives that reset). */
+#detail-chart-bands{position:absolute;inset:0;pointer-events:none;z-index:2}
 .chart-legend{position:absolute;top:8px;left:10px;font-size:10px;color:var(--muted);z-index:10;pointer-events:none;display:flex;gap:12px}
 .legend-item{display:flex;align-items:center;gap:4px}
 .legend-dot{width:10px;height:2px;border-radius:1px}
@@ -318,6 +324,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <div class="legend-item"><div class="legend-dot" style="background:rgba(232,117,74,.4)"></div><span>Invalidation</span></div>
         </div>
         <div id="detail-chart"></div>
+        <div id="detail-chart-bands"></div>
       </div>
       <div class="ds">
         <div class="ds-title">Channel Score</div>
@@ -417,6 +424,11 @@ var detailChart = null;
 // per-card equivalent (el._overlay*, set in drawReportChart() - see buildReportHTML below).
 var detailOverlay = null;
 var detailCS = null, detailEmaSeries = null, detailPivotMarkers = null, detailTriggers = null;
+// Indicator Upgrades Group 5, item 1 (2026-09-21): detailCandles/detailBandsEl let
+// toggleOverlay's renderPatternBands() recompute 4-Day band pixel positions (chart.timeScale()
+// needs the chart instance + the candle series it was built from) without threading them through
+// every call site - same module-level-state pattern as detailCS/detailTriggers above.
+var detailCandles = null, detailBandsEl = null;
 var scanning = false;
 var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
 // Computed once per scan in runScan() from radar.html's own localStorage history (see
@@ -500,12 +512,24 @@ function confluenceList(r) {
   // content for these 5; revisit if Ryan wants the others interactive too.
   if(r.emaState==='above_both') b.push({t:'Above 21 & 50 EMA',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'Price is above both the 21-day and 50-day EMA - a bullish trend filter. Click to show the EMA lines on the chart.',key:'ema'});
   else if(r.emaState==='above_50') b.push({t:'Above 50 EMA',c:'#f5a623',bg:'rgba(245,166,35,.12)',tip:'Price is above the 50-day EMA but not the 21-day EMA. Click to show the EMA lines on the chart.',key:'ema'});
-  if(r.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal. Click to mark the triggering candle on the chart.',key:'bb3'});
-  if(r.bullEngulf) b.push({t:'Bullish engulfing',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering candle on the chart.',key:'bullEngulf'});
-  if(r.threeInsideUp) b.push({t:'3 Inside Up',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering candle on the chart.',key:'threeInsideUp'});
+  // Indicator Upgrades Group 5, item 1 (2026-09-21): pattern flags split into 4D (grid pass) /
+  // 1D (daily pass) variants - see mergeCandidateRow's PATTERN_KEYS block. Grid and daily passes
+  // detect against different-timeframe candle series, so a pattern is now two independent facts,
+  // not one shared one; only the timeframe(s) actually true render a pill (same
+  // if(r.key) push(...) pattern as before) - a coin with 4D true / 1D false shows exactly one
+  // pill, never two placeholders. 4-Day tooltip wording swaps "the triggering candle" ->
+  // "the triggering 4-day range" per spec; 1D tooltip text is unchanged from before the split.
+  // Colors unchanged this item - Group 5 item 2 recolors bullEngulf/threeInsideUp/rocket next.
+  if(r.bb3_4D) b.push({t:'3BB mean-reversion (4-Day)',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal. Click to mark the triggering 4-day range on the chart.',key:'bb3_4D'});
+  if(r.bb3_1D) b.push({t:'3BB mean-reversion (1D)',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal. Click to mark the triggering candle on the chart.',key:'bb3_1D'});
+  if(r.bullEngulf_4D) b.push({t:'Bullish engulfing (4-Day)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering 4-day range on the chart.',key:'bullEngulf_4D'});
+  if(r.bullEngulf_1D) b.push({t:'Bullish engulfing (1D)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering candle on the chart.',key:'bullEngulf_1D'});
+  if(r.threeInsideUp_4D) b.push({t:'3 Inside Up (4-Day)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering 4-day range on the chart.',key:'threeInsideUp_4D'});
+  if(r.threeInsideUp_1D) b.push({t:'3 Inside Up (1D)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering candle on the chart.',key:'threeInsideUp_1D'});
   // Indicator Upgrades Group 1, item 2 (2026-09-20): Rocket-at-support - channel-core.js's
   // rocketAtSupport(), same show-only-what-applies pattern as the three pattern flags above.
-  if(r.rocket) b.push({t:'Rocket at support',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering candle on the chart.',key:'rocket'});
+  if(r.rocket_4D) b.push({t:'Rocket at support (4-Day)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering 4-day range on the chart.',key:'rocket_4D'});
+  if(r.rocket_1D) b.push({t:'Rocket at support (1D)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering candle on the chart.',key:'rocket_1D'});
   // Indicator Upgrades Group 1, item 3 (2026-09-20): threshold pills off fields detectChannel
   // already computes - r.position is the same 0-1 clamped value the position bar/label already
   // use, no new math. position>0 means price sits above the fitted support rail (clamp makes
@@ -526,15 +550,18 @@ function confluenceList(r) {
   // multiSignalOnOneCandle(). Distinct amber/gold styling (not the green used by the individual
   // pattern flags above) since this is an aggregate "extra confidence" signal, not a pattern of
   // its own - deliberately visually distinct so it doesn't read as a 5th pattern type.
-  if(r.multiSignal) b.push({t:'Multiple signals aligned',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Two or more of the pattern signals above (3BB mean-reversion, bullish engulfing, 3 Inside Up, Rocket at support) triggered on the same or an adjacent candle.'});
+  if(r.multiSignal_4D) b.push({t:'Multiple signals aligned (4-Day)',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Two or more of the pattern signals above (3BB mean-reversion, bullish engulfing, 3 Inside Up, Rocket at support), from the 4-Day grid pass, triggered on the same or an adjacent 4-day bar.'});
+  if(r.multiSignal_1D) b.push({t:'Multiple signals aligned (1D)',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Two or more of the pattern signals above (3BB mean-reversion, bullish engulfing, 3 Inside Up, Rocket at support), from the 1D daily pass, triggered on the same or an adjacent daily candle.'});
   // Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirrors - display-only flags
   // on an existing long, not a short-entry signal (see Radar Indicator Upgrades.md's BUILD
   // PLAN). Bearish/red styling (#e8754a, the app's existing --bear token, already used for
   // WATCH/resistance-line styling elsewhere) so these read as visually distinct from every
   // Group 1 pill (all green/purple/amber). Resolved 2026-09-20: static/non-interactive, no
   // `key` - same treatment as the threshold pills above, no click-to-toggle overlay this batch.
-  if(r.bb3UpperReversion) b.push({t:'3BB upper reversion',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Price pushed above the upper 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a bearish exit-warning signal on an existing long, not a short-entry signal.'});
-  if(r.threeInsideDown) b.push({t:'3 Inside Down',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'A bullish candle, then a smaller bearish candle inside its range, then a lower close - a 3-candle bearish reversal pattern. Exit-warning on an existing long, not a short-entry signal.'});
+  if(r.bb3UpperReversion_4D) b.push({t:'3BB upper reversion (4-Day)',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Price pushed above the upper 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a bearish exit-warning signal on an existing long, not a short-entry signal.'});
+  if(r.bb3UpperReversion_1D) b.push({t:'3BB upper reversion (1D)',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Price pushed above the upper 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a bearish exit-warning signal on an existing long, not a short-entry signal.'});
+  if(r.threeInsideDown_4D) b.push({t:'3 Inside Down (4-Day)',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'A bullish candle, then a smaller bearish candle inside its range, then a lower close - a 3-candle bearish reversal pattern. Exit-warning on an existing long, not a short-entry signal.'});
+  if(r.threeInsideDown_1D) b.push({t:'3 Inside Down (1D)',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'A bullish candle, then a smaller bearish candle inside its range, then a lower close - a 3-candle bearish reversal pattern. Exit-warning on an existing long, not a short-entry signal.'});
   return b;
 }
 function confluenceHTML(r) {
@@ -788,8 +815,8 @@ function toLightCandidate(r) {
     supportTouches:r.supportTouches,resTouches:r.resTouches,containment:r.containment,slope:r.slope,
     position:r.position,supportNow:r.supportNow,resistNow:r.resistNow,invalidation:r.invalidation,
     channelH:r.channelH,firstIdx:r.firstIdx,lastIdx:r.lastIdx,isAscending:r.isAscending,isFlat:r.isFlat,
-    explanation:r.explanation,emaState:r.emaState,bb3:r.bb3,bullEngulf:r.bullEngulf,
-    threeInsideUp:r.threeInsideUp,tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category,
+    explanation:r.explanation,emaState:r.emaState,
+    tvExchange:r.tvExchange,tvPair:r.tvPair,category:r.category,
     source:r.source,gridScore:r.gridScore,dailyScore:r.dailyScore,dailyStale:r.dailyStale,
     supportRailAgeDays:r.supportRailAgeDays,supportRailAgeBand:r.supportRailAgeBand,
     // Indicator Upgrades Group 1, item 5 (2026-09-20): rocket/multiSignal booleans only - same
@@ -799,11 +826,19 @@ function toLightCandidate(r) {
     // consumers (localStorage restore, reportData.candidates), so a restored/reported row never
     // has a chart to overlay a trigger marker onto - see "Scoring + report parity" in Radar
     // Indicator Upgrades.md, confirmed with Ryan the overlay does not need to carry over here.
-    rocket:r.rocket, multiSignal:r.multiSignal,
-    // Indicator Upgrades Group 2, item 5 (2026-09-20), waypoint (c): bearish exit-warning
-    // mirrors - booleans only, same "pills survive, chart doesn't" rule. No overlay this batch
-    // (item 4 skipped) so there'd be nothing to point a trigger at here even if it were kept.
-    bb3UpperReversion:r.bb3UpperReversion, threeInsideDown:r.threeInsideDown};
+    //
+    // Indicator Upgrades Group 5, item 1 (2026-09-21): booleans only, now split into _4D/_1D
+    // pairs (see mergeCandidateRow) - replaces the single bb3/bullEngulf/threeInsideUp/rocket/
+    // multiSignal/bb3UpperReversion/threeInsideDown fields above/below. Both consumers of this
+    // function only need the pills to render correctly (confluenceList reads these split fields
+    // directly - see its own comment); neither needs a chart to overlay onto, same reasoning as
+    // the *Trigger omission already established for this function.
+    bb3_4D:r.bb3_4D, bb3_1D:r.bb3_1D, bullEngulf_4D:r.bullEngulf_4D, bullEngulf_1D:r.bullEngulf_1D,
+    threeInsideUp_4D:r.threeInsideUp_4D, threeInsideUp_1D:r.threeInsideUp_1D,
+    rocket_4D:r.rocket_4D, rocket_1D:r.rocket_1D,
+    multiSignal_4D:r.multiSignal_4D, multiSignal_1D:r.multiSignal_1D,
+    bb3UpperReversion_4D:r.bb3UpperReversion_4D, bb3UpperReversion_1D:r.bb3UpperReversion_1D,
+    threeInsideDown_4D:r.threeInsideDown_4D, threeInsideDown_1D:r.threeInsideDown_1D};
 }
 function getPrevScanHistory() {
   try {
@@ -1652,13 +1687,24 @@ function emaSeriesFor(candles, period) {
 // exact same code in two separate JS runtimes without hand-duplicating it. That only works if
 // this function is self-contained: every dependency comes in as a parameter, nothing reaches
 // into an outer closure or a global only radar.html's own page defines.
-//   key: which pill was clicked ('ema'|'bb3'|'bullEngulf'|'threeInsideUp'|'rocket')
+//   key: which pill was clicked ('ema'|'bb3_4D'|'bb3_1D'|'bullEngulf_4D'|'bullEngulf_1D'|
+//        'threeInsideUp_4D'|'threeInsideUp_1D'|'rocket_4D'|'rocket_1D')
 //   state: the per-chart {} of currently-active keys, mutated in place
 //   cs: the candlestick series (markers are set on this)
 //   emaSeries: {ema21, ema50} line series refs, already added hidden at chart-build time
 //   pivotMarkers: the permanent support-pivot "S" markers, unaffected by toggling
-//   triggers: {bb3,bullEngulf,threeInsideUp,rocket} -> {time} or null (from *Trigger fields)
-function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers) {
+//   triggers: {bb3_4D,bb3_1D,bullEngulf_4D,bullEngulf_1D,threeInsideUp_4D,threeInsideUp_1D,
+//     rocket_4D,rocket_1D} -> {time} or null (from the split *Trigger fields - see
+//     mergeCandidateRow)
+//   chart, candles, bandsEl: OPTIONAL, live-panel-only (buildChart passes detailChart/
+//     detailCandles/detailBandsEl; the report's own call site in buildReportHTML does not pass
+//     these, so they're undefined there and every use below is guarded - the report keeps
+//     working exactly as it does today, just without the new 4-Day band rendering, which needs
+//     a chart instance + a bands DOM element the static report doesn't have. Passing them as
+//     trailing optional args, rather than a 7th required one, keeps the report's existing
+//     6-arg call site valid with no crash - required by this function's own toString()-injection
+//     contract above (self-contained, but an absent optional param is not a broken contract).
+function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart, candles, bandsEl) {
   state[key] = !state[key];
   if(key === 'ema') {
     if(emaSeries.ema21) emaSeries.ema21.applyOptions({visible: !!state.ema});
@@ -1666,12 +1712,17 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers) {
     return;
   }
   // Pattern-flag markers: cs.setMarkers() REPLACES the whole array, so every toggle rebuilds it
-  // from scratch - permanent pivot markers plus whichever pattern markers are currently active.
+  // from scratch - permanent pivot markers plus whichever 1D pattern markers are currently
+  // active. Indicator Upgrades Group 5, item 1 (2026-09-21): patternDefs now lists only the _1D
+  // variants - the _4D variants render as a shaded band below instead of a point marker (a grid
+  // pass trigger idx doesn't line up with a real point on the daily candle series being charted
+  // here - see mergeCandidateRow's own comment on the bug this closes). Colors unchanged this
+  // item; Group 5 item 2 recolors bullEngulf/threeInsideUp/rocket next.
   var patternDefs = [
-    {key:'bb3', color:'#7b6ef6', text:'B'},
-    {key:'bullEngulf', color:'#00c896', text:'E'},
-    {key:'threeInsideUp', color:'#00c896', text:'3'},
-    {key:'rocket', color:'#00c896', text:'R'}
+    {key:'bb3_1D', color:'#7b6ef6', text:'B'},
+    {key:'bullEngulf_1D', color:'#00c896', text:'E'},
+    {key:'threeInsideUp_1D', color:'#00c896', text:'3'},
+    {key:'rocket_1D', color:'#00c896', text:'R'}
   ];
   var patternMarkers = [];
   for(var i=0;i<patternDefs.length;i++) {
@@ -1680,10 +1731,74 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers) {
   }
   var all = (pivotMarkers||[]).concat(patternMarkers).sort(function(a,b){return a.time-b.time;});
   cs.setMarkers(all);
+
+  // Indicator Upgrades Group 5, item 1 (2026-09-21): 4-Day band rendering, live panel only (see
+  // the chart/candles/bandsEl param comment above). renderPatternBands is a plain top-level
+  // function, NOT toString()-injected into the report - this call only ever executes when
+  // chart/candles/bandsEl are truthy, which never happens on the report's own (unmodified,
+  // 6-arg) call site, so the reference is simply never reached there. No throw.
+  if(chart && candles && bandsEl) renderPatternBands(state, triggers, chart, candles, bandsEl);
+}
+// Indicator Upgrades Group 5, item 1 (2026-09-21): draws the 4-Day pattern band(s) currently
+// toggled on. Called from toggleOverlay (click) and from buildChart's ResizeObserver (so a band
+// stays correctly positioned while the detail panel is being drag-resized - Group 4 item 4).
+// lightweight-charts' setMarkers() only places point markers, so this draws each band as a
+// plain absolutely-positioned div on top of the chart canvas, positioned via timeToCoordinate().
+function renderPatternBands(state, triggers, chart, candles, bandsEl) {
+  bandsEl.innerHTML = '';
+  if(!candles || candles.length < 2) return;
+  var lastTime = candles[candles.length-1].time;
+  var ts = chart.timeScale();
+  var lastX = ts.timeToCoordinate(lastTime);
+  var barPx = ts.options().barSpacing; // pixel width of one bar at the current zoom - used only
+                                        // for the accumulating-bar clamp below, in pixel space.
+  var GRID_INTERVAL_DAYS = 4; // confirmed in capture data (grid_interval_days) and this app's
+                              // own "4-Day" vocabulary throughout - the grid pass's fixed
+                              // candle width.
+  var bandKeys = ['bb3_4D','bullEngulf_4D','threeInsideUp_4D','rocket_4D'];
+  var bands = [];
+  for(var bi=0; bi<bandKeys.length; bi++) {
+    var bk = bandKeys[bi], bt = triggers[bk];
+    if(!state[bk] || !bt) continue;
+    var leftX = ts.timeToCoordinate(bt.time);
+    if(leftX == null) continue; // trigger candle scrolled out of view - skip, don't crash
+    var rightRaw = bt.time + GRID_INTERVAL_DAYS*86400;
+    var rightX = ts.timeToCoordinate(rightRaw);
+    if(rightX == null) {
+      // Accumulating-bar clamp: a 4-day bar still in progress has a theoretical end date
+      // beyond the last real daily candle. timeToCoordinate() only resolves times within the
+      // chart's own data range - it does NOT extrapolate past the last real bar, even by a
+      // fraction of a bar-width (confirmed live: lastTime+halfBarWidth also returned null) -
+      // so the clamp has to happen in PIXEL space instead: half a bar-width past the last real
+      // candle's own x-coordinate, extending further right on its own as real days land and
+      // rightRaw's own timeToCoordinate() starts resolving normally again.
+      if(lastX == null) continue; // last candle itself scrolled out of view - nothing sane to clamp to
+      rightX = lastX + barPx/2;
+    }
+    bands.push({left:Math.min(leftX,rightX), right:Math.max(leftX,rightX)});
+  }
+  // Adjacent-band gutter: consecutive bands sharing a boundary get a 3px total gutter (1.5px
+  // inset each side) so they read as two distinct signals, not one fused region.
+  bands.sort(function(a,b){return a.left-b.left;});
+  for(var gi=0; gi<bands.length-1; gi++) {
+    if(bands[gi+1].left - bands[gi].right < 3) { bands[gi].right -= 1.5; bands[gi+1].left += 1.5; }
+  }
+  for(var di=0; di<bands.length; di++) {
+    var bd = bands[di], w = Math.max(1, bd.right - bd.left);
+    var div = document.createElement('div');
+    div.style.cssText = 'position:absolute;top:0;bottom:0;left:'+bd.left+'px;width:'+w+'px;'+
+      'background:rgba(91,141,239,.12);border-left:1px dashed #5b8def;border-right:1px dashed #5b8def;';
+    bandsEl.appendChild(div);
+  }
 }
 function buildChart(r) {
   var container=document.getElementById('detail-chart');
   container.innerHTML='';
+  // Indicator Upgrades Group 5, item 1 (2026-09-21): #detail-chart-bands is a SIBLING of
+  // #detail-chart (see markup), so the innerHTML reset above never touches it - clear it
+  // explicitly here so reopening a different coin doesn't leave a stale band from the last one.
+  var bandsEl = document.getElementById('detail-chart-bands');
+  if(bandsEl) bandsEl.innerHTML = '';
   if(detailChart){detailChart.remove();detailChart=null;}
   var chart=LightweightCharts.createChart(container,{
     width:container.clientWidth,height:container.clientHeight,
@@ -1724,7 +1839,18 @@ function buildChart(r) {
   detailCS = cs;
   detailEmaSeries = emaSeries;
   detailPivotMarkers = markers;
-  detailTriggers = {bb3:r.bb3Trigger, bullEngulf:r.bullEngulfTrigger, threeInsideUp:r.threeInsideUpTrigger, rocket:r.rocketTrigger};
+  // Indicator Upgrades Group 5, item 1 (2026-09-21): split _4D (grid pass) / _1D (daily pass)
+  // trigger pairs - replaces the single bb3/bullEngulf/threeInsideUp/rocket keys, which mixed
+  // a grid-pass trigger idx/time with the daily candle series actually being charted here on a
+  // 'both'-source row (the bug this item fixes - see mergeCandidateRow's own comment).
+  detailTriggers = {
+    bb3_4D:r.bb3_4DTrigger, bb3_1D:r.bb3_1DTrigger,
+    bullEngulf_4D:r.bullEngulf_4DTrigger, bullEngulf_1D:r.bullEngulf_1DTrigger,
+    threeInsideUp_4D:r.threeInsideUp_4DTrigger, threeInsideUp_1D:r.threeInsideUp_1DTrigger,
+    rocket_4D:r.rocket_4DTrigger, rocket_1D:r.rocket_1DTrigger
+  };
+  detailCandles = r.candles;
+  detailBandsEl = bandsEl;
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
   // Indicator Upgrades Group 4, item 4 (2026-09-21), confirmed live by Ryan: applyOptions
@@ -1734,7 +1860,17 @@ function buildChart(r) {
   // on a fresh build (reopening a coin 'fixed' it by luck, not by design) - calling it again
   // here after every resize keeps the full candle range fit to whatever width the panel is
   // dragged to, growing or shrinking, same as a fresh build would.
-  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++){chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});chart.timeScale().fitContent();}}).observe(container);
+  // Indicator Upgrades Group 5, item 1 (2026-09-21): re-render any active 4-Day band(s) after
+  // every resize too - their pixel positions come from timeToCoordinate(), which changes with
+  // the canvas width, same reason fitContent() itself is re-called on every resize above.
+  // CORRECTION, same item, live-tested: timeToCoordinate() reads a STALE (pre-resize) scale if
+  // called synchronously right after applyOptions()/fitContent() - confirmed by direct
+  // measurement (immediate read returned the OLD x-coordinate; one requestAnimationFrame later
+  // it returned the correct new one). fitContent() itself doesn't need this deferral (it doesn't
+  // read back through timeToCoordinate), but renderPatternBands does, so its call is deferred one
+  // frame - the redraw is still effectively synchronous with the resize, just one paint tick
+  // later, not visibly delayed.
+  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++){chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});chart.timeScale().fitContent();}if(detailBandsEl){var rC=chart,rO=detailOverlay,rT=detailTriggers,rCa=detailCandles,rB=detailBandsEl;requestAnimationFrame(function(){renderPatternBands(rO,rT,rC,rCa,rB);});}}).observe(container);
 }
 
 function buildReportHTML(data) {
@@ -2143,7 +2279,7 @@ window.addEventListener('load', function() {
     var pill = e.target.closest('.cat-toggle');
     if(!pill || !detailCS) return;
     var key = pill.dataset.key;
-    toggleOverlay(key, detailOverlay, detailCS, detailEmaSeries, detailPivotMarkers, detailTriggers);
+    toggleOverlay(key, detailOverlay, detailCS, detailEmaSeries, detailPivotMarkers, detailTriggers, detailChart, detailCandles, detailBandsEl);
     if(key === 'ema') {
       // "Above 21 & 50 EMA" and "Above 50 EMA" are mutually exclusive pills (only one renders
       // per row - see confluenceList) but both share key 'ema', so there's only ever one to
@@ -2355,26 +2491,32 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   // fields to survive the merge; confirmed with a live-shape test, not just by reading this.
   var merged = {};
   for(var k in base) merged[k] = base[k];
-  // Indicator Upgrades Group 4, item 2 (2026-09-21), CONFIRMED by Ryan: pattern-flag fields
-  // (and their paired *Trigger objects) always come from the GRID pass when a grid row exists
-  // for this coin, regardless of which source (`base` above) wins for everything else - score,
-  // geometry, rails, explanation are all untouched by this block. Root cause this closes: the
-  // daily stream is only periodically captured and can be stale relative to grid's current
-  // computation - the generic spread above lets a stale/missing daily value silently overwrite
-  // a genuinely-current grid one on a 'both' row. No-op by construction on a 'grid'-only row
-  // (base is already gridRow, so this reassigns the same values) and on a 'daily'-only row
-  // (gridRow is null, block skipped entirely - nothing to prefer grid for). The `!== undefined`
-  // guard means a field grid genuinely lacks is left as whatever the spread above already put
-  // there, rather than being blanked - this only overrides with a real value, never with a gap.
-  if(gridRow) {
-    var G4_PATTERN_FIELDS = ['bb3','bullEngulf','threeInsideUp','rocket','multiSignal',
-      'bb3UpperReversion','threeInsideDown',
-      'bb3Trigger','bullEngulfTrigger','threeInsideUpTrigger','rocketTrigger',
-      'multiSignalTrigger','bb3UpperReversionTrigger','threeInsideDownTrigger'];
-    for(var g4i=0; g4i<G4_PATTERN_FIELDS.length; g4i++) {
-      var g4f = G4_PATTERN_FIELDS[g4i];
-      if(gridRow[g4f] !== undefined) merged[g4f] = gridRow[g4f];
-    }
+  // Indicator Upgrades Group 5, item 1 (2026-09-21), CONFIRMED by Ryan: REPLACES the Group 4
+  // item 2 grid-wins-on-'both' override that used to live here. Root cause that fix only
+  // half-closed: grid (4-day) and daily (1-day) passes detect patterns against DIFFERENT
+  // candle series - forcing grid to always win the field made the FLAG correct, but
+  // merged.candles still comes from `base` (the daily row on a 'both' row - see above), so a
+  // grid-pass trigger idx/time got rendered as a marker against the DAILY candle series -
+  // right flag, wrong candle. Confirmed on TRX; hit 28/29 'both'-source pattern-true coins in
+  // the 2026-09-21 scan (36% of the universe). Fix: stop picking a winner entirely - split every
+  // pattern flag + its *Trigger companion into independent _4D (grid pass) / _1D (daily pass)
+  // fields, each read straight off its OWN source row. No precedence logic needed: a 'grid'-only
+  // row naturally gets only _4D fields (dailyRow is null), a 'daily'-only row naturally gets
+  // only _1D fields (gridRow is null), and a 'both' row gets both, each accurate against its own
+  // candle series. The old unified field (bb3/bullEngulf/etc, quietly present via the generic
+  // `for(var k in base)` spread above) is deleted below so nothing can accidentally read a value
+  // that mixes the two timeframes - confluenceList/toLightCandidate/buildChart/toggleOverlay all
+  // read the split fields now (see their own comments).
+  var PATTERN_KEYS = ['bb3','bullEngulf','threeInsideUp','rocket','multiSignal',
+    'bb3UpperReversion','threeInsideDown'];
+  for(var pki=0; pki<PATTERN_KEYS.length; pki++) {
+    var pk = PATTERN_KEYS[pki];
+    merged[pk+'_4D'] = !!(gridRow && gridRow[pk]);
+    merged[pk+'_4DTrigger'] = (gridRow && gridRow[pk+'Trigger']) || null;
+    merged[pk+'_1D'] = !!(dailyRow && dailyRow[pk]);
+    merged[pk+'_1DTrigger'] = (dailyRow && dailyRow[pk+'Trigger']) || null;
+    delete merged[pk];
+    delete merged[pk+'Trigger'];
   }
   merged.score = Math.max(gridScore!=null?gridScore:-1, dailyScore!=null?dailyScore:-1);
   merged.gridScore = gridScore;
