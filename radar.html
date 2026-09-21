@@ -209,7 +209,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </header>
 
-<div class="diag-panel" id="diag-panel">
+<!-- Indicator Upgrades Group 5, item 3 (2026-09-21), CONFIRMED: open by default instead of
+     display:none until the first #diag-btn click - Ryan's observation, the panel's contents are
+     wanted on first look, not hidden behind an extra click every session. The #diag-btn click
+     handler below is unchanged (classList.toggle('visible')), so this is purely the starting
+     state; the button still opens/closes it same as before. See loadCachedOrResting's own
+     comment (Backlog #13's cached-load branch) for the paired fix this needed. -->
+<div class="diag-panel visible" id="diag-panel">
   <div class="diag-title" id="diag-title">Scan Details — live updating</div>
   <div class="diag-grid" id="diag-grid"></div>
   <div class="diag-funnel" id="diag-funnel"></div>
@@ -519,17 +525,26 @@ function confluenceList(r) {
   // if(r.key) push(...) pattern as before) - a coin with 4D true / 1D false shows exactly one
   // pill, never two placeholders. 4-Day tooltip wording swaps "the triggering candle" ->
   // "the triggering 4-day range" per spec; 1D tooltip text is unchanged from before the split.
-  // Colors unchanged this item - Group 5 item 2 recolors bullEngulf/threeInsideUp/rocket next.
+  // Indicator Upgrades Group 5, item 2 (2026-09-21), CONFIRMED: bullEngulf/threeInsideUp/rocket
+  // used to all share #00c896 (bb3 was the only distinct color) - two same-colored patterns on
+  // one candle read as one ambiguous signal even though both letters were technically legible.
+  // New colors, chosen to avoid collision with multiSignal (#ffd166 amber) and the bearish
+  // mirrors (#e8754a red): bb3 keeps #7b6ef6 (purple, unchanged), bullEngulf -> #5b8def (blue),
+  // threeInsideUp -> #f472b6 (pink), rocket -> #22d3ee (cyan). Applies to both the pill
+  // background/text (here) and the overlay dot on the chart (toggleOverlay's patternDefs) - each
+  // pattern keeps the same base color across its _4D/_1D pair (composes with item 1: timeframe
+  // is distinguished by label text and marker shape/band, not color). bg is each color's own
+  // rgba at .15 opacity, matching bb3's existing rgba(123,110,246,.15) pattern.
   if(r.bb3_4D) b.push({t:'3BB mean-reversion (4-Day)',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal. Click to mark the triggering 4-day range on the chart.',key:'bb3_4D'});
   if(r.bb3_1D) b.push({t:'3BB mean-reversion (1D)',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal. Click to mark the triggering candle on the chart.',key:'bb3_1D'});
-  if(r.bullEngulf_4D) b.push({t:'Bullish engulfing (4-Day)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering 4-day range on the chart.',key:'bullEngulf_4D'});
-  if(r.bullEngulf_1D) b.push({t:'Bullish engulfing (1D)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering candle on the chart.',key:'bullEngulf_1D'});
-  if(r.threeInsideUp_4D) b.push({t:'3 Inside Up (4-Day)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering 4-day range on the chart.',key:'threeInsideUp_4D'});
-  if(r.threeInsideUp_1D) b.push({t:'3 Inside Up (1D)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering candle on the chart.',key:'threeInsideUp_1D'});
+  if(r.bullEngulf_4D) b.push({t:'Bullish engulfing (4-Day)',c:'#5b8def',bg:'rgba(91,141,239,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering 4-day range on the chart.',key:'bullEngulf_4D'});
+  if(r.bullEngulf_1D) b.push({t:'Bullish engulfing (1D)',c:'#5b8def',bg:'rgba(91,141,239,.15)',tip:'The latest daily candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern. Click to mark the triggering candle on the chart.',key:'bullEngulf_1D'});
+  if(r.threeInsideUp_4D) b.push({t:'3 Inside Up (4-Day)',c:'#f472b6',bg:'rgba(244,114,182,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering 4-day range on the chart.',key:'threeInsideUp_4D'});
+  if(r.threeInsideUp_1D) b.push({t:'3 Inside Up (1D)',c:'#f472b6',bg:'rgba(244,114,182,.15)',tip:'A bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern. Click to mark the triggering candle on the chart.',key:'threeInsideUp_1D'});
   // Indicator Upgrades Group 1, item 2 (2026-09-20): Rocket-at-support - channel-core.js's
   // rocketAtSupport(), same show-only-what-applies pattern as the three pattern flags above.
-  if(r.rocket_4D) b.push({t:'Rocket at support (4-Day)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering 4-day range on the chart.',key:'rocket_4D'});
-  if(r.rocket_1D) b.push({t:'Rocket at support (1D)',c:'#00c896',bg:'rgba(0,200,150,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering candle on the chart.',key:'rocket_1D'});
+  if(r.rocket_4D) b.push({t:'Rocket at support (4-Day)',c:'#22d3ee',bg:'rgba(34,211,238,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering 4-day range on the chart.',key:'rocket_4D'});
+  if(r.rocket_1D) b.push({t:'Rocket at support (1D)',c:'#22d3ee',bg:'rgba(34,211,238,.15)',tip:'A green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern. Click to mark the triggering candle on the chart.',key:'rocket_1D'});
   // Indicator Upgrades Group 1, item 3 (2026-09-20): threshold pills off fields detectChannel
   // already computes - r.position is the same 0-1 clamped value the position bar/label already
   // use, no new math. position>0 means price sits above the fitted support rail (clamp makes
@@ -1716,13 +1731,15 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart,
   // active. Indicator Upgrades Group 5, item 1 (2026-09-21): patternDefs now lists only the _1D
   // variants - the _4D variants render as a shaded band below instead of a point marker (a grid
   // pass trigger idx doesn't line up with a real point on the daily candle series being charted
-  // here - see mergeCandidateRow's own comment on the bug this closes). Colors unchanged this
-  // item; Group 5 item 2 recolors bullEngulf/threeInsideUp/rocket next.
+  // here - see mergeCandidateRow's own comment on the bug this closes).
+  // Indicator Upgrades Group 5, item 2 (2026-09-21), CONFIRMED: recolors the overlay dot to
+  // match the pill colors (confluenceList) - bb3 unchanged, bullEngulf/threeInsideUp/rocket no
+  // longer share #00c896. See confluenceList's own comment for the full rationale/color list.
   var patternDefs = [
     {key:'bb3_1D', color:'#7b6ef6', text:'B'},
-    {key:'bullEngulf_1D', color:'#00c896', text:'E'},
-    {key:'threeInsideUp_1D', color:'#00c896', text:'3'},
-    {key:'rocket_1D', color:'#00c896', text:'R'}
+    {key:'bullEngulf_1D', color:'#5b8def', text:'E'},
+    {key:'threeInsideUp_1D', color:'#f472b6', text:'3'},
+    {key:'rocket_1D', color:'#22d3ee', text:'R'}
   ];
   var patternMarkers = [];
   for(var i=0;i<patternDefs.length;i++) {
@@ -2637,6 +2654,15 @@ async function loadCachedOrResting() {
           cachedFunnel = cap.funnel || null;
           cachedUniverseCount = (cap.universe_count != null) ? cap.universe_count : null;
           cachedFunnelDate = capDate;
+          // Indicator Upgrades Group 5, item 3 (2026-09-21), CONFIRMED: the paired fix the
+          // "open by default" markup change above needs. This branch sets cachedFunnel/
+          // cachedUniverseCount/cachedFunnelDate (just above) but never called renderDiag() -
+          // harmless while the panel defaulted to display:none (nothing to render until the
+          // user clicked #diag-btn, which already calls renderDiag() itself), but now that the
+          // panel is visible on page load, skipping this call would show an empty/stale panel
+          // on every normal cached-mode load - the common case for this page. runScan()'s own
+          // renderDiag() call (used on a live Refresh) is unaffected - already unconditional.
+          renderDiag();
           // Backlog #9 (2026-09-19, Round 3): mirror these into the module-level lastGridDate/
           // lastDailyDate/lastDailyStale so publishReport() can hand the same dates to the
           // report's own #11-vocabulary header chips - see the comment at their declaration.
