@@ -272,6 +272,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <table class="radar-table">
         <thead><tr>
           <th>Coin</th>
+          <!-- Indicator Upgrades Group 4, item 5 (2026-09-21), Ryan's placement call: directly
+               after Coin, before Score. Surfaces buildAction()'s existing verdict (already
+               driving the default sort via sortRowsByVerdict) as a visible column instead of a
+               detail-panel-only badge - display-only, buildAction() itself is unchanged. -->
+          <th class="cat-tip tip-down" data-tip="Recommended action to take.">Action</th>
           <th class="cat-tip tip-down" data-tip="Channel quality 0-100: combines support/resistance touches, containment, slope, position, and confluence signals.">Score</th>
           <th class="cat-tip tip-down" data-tip="Quality tier from the score: High (89+), Probable (75+), Emerging (60+), Watch (40+), Weak (below 40).">Channel Status</th>
           <th class="cat-tip tip-down" data-tip="Total US-dollar trading volume over the last 24 hours.">24h Vol</th>
@@ -285,7 +290,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <th>TV</th>
         </tr></thead>
         <tbody id="table-body">
-          <tr><td colspan="12"><div class="state-view">
+          <tr><td colspan="13"><div class="state-view">
             <div class="spinner"></div>
             <div class="state-title">Scanning...</div>
             <div class="state-sub">Fetching top 100 alts from CoinGecko then detecting channels. Takes about 90 seconds.</div>
@@ -1503,7 +1508,7 @@ function renderTable() {
   var th24 = document.getElementById('th-24h');
   if(th24) th24.textContent = captureMode ? '24h Price*' : '24h Price';
   if(!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
     return;
   }
   tbody.innerHTML = filtered.map(function(r) {
@@ -1519,8 +1524,16 @@ function renderTable() {
     var cc=r.change24h>=0?'up':'dn';
     var scls=r.slope>0.05?'sp':r.slope<-0.05?'sn':'sf';
     var tvUrl='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
+    // Indicator Upgrades Group 4, item 5 (2026-09-21): buildAction(r) already runs once per
+    // row for the detail panel (openDetail) and once per row for the report (buildReportHTML) -
+    // this is the same function, same output, just called again here so the table itself can
+    // show it. Reuses the exact va-act/va-watch/va-wait classes those two call sites already
+    // define (see .vbadge/.va-* in the stylesheet) rather than a new badge style.
+    var action = (typeof buildAction==='function') ? buildAction(r) : {verdict:'', text:''};
+    var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
+      '<td><span class="vbadge '+vcls+'">'+action.verdict+'</span></td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
       '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
       '<td style="color:var(--text2);font-variant-numeric:tabular-nums">'+fmtVol(r.volume24h)+'</td>'+
@@ -2509,7 +2522,7 @@ async function loadCachedOrResting() {
   var prev = getPrevScanHistory();
   if(!prev || !prev.candidates || !prev.candidates.length) {
     setStatus('idle', 'Ready - click Scan');
-    document.getElementById('table-body').innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
+    document.getElementById('table-body').innerHTML = '<tr><td colspan="13"><div class="state-view"><div class="state-title">Ready</div><div class="state-sub">Click Scan to fetch the top 100 alts and detect channels.</div></div></td></tr>';
     return;
   }
   // Backlog #12 (R16, 2026-09-19): toLightCandidate() (see saveScanHistory) strips candles/
