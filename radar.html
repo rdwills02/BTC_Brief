@@ -2326,6 +2326,27 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   // fields to survive the merge; confirmed with a live-shape test, not just by reading this.
   var merged = {};
   for(var k in base) merged[k] = base[k];
+  // Indicator Upgrades Group 4, item 2 (2026-09-21), CONFIRMED by Ryan: pattern-flag fields
+  // (and their paired *Trigger objects) always come from the GRID pass when a grid row exists
+  // for this coin, regardless of which source (`base` above) wins for everything else - score,
+  // geometry, rails, explanation are all untouched by this block. Root cause this closes: the
+  // daily stream is only periodically captured and can be stale relative to grid's current
+  // computation - the generic spread above lets a stale/missing daily value silently overwrite
+  // a genuinely-current grid one on a 'both' row. No-op by construction on a 'grid'-only row
+  // (base is already gridRow, so this reassigns the same values) and on a 'daily'-only row
+  // (gridRow is null, block skipped entirely - nothing to prefer grid for). The `!== undefined`
+  // guard means a field grid genuinely lacks is left as whatever the spread above already put
+  // there, rather than being blanked - this only overrides with a real value, never with a gap.
+  if(gridRow) {
+    var G4_PATTERN_FIELDS = ['bb3','bullEngulf','threeInsideUp','rocket','multiSignal',
+      'bb3UpperReversion','threeInsideDown',
+      'bb3Trigger','bullEngulfTrigger','threeInsideUpTrigger','rocketTrigger',
+      'multiSignalTrigger','bb3UpperReversionTrigger','threeInsideDownTrigger'];
+    for(var g4i=0; g4i<G4_PATTERN_FIELDS.length; g4i++) {
+      var g4f = G4_PATTERN_FIELDS[g4i];
+      if(gridRow[g4f] !== undefined) merged[g4f] = gridRow[g4f];
+    }
+  }
   merged.score = Math.max(gridScore!=null?gridScore:-1, dailyScore!=null?dailyScore:-1);
   merged.gridScore = gridScore;
   merged.dailyScore = dailyScore;
