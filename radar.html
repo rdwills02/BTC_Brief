@@ -1678,7 +1678,13 @@ function buildChart(r) {
     grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},
     crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
     rightPriceScale:{borderColor:'#1e2035'},
-    timeScale:{borderColor:'#1e2035',timeVisible:true}
+    // Indicator Upgrades Group 4, item 3 (2026-09-21): rightOffset was 0 (the library default),
+    // so the most-recent candle - where every pattern trigger marker fires by construction -
+    // sat flush against the canvas's right edge with zero margin, clipping/hiding an
+    // aboveBar/belowBar marker's text label. 3 bars of empty space fixes it without visibly
+    // changing anything else (the invalidation line still ends exactly at the last candle's
+    // time, just with a small gap before the canvas edge now).
+    timeScale:{borderColor:'#1e2035',timeVisible:true,rightOffset:3}
   });
   detailChart=chart;
   var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
@@ -1952,7 +1958,10 @@ function buildReportHTML(data) {
     'var el=document.getElementById("rchart-"+symbol);'+
     'if(!el||el.dataset.drawn||!window.LightweightCharts)return;'+
     'el.dataset.drawn="1";'+
-    'var chart=LightweightCharts.createChart(el,{width:el.clientWidth,height:el.clientHeight,layout:{background:{color:"#0b0c14"},textColor:"#6b7280"},grid:{vertLines:{color:"#1e2035"},horzLines:{color:"#1e2035"}},rightPriceScale:{borderColor:"#1e2035"},timeScale:{borderColor:"#1e2035",timeVisible:false}});'+
+    // Indicator Upgrades Group 4, item 3 (2026-09-21): same rightOffset fix as the live
+    // panel's buildChart() above - this report card shares toggleOverlay/the same marker
+    // shapes via .toString() injection, so it has the identical last-bar clipping bug.
+    'var chart=LightweightCharts.createChart(el,{width:el.clientWidth,height:el.clientHeight,layout:{background:{color:"#0b0c14"},textColor:"#6b7280"},grid:{vertLines:{color:"#1e2035"},horzLines:{color:"#1e2035"}},rightPriceScale:{borderColor:"#1e2035"},timeScale:{borderColor:"#1e2035",timeVisible:false,rightOffset:3}});'+
     'el._chart=chart;'+
     'var cs=chart.addCandlestickSeries({upColor:"#00c896",downColor:"#e8754a",borderUpColor:"#00c896",borderDownColor:"#e8754a",wickUpColor:"#00c896",wickDownColor:"#e8754a"});'+
     'cs.setData(cd.candles);'+
