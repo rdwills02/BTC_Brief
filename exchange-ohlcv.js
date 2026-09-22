@@ -12,6 +12,12 @@
  * Both raw responses are normalized to cache-core.js's candle shape ({time,open,high,low,
  * close,date}) and returned sorted ascending by time — their raw wire ordering is never
  * assumed.
+ *
+ * F5 (Remediation spec, 2026-09-21/22): both raw responses carry volume already — Kraken at
+ * index 6, Coinbase at index 5 — but the old normalizers dropped it. Now stored on the
+ * candle object as `volume` so C4/D (later remediation steps) can use it. cache-core.js's
+ * candle shape comment is otherwise unchanged; this only ADDS a field, so every existing
+ * reader of {time,open,high,low,close,date} is unaffected.
  */
 
 const KRAKEN_BASE = 'https://api.kraken.com/0/public';
@@ -35,7 +41,7 @@ async function fetchKrakenDaily(ticker) {
   const rows = d.result[key];
   return rows.map(function (r) {
     const ms = r[0] * 1000;
-    return { time: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], date: ymd(ms) };
+    return { time: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], date: ymd(ms), volume: +r[6] };
   }).sort(function (a, b) { return a.time - b.time; });
 }
 
@@ -43,7 +49,7 @@ async function fetchKrakenDaily(ticker) {
 function normalizeCoinbase(rows) {
   return rows.map(function (r) {
     const ms = r[0] * 1000;
-    return { time: r[0], open: +r[3], high: +r[2], low: +r[1], close: +r[4], date: ymd(ms) };
+    return { time: r[0], open: +r[3], high: +r[2], low: +r[1], close: +r[4], date: ymd(ms), volume: +r[5] };
   });
 }
 
