@@ -333,7 +333,17 @@ function detectChannel(candles, diag, meta) {
       var supNow = railAt(slope,intercept,lastIdx);
       var resNow = supNow + channelH;
       var curPrice = candles[lastIdx].close;
-      var position = clamp((curPrice-supNow)/channelH, 0, 1);
+      // B4 (Remediation spec, 2026-09-21/22): UNCLAMPED - a close below support is a real,
+      // negative position (rail broken), not 0; a close above resistance is a real position
+      // >1, not 1. The position>0.75 gate two lines below and the position<=0.33/0.5/0.66
+      // score bonus further down are UNCHANGED by this: a negative value still satisfies
+      // <=0.75/<=0.33 exactly as the old clamped-to-0 value did, and a >1 value still fails
+      // both exactly as the old clamped-to-1 value did - clamping only ever mattered at the
+      // boundaries this gate/bonus already treat identically. Clamping for DISPLAY (the
+      // position bar's width/marker) now happens only at the renderer in radar.html, per
+      // spec; buildAction there reads the raw value to distinguish "below support - rail
+      // broken" from "lower third" instead of the two being indistinguishable at 0.
+      var position = (curPrice-supNow)/channelH;
 
       var winCandles = candles.slice(firstIdx);
       var inside = 0;
