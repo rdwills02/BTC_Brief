@@ -1203,13 +1203,29 @@ async function main() {
       GRID_SPAN_SECONDS: GRID_SPAN_SECONDS, DAY_SECONDS: DAY_SECONDS, BACKFILL_CANDLES: BACKFILL_CANDLES,
       RATIO_ROBUST_ACCEPT: RATIO_ROBUST_ACCEPT, RATIO_ROBUST_REJECT: RATIO_ROBUST_REJECT,
       RATIO_MIN_POINTS: RATIO_MIN_POINTS, RATIO_MAX_POINTS: RATIO_MAX_POINTS,
-      COLLISION_FAILOPEN_RATE: COLLISION_FAILOPEN_RATE, COLLISION_FAILOPEN_MIN_SAMPLE: COLLISION_FAILOPEN_MIN_SAMPLE
+      COLLISION_FAILOPEN_RATE: COLLISION_FAILOPEN_RATE, COLLISION_FAILOPEN_MIN_SAMPLE: COLLISION_FAILOPEN_MIN_SAMPLE,
+      // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §1): the
+      // new research-mode detection constants (A1-A5/H9). capture.js itself never calls
+      // detectChannel with meta.research (it always captures the flag-off reading — R3 removed
+      // the process-level "research mode" concept this comment used to describe as a boolean
+      // field here), so these don't change what capture.js writes — they're hashed here purely
+      // so any future tuning of them is visible in configHash exactly like every existing
+      // detection constant above.
+      FIT_WINDOW: C.FIT_WINDOW, FIT_WINDOW_GRID: C.FIT_WINDOW_GRID, BREAK_RUN_MAX: C.BREAK_RUN_MAX,
+      RECLAIM_BARS: C.RECLAIM_BARS, MIN_ANCHOR_SPAN: C.MIN_ANCHOR_SPAN,
+      MIN_ANCHOR_SPAN_GRID: C.MIN_ANCHOR_SPAN_GRID, MIN_TOUCH_GAP: C.MIN_TOUCH_GAP,
+      TOUCH_TOL_ATR_MULT: C.TOUCH_TOL_ATR_MULT, TOUCH_TOL_MIN: C.TOUCH_TOL_MIN, TOUCH_TOL_MAX: C.TOUCH_TOL_MAX
     })).digest('hex');
     const manifest = {
       schemaVersion: 1,
       detectorVersion: C.DETECTOR_VERSION,
       candleSchemaVersion: CANDLE_SCHEMA_VERSION,
       configHash: configHash,
+      // Step 6 build-restage review (2026-09-22, BLOCKS 3 / R3): top-level flag, not folded
+      // into configHash — capture.js itself never sets meta.research (R3: capture.js stays
+      // flag-off), so this is always false here. Present so a manifest reader can tell "this
+      // capture ran flag-off" without having to know what a match on configHash implies.
+      researchMode: false,
       fetchCompletedAt: new Date().toISOString(),
       passes: {
         // grid "ok" is always true here — a genuinely failed grid pass (empty universe, no

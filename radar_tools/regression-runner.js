@@ -263,6 +263,160 @@ function run() {
   console.log('  of those, current correctly did NOT score >= floor that day (true positive rejection): ' + trueRejections);
   console.log('  of those, current ALSO scored >= floor that day (regression not caught by score alone): ' + missedByCurrent);
   if (breaches === 0) console.log('  (0 result on this sample is reported as-is — not enough score>=89 rows/window to say anything yet, not a pass/fail verdict.)');
+
+  runResearch(current, grids, caches);
+}
+
+// Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
+// mode is a PER-CALL flag (meta.research), not a module global (R3) — so both readings come
+// from the same `current` module, called twice per row, no env var or module-reload needed.
+// Prints: per-date lifecycle-state distribution (A1/H9), the railAt(...)===supportNow
+// invariant (A2 index-basis decision, §5) over every research row, and the A3 touch-count
+// old-flat-2.5%-vs-new-per-coin-tol comparison. `stable` has no research concept — not run.
+function runResearch(current, grids, caches) {
+  const LIFECYCLE_STATES = ['intact', 'wick-probed', 'broken', 'reclaimed-awaiting-retest', 're-qualified'];
+  const stateCounts = {}; for (const s of LIFECYCLE_STATES) stateCounts[s] = 0;
+  let researchRows = 0, researchNull = 0, invariantOk = 0, invariantBad = 0;
+  let tolSum = 0, tolMin = Infinity, tolMax = -Infinity;
+  const tolTable = [];
+  const a5 = {}; // per-timeframe {checked, rejected}, accumulated across all rows
+  // Changed-row / cause table (Step 6 build review handoff format): for every row, run BOTH
+  // detectors on the identical slice and, when the winning pair differs, attribute the change
+  // to the A-item responsible by matching the flag-off pair's exact (p1idx, p2idx, slope)
+  // identity against research's pairLog (ground truth from the research loop itself, not a
+  // guess from output fields) - see channel-core.js's pairLogEntry comment for what's logged.
+  const causeCounts = {};
+  const changedSample = [];
+  let unchangedPair = 0, bothNull = 0;
+
+  for (const grid of grids) {
+    for (const cgId of grid.coins) {
+      const ohlc = caches[cgId];
+      if (!ohlc) continue;
+      const slice = sliceToDate(ohlc, grid.date);
+      if (!slice) continue;
+
+      let fOff = null;
+      try { fOff = current.detectChannel(slice); } catch (e) { /* leave null */ }
+
+      const rdiag = { a5: {}, pairLog: [] };
+      let rRes = null;
+      try { rRes = current.detectChannel(slice, rdiag, { cgId, timeframe: '4d-grid', source: 'fixture', research: true }); } catch (e) { /* leave null */ }
+
+      for (const tf of Object.keys(rdiag.a5)) {
+        if (!a5[tf]) a5[tf] = { checked: 0, rejected: 0 };
+        a5[tf].checked += rdiag.a5[tf].checked;
+        a5[tf].rejected += rdiag.a5[tf].rejected;
+      }
+
+      researchRows++;
+      if (!rRes) { researchNull++; }
+      else {
+        stateCounts[rRes.lifecycleState] = (stateCounts[rRes.lifecycleState] || 0) + 1;
+
+        const expected = current.railAt(rRes.supSlope, rRes.supIntercept, rRes.lastIdx);
+        if (Math.abs(expected - rRes.supportNow) < 1e-6) invariantOk++; else { invariantBad++; console.log('RAILAT INVARIANT FAIL', cgId, grid.date, expected, rRes.supportNow); }
+
+        if (rRes.tol != null) {
+          tolSum += rRes.tol; if (rRes.tol < tolMin) tolMin = rRes.tol; if (rRes.tol > tolMax) tolMax = rRes.tol;
+          const pv = current.findPivotsWindowed(slice, current.FIT_WINDOW_GRID);
+          const flatTouches = pv.lows.filter(function(l) {
+            const exp = current.railAt(rRes.supSlope, rRes.supIntercept, l.idx);
+            return exp > 0 && Math.abs(l.price - exp) / exp <= current.TOUCH_TOL;
+          }).length;
+          tolTable.push({ cgId, date: grid.date, tol: rRes.tol, touchesFlat25: flatTouches, touchesResearchTol: rRes.supportTouches });
+        }
+      }
+
+      // --- changed-row cause classification ---
+      if (!fOff && !rRes) { bothNull++; continue; }
+      let cause;
+      if (!fOff && rRes) {
+        cause = 'A2/A3 (windowed+ATR-tol fit succeeds where full-history flag-off found none)';
+      } else if (fOff && !rRes) {
+        const pv = current.findPivotsWindowed(slice, current.FIT_WINDOW_GRID);
+        if (pv.lows.length < 3 || pv.highs.length < 1) cause = 'A2 (windowed pivot set too thin)';
+        else cause = 'A2/A5 (flag-off pair not reachable/rejected within the research window)';
+      } else {
+        const sameFirstIdx = fOff.firstIdx;
+        const match = rdiag.pairLog.find(function(p) {
+          return p.p1idx === sameFirstIdx && Math.abs(p.slope - fOff.supSlope) < 1e-9;
+        });
+        const samePair = Math.abs(fOff.supportNow - rRes.supportNow) / (Math.abs(fOff.supportNow) || 1) < 0.005;
+        if (samePair) { unchangedPair++; continue; }
+        if (!match) cause = 'A2 (flag-off anchor pair not present in the windowed pivot set)';
+        else if (match.touches < 3) cause = 'A2/A3 (anchor pair present but touch count changed under windowed pivots/ATR tol)';
+        else if (match.anchorPass === false) cause = 'A5 (anchor pair rejected by anchor-spacing)';
+        else if (match.eligible === false) cause = 'A1/H9 (anchor pair ineligible under its lifecycle state - R1 marking preferred a different pair)';
+        else cause = 'A2 (re-fit selects a different, legitimately higher/equal-scoring pair)';
+      }
+      causeCounts[cause] = (causeCounts[cause] || 0) + 1;
+      if (changedSample.length < 15) {
+        changedSample.push({ cgId, date: grid.date, cause,
+          flagOffSupport: fOff ? fOff.supportNow.toFixed(4) : 'null',
+          researchSupport: rRes ? rRes.supportNow.toFixed(4) : 'null' });
+      }
+    }
+  }
+
+  console.log('\n=== Research mode (Step 6, flag ON) — lifecycle states ===');
+  for (const s of LIFECYCLE_STATES) console.log(s.padEnd(28), stateCounts[s]);
+  console.log('research rows evaluated: ' + researchRows + ' | null: ' + researchNull);
+
+  console.log('\n=== railAt(supSlope,supIntercept,lastIdx) === supportNow invariant (A2 index basis) ===');
+  console.log('ok: ' + invariantOk + ' | FAILED: ' + invariantBad + (invariantBad === 0 ? ' (holds for every research row)' : ' — SEE FAILURES ABOVE'));
+
+  console.log('\n=== A3 tolerance: per-coin tol range ===');
+  const n = tolTable.length;
+  console.log('rows with tol: ' + n + ' | min: ' + (n ? tolMin.toFixed(4) : 'n/a') + ' | max: ' + (n ? tolMax.toFixed(4) : 'n/a') + ' | mean: ' + (n ? (tolSum / n).toFixed(4) : 'n/a'));
+  const outOfRange = tolTable.filter(function(r){ return r.tol < 0.01 - 1e-9 || r.tol > 0.04 + 1e-9; });
+  console.log('rows with tol outside [1%,4%]: ' + outOfRange.length + (outOfRange.length ? ' — CHECK CLAMP' : ' (clamp holding)'));
+  // Step 6 build-restage review (2026-09-22, population findings / A3 grid-saturation): count
+  // rows sitting AT the upper clamp (TOUCH_TOL_MAX) — distinct from "out of range" above, which
+  // checks the clamp is being enforced. This checks whether the clamp is doing the clamping,
+  // i.e. whether ATR14-scaled tol on this (4d-grid) timeframe routinely wants to exceed 4% and
+  // gets capped there — the saturation finding from the restage review.
+  const atCap = tolTable.filter(function(r){ return r.tol >= current.TOUCH_TOL_MAX - 1e-9; });
+  console.log('rows AT the 4% cap (saturated): ' + atCap.length + ' / ' + n +
+    (n ? ' (' + (100 * atCap.length / n).toFixed(1) + '%)' : ''));
+  console.log('sample rows (old flat 2.5% touches vs new per-coin-tol touches), first 15:');
+  console.log('cgId'.padEnd(20), 'date'.padEnd(12), 'tol'.padEnd(8), 'touches@2.5%'.padEnd(14), 'touches@tol');
+  for (const r of tolTable.slice(0, 15)) {
+    console.log(r.cgId.padEnd(20), r.date.padEnd(12), r.tol.toFixed(4).padEnd(8), String(r.touchesFlat25).padEnd(14), r.touchesResearchTol);
+  }
+
+  // BLOCKS 2 (Step 6 build-restage review, 2026-09-22): "for every row" — the console sample
+  // above is only 15 rows; write the FULL table to a local CSV, referenced here, not pushed.
+  const csvDate = new Date().toISOString().slice(0, 10);
+  const csvPath = path.join(__dirname, 'step6-a3-touch-table-' + csvDate + '.csv');
+  const csvLines = ['cgId,date,tol,touchesFlat25,touchesResearchTol,atCap'];
+  for (const r of tolTable) {
+    csvLines.push([r.cgId, r.date, r.tol.toFixed(4), r.touchesFlat25, r.touchesResearchTol,
+      r.tol >= current.TOUCH_TOL_MAX - 1e-9 ? 1 : 0].join(','));
+  }
+  fs.writeFileSync(csvPath, csvLines.join('\n') + '\n', 'utf8');
+  console.log('\nFull A3 touch table (' + tolTable.length + ' rows) written to ' + csvPath + ' — local only, not pushed.');
+
+  console.log('\n=== A5 anchor-spacing rejections, per timeframe ===');
+  console.log('timeframe'.padEnd(14), 'checked'.padEnd(10), 'rejected');
+  for (const tf of Object.keys(a5)) {
+    console.log(tf.padEnd(14), String(a5[tf].checked).padEnd(10), a5[tf].rejected);
+  }
+  if (!Object.keys(a5).length) console.log('(no pairs reached the A5 check on this fixture)');
+
+  console.log('\n=== Flag-off vs flag-on (research) changed-row table ===');
+  console.log('Ground-truth classification via pairLog identity match (p1idx+slope), not output-field guessing.');
+  console.log('both null: ' + bothNull + ' | same winning pair (unchanged, additive fields only): ' + unchangedPair +
+    ' | changed pair: ' + Object.values(causeCounts).reduce((a, b) => a + b, 0));
+  console.log('\nby cause:');
+  for (const c of Object.keys(causeCounts).sort((a, b) => causeCounts[b] - causeCounts[a])) {
+    console.log('  ' + String(causeCounts[c]).padStart(5) + '  ' + c);
+  }
+  console.log('\nsample changed rows, first 15:');
+  console.log('cgId'.padEnd(20), 'date'.padEnd(12), 'flagOffSupport'.padEnd(16), 'researchSupport'.padEnd(16), 'cause');
+  for (const r of changedSample) {
+    console.log(r.cgId.padEnd(20), r.date.padEnd(12), r.flagOffSupport.padEnd(16), r.researchSupport.padEnd(16), r.cause);
+  }
 }
 
 run();
