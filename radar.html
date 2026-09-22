@@ -1181,16 +1181,22 @@ function buildAction(r) {
   // entirely on rail freshness - the RAIL AGE GATE described above.
   // Backlog #18 (2026-09-20): this branch used to read only railBand, never r.score - a row
   // could clear every structural gate and still get ACT regardless of channel quality (live-
-  // confirmed: GRAM, score 74/Emerging, returned ACT). ACT_SCORE_FLOOR=75 matches the
-  // Probable-tier cutoff already used elsewhere as "good enough to act on" (getBucket/#17a).
+  // confirmed: GRAM, score 74/Emerging, returned ACT). ACT_SCORE_FLOOR was originally set to 75,
+  // matching the Probable-tier cutoff (getBucket/#17a) as "good enough to act on".
+  // Backlog #28 (2026-09-21/22): raised 75->89 - root-caused as ACT over-representation (a
+  // 'Probable'-tier score of exactly 75-88 was enough to earn the same ACT verdict as a 'High'-
+  // tier 89+ score, given a fresh rail + lower-third position). 89 is not a new pick - it's the
+  // SAME already-validated bar CONFIRMED_MIN_SCORE uses (see that constant's own comment: the
+  // population-measured threshold, not an arbitrary round number) and the SAME cutoff the
+  // 'High' score tier already uses (getBucket). Aligns ACT with 'High', not 'Probable'.
   // Gates ONLY this fresh-rail branch - aging/stale/unknown already fall through to WATCH via
   // the rail-age gate below and are untouched by this change.
-  var ACT_SCORE_FLOOR = 75;
+  var ACT_SCORE_FLOOR = 89;
   if(railBand==='fresh') {
     if(r.score>=ACT_SCORE_FLOOR) {
       return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
     }
-    return {verdict:'WATCH', text:'Watch: would be an act zone, but the channel score ('+r.score+') is below the Probable threshold - watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+    return {verdict:'WATCH', text:'Watch: would be an act zone, but the channel score ('+r.score+') is below the High threshold - watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
   }
   if(railBand==='aging') {
     return {verdict:'WATCH', text:'Watch: price is in the lower third, but '+railNote+' - watch for a fresh test before treating '+supStr+' as active support. Invalidated below '+invStr+targetClause()+'.'};
@@ -1221,7 +1227,7 @@ function buildAction(r) {
 // output and, per #18's own finding, the single most prominent claim on the page - it had no
 // tooltip at all. One shared string (not per-verdict) so a user seeing any of the three can
 // read the whole rule, not just the branch that produced what they're looking at.
-var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 75 or above. WATCH means one of those conditions is not met, or the score is below 75. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
+var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 89 or above. WATCH means one of those conditions is not met, or the score is below 89. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
 function verdictRankFor(r) {
   var v = null;
