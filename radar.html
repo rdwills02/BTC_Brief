@@ -103,6 +103,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .src-daily{background:rgba(123,110,246,.12);color:var(--accent)}
 .src-both{background:rgba(123,110,246,.22);color:var(--probable);border:1px solid rgba(123,110,246,.4)}
 .src-both.stale{background:rgba(107,114,128,.15);color:var(--muted);border-color:var(--border2)}
+.src-aligned{background:rgba(0,200,150,.15);color:var(--bull);border:1px solid rgba(0,200,150,.35)}
 .pos-wrap{display:flex;align-items:center;gap:7px}
 .pos-bar-outer{width:54px;height:6px;background:var(--border2);border-radius:3px;position:relative}
 .pos-marker{position:absolute;top:-3px;width:2px;height:12px;background:var(--accent);border-radius:1px;transform:translateX(-50%)}
@@ -695,8 +696,19 @@ function srcBadgeHTML(r) {
   if(r.source==='daily') return '<span class="srcbadge src-daily cat-tip" data-tip="1D pass only (Kraken/Coinbase exchange candles) - not yet corroborated by the 4-Day grid pass">1D</span>';
   if(r.source==='both') {
     var stale = r.dailyStale ? ' stale' : '';
-    var tip = 'Confirmed by both the 4-day grid pass and the daily exchange pass' + (r.dailyStale ? ' (daily pass is stale)' : '');
-    return '<span class="srcbadge src-both'+stale+' cat-tip" data-tip="'+tip+'">\u2713\u2713 CONFIRMED</span>';
+    // H2 (Remediation spec, 2026-09-21/22): RENAMED from "CONFIRMED" - this badge is mere
+    // membership (found by both passes), not a quality claim; SUN's grid fit was already
+    // broken (grid close below grid invalidation) yet this badge alone said CONFIRMED,
+    // conflated with the daily score. "Aligned" (below) is the separate, real agreement
+    // check - neither fit invalidated, support zones overlap within tolerance, slopes agree
+    // in sign - and is the badge that actually claims the two fits agree.
+    var tip = 'Detected independently by both the 4-day grid pass and the daily exchange pass' + (r.dailyStale ? ' (daily pass is stale)' : '');
+    var html = '<span class="srcbadge src-both'+stale+' cat-tip" data-tip="'+tip+'">\u2713\u2713 Detected on both</span>';
+    if(r.aligned) {
+      var atip = 'Aligned: neither fit is invalidated, the support zones overlap within tolerance, and the slopes agree in sign.';
+      html += ' <span class="srcbadge src-aligned cat-tip" data-tip="'+atip+'">\u2248 Aligned</span>';
+    }
+    return html;
   }
   return '';
 }
@@ -787,7 +799,10 @@ function buildStreamExplainer(gridDate, dailyDate, dailyStaleFlag) {
     'Two passes merged: 1D (daily candles, '+formatShortDate(dailyDate)+') and 4-Day (grid, '+formatShortDate(gridDate)+').',
     'The 4-Day grid advances every 4 days, so '+formatShortDate(gridDate)+' is current' + (nextGrid ? ' - next candle ~'+nextGrid : '') + '.',
     'Scan pulls a fresh 4-Day pass only; the 1D pass stays as of the last capture run.',
-    'Rows tagged CONFIRMED were found by both passes.'
+    // H2 (Remediation spec, 2026-09-21/22): wording kept in sync with the srcBadgeHTML badge
+    // rename below - this line used to say "Rows tagged CONFIRMED", which no longer matches
+    // any badge text on the page.
+    'Rows tagged Detected on both were found by both passes; Aligned means the two fits agree.'
   ];
   if(dailyStaleFlag) parts.splice(1, 0, 'The 1D pass ('+formatShortDate(dailyDate)+') is stale, shown muted.');
   return parts.join(' ');
@@ -1127,6 +1142,14 @@ function buildAction(r) {
   var railBand = r.supportRailAgeBand;
   var railNote = railNoteFor(r);
   var supStr = fmt(r.supportNow,4), resStr = fmt(r.resistNow,4), invStr = fmt(r.invalidation,4);
+  // B4 (Remediation spec, 2026-09-21/22): position is UNCLAMPED as of this change (see
+  // channel-core.js) - a close below support is now a real negative number, not 0. A
+  // negative position means the rail is broken, a materially different (and worse) claim
+  // than "price is in the lower third" - checked first, ahead of the third/structureLabel
+  // branches below, so a broken-rail row can never be read as an ordinary lower-third setup.
+  if(r.position < 0) {
+    return {verdict:'WAIT', text:'Wait: price is below the support rail near '+supStr+' - rail broken, not lower-third positioning. Invalidated below '+invStr+'.'};
+  }
   var third = r.position<=0.33 ? 'lower' : (r.position<=0.66 ? 'middle' : 'upper');
   var actionVerb = structureLabel==='ascending' ? 'a continuation move' : 'a bounce';
 
@@ -1193,6 +1216,15 @@ function buildAction(r) {
   // the rail-age gate below and are untouched by this change.
   var ACT_SCORE_FLOOR = 89;
   if(railBand==='fresh') {
+    // H2 (Remediation spec, 2026-09-21/22): "a broken grid fit blocks ACT until it is
+    // re-fit." r.gridBroken (set in mergeCandidateRow) is true only when a grid fit exists
+    // AND its own price is below its own invalidation - a 'grid'-only or 'daily'-only row
+    // (no grid fit to be broken) is unaffected. This is the SUN case the spec calls out:
+    // grid close below grid invalidation, daily score otherwise ACT-worthy - blocked here
+    // instead of reaching the score check below.
+    if(r.gridBroken) {
+      return {verdict:'WATCH', text:'Watch: would be an act zone on the daily fit, but the 4-Day grid fit is broken (grid close below its own invalidation) - blocked until the grid re-fits. Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+    }
     if(r.score>=ACT_SCORE_FLOOR) {
       return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
     }
@@ -1593,7 +1625,11 @@ function renderTable() {
   }
   tbody.innerHTML = filtered.map(function(r) {
     var bk=getBucket(r.score), sc=scoreColor(r.score);
-    var pw=Math.round(r.position*100);
+    // B4 (Remediation spec, 2026-09-21/22): clamp ONLY here, at the bar's pixel width -
+    // r.position itself is unclamped now (channel-core.js), so a bar for a broken-rail row
+    // (position<0) or an above-resistance row (position>1) would otherwise render at a
+    // negative or >100% width. buildAction reads the raw, unclamped r.position directly.
+    var pw=Math.round(clamp(r.position,0,1)*100);
     // Backlog #17d (2026-09-20): was a third independent position-label ternary (Round 3
     // already folded openDetail/buildReportHTML onto positionLabelFor() specifically to stop
     // this class of drift - this was the copy Round 3 didn't reach). Numerically identical
@@ -1652,7 +1688,8 @@ function openDetail(r) {
     '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+
     '<div class="score-item"><div class="si-label">Price vs EMA</div><div class="si-value" style="color:'+(r.emaState==='above_both'?'var(--bull)':r.emaState==='above_50'?'var(--neut)':'var(--bear)')+'">'+(r.emaState==='above_both'?'Above 21 & 50':r.emaState==='above_50'?'Above 50':'Below 50')+'</div></div>'+
     '<div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:'+sc+'">'+r.score+'/100</div></div>';
-  var pw=Math.round(r.position*100);
+  // B4: clamp only at the bar's pixel width - see the table renderer's own comment above.
+  var pw=Math.round(clamp(r.position,0,1)*100);
   document.getElementById('dp-pos-label').textContent=positionLabelFor(r);
   document.getElementById('dp-pos-bar').style.width=pw+'%';
   document.getElementById('dp-sup').textContent=fmt(r.supportNow,4);
@@ -1992,7 +2029,8 @@ function buildReportHTML(data) {
     // is 59), fixed anyway per Ryan's call while already in this ternary for Group 1.
     var bk = r.score>=89?{l:'High',c:'rgba(0,200,150,.15)',tc:'#00c896'}:r.score>=75?{l:'Probable',c:'rgba(123,110,246,.15)',tc:'#7b6ef6'}:r.score>=60?{l:'Emerging',c:'rgba(245,166,35,.12)',tc:'#f5a623'}:r.score>=40?{l:'Watch',c:'rgba(232,117,74,.12)',tc:'#e8754a'}:{l:'Weak',c:'rgba(107,114,128,.15)',tc:'#6b7280'};
     var sc = r.score>=89?'#00c896':r.score>=75?'#7b6ef6':r.score>=60?'#f5a623':'#e8754a';
-    var pw = Math.round(r.position*100);
+    // B4: clamp only at the bar's pixel width - see the table renderer's own comment.
+    var pw = Math.round(clamp(r.position,0,1)*100);
     // Backlog #9 (2026-09-19, Round 3): posLbl/chType used to be independently re-derived here
     // (their own isFlat/slope/position ternaries) instead of reusing positionLabelFor/
     // structureLabelFor - the exact #7 bug class the Round 2 refactor comment warns about,
@@ -2125,7 +2163,7 @@ function buildReportHTML(data) {
   // verbatim from radar.html's own :root/.srcbadge/.src-*/.vbadge/.va-* rules (same reasoning
   // as reusing the functions themselves: one definition, not a hand-resolved-hex duplicate that
   // could drift from the live page's palette).
-  '.srcbadge{font-size:8px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.03em;margin-left:5px;display:inline-block;vertical-align:middle}.src-grid{background:rgba(157,163,180,.15);color:var(--text2)}.src-daily{background:rgba(123,110,246,.12);color:var(--accent)}.src-both{background:rgba(123,110,246,.22);color:var(--probable);border:1px solid rgba(123,110,246,.4)}.src-both.stale{background:rgba(107,114,128,.15);color:var(--muted);border-color:var(--border2)}'+
+  '.srcbadge{font-size:8px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.03em;margin-left:5px;display:inline-block;vertical-align:middle}.src-grid{background:rgba(157,163,180,.15);color:var(--text2)}.src-daily{background:rgba(123,110,246,.12);color:var(--accent)}.src-both{background:rgba(123,110,246,.22);color:var(--probable);border:1px solid rgba(123,110,246,.4)}.src-both.stale{background:rgba(107,114,128,.15);color:var(--muted);border-color:var(--border2)}.src-aligned{background:rgba(0,200,150,.15);color:var(--bull);border:1px solid rgba(0,200,150,.35)}'+
   '.vbadge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;display:inline-block}.va-act{background:rgba(0,200,150,.15);color:var(--bull)}.va-watch{background:rgba(245,166,35,.12);color:var(--neut)}.va-wait{background:rgba(107,114,128,.15);color:var(--muted)}'+
   '.cat-tip{position:relative;cursor:help}.cat-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1e2035;color:#e2e4ef;border:1px solid #2a2b3d;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:400;line-height:1.4;width:220px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:200;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}.cat-tip:hover::after{opacity:1;visibility:visible}'+
   // Indicator Upgrades Group 1, item 6 (2026-09-20): same cat-toggle CSS as radar.html's own
@@ -2575,14 +2613,30 @@ function adaptDailyCoin(c) {
     // mergeCandidateRow instead, after rail age is known.
   };
 }
+// H2 restage (Remediation spec, 2026-09-21/22, review finding 2026-09-22): the fit's own
+// decision price, for the "is this fit broken" test - NOT the row's quote. `row.price` on a
+// gridRow/dailyRow reaching this function is `coin.current_price` (scanCoin/rowForDaily, a
+// live quote) or, on a grid row specifically, `priceByDate[D]` (rowForCandle) which since F2
+// is the price at the bar's OPEN date, not its close - up to ~22% off the fit's own close on
+// the current fixture. H7 keeps detectionPrice separate from the quote for exactly this
+// reason; gridRow/dailyRow here don't carry detectionPrice (H7's fit-contract fields aren't
+// propagated through adaptCaptureCoin/adaptDailyCoin - see channel-core.js's own SCOPE NOTE),
+// so this reads it directly off the fit's own last candle instead. Falls back to row.price
+// only if candles is somehow missing/empty (defensive - every row reaching mergeCandidateRow
+// today comes from scanCoin/adaptCaptureCoin/adaptDailyCoin, which always carry a real,
+// non-empty candles array).
+function fitLastClose(row) {
+  if(row && row.candles && row.candles.length) return row.candles[row.candles.length-1].close;
+  return row ? row.price : null;
+}
 // Merge one grid-adapted row and/or one daily-adapted row (either may be null, never
-// both) into a single display row tagged by source. score = max(gridScore,dailyScore) -
-// a coin isn't penalized for the pass that missed it. NOTE (Ryan, 2026-09-18, proceed as
-// designed for v1): this is a cross-basis score comparison (4-day-grid score vs
-// daily-candle score aren't the same measurement) - revisit once Backlog #3 has
-// accumulated daily-vs-grid outcome data to know if one basis should be weighted over
-// the other. supportTouches/containment/slope/position/candles for a 'both' row come
-// from the daily object (higher resolution, same lookback window) when present.
+// both) into a single display row tagged by source. H1 (2026-09-21/22): score now comes
+// from ONE decision timeframe (daily when present, else grid) - see the H1 comment below,
+// not max(gridScore,dailyScore). NOTE (Ryan, 2026-09-18, proceed as designed for v1): this
+// is a cross-basis score comparison (4-day-grid score vs daily-candle score aren't the same
+// measurement) - revisit once Backlog #3 has accumulated daily-vs-grid outcome data.
+// supportTouches/containment/slope/position/candles for a 'both' row come from the daily
+// object (higher resolution, same lookback window) when present.
 function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   var base = dailyRow || gridRow;
   var gridScore = gridRow ? gridRow.score : null;
@@ -2622,11 +2676,40 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
     delete merged[pk];
     delete merged[pk+'Trigger'];
   }
-  merged.score = Math.max(gridScore!=null?gridScore:-1, dailyScore!=null?dailyScore:-1);
+  // H1 (Remediation spec, 2026-09-21/22): REMOVES the old max(gridScore,dailyScore) merge.
+  // Pick ONE decision timeframe per row - daily - matching `base` above (which already
+  // prefers dailyRow's rails/candles/explanation text on a 'both' row): the row's score now
+  // comes from that same fit, not independently from whichever pass happened to score
+  // higher. A 'grid'-only row (dailyRow null) still uses gridScore - it's the only fit it
+  // has. gridScore/dailyScore stay on the row below as the secondary, labeled reading (the
+  // dual-score display, gridScore column, etc. are unchanged - only the PRIMARY r.score
+  // driving verdict/bucket/sort/filter stops taking the max).
+  merged.score = dailyScore != null ? dailyScore : gridScore;
   merged.gridScore = gridScore;
   merged.dailyScore = dailyScore;
   merged.source = source;
   merged.dailyStale = !!dailyStale;
+  // H2 (Remediation spec, 2026-09-21/22; fixed on review 2026-09-22): gridBroken is
+  // independent of Aligned below - a 'both' row can be broken-on-grid without the two fits
+  // being compared at all (e.g. no dailyRow yet). buildAction gates ACT on this directly
+  // (see that function's own H2 comment): "a broken grid fit blocks ACT until it is
+  // re-fit." 'broken' uses the same single-close-below-invalidation test channel-core.js's
+  // own (placeholder) lifecycleState field uses - not re-derived differently here.
+  // REVIEW FIX: originally compared row.price (the live/open-date QUOTE - see fitLastClose's
+  // own comment above) against invalidation; spec H2 defines broken as "grid close <
+  // invalidation" - the fit's own last close, via fitLastClose, not the quote. On the review
+  // fixture this flips RAIN (false pass under the old quote test) and LINK (false ACT block).
+  merged.gridBroken = !!(gridRow && fitLastClose(gridRow) < gridRow.invalidation);
+  var dailyBroken = !!(dailyRow && fitLastClose(dailyRow) < dailyRow.invalidation);
+  // H2: "Aligned" - a SEPARATE check from mere membership (source==='both', which drives the
+  // renamed "Detected on both" badge in srcBadgeHTML). Neither fit invalidated, the support
+  // zones overlap within TOUCH_TOL of each other (relative to the daily rail - the decision
+  // timeframe per H1), and the slopes agree in sign (>=0 counts as non-negative, matching
+  // channel-core.js's own isAscending:slope>=0 convention). Only meaningful when both fits
+  // exist; a 'grid'-only or 'daily'-only row is never Aligned (nothing to align against).
+  merged.aligned = !!(gridRow && dailyRow && !merged.gridBroken && !dailyBroken &&
+    Math.abs(gridRow.supportNow - dailyRow.supportNow) / dailyRow.supportNow <= TOUCH_TOL &&
+    ((gridRow.supSlope >= 0) === (dailyRow.supSlope >= 0)));
   merged.candlesGrid = gridRow ? gridRow.candles : null;
   merged.candlesDaily = dailyRow ? dailyRow.candles : null;
   // 4-day-grid metadata isn't on the daily object - carry it over for a 'both' row so the
