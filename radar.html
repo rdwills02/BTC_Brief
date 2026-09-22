@@ -267,6 +267,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
     <input type="checkbox" id="show-all"> Show all
   </label>
+  <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Step 6 (Remediation spec): shows the new rail-validity rules (A1-A5, H9) as a secondary badge beside the current verdict. Detection-only preview, not yet the primary reading.">
+    <input type="checkbox" id="research-mode"> Research mode
+  </label>
 </div>
 
 <div class="cached-bar" id="cached-bar" style="display:none">
@@ -424,6 +427,12 @@ var activeFilter = 'all';
 var sortCol = 'default';
 var sortDir = -1;
 var selectedKey = null;
+// Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22): research-mode
+// UI toggle state. Initial value from ?research=1 for link-sharing; the checkbox (wired at
+// init, below) reflects and updates this on change. This is display-only - the research
+// reading itself is always computed at merge time regardless of this flag (see
+// mergeCandidateRow) so toggling never re-fetches or re-scans.
+var RESEARCH_MODE_UI = /[?&]research=1(&|$)/.test(location.search);
 var detailChart = null;
 // Indicator Upgrades Group 1, item 6 (2026-09-20): overlay-toggle state for the live detail
 // panel's single chart instance. Reset fresh in buildChart() on every openDetail() call (chart
@@ -638,6 +647,31 @@ function computeRailAge(candles, pivotLows) {
   // a cache-corruption class of bug, not a fix for an observed one.
   if(!isFinite(days) || days < 0) return {days:null, band:'unknown'};
   var band = days<=RAIL_AGE_FRESH_MAX ? 'fresh' : (days<=RAIL_AGE_AGING_MAX ? 'aging' : 'stale');
+  return {days:days, band:band};
+}
+// A4 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §5) - research-mode
+// ONLY. computeRailAge above is left completely untouched (it feeds the flag-off UI; A4 is a
+// Release-3/research-mode item like the rest of Plan A and must not change what renders with
+// the toggle off). Two changes from computeRailAge: (1) days measured from capture time to the
+// END of the pivot bar, not its start timestamp - barDays (1 for '1d', 4 for '4d-grid') added
+// to maxPivotTime before subtracting; (2) a recent break forces the band to 'stale' regardless
+// of touch date (decided on review: break-recency can only LOWER the band, never rescue a
+// stale touch date) - barsSinceBreak (in bars of the fit timeframe) converted to days via the
+// same barDays and compared against RAIL_AGE_FRESH_MAX.
+function computeRailAgeResearch(candles, pivotLows, timeframe, barsSinceBreak) {
+  if(!candles || !candles.length || !pivotLows || !pivotLows.length) return {days:null, band:'unknown'};
+  var barDays = (timeframe === '4d-grid') ? 4 : 1;
+  var basisTime = candles[candles.length-1].time;
+  var maxPivotTime = -Infinity;
+  for(var i=0;i<pivotLows.length;i++) { if(pivotLows[i].time > maxPivotTime) maxPivotTime = pivotLows[i].time; }
+  var days = Math.round((basisTime - (maxPivotTime + barDays*86400)) / 86400);
+  if(!isFinite(days)) return {days:null, band:'unknown'};
+  if(days < 0) days = 0;
+  var band = days<=RAIL_AGE_FRESH_MAX ? 'fresh' : (days<=RAIL_AGE_AGING_MAX ? 'aging' : 'stale');
+  if (barsSinceBreak != null) {
+    var breakDays = barsSinceBreak * barDays;
+    if (breakDays < RAIL_AGE_FRESH_MAX) band = 'stale';
+  }
   return {days:days, band:band};
 }
 function railAgeColor(band) {
@@ -1148,7 +1182,29 @@ function buildExpl(r, name) {
 // would be nonsense for one and a sensible target for the other. isWide takes precedence over
 // geometryStale in targetPhrase() below: a channel this wide isn't a meaningful target
 // regardless of how fresh the rail is (a fresh-rail ACT row could still be this wide).
-function buildAction(r) {
+// Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, R5): OPTIONAL
+// second arg `opts` ({research:true}). Every existing 1-arg call site is unaffected (opts
+// defaults to {}, r.lifecycleState is undefined on an ordinary flag-off row so the branch
+// below never fires for those calls).
+function buildAction(r, opts) {
+  opts = opts || {};
+  // R5: in research mode, the A1/H9 lifecycle state is checked FIRST - ahead of the old
+  // position<0 proxy below, since it's the more precise reading Step 6 exists to add.
+  // broken/reclaimed-awaiting-retest are disqualifying on their own and return here;
+  // wick-probed/intact/re-qualified fall through unchanged to the existing chain below (R2:
+  // wick-probed does not short-circuit - it's a softer signal than a real close-through).
+  if (opts.research && r.lifecycleState) {
+    if (r.lifecycleState === 'broken') {
+      var reclaimNote = (r.barsSinceBreak != null && r.barsSinceBreak >= RECLAIM_BARS)
+        ? 'reclaimed but not yet confirmed by a fresh touch' : 'not reclaimed';
+      var sinceStr = (r.barsSinceBreak != null) ? (r.barsSinceBreak+' bars since break') : 'break recency unknown';
+      return {verdict:'WAIT', text:'Wait: rail broken - '+(r.maxBreakRun||0)+' consecutive close(s) through invalidation, '+reclaimNote+' ('+sinceStr+').'};
+    }
+    if (r.lifecycleState === 'reclaimed-awaiting-retest') {
+      return {verdict:'WATCH', text:'Watch: rail reclaimed '+r.barsSinceBreak+' bars ago after a break, but has not been retested since - awaiting a fresh support touch before this counts as active support again.'};
+    }
+    // wick-probed, intact, re-qualified: continue below.
+  }
   var structureLabel = structureLabelFor(r);
   var railBand = r.supportRailAgeBand;
   var railNote = railNoteFor(r);
@@ -1658,9 +1714,20 @@ function renderTable() {
     // define (see .vbadge/.va-* in the stylesheet) rather than a new badge style.
     var action = (typeof buildAction==='function') ? buildAction(r) : {verdict:'', text:''};
     var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
+    // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22): research
+    // verdict shown BESIDE the old one (spec's own wording), never replacing it - a smaller,
+    // dimmer badge inside the same cell rather than a new column (avoids touching every
+    // colspan/header this table already has). Toggle-gated; researchRow absent (row too short,
+    // or the research computation threw - see mergeCandidateRow) shows nothing extra.
+    var researchBadge = '';
+    if (RESEARCH_MODE_UI && r.researchRow && typeof buildAction==='function') {
+      var raction = buildAction(r.researchRow, {research:true});
+      var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
+      researchBadge = ' <span class="vbadge '+rvcls+' cat-tip" data-tip="Research mode (Step 6): '+raction.text.replace(/"/g,'&quot;')+'" style="opacity:.7;font-size:9px;padding:2px 5px">R:'+raction.verdict+'</span>';
+    }
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
-      '<td><span class="vbadge '+vcls+'">'+action.verdict+'</span></td>'+
+      '<td><span class="vbadge '+vcls+'">'+action.verdict+'</span>'+researchBadge+'</td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
       '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
       '<td style="color:var(--text2);font-variant-numeric:tabular-nums">'+fmtVol(r.volume24h)+'</td>'+
@@ -1725,8 +1792,18 @@ function openDetail(r) {
   if(actionEl && actionTextEl && typeof buildAction==='function') {
     var action = buildAction(r);
     var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-    actionEl.innerHTML = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
-    actionTextEl.textContent = action.text;
+    var badgeHtml = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
+    // Step 6: research verdict beside the old one, same as the table row - see renderTable's
+    // own comment for why this is a second badge, not a replacement or a new field.
+    if (RESEARCH_MODE_UI && r.researchRow) {
+      var raction = buildAction(r.researchRow, {research:true});
+      var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
+      badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span>';
+      actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text;
+    } else {
+      actionTextEl.textContent = action.text;
+    }
+    actionEl.innerHTML = badgeHtml;
   }
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
   document.getElementById('dp-inv').textContent=fmt(r.invalidation,pricePrecision(r.price));
@@ -2552,6 +2629,16 @@ window.addEventListener('load', function() {
   document.getElementById('t-score-daily').addEventListener('change', applyFilters);
   document.getElementById('t-railage').addEventListener('change', applyFilters);
   document.getElementById('show-all').addEventListener('change', applyFilters);
+  // Step 6: no re-fetch/re-scan needed - the research reading is already computed on every
+  // row at merge time (mergeCandidateRow); toggling just changes whether renderTable()/
+  // openDetail() show it. Query param ?research=1 sets the initial checked state for
+  // link-sharing (RESEARCH_MODE_UI itself is set from the same param at page load, above).
+  document.getElementById('research-mode').checked = RESEARCH_MODE_UI;
+  document.getElementById('research-mode').addEventListener('change', function() {
+    RESEARCH_MODE_UI = this.checked;
+    renderTable();
+    if(selectedKey) { var r = filtered.find(function(x){return x.symbol===selectedKey;}); if(r) openDetail(r); }
+  });
   document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
   document.getElementById('fb-high').addEventListener('click', function() { setFilter('high'); });
   document.getElementById('fb-probable').addEventListener('click', function() { setFilter('probable'); });
@@ -2805,6 +2892,64 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
     merged.explanation = (typeof buildExpl==='function') ? buildExpl(merged, merged.name) : '';
   } catch(e) {
     merged.explanation = '';
+  }
+  // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, R3/R4): the
+  // research-mode reading, computed ALONGSIDE the flag-off merge above - never replaces it.
+  // meta.research is a PER-CALL flag on detectChannel (R3 - no module global), so this is
+  // safe to compute unconditionally here without touching the flag-off path at all. A full
+  // re-fit (A1-A5/H9), not an annotation of `best` - run on the SAME stored candle slice
+  // (merged.candles) the flag-off fit came from, per R4. merged.researchRow is a shallow
+  // clone of `merged` with the detection-derived fields overridden by the research fit, so
+  // buildAction(merged.researchRow, {research:true}) can reuse its existing
+  // position/structure/score chain unchanged for intact/re-qualified/wick-probed (R5).
+  // Failure-isolated exactly like rail age/explanation above: a throw here degrades only this
+  // row's research reading, never the merge itself.
+  merged.research = null;
+  merged.researchRow = null;
+  try {
+    if (typeof detectChannel === 'function' && merged.candles && merged.candles.length) {
+      var researchMeta = {coinId: merged.cgId, timeframe: merged.timeframe, source: merged.candleSource, research: true};
+      var researchFit = detectChannel(merged.candles, null, researchMeta);
+      if (researchFit) {
+        var railAgeR = computeRailAgeResearch(researchFit.candles, researchFit.pivotLows, researchFit.timeframe, researchFit.barsSinceBreak);
+        merged.research = {
+          lifecycleState: researchFit.lifecycleState, maxBreakRun: researchFit.maxBreakRun,
+          lastBreakIdx: researchFit.lastBreakIdx, barsSinceBreak: researchFit.barsSinceBreak,
+          tol: researchFit.tol, atr14: researchFit.atr14, score: researchFit.score,
+          railAgeDays: railAgeR.days, railAgeBand: railAgeR.band
+        };
+        var rr = {}; for (var rk in merged) rr[rk] = merged[rk];
+        rr.position = researchFit.position;
+        rr.supportNow = researchFit.supportNow;
+        rr.resistNow = researchFit.resistNow;
+        rr.invalidation = researchFit.invalidation;
+        rr.channelH = researchFit.channelH;
+        rr.score = researchFit.score;
+        rr.supSlope = researchFit.supSlope;
+        rr.supIntercept = researchFit.supIntercept;
+        rr.slope = researchFit.slope;
+        rr.isAscending = researchFit.isAscending;
+        rr.lifecycleState = researchFit.lifecycleState;
+        rr.maxBreakRun = researchFit.maxBreakRun;
+        rr.lastBreakIdx = researchFit.lastBreakIdx;
+        rr.barsSinceBreak = researchFit.barsSinceBreak;
+        rr.tol = researchFit.tol;
+        rr.atr14 = researchFit.atr14;
+        rr.supportTouches = researchFit.supportTouches;
+        rr.resTouches = researchFit.resTouches;
+        rr.containment = researchFit.containment;
+        rr.supportRailAgeDays = railAgeR.days;
+        rr.supportRailAgeBand = railAgeR.band;
+        // A1/H9 supersedes the old single-close-below-invalidation proxy in research mode -
+        // buildAction's research branch (R5) gates on r.lifecycleState directly, so
+        // r.gridBroken (H2's proxy) must not ALSO block a row lifecycle already cleared.
+        rr.gridBroken = false;
+        merged.researchRow = rr;
+      }
+    }
+  } catch(e) {
+    merged.research = null;
+    merged.researchRow = null;
   }
   return merged;
 }
