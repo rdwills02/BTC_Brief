@@ -7,6 +7,29 @@
  * detectChannel accepts an OPTIONAL `diag` object. The live scanner passes its own diag
  * so funnel counters populate exactly as before. Called with no diag (backtest), a local
  * throwaway is used - the returned channel is identical either way.
+ *
+ * H7 (Remediation spec, 2026-09-21/22): detectChannel now also accepts an OPTIONAL third
+ * `meta` argument ({coinId, timeframe, source}), used only to stamp the new fit-contract
+ * fields below (fitId, timeframe, candleSource) - it changes no detection logic. Every
+ * existing two-argument call site (detectChannel(candles, diag)) keeps working unchanged:
+ * meta defaults to {} and the stamped fields just read as null/generic. New fields are
+ * ADDITIVE on the `best` object - nothing existing is renamed or removed. NOTE the OHLC
+ * provider is exposed as `candleSource`, not `source`: grepping radar.html for every current
+ * best.* / r.* read (before making this change) found `source` ALREADY in use on the merged
+ * row for a different concept ('grid'|'daily'|'both' - see mergeCandidateRow) that gates
+ * confirmedAndQualified and badge rendering - see the field's own comment below for the full
+ * collision trace. `meta.source` (the INPUT param) keeps its name; only the OUTPUT field is
+ * renamed, to avoid a confusing input/output name mismatch being worse than it's worth -
+ * see makeFitId/detectChannel's own param names, unchanged.
+ *
+ * SCOPE NOTE: this only satisfies H7's "fit" half. H7's "candle" half (venue, pair, quote
+ * currency, provider timestamp+meaning, isClosed, fetchedAt, raw record beside normalized)
+ * is deliberately NOT added here - `candles` arriving here are already the app's own light
+ * {time,open,high,low,close,date} shape; the full candle contract belongs where candles are
+ * actually stored (data/cache/<cgId>.json, in cache-core.js/capture.js), which radar.html's
+ * live scan never reads. See the H7/H8 handoff for the scope split and the BACKLOG item this
+ * leaves (a full contract-shaped candle is never round-tripped through the live 4-day grid
+ * path; only the flat shape is).
  */
 
 // --- Detection constants ---
@@ -18,6 +41,16 @@ var TOUCH_TOL = 0.025;
 // sits within the top quarter of the bar's range. Judgment call, not backtested - flagged in
 // the batch write-up for Ryan to tune if population validation says otherwise.
 var ROCKET_CLOSE_TOL = 0.25;
+
+// H7 fit-contract constants (Remediation spec, 2026-09-21/22).
+var FIT_SCHEMA_VERSION = 1;
+var DETECTOR_VERSION = 'channel-core-h7-2026-09-22';
+// Window (in candles) used for containmentRecent, alongside the existing full-window
+// `containment`. PROVISIONAL - not backtested or population-validated; chosen only to be
+// short enough to reflect "is the rail holding right now" distinctly from the full-fit
+// containment. Flagged as BACKLOG in the H7/H8 handoff for calibration against accumulated
+// post-mortem data, same as ROCKET_CLOSE_TOL above.
+var CONTAINMENT_RECENT_WINDOW = 20;
 
 // --- Small pure util ---
 
@@ -178,6 +211,39 @@ function findPivots(candles) {
 
 function railAt(slope, intercept, idx) { return slope*idx+intercept; }
 
+// H7 (Remediation spec, 2026-09-21/22): deterministic fitId - plain string concat, no crypto
+// (must run identically in the browser and Node). Same inputs -> same id; a re-fit of the
+// same coin/timeframe/source ending at the same candle with the same window produces the
+// same id, so callers can dedupe/compare fits across runs. coinId/timeframe/source come from
+// the OPTIONAL `meta` a caller passes to detectChannel (see header note) - a caller that
+// doesn't pass meta gets 'unknown' in those slots, which still makes a valid (if less
+// specific) id rather than throwing.
+function makeFitId(coinId, timeframe, source, fitEndTime, firstIdx, lastIdx) {
+  return [coinId || 'unknown', timeframe || 'unknown', source || 'unknown',
+    firstIdx, lastIdx, fitEndTime].join('|');
+}
+
+// H7: containment over just the last CONTAINMENT_RECENT_WINDOW candles of the fit window,
+// alongside the existing full-window `containment` (renamed on the output object to
+// containmentFull, value unchanged - see detectChannel below). Same inside/outside test as
+// the full-window loop (TOUCH_TOL-widened rail band), restricted to the most recent bars.
+// Returns null (not 0) when the fit window itself is shorter than the recent window - a
+// short fit isn't "0% contained recently", it's "recent containment isn't a meaningful
+// number yet"; callers must not treat null as a failing score.
+function computeRecentContainment(candles, slope, intercept, channelH, firstIdx, lastIdx) {
+  var winStart = lastIdx - CONTAINMENT_RECENT_WINDOW + 1;
+  if(winStart < firstIdx) return null;
+  var inside = 0, total = 0;
+  for(var ci = winStart; ci <= lastIdx; ci++) {
+    var s = railAt(slope, intercept, ci);
+    var r = s + channelH;
+    var c = candles[ci];
+    if(c.low >= s*(1-TOUCH_TOL) && c.high <= r*(1+TOUCH_TOL)) inside++;
+    total++;
+  }
+  return Math.round((inside/total)*100);
+}
+
 // Indicator Upgrades Group 1 (2026-09-20): "multiple signals on one candle" meta-flag - true
 // when 2+ of {bb3, bullEngulf, threeInsideUp, rocket} are true AND their trigger candles are
 // the same or adjacent (|idx delta| <= 1). bullEngulfing/threeInsideUp/rocket always trigger
@@ -203,8 +269,11 @@ function multiSignalOnOneCandle(triggers) {
 }
 
 // --- Channel detection (scoring + per-coin diag) ---
-function detectChannel(candles, diag) {
+// H7: OPTIONAL third arg `meta` ({coinId, timeframe, source}) - see header note. Every
+// existing 2-arg caller is unaffected (meta defaults to {}).
+function detectChannel(candles, diag, meta) {
   if(!diag) diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
+  if(!meta) meta = {};
   if(!candles || candles.length < 30) return null;
   var p = findPivots(candles);
   var highs = p.highs, lows = p.lows;
@@ -332,7 +401,46 @@ function detectChannel(candles, diag) {
           // same row-level boolean + separate *Trigger convention as the bull-side flags above.
           // Not fed into score/getBucket/buildAction - see the batch's hard constraint.
           bb3UpperReversion:conf.bb3UpperReversion.hit, threeInsideDown:conf.threeInsideDown.hit,
-          bb3UpperReversionTrigger:conf.bb3UpperReversion, threeInsideDownTrigger:conf.threeInsideDown
+          bb3UpperReversionTrigger:conf.bb3UpperReversion, threeInsideDownTrigger:conf.threeInsideDown,
+
+          // --- H7 fit-contract fields (Remediation spec, 2026-09-21/22) — additive only. ---
+          fitId: makeFitId(meta.coinId, meta.timeframe, meta.source, candles[lastIdx].time, firstIdx, lastIdx),
+          timeframe: meta.timeframe || null,
+          // NOTE: exposed as `candleSource`, not `source` — radar.html already has a
+          // display-critical `source` field on the merged row meaning 'grid'|'daily'|'both'
+          // (gates confirmedAndQualified/badge rendering; see mergeCandidateRow). A field
+          // named `source` here would collide with that key the moment this object flows
+          // through the merge's generic `for(k in base) merged[k]=base[k]` spread — reassigned
+          // back to the correct value two lines later in mergeCandidateRow today, but a
+          // needless landmine for the next reader/change. `candleSource` (the OHLC provider:
+          // 'coingecko'|'kraken'|'coinbase') is a distinct concept from that display field and
+          // gets its own name.
+          candleSource: meta.source || null,
+          lookback: candles.length,
+          fitStartTime: candles[firstIdx].time,
+          fitEndTime: candles[lastIdx].time,
+          schemaVersion: FIT_SCHEMA_VERSION,
+          detectorVersion: DETECTOR_VERSION,
+          // containmentFull is the SAME number as `containment` above (full-fit-window,
+          // rounded) under the spec's own name; `containment` itself is left untouched
+          // because radar.html gates on it directly (r.containment < t.minContain).
+          containmentFull: Math.round(containment),
+          containmentRecent: computeRecentContainment(candles, slope, intercept, channelH, firstIdx, lastIdx),
+          touchEvents: supTouches,
+          pivotIds: supTouches.map(function(t){ return t.time; }),
+          nearestResistance: resNow,
+          detectionPrice: curPrice,
+          detectionAsOf: candles[lastIdx].time,
+          // Placeholder only — H9 (lifecycle states: intact/wick-probed/broken/
+          // reclaimed-awaiting-retest/re-qualified) is explicitly out of scope for this step
+          // (deferred to work-order Step 6). This is the narrowest honest placeholder: a
+          // single-close-below-invalidation flag, not a real lifecycle state machine. Filed
+          // as BACKLOG in the H7/H8 handoff — do not treat this as H9 done.
+          lifecycleState: curPrice < invalidation ? 'single-close-below-invalidation' : 'active',
+          // Placeholder only — H5 (freeze issued signals / breach-history population) is
+          // explicitly out of scope for this step (deferred to Step 11). Always empty here;
+          // filed as BACKLOG in the H7/H8 handoff.
+          breachHistory: []
         };
       }
     }
@@ -371,10 +479,13 @@ function detectChannel(candles, diag) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     PIVOT_LB: PIVOT_LB, TOUCH_TOL: TOUCH_TOL, ROCKET_CLOSE_TOL: ROCKET_CLOSE_TOL,
+    FIT_SCHEMA_VERSION: FIT_SCHEMA_VERSION, DETECTOR_VERSION: DETECTOR_VERSION,
+    CONTAINMENT_RECENT_WINDOW: CONTAINMENT_RECENT_WINDOW,
     clamp: clamp, emaLast: emaLast, emaState: emaState,
     bb3Reversion: bb3Reversion, bullEngulfing: bullEngulfing, threeInsideUp: threeInsideUp,
     bb3UpperReversion: bb3UpperReversion, threeInsideDown: threeInsideDown,
     rocketAtSupport: rocketAtSupport, multiSignalOnOneCandle: multiSignalOnOneCandle,
-    findPivots: findPivots, railAt: railAt, detectChannel: detectChannel
+    findPivots: findPivots, railAt: railAt, makeFitId: makeFitId,
+    computeRecentContainment: computeRecentContainment, detectChannel: detectChannel
   };
 }
