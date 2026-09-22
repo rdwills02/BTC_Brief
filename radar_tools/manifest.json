@@ -1,0 +1,654 @@
+{
+  "generatedAt": "2026-09-22T17:37:38.119Z",
+  "note": "Pinned fixture manifest for the Step 5 (Harness) regression guard. fixtures/data/ is gitignored and never pushed — this file is the pin. regression-runner.js re-hashes every file below and re-hashes ../channel-core.stable.js against stableDetectorBlob before running; either mismatch is a hard abort, no automatic re-pin.",
+  "pinnedCommit": "d5f20b4942fe95362d6fea9f895269f5ffe87ab7",
+  "stableDetectorBlob": "de42ad35ab98bf61ee926f1fc3c72fc841ce6a60",
+  "fileCount": 129,
+  "files": [
+    {
+      "path": "data/2026-06/2026-06-16.json",
+      "sha1": "c95d0418ce25721e59bedbc65e14607f53f4ab78",
+      "size": 484773
+    },
+    {
+      "path": "data/2026-06/2026-06-20.json",
+      "sha1": "59c77c3ec9ca6cf3d624b526ddcb76de3b8e17ce",
+      "size": 489605
+    },
+    {
+      "path": "data/2026-06/2026-06-24.json",
+      "sha1": "84378645b2f9ba915225ccfe22c93646ff9935db",
+      "size": 510015
+    },
+    {
+      "path": "data/2026-06/2026-06-28.json",
+      "sha1": "e53746eefbc80df10ff3a1d7a60c0d69dcd75e97",
+      "size": 527918
+    },
+    {
+      "path": "data/2026-07/2026-07-02.json",
+      "sha1": "9440dd000ac0ee538f56a88e8231e74ed9c3fe39",
+      "size": 492979
+    },
+    {
+      "path": "data/2026-07/2026-07-06.json",
+      "sha1": "ad3f017fcba30aa4f5871d5a21e7ac623410415b",
+      "size": 538408
+    },
+    {
+      "path": "data/2026-07/2026-07-10.json",
+      "sha1": "7fd92d08ae831eb6b11089022a0d70e85740ec35",
+      "size": 587866
+    },
+    {
+      "path": "data/2026-07/2026-07-14.json",
+      "sha1": "6720c1e292532ebed0f44b2e0851cc68856753b4",
+      "size": 587319
+    },
+    {
+      "path": "data/2026-07/2026-07-18.json",
+      "sha1": "2419c37455843a6ff6f9bc0f06d0516533419023",
+      "size": 531847
+    },
+    {
+      "path": "data/2026-07/2026-07-22.json",
+      "sha1": "6b0aaf91d63f7a37c00bc9bd613b7dadafad2dff",
+      "size": 537082
+    },
+    {
+      "path": "data/2026-07/2026-07-26.json",
+      "sha1": "81f07532420c5e29734d9ca918c9b10ec7744e06",
+      "size": 557122
+    },
+    {
+      "path": "data/2026-07/2026-07-30.json",
+      "sha1": "30e9a467d31d31bd1de2f3e088bfd1249614f051",
+      "size": 545520
+    },
+    {
+      "path": "data/2026-08/2026-08-03.json",
+      "sha1": "8bc2943513cf1b0f8318e50c336d512b12bc94d4",
+      "size": 531278
+    },
+    {
+      "path": "data/2026-08/2026-08-07.json",
+      "sha1": "1321e43d7102c8de7d534cb33886494e8f298a2e",
+      "size": 544733
+    },
+    {
+      "path": "data/2026-08/2026-08-11.json",
+      "sha1": "3bc616ea6f8499a3915519f2632e487901be1628",
+      "size": 590366
+    },
+    {
+      "path": "data/2026-08/2026-08-15.json",
+      "sha1": "147d07a98b9a24fb1a23d0a282057b86b2151992",
+      "size": 596271
+    },
+    {
+      "path": "data/2026-08/2026-08-19.json",
+      "sha1": "52b050d1cd69b8733395795beba0597d37bc7b2e",
+      "size": 533288
+    },
+    {
+      "path": "data/2026-08/2026-08-23.json",
+      "sha1": "2a79ca7c42793c3c1e088c318c83ddda781d362f",
+      "size": 492539
+    },
+    {
+      "path": "data/2026-08/2026-08-27.json",
+      "sha1": "29c0e5ee387cfccc56de0e6ce002c62cb5016402",
+      "size": 536110
+    },
+    {
+      "path": "data/2026-08/2026-08-31.json",
+      "sha1": "b7fe742eb9f6262d06c1f970b5109bb6feaed826",
+      "size": 480798
+    },
+    {
+      "path": "data/2026-09/2026-09-04.json",
+      "sha1": "f02e1b4f57db1e1b4bfd02994e82c13682d43e58",
+      "size": 407013
+    },
+    {
+      "path": "data/2026-09/2026-09-08.json",
+      "sha1": "c49b4e8e16909ef538bd1a8a1bfee0d515833cdb",
+      "size": 496122
+    },
+    {
+      "path": "data/2026-09/2026-09-12.json",
+      "sha1": "5537073d02ef30fe588d08bbd07d1c26fbead7af",
+      "size": 515370
+    },
+    {
+      "path": "data/2026-09/2026-09-16.json",
+      "sha1": "c9fce6be6d565c1b4d5df6149ec742e3672859ca",
+      "size": 332954
+    },
+    {
+      "path": "data/cache/aave.json",
+      "sha1": "1b20514d9bd77e32add62c3a32346ee4bc2e2bf3",
+      "size": 403139
+    },
+    {
+      "path": "data/cache/aerodrome-finance.json",
+      "sha1": "b76ee014d3390a70719dedfb7784d0af439b8e08",
+      "size": 334789
+    },
+    {
+      "path": "data/cache/akedo.json",
+      "sha1": "25c7b24759ac0b1976c20052c9759fe4d561b25f",
+      "size": 273796
+    },
+    {
+      "path": "data/cache/algorand.json",
+      "sha1": "494ec5c5f5444d15ebcd1afd36ac992c2247cda0",
+      "size": 417426
+    },
+    {
+      "path": "data/cache/aptos.json",
+      "sha1": "ac589ee54351b9ef72aa50f17866ecc0fa8455cc",
+      "size": 406093
+    },
+    {
+      "path": "data/cache/arbitrum.json",
+      "sha1": "f1a4d022bd5155ae701806ebc0147acfaee56f04",
+      "size": 404705
+    },
+    {
+      "path": "data/cache/arweave.json",
+      "sha1": "0add3b425eb16b200e17b7ce0d96c351463887e7",
+      "size": 297892
+    },
+    {
+      "path": "data/cache/aster-2.json",
+      "sha1": "9899e872c610990596d394b435035b225bc30355",
+      "size": 232523
+    },
+    {
+      "path": "data/cache/avalanche-2.json",
+      "sha1": "a16e7afede6d9a64aab6f68e1886dceb10efb68e",
+      "size": 401401
+    },
+    {
+      "path": "data/cache/bedrock-token.json",
+      "sha1": "e5f72478d7979faf93b3612624340aa32edf688c",
+      "size": 77234
+    },
+    {
+      "path": "data/cache/bianrensheng.json",
+      "sha1": "28f195bbe9e84f922d57724ecf6d71f2737675e8",
+      "size": 43689
+    },
+    {
+      "path": "data/cache/binancecoin.json",
+      "sha1": "7f895c4b1c884fecc77245db0008224b39b2717a",
+      "size": 307821
+    },
+    {
+      "path": "data/cache/bitcoin-cash-sv.json",
+      "sha1": "8ec6c278844a023c56866f7b1aadf7e74ce4f969",
+      "size": 74783
+    },
+    {
+      "path": "data/cache/bitcoin-cash.json",
+      "sha1": "bbdc563d07fc49118dae23f04da766a6a9f9c330",
+      "size": 403484
+    },
+    {
+      "path": "data/cache/bitcoin.json",
+      "sha1": "c5877b6f92e68147e7c9f23243e191990f964b6a",
+      "size": 336395
+    },
+    {
+      "path": "data/cache/bitget-token.json",
+      "sha1": "f0c84a7e4d828ac63b961249afb53677d48eb338",
+      "size": 176714
+    },
+    {
+      "path": "data/cache/bittensor.json",
+      "sha1": "85dc33cbd199b56a2554c4ab8a8d689726be10af",
+      "size": 412588
+    },
+    {
+      "path": "data/cache/bitway.json",
+      "sha1": "b69057a267b518d7544dd29cfd8c87054cea0445",
+      "size": 42964
+    },
+    {
+      "path": "data/cache/blockstack.json",
+      "sha1": "c8efb7d191219aa0edd8534f2cdc35544a691a8e",
+      "size": 408196
+    },
+    {
+      "path": "data/cache/canton-network.json",
+      "sha1": "4376ad6df298565831f2289d8ebe18d7d135b723",
+      "size": 213114
+    },
+    {
+      "path": "data/cache/cardano.json",
+      "sha1": "fa5fd36a175b52be292fc237483eb7bafd6bd460",
+      "size": 423620
+    },
+    {
+      "path": "data/cache/celestia.json",
+      "sha1": "c4f6dd5a6c5d01b504fb2f0ef3d75ae117dd10d6",
+      "size": 403715
+    },
+    {
+      "path": "data/cache/chainlink.json",
+      "sha1": "b5747fd121ce2c71ece502d15803663315babdbc",
+      "size": 417025
+    },
+    {
+      "path": "data/cache/conflux-token.json",
+      "sha1": "5cf770c3d483a3ad8256a5cb859a28b6ef9d5fc3",
+      "size": 182610
+    },
+    {
+      "path": "data/cache/cosmos.json",
+      "sha1": "ebefe9bf6284766afa09c2601cea63d3c8a2198a",
+      "size": 405046
+    },
+    {
+      "path": "data/cache/crypto-com-chain.json",
+      "sha1": "367ca3fd3a8e59228b684cca112456c2230d51da",
+      "size": 356147
+    },
+    {
+      "path": "data/cache/curve-dao-token.json",
+      "sha1": "8764527309f6bd3ba5f54c5ca0dbc616a8a0beb2",
+      "size": 413506
+    },
+    {
+      "path": "data/cache/dash.json",
+      "sha1": "4201cdc4886d08568cedf27ce54ab11389973d74",
+      "size": 403294
+    },
+    {
+      "path": "data/cache/derive.json",
+      "sha1": "8771342ce6d9d15288a36c28506929f7b0659274",
+      "size": 360822
+    },
+    {
+      "path": "data/cache/dogecoin.json",
+      "sha1": "3c85931f9019ac847c23c8c92506b1a2dca11dc1",
+      "size": 431932
+    },
+    {
+      "path": "data/cache/dogwifcoin.json",
+      "sha1": "02d254cc0880f11b406f1815700bbb4512d7db6d",
+      "size": 404470
+    },
+    {
+      "path": "data/cache/ethena.json",
+      "sha1": "f6579d63f51ce535f3a078de84e95a9c584aac53",
+      "size": 405292
+    },
+    {
+      "path": "data/cache/ether-fi.json",
+      "sha1": "1ed56c8903142e4d2a9ac8b57505051f618abb64",
+      "size": 402134
+    },
+    {
+      "path": "data/cache/ethereum-classic.json",
+      "sha1": "838f99d99fef963a33e66da35066cfa7eb401215",
+      "size": 401051
+    },
+    {
+      "path": "data/cache/ethereum-name-service.json",
+      "sha1": "4c4021c7a0870b888bf1a6e68576729db5d8649b",
+      "size": 394269
+    },
+    {
+      "path": "data/cache/ethereum.json",
+      "sha1": "a4d2903d1f5f0dfedfe798c378ed9384d02b319b",
+      "size": 412355
+    },
+    {
+      "path": "data/cache/falcon-finance-ff.json",
+      "sha1": "bb1d7926a868f9183b344d24396874d19aeda53a",
+      "size": 239086
+    },
+    {
+      "path": "data/cache/fetch-ai.json",
+      "sha1": "7082575cc969e4d83cdf1ad93d6643c0a9d62ced",
+      "size": 409518
+    },
+    {
+      "path": "data/cache/filecoin.json",
+      "sha1": "4f5975f237382df7089961da7daeb4737a0ce93c",
+      "size": 399469
+    },
+    {
+      "path": "data/cache/floki.json",
+      "sha1": "f7a7073216cf7973334a5b346fe8c11e42dda10c",
+      "size": 441559
+    },
+    {
+      "path": "data/cache/grass.json",
+      "sha1": "b0fc823ab700165d509fb207ce1e706015026529",
+      "size": 349867
+    },
+    {
+      "path": "data/cache/hedera-hashgraph.json",
+      "sha1": "813955a74e5c9bb50a007d7e4ebcfcba5493003e",
+      "size": 282547
+    },
+    {
+      "path": "data/cache/hyperliquid.json",
+      "sha1": "fea81d291e5ea987f9d1837bbc926b4e519fb58f",
+      "size": 181432
+    },
+    {
+      "path": "data/cache/injective-protocol.json",
+      "sha1": "0358f67a5b869b79d5b23e0c403166e0498ef296",
+      "size": 401061
+    },
+    {
+      "path": "data/cache/internet-computer.json",
+      "sha1": "880435af8a6aebe8b4615de02ee3b3a44743154f",
+      "size": 399700
+    },
+    {
+      "path": "data/cache/jito-governance-token.json",
+      "sha1": "c75d2b8ffdf5f6e2f52a32230590808bcd452651",
+      "size": 409764
+    },
+    {
+      "path": "data/cache/jupiter-exchange-solana.json",
+      "sha1": "c7ee6b7343ae9fa5f40b33c05459dd6a1f1b5c68",
+      "size": 411984
+    },
+    {
+      "path": "data/cache/kaspa.json",
+      "sha1": "f3cd7035c0bdbeec14ee81d5643bf43ee67a5c98",
+      "size": 391564
+    },
+    {
+      "path": "data/cache/kite-2.json",
+      "sha1": "c774d8c4661a866d0aad627c319d342f222ab704",
+      "size": 207471
+    },
+    {
+      "path": "data/cache/kucoin-shares.json",
+      "sha1": "b9538b44958f2e12d17f07e1a4dbf1b151bfb825",
+      "size": 74063
+    },
+    {
+      "path": "data/cache/layerzero.json",
+      "sha1": "b36108f47b1516a4fc520b304c10b8f565c50ee9",
+      "size": 393903
+    },
+    {
+      "path": "data/cache/lido-dao.json",
+      "sha1": "aa2b02e57df864265519f30e1d22fe913a98d092",
+      "size": 401551
+    },
+    {
+      "path": "data/cache/lighter.json",
+      "sha1": "0ce41cb94f77914ec6fc2fc0b5cefb0a2294c9ba",
+      "size": 53198
+    },
+    {
+      "path": "data/cache/litecoin.json",
+      "sha1": "9947140b3e5e07207f625ff49168dc22ca5c21b7",
+      "size": 399847
+    },
+    {
+      "path": "data/cache/lobster-2.json",
+      "sha1": "38722fdc9b6f21b13baba911bdf4419619a071ca",
+      "size": 26528
+    },
+    {
+      "path": "data/cache/mantle.json",
+      "sha1": "d653ea6dc6cf50e48a33e666ce9bb3503e41037e",
+      "size": 401126
+    },
+    {
+      "path": "data/cache/midnight-3.json",
+      "sha1": "2857ba6e2ab8d8c5143af599bcb61608f27b7477",
+      "size": 195724
+    },
+    {
+      "path": "data/cache/monad.json",
+      "sha1": "53ee95c10c5d9ddffcf2f48002fb626cebb35856",
+      "size": 205139
+    },
+    {
+      "path": "data/cache/monero.json",
+      "sha1": "a6ec3536284c573f327dcc07e84e7be866ee827b",
+      "size": 403567
+    },
+    {
+      "path": "data/cache/morpho.json",
+      "sha1": "c00f5c22d393362ca78541ffb5bba8bba7db6440",
+      "size": 384506
+    },
+    {
+      "path": "data/cache/near.json",
+      "sha1": "3274e78fbc153fe96230ae780add2f4651a19120",
+      "size": 403730
+    },
+    {
+      "path": "data/cache/nexo.json",
+      "sha1": "7372304aed0cda1f03064890f52887fd209aeb9c",
+      "size": 45662
+    },
+    {
+      "path": "data/cache/official-trump.json",
+      "sha1": "79d483d54395cf014ef4d91054632bcca34cf6ca",
+      "size": 348250
+    },
+    {
+      "path": "data/cache/okb.json",
+      "sha1": "c199ce900856b5b441ad91be4f89799828d5f461",
+      "size": 149415
+    },
+    {
+      "path": "data/cache/ondo-finance.json",
+      "sha1": "4244b9349f884027da59dffa79dee7afa4cd801e",
+      "size": 412794
+    },
+    {
+      "path": "data/cache/optimism.json",
+      "sha1": "d3e7ad6135ccc3a1dad7fde9227d8319a1bbd916",
+      "size": 403136
+    },
+    {
+      "path": "data/cache/pancakeswap-token.json",
+      "sha1": "2a617c79c4443b8a0d4885628c87c3da9e5e8f3d",
+      "size": 298828
+    },
+    {
+      "path": "data/cache/pendle.json",
+      "sha1": "fe7c1a7f329ebded4239a38ecab518df151d96aa",
+      "size": 394580
+    },
+    {
+      "path": "data/cache/pi-network.json",
+      "sha1": "a528f3b383c06fe54ef21cfeb19df73c859026a0",
+      "size": 166103
+    },
+    {
+      "path": "data/cache/pieverse.json",
+      "sha1": "0ba21346ebbbbf83cf97002b318f4c8dd600e624",
+      "size": 121454
+    },
+    {
+      "path": "data/cache/plasma.json",
+      "sha1": "d0e060d53123d6cd10c697e182b64a9043536129",
+      "size": 80326
+    },
+    {
+      "path": "data/cache/polkadot.json",
+      "sha1": "fcf7d691f551871f9cbd193042258c61b5d070d5",
+      "size": 406247
+    },
+    {
+      "path": "data/cache/polygon-ecosystem-token.json",
+      "sha1": "3b3ffb1f7d0fb0650d39dfc0e0c02210dd7e9f25",
+      "size": 412996
+    },
+    {
+      "path": "data/cache/pudgy-penguins.json",
+      "sha1": "d6136abd31cdf137e02e268abedbe40de1feeb89",
+      "size": 367347
+    },
+    {
+      "path": "data/cache/pump-fun.json",
+      "sha1": "06d80275745e859274676ddfb13f5d0a424658f6",
+      "size": 287699
+    },
+    {
+      "path": "data/cache/pyth-network.json",
+      "sha1": "9e9b53f93f8ec19c815385de6b4cfb6cb15b7736",
+      "size": 413103
+    },
+    {
+      "path": "data/cache/quant-network.json",
+      "sha1": "f0e7c93ffebb032bcd7daf439762f8d27ba1bd38",
+      "size": 398109
+    },
+    {
+      "path": "data/cache/rain.json",
+      "sha1": "082eb1ce75606d716b83955dd611d03ced4ae5dd",
+      "size": 77386
+    },
+    {
+      "path": "data/cache/raydium.json",
+      "sha1": "2705ceb92d47d512d637710e15a2de4bad9780fc",
+      "size": 398950
+    },
+    {
+      "path": "data/cache/render-token.json",
+      "sha1": "5ce8a718296cfa2d13b605ec6bd44627cdab0360",
+      "size": 396868
+    },
+    {
+      "path": "data/cache/ripple.json",
+      "sha1": "009dd4ffa70d5f8202d6147453bff71dc02e9db2",
+      "size": 414334
+    },
+    {
+      "path": "data/cache/sei-network.json",
+      "sha1": "1bcff48ebc0dbea668956eeb0b75b03ca1582fb4",
+      "size": 412715
+    },
+    {
+      "path": "data/cache/sky.json",
+      "sha1": "49428603c5f40932bf0fbe5cb2a1e688256c7f68",
+      "size": 410222
+    },
+    {
+      "path": "data/cache/solana.json",
+      "sha1": "29af4f501efef67adb8a2d71e5042570c9923b7c",
+      "size": 404411
+    },
+    {
+      "path": "data/cache/spx6900.json",
+      "sha1": "4fdf94ecfdc5f85a36f03b0ee0ab4ed9c172ff43",
+      "size": 372473
+    },
+    {
+      "path": "data/cache/starknet.json",
+      "sha1": "a9fddd609eb146cc3208e15ca784d90d767bef42",
+      "size": 412332
+    },
+    {
+      "path": "data/cache/stellar.json",
+      "sha1": "f25845366c54bcad3248fd0cd4e77aae26318194",
+      "size": 423057
+    },
+    {
+      "path": "data/cache/sui.json",
+      "sha1": "ed24510e992cbf59715b3367ec79bc2e0f7f4ae6",
+      "size": 403720
+    },
+    {
+      "path": "data/cache/sun-token.json",
+      "sha1": "ec03cba4ae50693b15d7784b9bb438d819a10173",
+      "size": 323344
+    },
+    {
+      "path": "data/cache/syrup.json",
+      "sha1": "9a516a530a76c56718729d5ae5a5bbb9ae984658",
+      "size": 114080
+    },
+    {
+      "path": "data/cache/tezos.json",
+      "sha1": "2b778638f313f37457445bfc98f229ef4059e5d6",
+      "size": 411580
+    },
+    {
+      "path": "data/cache/the-graph.json",
+      "sha1": "e5b6e738293d380a5a395cdb69c7cdc94b118789",
+      "size": 416609
+    },
+    {
+      "path": "data/cache/the-open-network.json",
+      "sha1": "8590d61fd2f40c1a1b575c98f1fc34ddc785c1ee",
+      "size": 74124
+    },
+    {
+      "path": "data/cache/tron.json",
+      "sha1": "1287f7b45f99bf552497573d4ee49375b02b4880",
+      "size": 422535
+    },
+    {
+      "path": "data/cache/trust-wallet-token.json",
+      "sha1": "45b2648d8a2d8f758fc45b0d6d463903a71b4992",
+      "size": 45880
+    },
+    {
+      "path": "data/cache/unibase.json",
+      "sha1": "211f1e754e7b1438453150a728f684c82ef2e69c",
+      "size": 77572
+    },
+    {
+      "path": "data/cache/uniswap.json",
+      "sha1": "96c4f7f86202f1abdb112ec520daf4d717978c5c",
+      "size": 403091
+    },
+    {
+      "path": "data/cache/useless-3.json",
+      "sha1": "2e1cf1aacc3a0803cb230fc6e0ba9b073b9a3973",
+      "size": 266367
+    },
+    {
+      "path": "data/cache/vechain.json",
+      "sha1": "eec7c54921745f7265a5ab1837641c2ed1af9551",
+      "size": 203338
+    },
+    {
+      "path": "data/cache/venice-token.json",
+      "sha1": "622f2e37f3d2770338f59430742ddce4e46addd3",
+      "size": 327416
+    },
+    {
+      "path": "data/cache/virtual-protocol.json",
+      "sha1": "cd776b71f08426ebf79028d66d143f9e6f4c0b1d",
+      "size": 345489
+    },
+    {
+      "path": "data/cache/world-liberty-financial.json",
+      "sha1": "85dec318cfe0afcb440a16348e3c6380ace334e9",
+      "size": 254672
+    },
+    {
+      "path": "data/cache/worldcoin-wld.json",
+      "sha1": "9d001c9d7e5ac0db3bc833d30011d579c30d9820",
+      "size": 332818
+    },
+    {
+      "path": "data/cache/xdce-crowd-sale.json",
+      "sha1": "f43ea2100a268a4110ebaac7e41d7f6b19fcd88b",
+      "size": 258118
+    },
+    {
+      "path": "data/cache/zcash.json",
+      "sha1": "b832a0452bfc58332f2616321b2c6b7d02599aae",
+      "size": 400936
+    }
+  ]
+}

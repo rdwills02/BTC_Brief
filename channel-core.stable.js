@@ -12,6 +12,12 @@
 // --- Detection constants ---
 var PIVOT_LB = 3;
 var TOUCH_TOL = 0.025;
+// Indicator Upgrades Group 1 (2026-09-20): tolerance for "closes at or near the bar's high"
+// in rocketAtSupport - expressed as a fraction of the bar's own high-low range, not a price
+// tolerance like TOUCH_TOL (which is always relative to a rail level). 0.25 means the close
+// sits within the top quarter of the bar's range. Judgment call, not backtested - flagged in
+// the batch write-up for Ryan to tune if population validation says otherwise.
+var ROCKET_CLOSE_TOL = 0.25;
 
 // --- Small pure util ---
 
@@ -41,9 +47,19 @@ function emaState(candles) {
   else                     { state='below';      pts=0; }
   return {state:state, pts:pts, e21:e21, e50:e50};
 }
+
+// Indicator Upgrades Group 1 (2026-09-20): bb3Reversion/bullEngulfing/threeInsideUp now return
+// {hit:bool, idx:number|null, time:number|null} instead of a bare boolean, so the chart-overlay
+// toggle (item 6) has a candle to point a marker at. idx is the position within the `candles`
+// array passed in (same convention detectChannel/findPivots already use for rail-fit indices -
+// railAt(slope,intercept,idx) expects this same idx space). time is candles[idx].time, or null
+// when hit is false. Every existing caller reads the truthy/falsy row-level boolean fields
+// (r.bb3/r.bullEngulf/r.threeInsideUp on the row object built in detectChannel below) - those
+// stay plain booleans (see `best = {...}` below: bb3:conf.bb3.hit, not conf.bb3). Only this
+// function's OWN return shape changes; nothing that reads the row fields needs to change.
 function bb3Reversion(candles) {
   // Pushed below the lower 3-std Bollinger Band in the last ~5 bars, now retraced back inside.
-  var n = candles.length; if(n < 21) return false;
+  var n = candles.length; if(n < 21) return {hit:false, idx:null, time:null};
   function lowerAt(i) {
     var sum=0; for(var j=i-19;j<=i;j++) sum+=candles[j].close;
     var mean=sum/20, v=0;
@@ -51,24 +67,96 @@ function bb3Reversion(candles) {
     return mean - 3*Math.sqrt(v/20);
   }
   var cur=n-1;
-  if(candles[cur].close < lowerAt(cur)) return false; // still below band, not retraced yet
+  if(candles[cur].close < lowerAt(cur)) return {hit:false, idx:null, time:null}; // still below band, not retraced yet
   var start=Math.max(20, cur-4);
-  for(var i=cur;i>=start;i--){ if(candles[i].low < lowerAt(i)) return true; }
-  return false;
+  // Trigger candle = the most recent bar (closest to `cur`) whose low actually pierced the
+  // band - that's the bar a chart marker should point at, not `cur` itself (which is just
+  // where the retrace happens to be confirmed). Loop runs newest-to-oldest so the first hit
+  // found is the most recent dip.
+  for(var i=cur;i>=start;i--){
+    if(candles[i].low < lowerAt(i)) return {hit:true, idx:i, time:candles[i].time};
+  }
+  return {hit:false, idx:null, time:null};
 }
 function bullEngulfing(candles) {
-  var n=candles.length; if(n<2) return false;
+  var n=candles.length; if(n<2) return {hit:false, idx:null, time:null};
   var a=candles[n-2], b=candles[n-1];
-  return (a.close<a.open) && (b.close>b.open) && (b.close>=a.open) && (b.open<=a.close);
+  var hit = (a.close<a.open) && (b.close>b.open) && (b.close>=a.open) && (b.open<=a.close);
+  return hit ? {hit:true, idx:n-1, time:b.time} : {hit:false, idx:null, time:null};
 }
 function threeInsideUp(candles) {
-  var n=candles.length; if(n<3) return false;
+  var n=candles.length; if(n<3) return {hit:false, idx:null, time:null};
   var c1=candles[n-3], c2=candles[n-2], c3=candles[n-1];
   var c1Bear = c1.close<c1.open;
   var c2Bull = c2.close>c2.open;
   var c2Inside = Math.max(c2.open,c2.close)<=c1.open && Math.min(c2.open,c2.close)>=c1.close;
   var c3Up = c3.close>c2.close;
-  return c1Bear && c2Bull && c2Inside && c3Up;
+  var hit = c1Bear && c2Bull && c2Inside && c3Up;
+  return hit ? {hit:true, idx:n-1, time:c3.time} : {hit:false, idx:null, time:null};
+}
+
+// Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirror of bb3Reversion, band
+// inverted. Same 20-bar window, same 3-std-dev multiplier, same "last ~5 bars" trigger-search
+// window as bb3Reversion - sign-flipped, not re-derived. Display-only exit-warning flag on an
+// existing long (see Radar Indicator Upgrades.md's "Correction - bearish detection isn't gated
+// on execution"), not part of any independent bearish/short-channel detector (that stays
+// deferred to the future paper-trade project - not touched here).
+function bb3UpperReversion(candles) {
+  // Pushed above the upper 3-std Bollinger Band in the last ~5 bars, now retraced back inside.
+  var n = candles.length; if(n < 21) return {hit:false, idx:null, time:null};
+  function upperAt(i) {
+    var sum=0; for(var j=i-19;j<=i;j++) sum+=candles[j].close;
+    var mean=sum/20, v=0;
+    for(var j=i-19;j<=i;j++){ var d=candles[j].close-mean; v+=d*d; }
+    return mean + 3*Math.sqrt(v/20);
+  }
+  var cur=n-1;
+  if(candles[cur].close > upperAt(cur)) return {hit:false, idx:null, time:null}; // still above band, not retraced yet
+  var start=Math.max(20, cur-4);
+  // Trigger candle = the most recent bar (closest to `cur`) whose high actually pierced the
+  // band - same "most recent dip" convention as bb3Reversion's own loop, mirrored to the upper
+  // side. Loop runs newest-to-oldest so the first hit found is the most recent push.
+  for(var i=cur;i>=start;i--){
+    if(candles[i].high > upperAt(i)) return {hit:true, idx:i, time:candles[i].time};
+  }
+  return {hit:false, idx:null, time:null};
+}
+// Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirror of threeInsideUp,
+// inverted. c1 bullish, c2 bearish and inside c1's body, c3 closes LOWER than c2's close.
+function threeInsideDown(candles) {
+  var n=candles.length; if(n<3) return {hit:false, idx:null, time:null};
+  var c1=candles[n-3], c2=candles[n-2], c3=candles[n-1];
+  var c1Bull = c1.close>c1.open;
+  var c2Bear = c2.close<c2.open;
+  var c2Inside = Math.max(c2.open,c2.close)<=c1.close && Math.min(c2.open,c2.close)>=c1.open;
+  var c3Down = c3.close<c2.close;
+  var hit = c1Bull && c2Bear && c2Inside && c3Down;
+  return hit ? {hit:true, idx:n-1, time:c3.time} : {hit:false, idx:null, time:null};
+}
+
+// Indicator Upgrades Group 1 (2026-09-20): new pattern function. "Rocket at support" per
+// Brett's checklist (Radar Indicator Upgrades.md): green candle, real body resting at/near
+// the fitted support rail, a lower wick below the body, closes at or near the bar's high.
+// Only meaningful once a channel has been fitted (needs a rail to be "at/near"), so unlike
+// bb3Reversion/bullEngulfing/threeInsideUp (pure candle-history signals, computed once per
+// coin before the rail-pair loop) this is computed AFTER `best` is chosen in detectChannel,
+// against best's own supSlope/supIntercept - see the call site below. Same style as the
+// existing pattern functions: checks only the latest candle (idx = n-1), same TOUCH_TOL
+// convention as the rest of this file for "near".
+function rocketAtSupport(candles, supSlope, supIntercept) {
+  var n = candles.length; if(n < 1) return {hit:false, idx:null, time:null};
+  var i = n-1, c = candles[i];
+  if(!(c.close > c.open)) return {hit:false, idx:null, time:null}; // must be a green candle
+  var range = c.high - c.low;
+  if(range <= 0) return {hit:false, idx:null, time:null};
+  var bodyLow = Math.min(c.open, c.close);
+  var railVal = railAt(supSlope, supIntercept, i);
+  if(!(railVal > 0)) return {hit:false, idx:null, time:null};
+  var nearRail = Math.abs(bodyLow - railVal) / railVal <= TOUCH_TOL;
+  var hasLowerWick = c.low < bodyLow;
+  var closesNearHigh = (c.high - c.close) <= ROCKET_CLOSE_TOL * range;
+  var hit = nearRail && hasLowerWick && closesNearHigh;
+  return hit ? {hit:true, idx:i, time:c.time} : {hit:false, idx:null, time:null};
 }
 
 // --- Pivots + rails ---
@@ -90,6 +178,30 @@ function findPivots(candles) {
 
 function railAt(slope, intercept, idx) { return slope*idx+intercept; }
 
+// Indicator Upgrades Group 1 (2026-09-20): "multiple signals on one candle" meta-flag - true
+// when 2+ of {bb3, bullEngulf, threeInsideUp, rocket} are true AND their trigger candles are
+// the same or adjacent (|idx delta| <= 1). bullEngulfing/threeInsideUp/rocket always trigger
+// at idx=n-1 when true, so they trivially coincide with each other; bb3Reversion's trigger can
+// be up to 4 bars earlier (the actual band-piercing dip), which is why the adjacency check
+// (not strict equality) matters - it's the one signal that can legitimately miss by a bar or
+// two while still being "the same setup".
+function multiSignalOnOneCandle(triggers) {
+  // triggers: array of {hit, idx, time} in the shape bb3Reversion/bullEngulfing/threeInsideUp/
+  // rocketAtSupport return.
+  var hits = triggers.filter(function(t){ return t && t.hit && t.idx != null; });
+  if(hits.length < 2) return {hit:false, idx:null, time:null};
+  for(var a=0; a<hits.length-1; a++) {
+    for(var b=a+1; b<hits.length; b++) {
+      if(Math.abs(hits[a].idx - hits[b].idx) <= 1) {
+        // Report at the more recent of the coinciding pair.
+        var newer = hits[a].idx >= hits[b].idx ? hits[a] : hits[b];
+        return {hit:true, idx:newer.idx, time:newer.time};
+      }
+    }
+  }
+  return {hit:false, idx:null, time:null};
+}
+
 // --- Channel detection (scoring + per-coin diag) ---
 function detectChannel(candles, diag) {
   if(!diag) diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
@@ -102,7 +214,8 @@ function detectChannel(candles, diag) {
 
   // Confluence signals are properties of the coin (not the rail pair): compute once.
   var ema = emaState(candles);
-  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles)};
+  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles),
+    bb3UpperReversion:bb3UpperReversion(candles), threeInsideDown:threeInsideDown(candles)};
 
   // Per-coin flags, not per-rail-pair counts. detectChannel() tests every pair of low
   // pivots as a candidate rail - a single coin can produce dozens of pair-evaluations,
@@ -127,7 +240,7 @@ function detectChannel(candles, diag) {
 
       var supTouches = lows.filter(function(l) {
         var exp = railAt(slope,intercept,l.idx);
-        return Math.abs(l.price-exp)/exp <= TOUCH_TOL;
+        return exp > 0 && Math.abs(l.price-exp)/exp <= TOUCH_TOL;
       });
       if(supTouches.length < 3) continue;
       had3Touches = true;
@@ -145,7 +258,7 @@ function detectChannel(candles, diag) {
 
       var resTouches = relHighs.filter(function(h) {
         var exp = railAt(slope,intercept,h.idx)+channelH;
-        return Math.abs(h.price-exp)/exp <= TOUCH_TOL;
+        return exp > 0 && Math.abs(h.price-exp)/exp <= TOUCH_TOL;
       });
 
       var supNow = railAt(slope,intercept,lastIdx);
@@ -182,6 +295,16 @@ function detectChannel(candles, diag) {
       if(sa > 5) score -= 10;
       if(slope < 0) score -= 5;
       score += ema.pts; // EMA 21/50 confluence: +10/+8 above both, +5 above 50 only, 0 below
+      // Group 5 item 6 (2026-09-21), OPTION A per Ryan's explicit direction (2026-09-21):
+      // n counts only bb3/bullEngulf/threeInsideUp, the three pass-level pattern signals
+      // already known at this point in the loop. rocket is deliberately excluded - it isn't
+      // computed until AFTER `best` is chosen (rocketAtSupport() runs once, post-loop, against
+      // the WINNING rail only - see the `if(best)` block below), so it structurally cannot
+      // feed a per-candidate-pair bonus computed here. Feeding rocket into score is a distinct,
+      // not-yet-approved ask - filed separately as its own backlog item, not built here.
+      var patternN = (conf.bb3.hit?1:0) + (conf.bullEngulf.hit?1:0) + (conf.threeInsideUp.hit?1:0);
+      var patternBonus = patternN > 0 ? (2*patternN - 1) : 0;
+      score += patternBonus;
       score = Math.round(clamp(score,0,100));
       // NOTE: no per-coin "scored" counter here - a coin only reaches this line at all
       // if some pair passed every gate through position, which is exactly the condition
@@ -198,7 +321,18 @@ function detectChannel(candles, diag) {
           supSlope:slope, supIntercept:intercept, firstIdx:firstIdx, lastIdx:lastIdx,
           isAscending:slope>=0, isFlat:Math.abs(slopePct)<0.1,
           emaState:ema.state, ema21:ema.e21, ema50:ema.e50, emaPts:ema.pts,
-          bb3:conf.bb3, bullEngulf:conf.bullEngulf, threeInsideUp:conf.threeInsideUp
+          // Indicator Upgrades Group 1: row-level fields stay plain booleans (backward-compat
+          // with confluenceList()/toLightCandidate()/adaptCaptureCoin()/adaptDailyCoin() in
+          // radar.html, which all read r.bb3/r.bullEngulf/r.threeInsideUp as truthy checks) -
+          // only conf.bb3/conf.bullEngulf/conf.threeInsideUp (this function's internal locals)
+          // are now {hit,idx,time} objects. Trigger data goes on separate *Trigger fields.
+          bb3:conf.bb3.hit, bullEngulf:conf.bullEngulf.hit, threeInsideUp:conf.threeInsideUp.hit,
+          bb3Trigger:conf.bb3, bullEngulfTrigger:conf.bullEngulf, threeInsideUpTrigger:conf.threeInsideUp,
+          // Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirrors. Display-only,
+          // same row-level boolean + separate *Trigger convention as the bull-side flags above.
+          // Not fed into score/getBucket/buildAction - see the batch's hard constraint.
+          bb3UpperReversion:conf.bb3UpperReversion.hit, threeInsideDown:conf.threeInsideDown.hit,
+          bb3UpperReversionTrigger:conf.bb3UpperReversion, threeInsideDownTrigger:conf.threeInsideDown
         };
       }
     }
@@ -210,16 +344,37 @@ function detectChannel(candles, diag) {
   if(had3Touches) diag.touches++;
   if(hadContainment) diag.containment++;
 
+  // Indicator Upgrades Group 1 (2026-09-20): Rocket-at-support and the multi-signal meta-flag
+  // both need the WINNING channel's rail (rocket) or the other three flags' trigger data
+  // (multi-signal), so they're computed once here against `best`, not inside the rail-pair
+  // loop above (unlike bb3/bullEngulf/threeInsideUp, which are pure candle signals independent
+  // of any rail and are computed once per coin, before the loop, same as before this batch).
+  if(best) {
+    var rocket = rocketAtSupport(candles, best.supSlope, best.supIntercept);
+    // Analysis-thread review (2026-09-20), item 2 fix: for COINCIDENCE purposes bb3's trigger
+    // candle is the current/retrace bar (n-1) - the bar bb3's own pill is actually true on
+    // ("closed back inside it") - not the earlier dip bar. bb3Trigger (stored on `best` below,
+    // unchanged) keeps the dip-bar idx/time for the chart marker in item 6; this is a second,
+    // separate read off the same underlying signal used only to decide coincidence here.
+    var bb3Coincidence = conf.bb3.hit ? {hit:true, idx:n-1, time:candles[n-1].time} : conf.bb3;
+    var multi = multiSignalOnOneCandle([bb3Coincidence, conf.bullEngulf, conf.threeInsideUp, rocket]);
+    best.rocket = rocket.hit;
+    best.rocketTrigger = rocket;
+    best.multiSignal = multi.hit;
+    best.multiSignalTrigger = multi;
+  }
+
   return best;
 }
 
 // Node export (browser ignores this; functions stay globals in the browser).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    PIVOT_LB: PIVOT_LB, TOUCH_TOL: TOUCH_TOL,
+    PIVOT_LB: PIVOT_LB, TOUCH_TOL: TOUCH_TOL, ROCKET_CLOSE_TOL: ROCKET_CLOSE_TOL,
     clamp: clamp, emaLast: emaLast, emaState: emaState,
     bb3Reversion: bb3Reversion, bullEngulfing: bullEngulfing, threeInsideUp: threeInsideUp,
+    bb3UpperReversion: bb3UpperReversion, threeInsideDown: threeInsideDown,
+    rocketAtSupport: rocketAtSupport, multiSignalOnOneCandle: multiSignalOnOneCandle,
     findPivots: findPivots, railAt: railAt, detectChannel: detectChannel
   };
 }
-
