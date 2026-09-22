@@ -372,10 +372,10 @@ function runResearch(current, grids, caches) {
   const outOfRange = tolTable.filter(function(r){ return r.tol < 0.01 - 1e-9 || r.tol > 0.04 + 1e-9; });
   console.log('rows with tol outside [1%,4%]: ' + outOfRange.length + (outOfRange.length ? ' — CHECK CLAMP' : ' (clamp holding)'));
   // Step 6 build-restage review (2026-09-22, population findings / A3 grid-saturation): count
-  // rows sitting AT the upper clamp (TOUCH_TOL_MAX) — distinct from "out of range" above, which
+  // rows sitting AT the upper clamp (TOUCH_TOL_MAX) - distinct from "out of range" above, which
   // checks the clamp is being enforced. This checks whether the clamp is doing the clamping,
   // i.e. whether ATR14-scaled tol on this (4d-grid) timeframe routinely wants to exceed 4% and
-  // gets capped there — the saturation finding from the restage review.
+  // gets capped there - the saturation finding from the restage review.
   const atCap = tolTable.filter(function(r){ return r.tol >= current.TOUCH_TOL_MAX - 1e-9; });
   console.log('rows AT the 4% cap (saturated): ' + atCap.length + ' / ' + n +
     (n ? ' (' + (100 * atCap.length / n).toFixed(1) + '%)' : ''));
@@ -385,7 +385,7 @@ function runResearch(current, grids, caches) {
     console.log(r.cgId.padEnd(20), r.date.padEnd(12), r.tol.toFixed(4).padEnd(8), String(r.touchesFlat25).padEnd(14), r.touchesResearchTol);
   }
 
-  // BLOCKS 2 (Step 6 build-restage review, 2026-09-22): "for every row" — the console sample
+  // BLOCKS 2 (Step 6 build-restage review, 2026-09-22): "for every row" - the console sample
   // above is only 15 rows; write the FULL table to a local CSV, referenced here, not pushed.
   const csvDate = new Date().toISOString().slice(0, 10);
   const csvPath = path.join(__dirname, 'step6-a3-touch-table-' + csvDate + '.csv');

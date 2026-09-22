@@ -1206,9 +1206,9 @@ async function main() {
       COLLISION_FAILOPEN_RATE: COLLISION_FAILOPEN_RATE, COLLISION_FAILOPEN_MIN_SAMPLE: COLLISION_FAILOPEN_MIN_SAMPLE,
       // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §1): the
       // new research-mode detection constants (A1-A5/H9). capture.js itself never calls
-      // detectChannel with meta.research (it always captures the flag-off reading — R3 removed
+      // detectChannel with meta.research (it always captures the flag-off reading - R3 removed
       // the process-level "research mode" concept this comment used to describe as a boolean
-      // field here), so these don't change what capture.js writes — they're hashed here purely
+      // field here), so these don't change what capture.js writes - they're hashed here purely
       // so any future tuning of them is visible in configHash exactly like every existing
       // detection constant above.
       FIT_WINDOW: C.FIT_WINDOW, FIT_WINDOW_GRID: C.FIT_WINDOW_GRID, BREAK_RUN_MAX: C.BREAK_RUN_MAX,
