@@ -75,6 +75,18 @@ var MIN_TOUCH_GAP = 3;        // bars a middle touch must sit from either anchor
 var TOUCH_TOL_ATR_MULT = 0.5;
 var TOUCH_TOL_MIN = 0.01;     // PROVISIONAL.
 var TOUCH_TOL_MAX = 0.04;     // PROVISIONAL.
+// Step 7 (Remediation spec, 2026-09-21/22; per Step 7 plan review 2026-09-22, R1-R2): B1/B2
+// research-mode constants. Same per-call dispatch as the Step 6 block above - only
+// detectChannelResearch reads these.
+var NEAR_FLAT_SLOPE_PCT = 0.1;      // B1/R2: reuses the exact value `isFlat` already uses below - not a new threshold.
+var WEDGE_LOOKAHEAD = 60;           // 1d bars, B1: reject a pair whose rails cross within this many bars past lastIdx. PROVISIONAL.
+var WEDGE_LOOKAHEAD_GRID = 15;      // 4d bars (= 60 days-equivalent, same day-equivalent convention as MIN_ANCHOR_SPAN_GRID). PROVISIONAL.
+var RES_RECENT_BARS = 60;           // 1d bars, B2: parallel-fallback height uses only pivot highs from this many recent bars. PROVISIONAL.
+var RES_RECENT_BARS_GRID = 15;      // 4d bars (day-equivalent; a raw 60 would make B2 a no-op on the 40-bar grid window). PROVISIONAL.
+// B5: distToRailPct <= Math.min(2*tol, 0.06) gate lives in radar.html's buildAction, not here -
+// this file only computes the field. With A3 daily tol floored at 1%, the gate is 2% on daily;
+// on grid tol saturates at 4% (Step 6 A3 finding), so the gate is 6% there. Superseded later by
+// the ATR rule in H6 - not applied here.
 
 // --- Small pure util ---
 
@@ -352,6 +364,57 @@ function passesAnchorSpacing(touches, minSpan, minGap) {
   return true;
 }
 
+// B1 (Remediation spec, 2026-09-21/22; R2/R4 per Step 7 plan review): independent resistance
+// fit. Mirrors the support pair-search's shape (pair -> slope/intercept -> touches ->
+// anchor-spacing) but restricted to `highs` at or after `firstIdx` (the support fit's own
+// window), and additionally gated on slope agreement with the support line. Returns the best
+// candidate pair (most touches, ties broken by the most recent newest touch) or null when
+// nothing clears 2+ touches with an agreeing slope - callers fall back to the parallel
+// construction (B2) in that case. Complexity: candidates^2 pair search, same shape as the
+// support loop, bounded by <=150 (1d) / <=40 (4d-grid) bars of pivots - negligible.
+function fitIndependentResistance(highs, supSlope, supIntercept, firstIdx, tol, minAnchorSpan, minGap) {
+  var candidates = highs.filter(function(h){ return h.idx >= firstIdx; });
+  if (candidates.length < 2) return null;
+  var supSlopePct = (supSlope / Math.abs(railAt(supSlope,supIntercept,firstIdx)||1)) * 100;
+  var best = null;
+  for (var a = 0; a < candidates.length-1; a++) {
+    for (var b = a+1; b < candidates.length; b++) {
+      var p1 = candidates[a], p2 = candidates[b];
+      var idxDelta = p2.idx - p1.idx;
+      if (idxDelta < 3) continue;
+      var rSlope = (p2.price - p1.price) / idxDelta;
+      var rIntercept = p1.price - rSlope * p1.idx;
+      var touches = candidates.filter(function(h) {
+        var exp = railAt(rSlope, rIntercept, h.idx);
+        return exp > 0 && Math.abs(h.price-exp)/exp <= tol;
+      });
+      if (touches.length < 2) continue;
+      if (!passesAnchorSpacing(touches, minAnchorSpan, minGap)) continue;
+      var rSlopePct = (rSlope / Math.abs(railAt(rSlope,rIntercept,firstIdx)||1)) * 100;
+      var agree = Math.abs(rSlope-supSlope) <= 0.5*Math.abs(supSlope) ||
+        (Math.abs(supSlopePct) < NEAR_FLAT_SLOPE_PCT && Math.abs(rSlopePct) < NEAR_FLAT_SLOPE_PCT);
+      if (!agree) continue;
+      var newestTouchIdx = Math.max.apply(null, touches.map(function(t){return t.idx;}));
+      if (!best || touches.length > best.touches.length ||
+          (touches.length === best.touches.length && newestTouchIdx > best.newestTouchIdx)) {
+        best = {slope:rSlope, intercept:rIntercept, touches:touches, newestTouchIdx:newestTouchIdx};
+      }
+    }
+  }
+  return best;
+}
+
+// B1: wedge rejection. sup(i) and res(i) are both linear in i, so their difference D(i) is
+// linear too - checking the two endpoints of [firstIdx, endIdx] is sufficient to catch any
+// crossing between them (a linear function can't dip and recover between two same-sign
+// endpoints). endIdx is lastIdx+WEDGE_LOOKAHEAD, so this also rejects a pair that doesn't cross
+// yet but converges within the lookahead window.
+function isWedge(supSlope, supIntercept, resSlope, resIntercept, firstIdx, endIdx) {
+  var dFirst = railAt(resSlope,resIntercept,firstIdx) - railAt(supSlope,supIntercept,firstIdx);
+  var dEnd = railAt(resSlope,resIntercept,endIdx) - railAt(supSlope,supIntercept,endIdx);
+  return dFirst <= 0 || dEnd <= 0;
+}
+
 // A1: scans every bar firstIdx..lastIdx for a rail-pair candidate. `probed` (low pierced
 // rail*(1-tol)) is tracked separately from `broken-bar` (close pierced it) per H9's own
 // distinction ("a touch inside the tolerance band is not evidence support held; a closed bar
@@ -497,28 +560,53 @@ function detectChannelResearch(candles, diag, meta) {
       var relHighs = highs.filter(function(h){return h.idx>=firstIdx;});
       if (!relHighs.length) continue;
 
-      var offsets = relHighs.map(function(h){return h.price-railAt(slope,intercept,h.idx);}).filter(function(o){return o>0;});
-      offsets.sort(function(x,y){return x-y;});
-      if (!offsets.length) continue;
-      var channelH = offsets[Math.floor(offsets.length/2)];
-      if (channelH <= 0) continue;
+      // B1: fit resistance independently first; B2 (recency-weighted parallel) is the fallback
+      // only when no independent line clears 2+ touches with an agreeing slope.
+      var resSlope, resIntercept, pivotHighs, resistanceFit;
+      var resFit = fitIndependentResistance(highs, slope, intercept, firstIdx, tol, minAnchorSpan, MIN_TOUCH_GAP);
+      if (resFit) {
+        resSlope = resFit.slope; resIntercept = resFit.intercept;
+        pivotHighs = resFit.touches; resistanceFit = 'independent';
+      } else {
+        var recentBars = (timeframe === '4d-grid') ? RES_RECENT_BARS_GRID : RES_RECENT_BARS;
+        var relHighsRecent = relHighs.filter(function(h){ return h.idx >= n-recentBars; });
+        if (!relHighsRecent.length) continue;
+        var offsets = relHighsRecent.map(function(h){return h.price-railAt(slope,intercept,h.idx);}).filter(function(o){return o>0;});
+        offsets.sort(function(x,y){return x-y;});
+        if (!offsets.length) continue;
+        var parallelChannelH = offsets[Math.floor(offsets.length/2)];
+        if (parallelChannelH <= 0) continue;
+        resSlope = slope; resIntercept = intercept + parallelChannelH;
+        pivotHighs = []; resistanceFit = 'parallel';
+      }
+
+      // B1: wedge rejection - a pair whose rails cross inside the fit window, or converge
+      // within the lookahead window past lastIdx, is not a channel.
+      var lookahead = (timeframe === '4d-grid') ? WEDGE_LOOKAHEAD_GRID : WEDGE_LOOKAHEAD;
+      if (isWedge(slope, intercept, resSlope, resIntercept, firstIdx, lastIdx+lookahead)) {
+        if (pairLogEntry) pairLogEntry.reached = 'wedge';
+        continue;
+      }
 
       var resTouches = relHighs.filter(function(h) {
-        var exp = railAt(slope,intercept,h.idx)+channelH;
+        var exp = railAt(resSlope,resIntercept,h.idx);
         return exp > 0 && Math.abs(h.price-exp)/exp <= tol;
       });
 
       var supNow = railAt(slope,intercept,lastIdx);
-      var resNow = supNow + channelH;
+      var resNow = railAt(resSlope,resIntercept,lastIdx);
+      var channelH = resNow - supNow; // R3: height AT THE DECISION BAR - constant on the parallel path, time-varying on the independent path
+      if (channelH <= 0) continue;
       var curPrice = candles[lastIdx].close;
       var position = (curPrice-supNow)/channelH; // B4: unclamped, same rationale as the flag-off path
+      var distToRailPct = (curPrice-supNow)/curPrice; // B5
 
       var winCandles = candles.slice(firstIdx);
       var inside = 0;
       for (var i=0; i<winCandles.length; i++) {
         var ci = firstIdx+i;
         var s = railAt(slope,intercept,ci);
-        var r2 = s+channelH;
+        var r2 = railAt(resSlope,resIntercept,ci); // R3: both rails checked per bar, generalizes the old flat s+channelH
         if (winCandles[i].low >= s*(1-tol) && winCandles[i].high <= r2*(1+tol)) inside++;
       }
       var containment = (inside/winCandles.length)*100;
@@ -561,6 +649,8 @@ function detectChannelResearch(candles, diag, meta) {
         score:score, supportTouches:supTouches.length, resTouches:resTouches.length,
         containment:Math.round(containment), slope:slopePct, position:position,
         supportNow:supNow, resistNow:resNow, invalidation:invalidation, channelH:channelH,
+        distToRailPct:distToRailPct, // B5
+        resSlope:resSlope, resIntercept:resIntercept, pivotHighs:pivotHighs, resistanceFit:resistanceFit, // B1/R3
         candles:candles.slice(-150), pivotLows:supTouches,
         supSlope:slope, supIntercept:intercept, firstIdx:firstIdx, lastIdx:lastIdx,
         isAscending:slope>=0, isFlat:Math.abs(slopePct)<0.1,
@@ -856,6 +946,12 @@ if (typeof module !== 'undefined' && module.exports) {
     TOUCH_TOL_ATR_MULT: TOUCH_TOL_ATR_MULT, TOUCH_TOL_MIN: TOUCH_TOL_MIN, TOUCH_TOL_MAX: TOUCH_TOL_MAX,
     atr14: atr14, computeResearchTol: computeResearchTol, findPivotsWindowed: findPivotsWindowed,
     passesAnchorSpacing: passesAnchorSpacing, scanBreaks: scanBreaks, computeLifecycle: computeLifecycle,
-    detectChannelResearch: detectChannelResearch
+    detectChannelResearch: detectChannelResearch,
+    // Step 7 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash
+    // and the B1 internals for direct harness testing.
+    NEAR_FLAT_SLOPE_PCT: NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: WEDGE_LOOKAHEAD,
+    WEDGE_LOOKAHEAD_GRID: WEDGE_LOOKAHEAD_GRID, RES_RECENT_BARS: RES_RECENT_BARS,
+    RES_RECENT_BARS_GRID: RES_RECENT_BARS_GRID,
+    fitIndependentResistance: fitIndependentResistance, isWedge: isWedge
   };
 }
