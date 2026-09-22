@@ -617,6 +617,73 @@ function confluenceHTML(r) {
   }).join('');
 }
 
+// Step 8 E2 (Remediation spec, 2026-09-21/22): research-mode pill list. `researchRow` (rr) is
+// a single fit against one candle series with no 4-Day/1-Day split - the plan's "drop the
+// 4-Day pattern flags" needed no removal code (nothing 4-Day-specific exists in the research
+// fit to remove), only this new render path, which reads ONLY the un-suffixed pattern fields
+// detectChannelResearch's winner object carries (rr.bb3/bullEngulf/threeInsideUp/rocket/
+// multiSignal/bb3UpperReversion/threeInsideDown - see mergeCandidateRow's generic researchFit
+// spread) and never reaches for the _4D/_1D fields rr also carries through for legacy
+// consumers. Deliberately a sibling to confluenceList, not a mode argument on it: the pill
+// definitions differ (no "(4-Day)"/"(1D)" label, no chart-overlay `key`/toggle - the research
+// fit's own candle series isn't the one buildChart(r) renders for the flag-off row) and
+// keeping them separate means confluenceList itself is untouched, so the flag-off view stays
+// byte-identical to before this diff.
+function researchConfluenceList(rr) {
+  var b = [];
+  if (rr.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Research-mode fit: price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal.'});
+  if (rr.bullEngulf) b.push({t:'Bullish engulfing',c:'#5b8def',bg:'rgba(91,141,239,.15)',tip:'Research-mode fit: the latest candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern.'});
+  if (rr.threeInsideUp) b.push({t:'3 Inside Up',c:'#f472b6',bg:'rgba(244,114,182,.15)',tip:'Research-mode fit: a bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern.'});
+  if (rr.rocket) b.push({t:'Rocket at support',c:'#22d3ee',bg:'rgba(34,211,238,.15)',tip:'Research-mode fit: a green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern.'});
+  if (rr.multiSignal) b.push({t:'Multiple signals aligned',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Research-mode fit: two or more of the pattern signals above triggered on the same or an adjacent candle.'});
+  if (rr.bb3UpperReversion) b.push({t:'3BB upper reversion',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Research-mode fit: price pushed above the upper 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a bearish exit-warning signal on an existing long, not a short-entry signal.'});
+  if (rr.threeInsideDown) b.push({t:'3 Inside Down',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Research-mode fit: a bullish candle, then a smaller bearish candle inside its range, then a lower close - a 3-candle bearish reversal pattern. Exit-warning on an existing long, not a short-entry signal.'});
+  return b;
+}
+function researchConfluenceHTML(rr) {
+  var b = researchConfluenceList(rr);
+  if (!b.length) return '';
+  return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border,#2a2f3a)"><span style="font-size:9px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em;margin-right:6px">Research</span>' +
+    b.map(function(x){
+      return '<span class="cat-tip" data-tip="'+x.tip+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;cursor:help">'+x.t+'</span>';
+    }).join('') + '</div>';
+}
+
+// Step 8 E2 (revised, 2026-09-23, per Ryan's restage instruction): in research mode the
+// detail-panel pill area drops only the (4-Day) flag-off pills, keeping the 1D ones (the 1D
+// pills, buildChart's overlay bands, and their tooltip strings are explicitly BACKLOG - not
+// touched by this diff, see RADAR STATE). filterOutFourDayPills reuses confluenceList's own
+// pill objects unmodified - it filters by the rendered label suffix only, no new pill
+// definitions - so confluenceList/confluenceHTML themselves stay untouched and the flag-off
+// branch below (RESEARCH_MODE_UI off, or no researchRow) renders byte-identically to before
+// this diff.
+function filterOutFourDayPills(list) {
+  return list.filter(function(x) { return x.t.slice(-7) !== '(4-Day)'; }); // '(4-Day)' is 7 chars
+}
+// Same span-building template confluenceHTML(r) uses, applied to an already-filtered list -
+// duplicated rather than refactored into confluenceHTML so that function's own diff stays
+// zero-touch (same reasoning as researchConfluenceHTML being a sibling, not a mode argument,
+// above).
+function filteredConfluenceHTML(r) {
+  var b = filterOutFourDayPills(confluenceList(r));
+  if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
+  return b.map(function(x){
+    var cls = x.key ? 'cat-tip cat-toggle' : 'cat-tip';
+    var attrs = x.key ? ' data-key="'+x.key+'" data-symbol="'+r.symbol+'"' : '';
+    var cursor = x.key ? 'cursor:pointer' : 'cursor:help';
+    return '<span class="'+cls+'" data-tip="'+x.tip+'"'+attrs+' style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;'+cursor+'">'+x.t+'</span>';
+  }).join('');
+}
+// Single call site for openDetail's dp-confluence area - pulled into its own function (rather
+// than inlined at the call site) so the invariant tests can extract and exercise the exact
+// expression the panel runs, not a re-derivation of it.
+function dpConfluenceHTML(r) {
+  if (RESEARCH_MODE_UI && r.researchRow) {
+    return filteredConfluenceHTML(r) + researchConfluenceHTML(r.researchRow);
+  }
+  return confluenceHTML(r);
+}
+
 // Backlog #3 (2026-09-19): rail age. Surfaces how OLD the support rail's most recent touch is -
 // it does NOT replace or recompute the rail itself (that was the version killed by the XLM
 // validation: XLM's rail was touched 7 days before the read and sat inside the zone price was
@@ -1624,6 +1691,28 @@ function renderDiag() {
     '<div class="diag-item va-wait"><div class="diag-label">Wait</div><div class="diag-value">'+vaCounts.WAIT+'</div></div>';
   document.getElementById('diag-funnel').innerHTML +=
     ' &nbsp;|&nbsp; <span class="vbadge va-act">'+vaCounts.ACT+' Act</span> <span class="vbadge va-watch">'+vaCounts.WATCH+' Watch</span> <span class="vbadge va-wait">'+vaCounts.WAIT+' Wait</span>';
+
+  // Step 8 E2 (Remediation spec, 2026-09-21/22): market-breadth header stat, research mode
+  // only - additive, appended after the Act/Watch/Wait strip above rather than interleaved
+  // into `items`, same reasoning as that block's own comment. Counts the FLAG-OFF _4D pattern
+  // fields (untouched by research mode - see confluenceList/researchConfluenceList) over
+  // allResults, the same population Candidates/Act/Watch/Wait already count. No `breadth`
+  // field or 4-Day-count code existed anywhere in radar.html or channel-core.js before this -
+  // genuinely new, not a re-read of an existing one.
+  if (RESEARCH_MODE_UI) {
+    var breadth4D = {bb3:0, bullEngulf:0, threeInsideUp:0, rocket:0};
+    allResults.forEach(function(r) {
+      if (r.bb3_4D) breadth4D.bb3++;
+      if (r.bullEngulf_4D) breadth4D.bullEngulf++;
+      if (r.threeInsideUp_4D) breadth4D.threeInsideUp++;
+      if (r.rocket_4D) breadth4D.rocket++;
+    });
+    var breadthLine = 'Market breadth (4-Day grid, research mode): ' +
+      breadth4D.bb3+' 3BB mean-reversion, '+breadth4D.bullEngulf+' bullish engulfing, '+
+      breadth4D.threeInsideUp+' 3 inside up, '+breadth4D.rocket+' rocket-at-support' +
+      ' (of '+allResults.length+' scanned)';
+    document.getElementById('diag-funnel').innerHTML += '<div style="margin-top:6px;font-size:11px;color:var(--text2)">'+breadthLine+'</div>';
+  }
 }
 
 function getThresh() {
@@ -1860,7 +1949,10 @@ function openDetail(r) {
   document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
   document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
   document.getElementById('dp-cg').href='https://www.coingecko.com/en/coins/'+r.cgId;
-  document.getElementById('dp-confluence').innerHTML=confluenceHTML(r);
+  // Step 8 E2 (revised 2026-09-23): dpConfluenceHTML(r) - see its own comment above. With
+  // RESEARCH_MODE_UI off, or no researchRow, this is confluenceHTML(r), byte-identical to
+  // before this diff.
+  document.getElementById('dp-confluence').innerHTML=dpConfluenceHTML(r);
   if(r.candles) {
     buildChart(r);
   } else {
@@ -2954,6 +3046,14 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   // position/structure/score chain unchanged for intact/re-qualified/wick-probed (R5).
   // Failure-isolated exactly like rail age/explanation above: a throw here degrades only this
   // row's research reading, never the merge itself.
+  // Step 8 E1 carry-forward (2026-09-23): every path that reaches mergeCandidateRow now
+  // enforces closed-bars-only upstream - capture.js's pullCoin (F1/F2, step 1) for the
+  // captured/daily paths, and this browser's own fetchOHLC (E1, both halves of F2) for the
+  // live-scan grid path. So this is a class invariant confirmed true for every merged row,
+  // not a per-row computed check - literal `true`, not copied off gridRow/dailyRow (adaptCapture/
+  // adaptDailyCoin's own generic spread onto base doesn't carry a field that was never on their
+  // input in the first place).
+  merged.lastBarComplete = true;
   merged.research = null;
   merged.researchRow = null;
   try {
@@ -2988,6 +3088,7 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
         rr.price = merged.price; rr.change24h = merged.change24h; rr.volume24h = merged.volume24h;
         rr.tvExchange = merged.tvExchange; rr.tvPair = merged.tvPair; rr.category = merged.category;
         rr.source = merged.source; rr.dailyStale = merged.dailyStale; rr.explanation = merged.explanation;
+        rr.lastBarComplete = merged.lastBarComplete;
         // Flag-off _4D/_1D pattern fields are merged-only (see PATTERN_KEYS above) - never on
         // the research fit - carried through so nothing reading them off a research row (a
         // renderer that hasn't been split to research-only fields yet) finds them undefined.
