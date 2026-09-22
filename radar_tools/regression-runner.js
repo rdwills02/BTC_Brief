@@ -124,6 +124,22 @@ function loadCaches() {
   return caches;
 }
 
+// Step 7 build-review handoff (BLOCKS 1, 2026-09-22): a SEPARATE daily-candle loader,
+// deliberately not folded into loadCaches() above - `caches` (ohlc, the 4-day grid array) is
+// read throughout this file by every Step 5/6 section, and reshaping it to carry both series
+// would ripple through code this step doesn't touch. Used only by runStep7Acceptance below,
+// which is the one place '1d' actually means daily candles, not grid candles under a 1d label.
+function loadDailyCaches() {
+  const cacheDir = path.join(FIXTURES_DATA_DIR, 'cache');
+  const files = fs.readdirSync(cacheDir).filter(f => f.endsWith('.json'));
+  const caches = {};
+  for (const f of files) {
+    const c = JSON.parse(fs.readFileSync(path.join(cacheDir, f), 'utf8'));
+    caches[c.cgId] = (c.ohlcDaily || []).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, date: b.date }));
+  }
+  return caches;
+}
+
 function sliceToDate(ohlc, D) {
   const idx = ohlc.findIndex(c => c.date === D);
   if (idx === -1) return null;
@@ -265,6 +281,7 @@ function run() {
   if (breaches === 0) console.log('  (0 result on this sample is reported as-is — not enough score>=89 rows/window to say anything yet, not a pass/fail verdict.)');
 
   runResearch(current, grids, caches);
+  runStep7Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -416,6 +433,92 @@ function runResearch(current, grids, caches) {
   console.log('cgId'.padEnd(20), 'date'.padEnd(12), 'flagOffSupport'.padEnd(16), 'researchSupport'.padEnd(16), 'cause');
   for (const r of changedSample) {
     console.log(r.cgId.padEnd(20), r.date.padEnd(12), r.flagOffSupport.padEnd(16), r.researchSupport.padEnd(16), r.cause);
+  }
+}
+
+// Step 7 (Remediation spec, 2026-09-21/22; per Step 7 build review, BLOCKS 1): B1/B2/B4-B5
+// acceptance, on the RIGHT data per timeframe - '1d' means dailyCaches (ohlcDaily), '4d-grid'
+// means gridCaches (ohlc, the same array every other section of this file calls `caches`).
+// Both are sliced to the LATEST available date in their own series (the frozen 9/21 capture
+// for daily, the latest grid snapshot for grid - see the fixture note in the header), over the
+// same coin universe as the latest grid snapshot, so the two timeframes are directly
+// comparable per coin. Prints the spec's B1-B2/B4-B5 acceptance rows plus a B1 population
+// check (pivotHighs newest-touch distribution across independent fits).
+function runStep7Acceptance(current, grids, gridCaches, dailyCaches) {
+  const latestGrid = grids[grids.length - 1];
+  const latestGridDate = latestGrid.date;
+  const coins = latestGrid.coins;
+
+  let latestDailyDate = null;
+  for (const cgId of coins) {
+    const d = dailyCaches[cgId];
+    if (!d || !d.length) continue;
+    const last = d[d.length - 1].date;
+    if (!latestDailyDate || last > latestDailyDate) latestDailyDate = last;
+  }
+
+  console.log('\n=== Step 7 acceptance (B1, B2, B4-B5) — 1d on ohlcDaily, 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' | latest daily date: ' + latestDailyDate + ' | coin universe: ' + coins.length);
+
+  function runOne(cgId, tf) {
+    const src = (tf === '1d') ? dailyCaches[cgId] : gridCaches[cgId];
+    if (!src) return null;
+    const D = (tf === '1d') ? latestDailyDate : latestGridDate;
+    const slice = sliceToDate(src, D);
+    if (!slice) return null;
+    let r = null;
+    try { r = current.detectChannel(slice, undefined, { cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+    return r ? { r: r, price: slice[slice.length - 1].close } : null;
+  }
+
+  console.log('\n--- B4-B5 gate: distToRailPct <= min(2*tol, 0.06), both timeframes, full coin universe ---');
+  console.log('cgId'.padEnd(28), 'tf'.padEnd(8), 'fit'.padEnd(11), 'state'.padEnd(24), 'distToRailPct'.padEnd(14), 'gate'.padEnd(8), 'verdict');
+  let gateChecked = 0, gateFail = 0;
+  for (const tf of ['1d', '4d-grid']) {
+    for (const cgId of coins) {
+      const out = runOne(cgId, tf);
+      if (!out) continue;
+      const r = out.r;
+      const gate = Math.min(2 * r.tol, 0.06);
+      const fails = r.distToRailPct > gate;
+      gateChecked++; if (fails) gateFail++;
+      console.log(cgId.padEnd(28), tf.padEnd(8), r.resistanceFit.padEnd(11), r.lifecycleState.padEnd(24),
+        (r.distToRailPct * 100).toFixed(1).padStart(6) + '%', (gate * 100).toFixed(2).padStart(6) + '%',
+        fails ? 'FAILS-GATE' : 'passes');
+    }
+  }
+  console.log('gate checked: ' + gateChecked + ' rows | fails: ' + gateFail + ' (' + (gateChecked ? (100 * gateFail / gateChecked).toFixed(1) : '0') + '%)');
+
+  console.log('\n--- Named-coin spot-check (spec B1-B2/B4-B5 table) ---');
+  const named = { XRP: 'ripple', XLM: 'stellar', CC: 'crypto-com-chain', SKY: 'sky', JTO: 'jito-governance-token', KITE: 'kite-2', TRX: 'tron' };
+  for (const label of Object.keys(named)) {
+    const cgId = named[label];
+    for (const tf of ['1d', '4d-grid']) {
+      const out = runOne(cgId, tf);
+      if (!out) { console.log(label + ' (' + cgId + ') ' + tf + ' - no research fit'); continue; }
+      const r = out.r;
+      const gate = Math.min(2 * r.tol, 0.06);
+      console.log(label + ' (' + cgId + ') ' + tf + ': fit=' + r.resistanceFit + ' state=' + r.lifecycleState +
+        ' distToRailPct=' + (r.distToRailPct * 100).toFixed(1) + '% gate=' + (gate * 100).toFixed(1) + '%' +
+        (r.distToRailPct > gate ? ' FAIL' : ' pass') + ' position=' + r.position.toFixed(3));
+    }
+  }
+
+  console.log('\n--- B1 population: resistanceFit distribution + newest pivotHighs date, independent fits ---');
+  for (const tf of ['1d', '4d-grid']) {
+    let independent = 0, parallel = 0;
+    const newestDates = [];
+    for (const cgId of coins) {
+      const out = runOne(cgId, tf);
+      if (!out) continue;
+      if (out.r.resistanceFit === 'independent') {
+        independent++;
+        if (out.r.pivotHighs.length) newestDates.push(out.r.pivotHighs.map(function(h){return h.time;}).sort().slice(-1)[0]);
+      } else if (out.r.resistanceFit === 'parallel') {
+        parallel++;
+      }
+    }
+    console.log(tf + ': ' + independent + ' independent fits, ' + parallel + ' parallel fallbacks.');
   }
 }
 
