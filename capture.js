@@ -66,6 +66,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');          // H8 — config hash
 const U = require('./universe-core.js');   // adjust path if capture.js not in repo root
 const C = require('./channel-core.js');
 const K = require('./cache-core.js');
@@ -130,6 +131,69 @@ function dropUnclosedBars(candles, spanSeconds, nowSec) {
   if (!candles || !candles.length) return candles || [];
   return candles.filter(c => isBarClosed(c.time, spanSeconds, nowSec));
 }
+
+// --- H7 candle-contract stamping (Remediation spec, 2026-09-21/22) --------------------------
+// The spec's "candle" half of H7 ("each stored candle carries: venue, pair, quote currency,
+// timeframe, startTime, endTime, provider timestamp and its meaning, OHLCV, isClosed,
+// fetchedAt, schema version; the provider's raw record kept beside the normalized one") is
+// satisfied HERE, at the point every candle is about to be merged into data/cache/<cgId>.json
+// — the one place this spec text's "stored candle" actually means (cache-core.js's per-coin
+// cache; radar.html's live scan never reads this file — see channel-core.js's own H7 scope
+// note for the companion "fit" half). Stamping is ADDITIVE ONLY: every existing field
+// ({time,open,high,low,close,date[,volume,raw]}) is left exactly as-is, so
+// cache-core.js's shape-agnostic mergeOhlc/mergeOhlcDailyCandles need no changes at all, and
+// nothing that already reads a cached candle's original fields is affected.
+const CANDLE_SCHEMA_VERSION = 1;
+function stampCandleContract(candle, opts) {
+  candle.venue = opts.venue;
+  candle.pair = opts.pair;
+  candle.quoteCurrency = 'usd';
+  candle.timeframe = opts.timeframe;
+  candle.startTime = candle.time;
+  candle.endTime = candle.time + opts.spanSeconds;
+  candle.providerTimestamp = opts.providerTimestamp != null ? opts.providerTimestamp : candle.time;
+  candle.providerTimestampMeans = opts.providerTimestampMeans;   // 'open' | 'close' — see each call site
+  // Always true: stampCandleContract is only ever called on candles that already survived
+  // dropUnclosedBars (grid: see pullCoin; daily/BTC: same) — an unclosed bar never reaches here.
+  candle.isClosed = true;
+  candle.fetchedAt = opts.fetchedAt;
+  candle.schemaVersion = CANDLE_SCHEMA_VERSION;
+  return candle;
+}
+// FIX (analysis-thread review, 2026-09-22, BLOCKS finding): stamping used to mutate the SAME
+// candle objects that also flow into detectChannel and end up on the returned fit's `candles`
+// field (channel-core.js's `candles.slice(-150)` — a SHALLOW slice, same object references,
+// not a deep copy). Those fit-level `candles` are exactly what's written into every grid day
+// file, latest.json, and latest-daily.json for radar.html to load — so the H7 candle contract
+// (venue/pair/raw/etc.) was leaking into every payload the app serves on every page load, not
+// staying confined to data/cache/<cgId>.json as the design (and the handoff) claimed. Measured
+// on TRX: a stamped daily candle is ~3.8x a lean one; projected latest-daily.json 1.2MB -> ~7MB.
+// FIX: stampCandleContractAll now clones each candle before stamping (Object.assign({}, c)) —
+// it never mutates its input array's objects — so callers MUST use the returned array for the
+// cache merge and keep using their ORIGINAL array for detection. See pullCoin below for both
+// call sites, and toLeanCandles() further down for the second, independent safety net applied
+// immediately before every detectChannel() call (covers candles reloaded from an
+// already-enriched on-disk cache file too, not just this run's own fresh pull).
+function stampCandleContractAll(candles, opts) {
+  if (!candles || !candles.length) return [];
+  return candles.map(c => stampCandleContract(Object.assign({}, c), opts));
+}
+
+// Second, independent safety net (same fix as above): strips any candle down to ONLY the
+// lean detection/display shape, discarding whatever contract fields it may carry — regardless
+// of whether it's this run's fresh pull or a candle reloaded from an already-enriched
+// data/cache/<cgId>.json file (K.loadCache can hand back H7-stamped candles from a PRIOR run,
+// which stampCandleContractAll's own clone-not-mutate fix above does nothing to address).
+// Applied immediately before every C.detectChannel() call in this file, so whatever ends up on
+// a fit's `candles` field (and therefore in a written payload) is provably lean, independent of
+// candle provenance.
+const LEAN_CANDLE_FIELDS = ['time', 'open', 'high', 'low', 'close', 'date', 'volume'];
+function toLeanCandle(c) {
+  const lean = {};
+  for (const k of LEAN_CANDLE_FIELDS) if (c[k] !== undefined) lean[k] = c[k];
+  return lean;
+}
+function toLeanCandles(candles) { return (candles || []).map(toLeanCandle); }
 
 // Symbol-collision guard (upgrade #7b, amended 2026-09-19 per work-order A3/A4). exchange-map.js
 // matches Kraken/Coinbase tickers to CoinGecko coins BY TEXT, and a ticker string is not proof
@@ -416,11 +480,39 @@ async function pullCoin(coin, mapping, nowSec) {
   // GRID_SPAN_SECONDS, then drop the newest candle if its re-stamped span hasn't fully closed
   // yet (F1's same closed-bar principle applied to the grid, not just the daily stream) — a
   // still-forming grid candle must never be captured as if it were a complete 4-day bar.
-  const candlesRaw = ohlcRaw.map(c => {
+  // FIX (analysis-thread review, 2026-09-22, BLOCKS finding): `raw` used to be attached
+  // directly on these objects at construction time — the SAME objects later sliced (not
+  // deep-copied) into a detected fit's `candles` field and written into every day
+  // file/latest.json. Now built in two stages: `candlesRawFull` carries `raw` (cache-bound
+  // only); `candles` (below) is a LEAN copy of it via toLeanCandles(), which is what's
+  // actually used for detection and returned to the caller.
+  const candlesRawFull = ohlcRaw.map(c => {
     const stampSec = Math.floor(c[0] / 1000) - GRID_SPAN_SECONDS;
-    return { time: stampSec, open: c[1], high: c[2], low: c[3], close: c[4], date: ymd(stampSec * 1000) };
+    // H7: keep CoinGecko's raw row (`c`) beside the normalized fields — "the provider's raw
+    // record is kept beside the normalized one." Cache-bound only — see fix note above.
+    return { time: stampSec, open: c[1], high: c[2], low: c[3], close: c[4], date: ymd(stampSec * 1000), raw: c };
   });
-  const candles = dropUnclosedBars(candlesRaw, GRID_SPAN_SECONDS, nowSec);
+  const cacheCandlesRaw = dropUnclosedBars(candlesRawFull, GRID_SPAN_SECONDS, nowSec);
+  // Detection/display-purposed array — LEAN, never carries `raw` or any H7 contract field,
+  // regardless of what cacheCandlesRaw/cacheCandles carry. This is what pullCoin returns as
+  // `candles` and what every detectChannel() call in this file receives.
+  const candles = toLeanCandles(cacheCandlesRaw);
+  // H7: stamp the full candle contract for the CACHE COPY ONLY (cacheCandlesRaw already
+  // carries `raw`; stampCandleContractAll clones before stamping — see its own comment — so
+  // this never touches `candles` above). providerTimestamp is the ORIGINAL CoinGecko value
+  // (the range's CLOSE, per F2's header note) — c[0]/1000 — kept distinct from `time`/
+  // startTime, which F2 already re-stamped to the range's OPEN; providerTimestampMeans:'close'
+  // records which one the provider actually meant, per the spec's own wording ("provider
+  // timestamp and its meaning"). fetchedAt is one instant for this whole pull (all grid
+  // candles come from a single /ohlc response).
+  const gridFetchedAt = new Date().toISOString();
+  const cacheCandles = stampCandleContractAll(cacheCandlesRaw, {
+    venue: 'coingecko', pair: coin.id + '/usd', timeframe: '4d-grid',
+    spanSeconds: GRID_SPAN_SECONDS, providerTimestampMeans: 'close', fetchedAt: gridFetchedAt,
+  });
+  // providerTimestamp needs the ORIGINAL (pre-restamp) close-seconds value per candle, not a
+  // single shared number — set per-clone since it depends on each candle's own time.
+  cacheCandles.forEach(c => { c.providerTimestamp = c.time + GRID_SPAN_SECONDS; });
 
   // This pull's daily rows, by date, merged onto the cache — authoritative for any date/field
   // this pull covers (see cache-core.js's restated merge invariant, upgrade #7 amendment).
@@ -435,7 +527,7 @@ async function pullCoin(coin, mapping, nowSec) {
     const d = ymd(ms); (newRows[d] || (newRows[d] = {})).marketCap = m;
   }
   K.mergeMarketChart(cache, newRows);
-  K.mergeOhlc(cache, candles);
+  K.mergeOhlc(cache, cacheCandles);   // FIX: the H7-enriched clones, not the lean `candles`
 
   // --- Exchange daily pull (upgrade #2, 2026-09-17). Best-effort: a failure here never aborts
   // the coin's 4-day pass, it just falls back to CoinGecko-4d for the daily stream. The
@@ -460,8 +552,24 @@ async function pullCoin(coin, mapping, nowSec) {
       // collision check, the cache merge, or detectChannel. Everything downstream of this line
       // only ever sees a bar whose full 86400s span has actually elapsed.
       dailyCandles = dropUnclosedBars(dailyCandles, DAY_SECONDS, nowSec);
+      // FIX (analysis-thread review, 2026-09-22, BLOCKS finding): exchange-ohlcv.js's own
+      // normalizers already attach `raw` on these objects at construction time (F5/H7) — the
+      // SAME objects that used to be mutated further by stampCandleContractAll and then flow,
+      // unchanged, into detectSymbolCollision/rowForDaily's detectChannel and out into
+      // latest-daily.json's `detection.candles`. Cache-bound stamping now happens on CLONES
+      // (`cacheDailyCandles`, kept separate and carrying `raw`); `dailyCandles` itself is then
+      // stripped to the lean shape via toLeanCandles() and is what the collision check, the
+      // returned pendingDaily, and (eventually, via rowForDaily) detection all actually see.
+      // Both venues' daily OHLC endpoints timestamp at the bar's OPEN (see exchange-ohlcv.js's
+      // own header, live-verified 2026-09-17), unlike CoinGecko's /ohlc — hence
+      // providerTimestampMeans:'open' here vs 'close' for the grid stamp above.
+      const cacheDailyCandles = stampCandleContractAll(dailyCandles, {
+        venue: mapping.exchange, pair: mapping.ticker + '/usd', timeframe: '1d',
+        spanSeconds: DAY_SECONDS, providerTimestampMeans: 'open', fetchedAt: new Date().toISOString()
+      });
+      dailyCandles = toLeanCandles(dailyCandles);   // FIX: strip to lean AFTER cloning for the cache
       const check = detectSymbolCollision(dailyCandles, coin.current_price, cache.marketChart);
-      pendingDaily = { mapping, dailyCandles, check };
+      pendingDaily = { mapping, dailyCandles, cacheDailyCandles, check };
     } catch (e) {
       console.warn('daily pull failed for', coin.id, '(' + mapping.exchange + '):', e.message);
       dailyFetchFailed = true;
@@ -531,7 +639,7 @@ function resolveDailyCollisions(pulls) {
   const rejectedCoins = [], flaggedCoins = [];
   for (const p of pulls) {
     if (!p.pendingDaily) { K.saveCache(CACHE_DIR, p.cache); continue; }   // no mapping, or fetch failed — nothing to resolve
-    const { mapping, dailyCandles, check } = p.pendingDaily;
+    const { mapping, dailyCandles, cacheDailyCandles, check } = p.pendingDaily;
     const statLabel = check.robust != null
       ? ('90d robust-dispersion ' + check.robust.toFixed(3))
       : ('same-instant ratio ' + (check.ratio != null ? check.ratio.toFixed(3) : 'n/a') + ' (no robust-dispersion history yet)');
@@ -563,7 +671,7 @@ function resolveDailyCollisions(pulls) {
       } else if (check.borderline) {
         console.warn('exchange daily ACCEPTED but borderline for', p.coin.id, '(' + mapping.exchange + ' ticker ' + mapping.ticker + '):', statLabel, '— worth a manual look, not rejected.');
       }
-      K.mergeOhlcDailyCandles(p.cache, dailyCandles);
+      K.mergeOhlcDailyCandles(p.cache, cacheDailyCandles);   // FIX: the H7-enriched clones, not lean `dailyCandles`
       p.dailySource = mapping.exchange;
       p.dailyCandles = p.cache.ohlcDaily;
     }
@@ -597,7 +705,12 @@ function rowForCandle(pulled, idx, catLabels, diag) {
   // touches/containment INTO THE CALLER'S shared object - same detectChannel() mechanism
   // radar.html's live scanCoin() already relies on (channel-core.js increments diag by
   // reference; a coin is counted at most once per stage - see channel-core.js's own comment).
-  const det = C.detectChannel(upto, diag);          // shared detection; null if no channel
+  // H7: pass meta so the fit-contract fields (fitId/timeframe/source) are stamped on `det`.
+  // FIX (BLOCKS finding, 2026-09-22): toLeanCandles() here is a second, independent safety net
+  // — `candles` (pulled.candles) is already lean by construction (see pullCoin), but this call
+  // site is exactly where a written payload's `detection.candles` is produced, so it stays
+  // provably lean here even if a future change to pullCoin stops guaranteeing that upstream.
+  const det = C.detectChannel(toLeanCandles(upto), diag, { coinId: coin.id, timeframe: '4d-grid', source: 'coingecko' });
 
   // Sum daily volumes across this candle's span (exclusive of the prior candle's date).
   const prevDate = idx > 0 ? candles[idx - 1].date : null;
@@ -649,7 +762,16 @@ function rowForDaily(pulled, catLabels, diag) {
   // radar.html's scanCoin() counts diag.ohlcOk (right after a successful fetch, before
   // detectChannel is even called).
   if (diag) diag.ohlcOk++;
-  const det = C.detectChannel(dailyCandles, diag);   // SAME shared detection as the 4-day pass —
+  // H7: same meta stamping as the grid pass; source here is whatever venue this coin's daily
+  // stream actually came from this run (kraken/coinbase/coingecko-4d-fallback/etc).
+  // FIX (BLOCKS finding, 2026-09-22): this is the REAL structural leak point — `dailyCandles`
+  // here (pulled.dailyCandles) can be `p.cache.ohlcDaily`, i.e. H7-ENRICHED candles either
+  // freshly merged this run or reloaded from an already-enriched on-disk cache file from a
+  // PRIOR run — cloning-not-mutating upstream (pullCoin) does nothing to address that second
+  // case. toLeanCandles() here strips it regardless of provenance, so detectionDaily.candles
+  // (written into data/daily/*.json and latest-daily.json) is provably lean every run.
+  const det = C.detectChannel(toLeanCandles(dailyCandles), diag, { coinId: coin.id, timeframe: '1d', source: dailySource });
+                                                // SAME shared detection as the 4-day pass —
                                                 // no separate scoring logic, no write-time
                                                 // score filter (see header).
   return Object.assign(base, { detectionDaily: det });
@@ -801,6 +923,18 @@ async function main() {
   // (grid and daily) this run judges against the same instant rather than drifting across the
   // run's several minutes of fetches.
   const nowSec = Math.floor(Date.now() / 1000);
+
+  // H8 (Remediation spec): per-pass run-tracking, threaded through the rest of main() and
+  // written into data/capture-manifest.json at the end. "ok" = the pass completed without
+  // throwing (best-effort passes keep last-run cache data on failure — see each try/catch —
+  // so ok:false does NOT mean the cache went empty, only that THIS run didn't refresh it).
+  // "updated" = this run actually wrote/merged something for that pass, not just confirmed
+  // nothing new was due. lastClosedCandle = the newest bar date that pass's data reflects,
+  // whether from this run or a prior one.
+  let gridUpdatedThisRun = false;
+  let dailyPassOk = false, dailyUpdatedThisRun = false, dailyLastClosedCandle = null;
+  let btcPassOk = false, btcUpdatedThisRun = false, btcLastClosedCandle = null;
+
   const { list: universe, counts: universeCounts } = await buildUniverse();
   console.log('universe:', universe.length, 'coins');
   if (!universe.length) { console.error('empty universe — aborting, not writing'); process.exit(1); }
@@ -833,11 +967,23 @@ async function main() {
   // pull and the daily-basis-stream block below.
   try {
     const btcRaw = await EX.fetchKrakenDaily('XBT');
-    const btcClosed = dropUnclosedBars(btcRaw, DAY_SECONDS, nowSec);
+    const btcClosed = dropUnclosedBars(btcRaw, DAY_SECONDS, nowSec);   // lean (still carries exchange-ohlcv.js's own `raw`, stripped below)
+    // H7: same candle-contract stamp as the per-coin exchange daily pull above.
+    // FIX (BLOCKS finding, 2026-09-22): stampCandleContractAll clones, it no longer mutates
+    // `btcClosed` in place — capture its return value for the cache merge, and lean-ify
+    // `btcClosed` itself so it stays a safe, un-enriched value if a future step (C5) ever
+    // detects on it directly.
+    const btcCacheCandles = stampCandleContractAll(btcClosed, {
+      venue: 'kraken', pair: 'XBT/usd', timeframe: '1d',
+      spanSeconds: DAY_SECONDS, providerTimestampMeans: 'open', fetchedAt: new Date().toISOString()
+    });
     let btcCache = K.loadCache(CACHE_DIR, 'bitcoin') || K.emptyCache('bitcoin', 'btc');
-    K.mergeOhlcDailyCandles(btcCache, btcClosed);
+    K.mergeOhlcDailyCandles(btcCache, btcCacheCandles);
     K.saveCache(CACHE_DIR, btcCache);
     console.log('BTC daily series captured:', btcCache.ohlcDaily.length, 'candles, newest', btcClosed.length ? btcClosed[btcClosed.length - 1].date : '(none this run)');
+    btcPassOk = true;
+    btcUpdatedThisRun = btcClosed.length > 0;
+    btcLastClosedCandle = btcCache.ohlcDaily.length ? btcCache.ohlcDaily[btcCache.ohlcDaily.length - 1].date : null;
   } catch (e) {
     console.warn('BTC daily capture failed (regime gate will have no data until this succeeds):', e.message);
   }
@@ -925,6 +1071,7 @@ async function main() {
       coins
     };
     writeDayFile(D, payload);
+    gridUpdatedThisRun = true;
     if (D === newestGrid) newestPayload = payload;
   }
 
@@ -1015,8 +1162,58 @@ async function main() {
     const fallbackOnly = dailyCoins.filter(c => c.dailySource === 'coingecko-4d-fallback').length;
     console.log('wrote', dailyDayPath, 'and data/latest-daily.json ->', todayDate,
       '(' + dailyFlagged + ' daily candidates, ' + fallbackOnly + ' coins on CoinGecko-4d fallback)');
+    dailyPassOk = true;
+    dailyUpdatedThisRun = true;
+    dailyLastClosedCandle = lastBarTimeSec !== null ? new Date(lastBarTimeSec * 1000).toISOString().slice(0, 10) : null;
   } catch (e) {
     console.error('DAILY-BASIS STREAM FAILED this run (4-day capture above is unaffected and will still be committed):', e);
+  }
+
+  // --- H8 capture manifest (Remediation spec, 2026-09-21/22) -----------------------------------
+  // "Every capture writes source timestamps, last closed candle, fetch completion time, schema
+  // version, detector version and a config hash. Failed refreshes keep the last valid data but
+  // age it visibly. Refresh states which pass it updated." Written LAST, after every pass above
+  // has run (or been caught) — its own file write is wrapped separately so a manifest-write
+  // failure can never cost data already committed above (same failure-isolation principle the
+  // daily-basis stream already uses).
+  //
+  // "Failed refreshes keep the last valid data but age it visibly" is satisfied by this manifest
+  // EXISTING and being read-able: a pass with ok:false / updated:false alongside an unchanged
+  // lastClosedCandle is exactly "aged, visibly" data — a consumer can compare fetchCompletedAt
+  // against lastClosedCandle's own date to see staleness. Actually WIRING a consumer (radar.html)
+  // to read and display this manifest is NOT done in this step — H8's own text only requires the
+  // write. Filed as BACKLOG in the H7/H8 handoff: a future step should surface
+  // capture-manifest.json's staleness in the UI (e.g. next to the "cached" data source label).
+  try {
+    const configHash = crypto.createHash('sha256').update(JSON.stringify({
+      PIVOT_LB: C.PIVOT_LB, TOUCH_TOL: C.TOUCH_TOL, ROCKET_CLOSE_TOL: C.ROCKET_CLOSE_TOL,
+      FIT_SCHEMA_VERSION: C.FIT_SCHEMA_VERSION, CONTAINMENT_RECENT_WINDOW: C.CONTAINMENT_RECENT_WINDOW,
+      DETECTOR_VERSION: C.DETECTOR_VERSION, CANDLE_SCHEMA_VERSION: CANDLE_SCHEMA_VERSION,
+      GRID_SPAN_SECONDS: GRID_SPAN_SECONDS, DAY_SECONDS: DAY_SECONDS, BACKFILL_CANDLES: BACKFILL_CANDLES,
+      RATIO_ROBUST_ACCEPT: RATIO_ROBUST_ACCEPT, RATIO_ROBUST_REJECT: RATIO_ROBUST_REJECT,
+      RATIO_MIN_POINTS: RATIO_MIN_POINTS, RATIO_MAX_POINTS: RATIO_MAX_POINTS,
+      COLLISION_FAILOPEN_RATE: COLLISION_FAILOPEN_RATE, COLLISION_FAILOPEN_MIN_SAMPLE: COLLISION_FAILOPEN_MIN_SAMPLE
+    })).digest('hex');
+    const manifest = {
+      schemaVersion: 1,
+      detectorVersion: C.DETECTOR_VERSION,
+      candleSchemaVersion: CANDLE_SCHEMA_VERSION,
+      configHash: configHash,
+      fetchCompletedAt: new Date().toISOString(),
+      passes: {
+        // grid "ok" is always true here — a genuinely failed grid pass (empty universe, no
+        // coins pulled) already process.exit(1)s above, before this point is ever reached, so
+        // reaching here means the grid pass itself succeeded even on a run where every date
+        // was already captured (updated:false, ok:true — "nothing new was due", not a failure).
+        grid: { ok: true, lastClosedCandle: newestGrid, updated: gridUpdatedThisRun },
+        daily: { ok: dailyPassOk, lastClosedCandle: dailyLastClosedCandle, updated: dailyUpdatedThisRun },
+        btcRegime: { ok: btcPassOk, lastClosedCandle: btcLastClosedCandle, updated: btcUpdatedThisRun }
+      }
+    };
+    fs.writeFileSync(path.join(DATA_DIR, 'capture-manifest.json'), JSON.stringify(manifest, null, 2));
+    console.log('wrote data/capture-manifest.json');
+  } catch (e) {
+    console.error('CAPTURE MANIFEST WRITE FAILED (data above is unaffected and will still be committed):', e);
   }
 
   console.log('done');
