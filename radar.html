@@ -1229,6 +1229,17 @@ function buildAction(r, opts) {
   var WIDE_CHANNEL_PCT = 50;
   var widthPct = (r.channelH!=null && r.price) ? (r.channelH/r.price*100) : null;
   var isWide = widthPct!=null && widthPct > WIDE_CHANNEL_PCT;
+  // B3 (Remediation spec, 2026-09-21/22; per Step 7 plan review, decision 2): a channel this
+  // wide can't be an ACT entry regardless of score/rail freshness - separate from
+  // WIDE_CHANNEL_PCT=50 above, which only changes the target wording. 0.40 as a fraction to
+  // match distToRailPct's own scale below; widthPct (computed above) is already a percentage.
+  var ACT_WIDTH_MAX = 0.40;
+  // B5 (Remediation spec, 2026-09-21/22; min confirmed per Step 7 plan review): entry distance
+  // gate. r.distToRailPct only exists on a research-mode row (channel-core.js's
+  // detectChannelResearch) - undefined on a flag-off row, so this whole gate is research-only,
+  // same scoping as R5 above. With A3 daily tol floored at 1%, the gate is 2% on daily; on grid
+  // tol saturates at 4% (Step 6 A3 finding), so the gate is 6% there.
+  var distGate = (r.tol != null) ? Math.min(2*r.tol, 0.06) : null;
   // geometryStale: true whenever the support side of this row is about to be presented with a
   // rail-age caveat (i.e. every branch below except the fresh-rail ACT case) - see FIX A above.
   var geometryStale = railBand !== 'fresh';
@@ -1291,6 +1302,17 @@ function buildAction(r, opts) {
     // instead of reaching the score check below.
     if(r.gridBroken) {
       return {verdict:'WATCH', text:'Watch: would be an act zone on the daily fit, but the 4-Day grid fit is broken (grid close below its own invalidation) - blocked until the grid re-fits. Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+    }
+    // B3/B5 (Remediation spec, 2026-09-21/22; Step 7): research-mode-only gates, checked
+    // ahead of the score floor same as gridBroken above. opts.research guards both - see the
+    // constant comments above for why (distToRailPct doesn't exist on a flag-off row at all).
+    if (opts.research) {
+      if (widthPct!=null && widthPct/100 > ACT_WIDTH_MAX) {
+        return {verdict:'WATCH', text:'Watch: would be an act zone, but the channel is unusually wide ('+widthPct.toFixed(0)+'%, over the '+(ACT_WIDTH_MAX*100)+'% cap) - treat as a range boundary, not a price target. Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+      }
+      if (r.distToRailPct != null && distGate != null && r.distToRailPct > distGate) {
+        return {verdict:'WATCH', text:'Watch: would be an act zone, but price is already '+(r.distToRailPct*100).toFixed(1)+'% above support - too far from the rail to act on (gate '+(distGate*100).toFixed(1)+'%). Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
+      }
     }
     if(r.score>=ACT_SCORE_FLOOR) {
       return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
