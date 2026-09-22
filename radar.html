@@ -2940,26 +2940,34 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
           tol: researchFit.tol, atr14: researchFit.atr14, score: researchFit.score,
           railAgeDays: railAgeR.days, railAgeBand: railAgeR.band
         };
-        var rr = {}; for (var rk in merged) rr[rk] = merged[rk];
-        rr.position = researchFit.position;
-        rr.supportNow = researchFit.supportNow;
-        rr.resistNow = researchFit.resistNow;
-        rr.invalidation = researchFit.invalidation;
-        rr.channelH = researchFit.channelH;
-        rr.score = researchFit.score;
-        rr.supSlope = researchFit.supSlope;
-        rr.supIntercept = researchFit.supIntercept;
-        rr.slope = researchFit.slope;
-        rr.isAscending = researchFit.isAscending;
-        rr.lifecycleState = researchFit.lifecycleState;
-        rr.maxBreakRun = researchFit.maxBreakRun;
-        rr.lastBreakIdx = researchFit.lastBreakIdx;
-        rr.barsSinceBreak = researchFit.barsSinceBreak;
-        rr.tol = researchFit.tol;
-        rr.atr14 = researchFit.atr14;
-        rr.supportTouches = researchFit.supportTouches;
-        rr.resTouches = researchFit.resTouches;
-        rr.containment = researchFit.containment;
+        // Step 8 prerequisite fix (2026-09-22, analysis-thread review, BLOCKS finding): the
+        // manual field list above copied only 16 of the research fit's ~45 fields onto `rr` -
+        // missing distToRailPct (B5), resSlope/resIntercept/pivotHighs/resistanceFit (B1/R3),
+        // every pattern flag/*Trigger (bb3/bullEngulf/threeInsideUp/rocket/multiSignal/
+        // bb3UpperReversion/threeInsideDown), fitId, and everything else detectChannelResearch
+        // returns. Consequence found in review: buildAction's B5 gate (`r.distToRailPct !=
+        // null`) was dead on every research-mode row rendered from captured data - it never
+        // had the field to test (B3 was fine - channelH was already copied). Fixed generically
+        // instead of extending the list a third time: spread every field the research fit
+        // actually returned onto `rr` first, THEN re-apply this row's own identity/display
+        // fields on top so the research reading still describes THIS coin's row, never a bare
+        // fit object. Any field a future step adds to detectChannelResearch's return value
+        // (H11's patternRecords, etc.) now reaches `rr` automatically - no fourth manual list.
+        var rr = {};
+        for (var fk in researchFit) rr[fk] = researchFit[fk];
+        // Identity/display fields: never sourced from the fit, always this row's own.
+        rr.symbol = merged.symbol; rr.name = merged.name; rr.cgId = merged.cgId;
+        rr.price = merged.price; rr.change24h = merged.change24h; rr.volume24h = merged.volume24h;
+        rr.tvExchange = merged.tvExchange; rr.tvPair = merged.tvPair; rr.category = merged.category;
+        rr.source = merged.source; rr.dailyStale = merged.dailyStale; rr.explanation = merged.explanation;
+        // Flag-off _4D/_1D pattern fields are merged-only (see PATTERN_KEYS above) - never on
+        // the research fit - carried through so nothing reading them off a research row (a
+        // renderer that hasn't been split to research-only fields yet) finds them undefined.
+        for (var pki = 0; pki < PATTERN_KEYS.length; pki++) {
+          var pk = PATTERN_KEYS[pki];
+          rr[pk+'_4D'] = merged[pk+'_4D']; rr[pk+'_4DTrigger'] = merged[pk+'_4DTrigger'];
+          rr[pk+'_1D'] = merged[pk+'_1D']; rr[pk+'_1DTrigger'] = merged[pk+'_1DTrigger'];
+        }
         rr.supportRailAgeDays = railAgeR.days;
         rr.supportRailAgeBand = railAgeR.band;
         // A1/H9 supersedes the old single-close-below-invalidation proxy in research mode -
