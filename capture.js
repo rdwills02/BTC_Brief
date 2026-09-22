@@ -728,7 +728,18 @@ function rowForCandle(pulled, idx, catLabels, diag) {
     ohlc: { open: bar.open, high: bar.high, low: bar.low, close: bar.close },
     volumeSpan: volHave ? volSum : null,            // summed volume over the ~4-day candle span
     marketCap: capByDate[D] != null ? capByDate[D] : null,
-    price: priceByDate[D] != null ? priceByDate[D] : bar.close,
+    // F2 follow-up (review finding, 2026-09-22): F2 re-stamped grid bars to their OPEN date
+    // (see this file's F1/F2 header), so priceByDate[D] - the cached daily price on date D -
+    // became the price at the bar's OPEN, not its close, up to ~4 days (and, on the 9/22
+    // fixture, up to 21.9%) stale relative to what the bar actually closed at. bar.close IS
+    // the bar's own close - the same value H7's detectionPrice uses for the fit this row's
+    // `detection` field carries (see channel-core.js's curPrice) - so this reads it directly
+    // instead of going through the open-date lookup. priceByDate itself is left in place
+    // (still used to build volByDate/capByDate's sibling object above); only this one read
+    // changes. Confirmed on the live 9/16 TRX grid bar: priceByDate['2026-09-16'] = 0.332834
+    // (that date's OPEN price) vs bar.close = 0.339764 (what F2's own acceptance test uses) -
+    // a real, present-day 2.1% miss on this one bar alone, not a hypothetical.
+    price: bar.close,
     change24h: coin.price_change_percentage_24h != null ? coin.price_change_percentage_24h : null, // point-in-time (capture date)
     volume24h: coin.total_volume != null ? coin.total_volume : null,   // live 24h volume at capture time
     category: (catLabels && catLabels[coin.id]) || null,   // display context tag (or null)
