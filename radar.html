@@ -333,6 +333,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="detail-chart-bands"></div>
       </div>
       <div class="ds">
+        <div class="ds-title">Confluence Signals (from daily OHLC)</div>
+        <div id="dp-confluence"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Proprietary TradingView indicators (ERI, TSI, RSI Pro, Buy Blocks, Order Blocks, Dynamic ATR) are not computable from public OHLC — confirm those in TradingView.</div>
+      </div>
+      <div class="ds">
         <div class="ds-title">Channel Score</div>
         <div class="score-display"><div class="score-big" id="dp-score"></div><div><div id="dp-badge"></div><div style="font-size:11px;color:var(--muted);margin-top:4px" id="dp-tf"></div></div></div>
         <div class="score-grid" id="dp-score-grid"></div>
@@ -351,11 +356,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div class="ds-title cat-tip" data-tip="A rules-derived read, not a trade instruction: Act/Watch/Wait, plus zone, invalidation, and first target, all conditional on rail freshness. Always validate in TradingView before acting.">Recommended View</div>
         <div style="margin-bottom:8px" id="dp-action-badge"></div>
         <div class="expl" id="dp-action-text"></div>
-      </div>
-      <div class="ds">
-        <div class="ds-title">Confluence Signals (from daily OHLC)</div>
-        <div id="dp-confluence"></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Proprietary TradingView indicators (ERI, TSI, RSI Pro, Buy Blocks, Order Blocks, Dynamic ATR) are not computable from public OHLC — confirm those in TradingView.</div>
       </div>
       <div class="ds">
         <div class="ds-title">Invalidation</div>
@@ -434,7 +434,7 @@ var detailCS = null, detailEmaSeries = null, detailPivotMarkers = null, detailTr
 // toggleOverlay's renderPatternBands() recompute 4-Day band pixel positions (chart.timeScale()
 // needs the chart instance + the candle series it was built from) without threading them through
 // every call site - same module-level-state pattern as detailCS/detailTriggers above.
-var detailCandles = null, detailBandsEl = null;
+var detailCandles = null, detailCandlesGrid = null, detailBandsEl = null;
 var scanning = false;
 var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
 // Computed once per scan in runScan() from radar.html's own localStorage history (see
@@ -1739,7 +1739,7 @@ function emaSeriesFor(candles, period) {
 //     trailing optional args, rather than a 7th required one, keeps the report's existing
 //     6-arg call site valid with no crash - required by this function's own toString()-injection
 //     contract above (self-contained, but an absent optional param is not a broken contract).
-function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart, candles, bandsEl) {
+function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart, candles, bandsEl, candlesGrid) {
   state[key] = !state[key];
   if(key === 'ema') {
     if(emaSeries.ema21) emaSeries.ema21.applyOptions({visible: !!state.ema});
@@ -1774,14 +1774,14 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart,
   // function, NOT toString()-injected into the report - this call only ever executes when
   // chart/candles/bandsEl are truthy, which never happens on the report's own (unmodified,
   // 6-arg) call site, so the reference is simply never reached there. No throw.
-  if(chart && candles && bandsEl) renderPatternBands(state, triggers, chart, candles, bandsEl);
+  if(chart && candles && bandsEl) renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candlesGrid);
 }
 // Indicator Upgrades Group 5, item 1 (2026-09-21): draws the 4-Day pattern band(s) currently
 // toggled on. Called from toggleOverlay (click) and from buildChart's ResizeObserver (so a band
 // stays correctly positioned while the detail panel is being drag-resized - Group 4 item 4).
 // lightweight-charts' setMarkers() only places point markers, so this draws each band as a
 // plain absolutely-positioned div on top of the chart canvas, positioned via timeToCoordinate().
-function renderPatternBands(state, triggers, chart, candles, bandsEl) {
+function renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candlesGrid) {
   bandsEl.innerHTML = '';
   if(!candles || candles.length < 2) return;
   var lastTime = candles[candles.length-1].time;
@@ -1792,6 +1792,17 @@ function renderPatternBands(state, triggers, chart, candles, bandsEl) {
   var GRID_INTERVAL_DAYS = 4; // confirmed in capture data (grid_interval_days) and this app's
                               // own "4-Day" vocabulary throughout - the grid pass's fixed
                               // candle width.
+  // Item 34 fix (2026-09-21): per-pattern band color, mirroring toggleOverlay's own
+  // patternDefs map for the 1D markers (bb3 unchanged purple, bullEngulf/threeInsideUp/
+  // rocket each their own color). Previously the render loop below hardcoded every band to
+  // bullEngulf's blue regardless of which pattern(s) were actually toggled on - verified
+  // live on TRX with bullEngulf_4D+rocket_4D both true, both bands rendered identically blue.
+  var BAND_STYLE = {
+    bb3_4D:            {border:'#7b6ef6', bg:'rgba(123,110,246,.12)'},
+    bullEngulf_4D:     {border:'#5b8def', bg:'rgba(91,141,239,.12)'},
+    threeInsideUp_4D:  {border:'#f472b6', bg:'rgba(244,114,182,.12)'},
+    rocket_4D:         {border:'#22d3ee', bg:'rgba(34,211,238,.12)'}
+  };
   var bandKeys = ['bb3_4D','bullEngulf_4D','threeInsideUp_4D','rocket_4D'];
   var bands = [];
   for(var bi=0; bi<bandKeys.length; bi++) {
@@ -1812,7 +1823,11 @@ function renderPatternBands(state, triggers, chart, candles, bandsEl) {
       if(lastX == null) continue; // last candle itself scrolled out of view - nothing sane to clamp to
       rightX = lastX + barPx/2;
     }
-    bands.push({left:Math.min(leftX,rightX), right:Math.max(leftX,rightX)});
+    // Item 34 fix: carry the key through so the render loop below can look up this band's
+    // own color instead of a hardcoded one. Item 35 (2026-09-21, Option b): triggerTime carried
+    // too, so the render loop below can look up the REAL grid-pass candle at this exact
+    // timestamp on candlesGrid, rather than reconstructing an aggregate from the daily series.
+    bands.push({left:Math.min(leftX,rightX), right:Math.max(leftX,rightX), key:bk, triggerTime:bt.time});
   }
   // Adjacent-band gutter: consecutive bands sharing a boundary get a 3px total gutter (1.5px
   // inset each side) so they read as two distinct signals, not one fused region.
@@ -1822,10 +1837,51 @@ function renderPatternBands(state, triggers, chart, candles, bandsEl) {
   }
   for(var di=0; di<bands.length; di++) {
     var bd = bands[di], w = Math.max(1, bd.right - bd.left);
+    var style = BAND_STYLE[bd.key] || BAND_STYLE.bullEngulf_4D;
     var div = document.createElement('div');
     div.style.cssText = 'position:absolute;top:0;bottom:0;left:'+bd.left+'px;width:'+w+'px;'+
-      'background:rgba(91,141,239,.12);border-left:1px dashed #5b8def;border-right:1px dashed #5b8def;';
+      'background:'+style.bg+';border-left:1px dashed '+style.border+';border-right:1px dashed '+style.border+';';
     bandsEl.appendChild(div);
+
+    // Item 35 (2026-09-21), Option (b) per Ryan's explicit direction: overlay the REAL 4-day
+    // candle the detector actually scored, not a reconstruction. Option (a) (aggregating the
+    // daily bars inside this band's own window) was built and spot-checked first, per the
+    // spec's own instruction to verify against real data before shipping - it showed genuine,
+    // non-rounding drift from the actual stored grid-pass candle on all 3 coins checked (TRX,
+    // XLM, WLFI; see Radar Future Updates.md #36, filed separately as a data-integrity finding,
+    // broader than #32). Ryan explicitly rejected shipping that reconstruction with a caveat
+    // ("a rendered candle reads as authoritative"), so this draws candlesGrid's own stored
+    // candle instead - the exact bar bullEngulfing()/bb3Reversion()/threeInsideUp()/
+    // rocketAtSupport() read when they set this trigger's time, matched back by that same
+    // timestamp. candlesGrid is r.candlesGrid, which mergeCandidateRow already sets to
+    // gridRow.candles - confirmed present on all three paths this row can come from: the live
+    // scanCoin()->detectChannel() path (detectChannel's own `best.candles = candles.slice(-150)`,
+    // scanCoin's return value merged as-is, no adapter), and both cached-mode adapters,
+    // adaptCaptureCoin/adaptDailyCoin (both explicitly copy `candles:d.candles` from the raw
+    // capture). So no separate "carry it through" plumbing was needed in those three functions
+    // themselves - the field already flowed end-to-end; the gap was only in the render call
+    // chain from buildChart/toggleOverlay/ResizeObserver down to here, which this patch adds.
+    if(cs && candlesGrid && candlesGrid.length) {
+      var gc = null;
+      for(var ci=0; ci<candlesGrid.length; ci++) { if(candlesGrid[ci].time === bd.triggerTime) { gc = candlesGrid[ci]; break; } }
+      if(gc) {
+        var yO = cs.priceToCoordinate(gc.open), yC = cs.priceToCoordinate(gc.close);
+        var yH = cs.priceToCoordinate(gc.high), yL = cs.priceToCoordinate(gc.low);
+        if(yO!=null && yC!=null && yH!=null && yL!=null) {
+          var upCandle = gc.close >= gc.open;
+          var ccolor = upCandle ? '#00c896' : '#e8754a';
+          var cx = bd.left + w/2;
+          var bodyW = Math.max(4, Math.min(w*0.5, 22));
+          var wick = document.createElement('div');
+          wick.style.cssText = 'position:absolute;left:'+(cx-0.5)+'px;top:'+Math.min(yH,yL)+'px;width:1px;height:'+Math.max(1,Math.abs(yH-yL))+'px;background:'+ccolor+';opacity:.65;';
+          bandsEl.appendChild(wick);
+          var body = document.createElement('div');
+          body.style.cssText = 'position:absolute;left:'+(cx-bodyW/2)+'px;top:'+Math.min(yO,yC)+'px;width:'+bodyW+'px;height:'+Math.max(1,Math.abs(yO-yC))+'px;'+
+            'background:'+ccolor+';opacity:.35;border:1px dashed '+ccolor+';box-sizing:border-box;';
+          bandsEl.appendChild(body);
+        }
+      }
+    }
   }
 }
 function buildChart(r) {
@@ -1887,6 +1943,7 @@ function buildChart(r) {
     rocket_4D:r.rocket_4DTrigger, rocket_1D:r.rocket_1DTrigger
   };
   detailCandles = r.candles;
+  detailCandlesGrid = r.candlesGrid;
   detailBandsEl = bandsEl;
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
@@ -1907,7 +1964,7 @@ function buildChart(r) {
   // read back through timeToCoordinate), but renderPatternBands does, so its call is deferred one
   // frame - the redraw is still effectively synchronous with the resize, just one paint tick
   // later, not visibly delayed.
-  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++){chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});chart.timeScale().fitContent();}if(detailBandsEl){var rC=chart,rO=detailOverlay,rT=detailTriggers,rCa=detailCandles,rB=detailBandsEl;requestAnimationFrame(function(){renderPatternBands(rO,rT,rC,rCa,rB);});}}).observe(container);
+  new ResizeObserver(function(entries){for(var i=0;i<entries.length;i++){chart.applyOptions({width:entries[i].contentRect.width,height:entries[i].contentRect.height});chart.timeScale().fitContent();}if(detailBandsEl){var rC=chart,rO=detailOverlay,rT=detailTriggers,rCa=detailCandles,rB=detailBandsEl,rCs=cs,rG=detailCandlesGrid;requestAnimationFrame(function(){renderPatternBands(rO,rT,rC,rCa,rB,rCs,rG);});}}).observe(container);
 }
 
 function buildReportHTML(data) {
@@ -2316,7 +2373,7 @@ window.addEventListener('load', function() {
     var pill = e.target.closest('.cat-toggle');
     if(!pill || !detailCS) return;
     var key = pill.dataset.key;
-    toggleOverlay(key, detailOverlay, detailCS, detailEmaSeries, detailPivotMarkers, detailTriggers, detailChart, detailCandles, detailBandsEl);
+    toggleOverlay(key, detailOverlay, detailCS, detailEmaSeries, detailPivotMarkers, detailTriggers, detailChart, detailCandles, detailBandsEl, detailCandlesGrid);
     if(key === 'ema') {
       // "Above 21 & 50 EMA" and "Above 50 EMA" are mutually exclusive pills (only one renders
       // per row - see confluenceList) but both share key 'ema', so there's only ever one to
