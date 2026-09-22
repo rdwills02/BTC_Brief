@@ -2,13 +2,13 @@ name: Channel Radar Daily Capture
 
 on:
   schedule:
-    # 14:30 UTC daily = 10:30 AM ET during EDT (summer), 9:30 AM ET during EST (winter).
+    # 00:20 UTC daily — 20 min after the UTC daily close, so capture.js sees only closed bars (remediation F1).
     # Timed ~1hr after US equity market open to capture crypto's post-open volume/price reaction
     # (overnight/pre-market news gets reflected shortly after open). Cron is ALWAYS UTC and does
     # NOT follow US daylight saving, so this anchors to EDT; in winter it lands ~1hr earlier (at
     # open). Fine for a "roughly after open" goal. NOTE: the 4-day OHLC candle is already closed
     # regardless of capture time; this timing mainly sharpens the live 24h-volume snapshot.
-    - cron: '30 14 * * *'
+    - cron: '20 0 * * *'
   workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab
 
 permissions:
