@@ -1052,10 +1052,32 @@ async function buildUniverse() {
   return alts;
 }
 
+// Step 8 E1 (Remediation spec, 2026-09-21/22; per analysis-thread response, 2026-09-22):
+// ports BOTH halves of F2 to the live-scan grid path - the daily and cached-grid paths are
+// already closed-bar-by-construction via capture.js's pullCoin (F1/F2, shipped step 1); this
+// browser-side pull was the one remaining gap. CoinGecko's /ohlc timestamps are the CLOSE of
+// the 4-day range, not the open - porting a closed-bar check alone (without the re-stamp)
+// would be wrong: tested against an end-stamped bar, `time + 4d > now` is nearly always true,
+// so the real last CLOSED bar would be wrongly dropped as still forming. Mirrors pullCoin's
+// own two-stage fix exactly: re-stamp every candle to its OPEN time first
+// (stampSec = c[0]/1000 - GRID_SPAN_SECONDS, same as pullCoin's `stampSec` line), THEN drop
+// any candle whose re-stamped time + GRID_SPAN_SECONDS > now (isBarClosed, now correctly
+// evaluated against an open-stamped time - not the naive candles.slice(0,-1), which doesn't
+// know where the 4-day boundary actually falls). Net effect matches pullCoin's
+// cacheCandlesRaw filter: a bar survives iff its ORIGINAL CoinGecko close-timestamp
+// (c[0]/1000) is <= now - so a live scan and a captured grid pass now agree bar-for-bar on
+// the newest closed candle for the same coin on the same day.
+var GRID_SPAN_SECONDS = 4*86400;
+function isBarClosed(barTimeSec, spanSeconds, nowSec) { return barTimeSec + spanSeconds <= nowSec; }
 async function fetchOHLC(cgId) {
   var data = await cgFetch('/coins/'+cgId+'/ohlc?vs_currency=usd&days=365');
   if(!data || !Array.isArray(data) || data.length < 30) return null;
-  return data.map(function(c) { return {time:Math.floor(c[0]/1000),open:c[1],high:c[2],low:c[3],close:c[4]}; });
+  var nowSec = Math.floor(Date.now()/1000);
+  var candles = data.map(function(c) {
+    var stampSec = Math.floor(c[0]/1000) - GRID_SPAN_SECONDS;
+    return {time:stampSec, open:c[1], high:c[2], low:c[3], close:c[4]};
+  });
+  return candles.filter(function(c) { return isBarClosed(c.time, GRID_SPAN_SECONDS, nowSec); });
 }
 
 
@@ -1376,6 +1398,12 @@ async function scanCoin(coin) {
   var ch = detectChannel(ohlc, diag, {coinId: coin.id, timeframe: '4d-grid', source: 'coingecko'});
   if(!ch) return null;
   diag.candidates++;
+  // Step 8 E1: fetchOHLC's own filter (isBarClosed, above) is what actually guarantees this -
+  // true here because ohlc/ch.candles never contains an unclosed bar by the time this line
+  // runs, not from a wall-clock check at render/display time. Cached grid/daily rows (from
+  // data/latest.json / data/latest-daily.json) carry the same guarantee from capture.js's own
+  // F1/F2 filtering at capture time - see mergeCandidateRow/adaptCaptureCoin for that path.
+  ch.lastBarComplete = true;
   ch.symbol = coin.symbol.toUpperCase();
   ch.name = coin.name;
   ch.cgId = coin.id;
