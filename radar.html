@@ -1248,7 +1248,11 @@ async function scanCoin(coin) {
   var ohlc = await fetchOHLC(coin.id);
   if(!ohlc) return null;
   diag.ohlcOk++;
-  var ch = detectChannel(ohlc, diag);
+  // H7 (Remediation spec, 2026-09-21/22): stamp fitId/timeframe/source via the optional meta
+  // arg — additive only, detection logic itself is unchanged. Matches capture.js's own grid
+  // pass (source:'coingecko', timeframe:'4d-grid') so a live-scan fit and a captured grid fit
+  // for the same coin/window produce comparable fitIds.
+  var ch = detectChannel(ohlc, diag, {coinId: coin.id, timeframe: '4d-grid', source: 'coingecko'});
   if(!ch) return null;
   diag.candidates++;
   ch.symbol = coin.symbol.toUpperCase();
