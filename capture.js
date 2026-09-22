@@ -117,6 +117,20 @@ async function cg(pathPart, retries = 3) {
 
 function ymd(ms) { return new Date(ms).toISOString().slice(0, 10); }   // UTC YYYY-MM-DD
 
+// --- Remediation F1/F2 (spec 2026-09-21/22): closed-bar helpers -----------------------------
+// F1: "the numbers the detector sees are closed bars, correctly stamped, from a clean feed."
+// A bar is closed once its OWN span (86400s for a daily candle, 4*86400s for a CoinGecko grid
+// candle) has fully elapsed since its (open-)stamped time. Applied to BOTH the exchange daily
+// series (F1) and the re-stamped CoinGecko grid series (F2) via the same helper, one place,
+// rather than two ad-hoc filters that could drift apart.
+const DAY_SECONDS = 86400;
+const GRID_SPAN_SECONDS = 4 * DAY_SECONDS;   // CoinGecko OHLC grid candle span
+function isBarClosed(barTimeSec, spanSeconds, nowSec) { return barTimeSec + spanSeconds <= nowSec; }
+function dropUnclosedBars(candles, spanSeconds, nowSec) {
+  if (!candles || !candles.length) return candles || [];
+  return candles.filter(c => isBarClosed(c.time, spanSeconds, nowSec));
+}
+
 // Symbol-collision guard (upgrade #7b, amended 2026-09-19 per work-order A3/A4). exchange-map.js
 // matches Kraken/Coinbase tickers to CoinGecko coins BY TEXT, and a ticker string is not proof
 // of asset identity: Kraken's "LIT" is Litentry, but the CoinGecko coin "lighter" also has
@@ -385,7 +399,7 @@ async function fetchCategoryLabels() {
 // collision apart from the CHECK ITSELF malfunctioning (e.g. a marketChart/date-format problem
 // hitting every coin identically) — only the REJECTION RATE across the whole universe can, and
 // that isn't known until every coin has been checked.
-async function pullCoin(coin, mapping) {
+async function pullCoin(coin, mapping, nowSec) {
   const ohlcRaw = await cg('/coins/' + coin.id + '/ohlc?vs_currency=usd&days=365');
   await sleep(DELAY_MS);
 
@@ -396,7 +410,17 @@ async function pullCoin(coin, mapping) {
   await sleep(DELAY_MS);
   if (!Array.isArray(ohlcRaw) || ohlcRaw.length < 30) return null;
 
-  const candles = ohlcRaw.map(c => ({ time: Math.floor(c[0] / 1000), open: c[1], high: c[2], low: c[3], close: c[4], date: ymd(c[0]) }));
+  // F2 (Remediation spec): CoinGecko /ohlc timestamps are the CLOSE of the 4-day range, not
+  // the open — every downstream date label (grid file names, row.date, pattern-band placement
+  // in Plan G) was therefore off by up to 4 days. Re-stamp to the range's OPEN by subtracting
+  // GRID_SPAN_SECONDS, then drop the newest candle if its re-stamped span hasn't fully closed
+  // yet (F1's same closed-bar principle applied to the grid, not just the daily stream) — a
+  // still-forming grid candle must never be captured as if it were a complete 4-day bar.
+  const candlesRaw = ohlcRaw.map(c => {
+    const stampSec = Math.floor(c[0] / 1000) - GRID_SPAN_SECONDS;
+    return { time: stampSec, open: c[1], high: c[2], low: c[3], close: c[4], date: ymd(stampSec * 1000) };
+  });
+  const candles = dropUnclosedBars(candlesRaw, GRID_SPAN_SECONDS, nowSec);
 
   // This pull's daily rows, by date, merged onto the cache — authoritative for any date/field
   // this pull covers (see cache-core.js's restated merge invariant, upgrade #7 amendment).
@@ -431,6 +455,11 @@ async function pullCoin(coin, mapping) {
           : null;   // only the first-ever pull for a Coinbase-primary coin needs the gap-fill call
         dailyCandles = await EX.fetchCoinbaseDaily(mapping.ticker, backfillGapTo ? { backfillGapTo } : {});
       }
+      // F1 (Remediation spec): both venues re-return today's still-forming bar on every call
+      // (it's the live, currently-printing candle) — drop it here, before it ever reaches the
+      // collision check, the cache merge, or detectChannel. Everything downstream of this line
+      // only ever sees a bar whose full 86400s span has actually elapsed.
+      dailyCandles = dropUnclosedBars(dailyCandles, DAY_SECONDS, nowSec);
       const check = detectSymbolCollision(dailyCandles, coin.current_price, cache.marketChart);
       pendingDaily = { mapping, dailyCandles, check };
     } catch (e) {
@@ -626,19 +655,152 @@ function rowForDaily(pulled, catLabels, diag) {
   return Object.assign(base, { detectionDaily: det });
 }
 
-function dayFilePath(D) {
+// dataDir defaults to the module DATA_DIR; every call in main() below omits it. The override
+// exists ONLY so the F2-migration logic below can be unit-tested against a real temp directory
+// instead of the live data/ tree — see step1-invariant-tests.js.
+function dayFilePath(D, dataDir) {
   const month = D.slice(0, 7);
-  return path.join(DATA_DIR, month, D + '.json');
+  return path.join(dataDir || DATA_DIR, month, D + '.json');
 }
-function dayFileExists(D) { return fs.existsSync(dayFilePath(D)); }
-function writeDayFile(D, obj) {
-  const p = dayFilePath(D);
+function dayFileExists(D, dataDir) { return fs.existsSync(dayFilePath(D, dataDir)); }
+function writeDayFile(D, obj, dataDir) {
+  const p = dayFilePath(D, dataDir);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(obj, null, 0));
   console.log('wrote', p, '(' + obj.coins.length + ' coins, backfilled=' + obj.backfilled + ')');
 }
 
+// --- Remediation F2 migration (added per 2026-09-22 review — BLOCKS finding): every day file
+// written before this fix is CLOSE-stamped (named/dated by the candle's close, per the original
+// CoinGecko-timestamp bug F2 fixes). Every day file written after this fix is OPEN-stamped. The
+// two conventions' filenames COLLIDE (new-label(candle_k) === old-label(candle_{k-1}), since
+// candles are a fixed 4 days apart under both conventions) — without this, `dayFileExists(D)`
+// would treat an old, differently-dated candle's file as "D already captured", silently
+// skipping the real D and regressing `latest.json` to stale/mislabeled data forever (see the
+// review's traced run-by-run walkthrough). `gridStamp: 'open'` marks every NEW-convention
+// payload; its absence marks a legacy file. A legacy file found at a date the new run needs is
+// migrated in place — deep-shifted by -GRID_SPAN_SECONDS (top-level date, every row's date,
+// every row's detection.candles[]/pivotLows[] time+date, since those came from the same
+// close-stamped candles array as everything else the OLD code wrote) and moved to its own
+// correct open-stamped filename — before the real D is captured fresh. This does not migrate
+// the FULL data/ tree in one shot: only files the write loop actually revisits (bounded by
+// BACKFILL_CANDLES, currently the newest ~4 grid dates) get migrated, run by run, as capture.js
+// naturally walks forward. Filed as BACKLOG (see handoff): older files outside that window stay
+// close-stamped until something else (the step-5 harness, or a one-time batch pass) processes
+// them — they are not touched by main()'s write loop, so they don't collide with anything.
+function isOpenStampPayload(obj) { return !!(obj && obj.gridStamp === 'open'); }
+
+function readDayFilePayload(D, dataDir) {
+  if (!dayFileExists(D, dataDir)) return null;
+  try { return JSON.parse(fs.readFileSync(dayFilePath(D, dataDir), 'utf8')); } catch (e) { return null; }
+}
+
+// Deep-shifts every GRID-candle date/time field in a legacy payload by -shiftSeconds. Never
+// mutates its input. `ymdSec` mirrors the module's own `ymd()` but takes seconds (candle `time`
+// fields are stored in seconds throughout this file; ymd() itself takes ms).
+function ymdSec(sec) { return ymd(sec * 1000); }
+function shiftGridPayloadDates(payload, shiftSeconds) {
+  const migrated = JSON.parse(JSON.stringify(payload));
+  function shiftCandleLike(c) {
+    if (c && typeof c.time === 'number') { c.time -= shiftSeconds; c.date = ymdSec(c.time); }
+  }
+  if (typeof migrated.date === 'string') {
+    migrated.date = ymdSec(Math.floor(Date.parse(migrated.date + 'T00:00:00Z') / 1000) - shiftSeconds);
+  }
+  for (const row of (migrated.coins || [])) {
+    if (typeof row.date === 'string') {
+      row.date = ymdSec(Math.floor(Date.parse(row.date + 'T00:00:00Z') / 1000) - shiftSeconds);
+    }
+    const det = row.detection;
+    if (det) {
+      if (Array.isArray(det.candles)) det.candles.forEach(shiftCandleLike);
+      if (Array.isArray(det.pivotLows)) det.pivotLows.forEach(shiftCandleLike);
+    }
+  }
+  return migrated;
+}
+
+// Migrates exactly ONE legacy (close-stamped) file to its corrected open-stamped filename.
+// NEVER deletes captured data in favor of anything — this is a pure RELABEL-AND-RELOCATE:
+// shiftGridPayloadDates only touches date/time fields, so captured_at, change24h, volume24h,
+// price, detection — every point-in-time field the original capture recorded — survives
+// unchanged. If the corrected path is already occupied by anything at all, this backs off
+// loudly and leaves the legacy file exactly where it is, untouched, for a human to look at —
+// it never overwrites or drops existing data to resolve a collision. See
+// migrateAllLegacyDayFiles below for why, called oldest-first, this essentially never collides
+// on the real data.
+function migrateOneLegacyDayFile(legacyDate, dataDir) {
+  const legacyPath = dayFilePath(legacyDate, dataDir);
+  if (!fs.existsSync(legacyPath)) return;   // already moved by an earlier step this pass
+  let legacyPayload;
+  try { legacyPayload = JSON.parse(fs.readFileSync(legacyPath, 'utf8')); }
+  catch (e) { console.warn('F2 migration: unreadable file at', legacyDate, '- leaving it in place untouched.'); return; }
+  if (isOpenStampPayload(legacyPayload)) return;   // already migrated — nothing to do
+
+  const correctedDate = ymdSec(Math.floor(Date.parse(legacyDate + 'T00:00:00Z') / 1000) - GRID_SPAN_SECONDS);
+  const correctedPath = dayFilePath(correctedDate, dataDir);
+  if (fs.existsSync(correctedPath)) {
+    console.warn('F2 migration: corrected path for legacy', legacyDate, 'would be', correctedDate,
+      'but a file already exists there — leaving', legacyDate, 'exactly as captured, untouched.',
+      'Never auto-deleting captured data to resolve this; needs a manual look.');
+    return;
+  }
+  const migrated = shiftGridPayloadDates(legacyPayload, GRID_SPAN_SECONDS);
+  migrated.gridStamp = 'open';
+  migrated.migratedFrom = legacyDate;
+  fs.mkdirSync(path.dirname(correctedPath), { recursive: true });
+  fs.writeFileSync(correctedPath, JSON.stringify(migrated, null, 0));
+  fs.unlinkSync(legacyPath);
+  console.log('F2 migration:', legacyDate, '(legacy close-stamp) -> corrected and moved to', correctedDate,
+    '- every original captured field preserved, only date/time labels shifted.');
+}
+
+// Finds every legacy grid file under dataDir and migrates each exactly once, OLDEST FIRST — run
+// as a PRE-PASS, once, before main()'s per-date write loop even starts (2026-09-22 review,
+// second pass: the first version of this migrated lazily inside the write loop and, on any
+// corrected-path collision, treated an already-open-stamped occupant as "superseded" and
+// DELETED the legacy file — which meant a genuinely-captured historical file (including the
+// frozen 9/21 audit capture, the exact data the Fable/Astra audit was built against) could be
+// unlinked and replaced by a same-run reconstruction built from TODAY's live coin data, silently
+// destroying its original point-in-time fields (captured_at, change24h, volume24h — see
+// rowForCandle). That is now impossible: migrateOneLegacyDayFile above never deletes anything in
+// favor of a fresh write, only a pure relabel. Oldest-first is what makes the real on-disk chain
+// (five consecutive legacy dates, each one's corrected target being the PREVIOUS legacy date's
+// own current path) resolve cleanly in a single pass with zero collisions: by the time date D is
+// processed, D's corrected target (D - 4 days) was already vacated by that earlier, still-older
+// date's own move, one date at a time. After this pre-pass, main()'s write loop sees a single,
+// clean convention — every file it can find is either open-stamped or genuinely absent — so it
+// goes back to a plain "does D's file exist" check; the per-date logic below no longer migrates
+// anything itself.
+function migrateAllLegacyDayFiles(dataDir) {
+  if (!fs.existsSync(dataDir)) return;
+  const legacyDates = [];
+  for (const month of fs.readdirSync(dataDir)) {
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const monthDir = path.join(dataDir, month);
+    if (!fs.statSync(monthDir).isDirectory()) continue;
+    for (const file of fs.readdirSync(monthDir)) {
+      const m = file.match(/^(\d{4}-\d{2}-\d{2})\.json$/);
+      if (!m) continue;
+      const payload = readDayFilePayload(m[1], dataDir);
+      if (payload && !isOpenStampPayload(payload)) legacyDates.push(m[1]);
+    }
+  }
+  legacyDates.sort();   // oldest first — see this function's header comment for why this matters
+  for (const D of legacyDates) migrateOneLegacyDayFile(D, dataDir);
+  if (legacyDates.length) console.log('F2 migration pre-pass: processed', legacyDates.length, 'legacy grid file(s).');
+}
+
 async function main() {
+  // F2 migration pre-pass (2026-09-22 review): resolve every existing legacy grid file BEFORE
+  // any network call or per-date decision — see migrateAllLegacyDayFiles' header comment. Pure
+  // filesystem work, so it runs first and cheaply.
+  migrateAllLegacyDayFiles(DATA_DIR);
+
+  // F1/F2 (Remediation spec): a single "now" for the whole run, so every closed-bar decision
+  // (grid and daily) this run judges against the same instant rather than drifting across the
+  // run's several minutes of fetches.
+  const nowSec = Math.floor(Date.now() / 1000);
   const { list: universe, counts: universeCounts } = await buildUniverse();
   console.log('universe:', universe.length, 'coins');
   if (!universe.length) { console.error('empty universe — aborting, not writing'); process.exit(1); }
@@ -658,10 +820,32 @@ async function main() {
     console.warn('exchange-map build failed — every coin falls back to CoinGecko-4d for the daily stream:', e.message);
   }
 
+  // F6 (Remediation spec): capture BTC's own daily series for the future market-regime gate
+  // (C5, a later remediation step — this step only captures the data, C5 reads it). Fetched
+  // directly against Kraken's XBTUSD pair rather than going through exchange-map/buildExchangeMap
+  // — BTC/ETH are excluded from the altcoin universe those functions serve, and exchange-map's
+  // generic symbol matching would map 'BTC' to the ticker string 'BTC' (see exchange-map.js's
+  // ALIAS table, used only for MATCHING), not Kraken's actual 'XBT' base, which fetchKrakenDaily
+  // would then send as the invalid pair 'BTCUSD'. Stored the same way every other coin's daily
+  // series is stored (cache-core.js, cgId 'bitcoin' — CoinGecko's id for BTC) so C5 reads it
+  // with the exact same K.loadCache() call as everything else, no new storage format. Best-
+  // effort: a failure here never aborts the run — same isolation pattern as the per-coin daily
+  // pull and the daily-basis-stream block below.
+  try {
+    const btcRaw = await EX.fetchKrakenDaily('XBT');
+    const btcClosed = dropUnclosedBars(btcRaw, DAY_SECONDS, nowSec);
+    let btcCache = K.loadCache(CACHE_DIR, 'bitcoin') || K.emptyCache('bitcoin', 'btc');
+    K.mergeOhlcDailyCandles(btcCache, btcClosed);
+    K.saveCache(CACHE_DIR, btcCache);
+    console.log('BTC daily series captured:', btcCache.ohlcDaily.length, 'candles, newest', btcClosed.length ? btcClosed[btcClosed.length - 1].date : '(none this run)');
+  } catch (e) {
+    console.warn('BTC daily capture failed (regime gate will have no data until this succeeds):', e.message);
+  }
+
   // Pull each coin's series ONCE.
   const pulls = [];
   for (const coin of universe) {
-    const p = await pullCoin(coin, exMap[coin.id]);
+    const p = await pullCoin(coin, exMap[coin.id], nowSec);
     if (p) pulls.push(p);
   }
   console.log('pulled series for', pulls.length, 'coins');
@@ -683,7 +867,23 @@ async function main() {
 
   let newestPayload = null;
   for (const D of recent) {
-    if (dayFileExists(D)) { console.log(D, 'already captured - skipping'); continue; }
+    // F2 migration (2026-09-22 review, second pass): migrateAllLegacyDayFiles already ran as a
+    // pre-pass before this loop and resolved every legacy file it could — oldest-first, pure
+    // relabel-and-relocate, never deleting. So by the time we get here there are exactly three
+    // possibilities for D: (1) no file at all - write fresh; (2) an open-stamped file - already
+    // captured, skip; (3) a legacy file the pre-pass explicitly backed off on (its corrected
+    // target was occupied - see migrateOneLegacyDayFile) - leave it untouched and skip, never
+    // overwrite captured data to force this date through. Per the review: "write only dates with
+    // no file."
+    const existing = readDayFilePayload(D);
+    if (existing && isOpenStampPayload(existing)) {
+      console.log(D, 'already captured (open-stamp) - skipping');
+      continue;
+    }
+    if (existing && !isOpenStampPayload(existing)) {
+      console.warn(D, 'legacy file still present after the migration pre-pass (backed off - see its warning above) - leaving it untouched, skipping this date this run');
+      continue;
+    }
     const coins = [];
     // Backlog #13 (2026-09-19): per-date funnel tally - fresh diag per grid date, since
     // detectChannel runs on a DIFFERENT candle slice (`upto`) for each date and the gate
@@ -700,6 +900,7 @@ async function main() {
     if (!coins.length) { console.log('no coin candles on', D, '- skipping'); continue; }
     const payload = {
       date: D,
+      gridStamp: 'open',   // F2 migration marker — see migrateOneLegacyDayFile's header comment
       captured_at: new Date().toISOString(),
       grid_interval_days: 4,
       backfilled: D !== newestGrid,   // only the newest closed candle is "live"; older = backfilled
@@ -728,9 +929,16 @@ async function main() {
   }
 
   // Maintain data/latest.json -> the newest capture, so radar can load it without dir listing.
-  // Always point at the newest grid date; rebuild from its file if we skipped writing it.
+  // Always point at the newest grid date; rebuild from its file if we skipped writing it. F2
+  // migration (2026-09-22 review): only trust an OPEN-stamped file here — a legacy file that
+  // happens to still sit at this path (migration backed off above) must never be published as
+  // "the newest capture" under a date that, for it, means something else.
   if (!newestPayload && dayFileExists(newestGrid)) {
-    try { newestPayload = JSON.parse(fs.readFileSync(dayFilePath(newestGrid), 'utf8')); } catch (e) {}
+    try {
+      const candidate = JSON.parse(fs.readFileSync(dayFilePath(newestGrid), 'utf8'));
+      if (isOpenStampPayload(candidate)) newestPayload = candidate;
+      else console.warn('newestGrid fallback found a legacy (non-open-stamped) file at', newestGrid, '- refusing to publish it as latest.json. The write loop above should have migrated it; investigate.');
+    } catch (e) {}
   }
   if (newestPayload) {
     fs.writeFileSync(path.join(DATA_DIR, 'latest.json'), JSON.stringify(newestPayload, null, 0));
@@ -771,8 +979,23 @@ async function main() {
         };
       }
     });
+    // F1 (Remediation spec): so the page can PROVE the last bar it detected on is closed,
+    // rather than trust the pipeline. lastBarTime is the newest bar time actually present
+    // across every coin's (already closed-bar-filtered, see pullCoin/dropUnclosedBars) daily
+    // series feeding this run's detection — not "today", which F1 guarantees is never in
+    // there. captureTime is simply when this run executed (todayDate/captured_at already
+    // capture that at day resolution; this is the exact instant, for the closed-bar math).
+    let lastBarTimeSec = null;
+    for (const p of pulls) {
+      const arr = p.dailyCandles;
+      if (!arr || !arr.length) continue;
+      const t = arr[arr.length - 1].time;
+      if (lastBarTimeSec === null || t > lastBarTimeSec) lastBarTimeSec = t;
+    }
     const dailyPayload = {
       date: todayDate,
+      captureTime: new Date(nowSec * 1000).toISOString(),
+      lastBarTime: lastBarTimeSec !== null ? new Date(lastBarTimeSec * 1000).toISOString() : null,
       captured_at: new Date().toISOString(),
       universe_count: dailyCoins.length,
       funnel: {
