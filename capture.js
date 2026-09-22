@@ -173,7 +173,7 @@ function stampCandleContract(candle, opts) {
 // cache merge and keep using their ORIGINAL array for detection. See pullCoin below for both
 // call sites, and toLeanCandles() further down for the second, independent safety net applied
 // immediately before every detectChannel() call (covers candles reloaded from an
-// already-enriched on-disk cache file too, not just this run's own fresh pull).
+// already-enriched on-disk cache too, not just this run's own fresh pull).
 function stampCandleContractAll(candles, opts) {
   if (!candles || !candles.length) return [];
   return candles.map(c => stampCandleContract(Object.assign({}, c), opts));
