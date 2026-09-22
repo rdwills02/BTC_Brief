@@ -490,6 +490,17 @@ function tvLink(symbol) {
 }
 
 function fmt(n,d) { d=d||2; return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+// G1 (Remediation spec, 2026-09-22): p = max(2, ceil(-log10(price)) + 3), per the spec's own
+// formula - gives sub-cent coins (SUN at $0.017: ceil(1.77)+3 = 5) enough decimals that every
+// label doesn't collapse to "0.02", while leaving normally-priced coins at a readable 2-4.
+// Used both for the chart's own priceFormat (axis + candle tooltips) and for fmt()'s `d` on
+// every support/resistance/invalidation label, so the two never disagree on precision for the
+// same coin. n<=0/null/NaN falls back to the old fixed default (2) - there's no meaningful
+// "price" to derive a precision from.
+function pricePrecision(n) {
+  if(n==null || !(n > 0) || !isFinite(n)) return 2;
+  return Math.max(2, Math.ceil(-Math.log10(n)) + 3);
+}
 function fmtP(n) { return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%'; }
 function fmtVol(n) {
   if(n==null) return '--';
@@ -1070,7 +1081,7 @@ function buildExpl(r, name) {
   var structureArticle = structureArticleFor(structureLabel);
   var railNote = railNoteFor(r);
 
-  var resSentence = 'Resistance '+fmt(r.resistNow,4)+' (touch recency not tracked).';
+  var resSentence = 'Resistance '+fmt(r.resistNow,pricePrecision(r.price))+' (touch recency not tracked).';
 
   var posSentence;
   if(r.position<=0.33) {
@@ -1141,7 +1152,7 @@ function buildAction(r) {
   var structureLabel = structureLabelFor(r);
   var railBand = r.supportRailAgeBand;
   var railNote = railNoteFor(r);
-  var supStr = fmt(r.supportNow,4), resStr = fmt(r.resistNow,4), invStr = fmt(r.invalidation,4);
+  var supStr = fmt(r.supportNow,pricePrecision(r.price)), resStr = fmt(r.resistNow,pricePrecision(r.price)), invStr = fmt(r.invalidation,pricePrecision(r.price));
   // B4 (Remediation spec, 2026-09-21/22): position is UNCLAMPED as of this change (see
   // channel-core.js) - a close below support is now a real negative number, not 0. A
   // negative position means the rail is broken, a materially different (and worse) claim
@@ -1674,7 +1685,7 @@ function openDetail(r) {
   // resting/restore fallback (captureMode false, same as a genuine live scan) could be just
   // as stale and had no marker at all - restingMode (set in loadCachedOrResting's restore
   // branch) distinguishes the two false-captureMode cases.
-  document.getElementById('dp-price').textContent=fmt(r.price,4)+'  '+fmtP(r.change24h)+'   Vol '+fmtVol(r.volume24h)+(captureMode?' (as of capture)':(restingMode?' (from last scan)':''));
+  document.getElementById('dp-price').textContent=fmt(r.price,pricePrecision(r.price))+'  '+fmtP(r.change24h)+'   Vol '+fmtVol(r.volume24h)+(captureMode?' (as of capture)':(restingMode?' (from last scan)':''));
   var sc=scoreColor(r.score), bk=getBucket(r.score);
   document.getElementById('dp-score').textContent=r.score;
   document.getElementById('dp-score').style.color=sc;
@@ -1692,9 +1703,9 @@ function openDetail(r) {
   var pw=Math.round(clamp(r.position,0,1)*100);
   document.getElementById('dp-pos-label').textContent=positionLabelFor(r);
   document.getElementById('dp-pos-bar').style.width=pw+'%';
-  document.getElementById('dp-sup').textContent=fmt(r.supportNow,4);
-  document.getElementById('dp-cur').textContent=fmt(r.price,4);
-  document.getElementById('dp-res').textContent=fmt(r.resistNow,4);
+  document.getElementById('dp-sup').textContent=fmt(r.supportNow,pricePrecision(r.price));
+  document.getElementById('dp-cur').textContent=fmt(r.price,pricePrecision(r.price));
+  document.getElementById('dp-res').textContent=fmt(r.resistNow,pricePrecision(r.price));
   // Backlog #3: rail age - how old the support rail's most recent touch is, not a replacement
   // for the rail value shown above (which stays exactly as the detector emits it).
   var raEl = document.getElementById('dp-rail-age');
@@ -1718,7 +1729,7 @@ function openDetail(r) {
     actionTextEl.textContent = action.text;
   }
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
-  document.getElementById('dp-inv').textContent=fmt(r.invalidation,4);
+  document.getElementById('dp-inv').textContent=fmt(r.invalidation,pricePrecision(r.price));
   document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
   document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
   document.getElementById('dp-cg').href='https://www.coingecko.com/en/coins/'+r.cgId;
@@ -1831,11 +1842,7 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart,
 function renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candlesGrid) {
   bandsEl.innerHTML = '';
   if(!candles || candles.length < 2) return;
-  var lastTime = candles[candles.length-1].time;
   var ts = chart.timeScale();
-  var lastX = ts.timeToCoordinate(lastTime);
-  var barPx = ts.options().barSpacing; // pixel width of one bar at the current zoom - used only
-                                        // for the accumulating-bar clamp below, in pixel space.
   var GRID_INTERVAL_DAYS = 4; // confirmed in capture data (grid_interval_days) and this app's
                               // own "4-Day" vocabulary throughout - the grid pass's fixed
                               // candle width.
@@ -1860,15 +1867,16 @@ function renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candle
     var rightRaw = bt.time + GRID_INTERVAL_DAYS*86400;
     var rightX = ts.timeToCoordinate(rightRaw);
     if(rightX == null) {
-      // Accumulating-bar clamp: a 4-day bar still in progress has a theoretical end date
-      // beyond the last real daily candle. timeToCoordinate() only resolves times within the
-      // chart's own data range - it does NOT extrapolate past the last real bar, even by a
-      // fraction of a bar-width (confirmed live: lastTime+halfBarWidth also returned null) -
-      // so the clamp has to happen in PIXEL space instead: half a bar-width past the last real
-      // candle's own x-coordinate, extending further right on its own as real days land and
-      // rightRaw's own timeToCoordinate() starts resolving normally again.
-      if(lastX == null) continue; // last candle itself scrolled out of view - nothing sane to clamp to
-      rightX = lastX + barPx/2;
+      // G2 (Remediation spec, 2026-09-22): F2 is live - bt.time is now the grid bar's OPEN
+      // time, so rightRaw (bt.time + 4 days) is that same bar's own CLOSE time, which is
+      // normally already covered by captured daily data for any bar the detector actually
+      // scored (a closed bar). A still-unresolvable right edge here means it's genuinely
+      // outside the chart's real data (out of the visible/zoomed range, or a data gap), not
+      // the routine still-forming-bar case the old close-stamped math used to hit on nearly
+      // every band. Skip the band rather than clamping it into empty space past the last real
+      // candle - the removed clamp used to overstate the fitted window's genuine 4-day span
+      // by drawing it past data that was never actually captured.
+      continue;
     }
     // Item 34 fix: carry the key through so the render loop below can look up this band's
     // own color instead of a hardcoded one. Item 35 (2026-09-21, Option b): triggerTime carried
@@ -1955,13 +1963,25 @@ function buildChart(r) {
     timeScale:{borderColor:'#1e2035',timeVisible:true,rightOffset:3}
   });
   detailChart=chart;
-  var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a'});
+  // G1 (Remediation spec, 2026-09-22): priceFormat precision keyed off the coin's own price -
+  // see pricePrecision()'s own comment. Without this the axis/tooltip fall back to the library
+  // default (2dp, minMove 0.01), which is why every sub-cent coin's axis used to read "0.02".
+  var pp1=pricePrecision(r.price);
+  var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a',
+    priceFormat:{type:'price',precision:pp1,minMove:Math.pow(10,-pp1)}});
   cs.setData(r.candles);
   var n=r.candles.length, startCI=r.lastIdx-(n-1);
   var supData=r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)};});
   var resData=r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)+r.channelH};});
-  chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:true,title:'Support'}).setData(supData);
-  chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:true,title:'Resistance'}).setData(resData);
+  // G3 (Remediation spec, 2026-09-22): was lastValueVisible:true - the Support/Resistance
+  // right-edge price labels stacked with the EMA labels and the candlestick series' own
+  // last-price label, hiding the last ~3 candles (reported live on JTO). The report's
+  // embedded copy of this same chart (buildReportHTML below) already had this at false -
+  // this brings the live detail chart in line with it. Support/Resistance values stay
+  // visible in the ch-prices legend above the chart (dp-sup/dp-res) and in the detail panel
+  // text, so nothing is lost, only the redundant on-chart label.
+  chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}).setData(supData);
+  chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}).setData(resData);
   chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
   var markers=r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
   if(markers.length) cs.setMarkers(markers);
@@ -2023,6 +2043,14 @@ function buildReportHTML(data) {
   var cands = sortRowsByVerdict(data.candidates);
   var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
   var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
+  // G1 (Remediation spec, 2026-09-22): this file's own copy of pricePrecision() - buildReportHTML
+  // runs in the live page's scope (unlike drawReportChart below, which is serialized into the
+  // exported report's own standalone <script>), but fmt2/fmtP2 are already local copies rather
+  // than reusing the outer fmt/fmtP, so this stays consistent with that existing convention.
+  var pricePrecision2 = function(n){
+    if(n==null || !(n > 0) || !isFinite(n)) return 2;
+    return Math.max(2, Math.ceil(-Math.log10(n)) + 3);
+  };
   var rows = cands.map(function(r) {
     // Backlog #17e (2026-09-20): missing the Weak tier getBucket() (radar.html's own
     // canonical bucket function) has - not reachable against live data today (min live score
@@ -2083,7 +2111,7 @@ function buildReportHTML(data) {
         '</div>'+
       '</div>'+
       '<div class="report-metrics" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:12px">'+
-        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Price change over the last 24 hours." style="font-size:10px;color:#6b7280;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:600">'+fmt2(r.price,4)+'</div><div style="font-size:10px;color:'+(r.change24h>=0?'#00c896':'#e8754a')+'">'+fmtP2(r.change24h)+' 24h</div></div>'+
+        '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Price change over the last 24 hours." style="font-size:10px;color:#6b7280;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:600">'+fmt2(r.price,pricePrecision2(r.price))+'</div><div style="font-size:10px;color:'+(r.change24h>=0?'#00c896':'#e8754a')+'">'+fmtP2(r.change24h)+' 24h</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Total US-dollar trading volume over the last 24 hours." style="font-size:10px;color:#6b7280;margin-bottom:2px">24h Vol</div><div style="font-size:13px;font-weight:600;color:#9da3b4">'+fmtVol(r.volume24h)+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Support touches: times price tested the lower rail. More = a more established channel." style="font-size:10px;color:#6b7280;margin-bottom:2px">S Touches</div><div style="font-size:13px;font-weight:600;color:#00c896">'+r.supportTouches+'</div></div>'+
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="Resistance touches: times price tested the upper rail." style="font-size:10px;color:#6b7280;margin-bottom:2px">R Touches</div><div style="font-size:13px;font-weight:600">'+r.resTouches+'</div></div>'+
@@ -2092,9 +2120,9 @@ function buildReportHTML(data) {
         '<div style="background:#1a1b2a;border-radius:6px;padding:8px 10px"><div class="cat-tip" data-tip="How many days since the support rail'+"'"+'s most recent touch. Fresh (<=14d) is live structure; Aging (15-28d) is still plausible; Stale (>28d) is a historical anchor, not where price is reacting today." style="font-size:10px;color:#6b7280;margin-bottom:2px">Rail Age</div><div style="font-size:13px;font-weight:600">'+railAgeCellHTML(r)+'</div></div>'+
       '</div>'+
       '<div style="margin-bottom:12px">'+
-        '<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-bottom:4px"><span>Support '+fmt2(r.supportNow,4)+'</span><span style="color:#7b6ef6;font-weight:600">'+posLbl+'</span><span>Resistance '+fmt2(r.resistNow,4)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;margin-bottom:4px"><span>Support '+fmt2(r.supportNow,pricePrecision2(r.price))+'</span><span style="color:#7b6ef6;font-weight:600">'+posLbl+'</span><span>Resistance '+fmt2(r.resistNow,pricePrecision2(r.price))+'</span></div>'+
         '<div style="height:6px;background:#2a2b3d;border-radius:3px;position:relative"><div style="position:absolute;top:-3px;width:2px;height:12px;background:#7b6ef6;border-radius:1px;transform:translateX(-50%);left:'+pw+'%"></div></div>'+
-        '<div style="font-size:10px;color:#7b6ef6;margin-top:4px">'+fmt2(r.price,4)+' current</div>'+
+        '<div style="font-size:10px;color:#7b6ef6;margin-top:4px">'+fmt2(r.price,pricePrecision2(r.price))+' current</div>'+
       '</div>'+
       '<div class="report-chart-wrap" style="position:relative;height:220px;margin-bottom:12px;background:#0b0c14;border:1px solid #1e2035;border-radius:6px;overflow:hidden">'+
         '<button class="rchart-expand" data-symbol="'+r.symbol+'" type="button" style="position:absolute;top:6px;right:6px;z-index:5;background:rgba(30,32,53,.85);border:1px solid #2a2b3d;color:#9da3b4;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer">Expand</button>'+
@@ -2109,7 +2137,7 @@ function buildReportHTML(data) {
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
         '<a href="'+tvUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(123,110,246,.12);color:#7b6ef6;border:1px solid rgba(123,110,246,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in TradingView</a>'+
         '<a href="'+cgUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(0,200,150,.1);color:#00c896;border:1px solid rgba(0,200,150,.3);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">View on CoinGecko</a>'+
-        '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(232,117,74,.1);border:1px solid rgba(232,117,74,.25);border-radius:6px;font-size:11px;color:#e8754a;font-weight:600">Invalidation: '+fmt2(r.invalidation,4)+' ('+invPct+'%)</div>'+
+        '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(232,117,74,.1);border:1px solid rgba(232,117,74,.25);border-radius:6px;font-size:11px;color:#e8754a;font-weight:600">Invalidation: '+fmt2(r.invalidation,pricePrecision2(r.price))+' ('+invPct+'%)</div>'+
       '</div>'+
     '</div>';
   }).join('');
@@ -2261,7 +2289,13 @@ function buildReportHTML(data) {
     // shapes via .toString() injection, so it has the identical last-bar clipping bug.
     'var chart=LightweightCharts.createChart(el,{width:el.clientWidth,height:el.clientHeight,layout:{background:{color:"#0b0c14"},textColor:"#6b7280"},grid:{vertLines:{color:"#1e2035"},horzLines:{color:"#1e2035"}},rightPriceScale:{borderColor:"#1e2035"},timeScale:{borderColor:"#1e2035",timeVisible:false,rightOffset:3}});'+
     'el._chart=chart;'+
-    'var cs=chart.addCandlestickSeries({upColor:"#00c896",downColor:"#e8754a",borderUpColor:"#00c896",borderDownColor:"#e8754a",wickUpColor:"#00c896",wickDownColor:"#e8754a"});'+
+    // G1 (Remediation spec, 2026-09-22): this report card runs in its own exported, standalone
+    // <script> (no shared scope with the live page's pricePrecision()) - same formula, inlined,
+    // keyed off cd.price (see chartData's own comment for why that's the same value the card's
+    // fmt2() labels already use, not a re-derived candles[n-1].close).
+    'function pp(n){if(n==null||!(n>0)||!isFinite(n))return 2;return Math.max(2,Math.ceil(-Math.log10(n))+3);}'+
+    'var cdPp=pp(cd.price);'+
+    'var cs=chart.addCandlestickSeries({upColor:"#00c896",downColor:"#e8754a",borderUpColor:"#00c896",borderDownColor:"#e8754a",wickUpColor:"#00c896",wickDownColor:"#e8754a",priceFormat:{type:"price",precision:cdPp,minMove:Math.pow(10,-cdPp)}});'+
     'cs.setData(cd.candles);'+
     'var n=cd.candles.length,startCI=cd.lastIdx-(n-1);'+
     'var supData=cd.candles.map(function(c,i){return {time:c.time,value:cd.supSlope*(startCI+i)+cd.supIntercept};});'+
@@ -2368,6 +2402,11 @@ async function publishReport() {
       if(r.candles && r.candles.length) {
         chartData[r.symbol] = {
           candles: r.candles,
+          // G1 (Remediation spec, 2026-09-22): the report's own embedded drawReportChart (below)
+          // needs a price to size its candlestick priceFormat precision - added here rather than
+          // deriving from candles[n-1].close so it stays the exact same value fmt2()'s labels on
+          // this same card already use (r.price), never a slightly different last-close number.
+          price: r.price,
           supSlope: r.supSlope, supIntercept: r.supIntercept, channelH: r.channelH,
           lastIdx: r.lastIdx, invalidation: r.invalidation,
           pivotLows: (r.pivotLows||[]).map(function(p){return {time:p.time};}),
@@ -2585,7 +2624,23 @@ function adaptCaptureCoin(c) {
 function adaptDailyCoin(c) {
   if(!c.detectionDaily) return null;
   var d = c.detectionDaily;
-  var tv = tvLink((c.symbol||'').toUpperCase());
+  var symU = (c.symbol||'').toUpperCase();
+  // H4 (Remediation spec, 2026-09-22): tvLink(symbol) only checks whether the SYMBOL happens
+  // to trade on Kraken/Coinbase at all - it says nothing about which venue actually supplied
+  // THIS row's decision candles (capture.js's dailySource: 'kraken' | 'coinbase' |
+  // 'coingecko-4d-fallback' | '<exchange>-failed' | '<exchange>-collision' - see capture.js's
+  // pullCoin/resolveDailyCollisions). A symbol-availability guess can point at a different
+  // venue than the one actually detected on (or claim Kraken/Coinbase for a row that fell back
+  // to CoinGecko), which is exactly the "TV opens Binance while decision candles are Kraken"
+  // bug this item names. When dailySource is definitively kraken or coinbase, route the TV
+  // link there directly, in that venue's own TradingView pair convention (matches tvLink's
+  // existing KRAKEN/'SYMUSD' and COINBASE/'SYM-USD' formats). Any other dailySource (fallback,
+  // failed, collision-rejected) has no real exchange venue behind these candles at all - keep
+  // the existing best-effort symbol guess for those, same as a grid-only row.
+  var tv;
+  if(c.dailySource === 'kraken') tv = {exchange:'KRAKEN', pair:symU+'USD'};
+  else if(c.dailySource === 'coinbase') tv = {exchange:'COINBASE', pair:symU+'-USD'};
+  else tv = tvLink(symU);
   return {
     symbol:(c.symbol||'').toUpperCase(), name:c.name, cgId:c.cgId,
     price:c.price, change24h:(c.change24h!=null?c.change24h:null),
