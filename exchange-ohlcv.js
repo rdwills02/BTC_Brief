@@ -18,6 +18,14 @@
  * candle object as `volume` so C4/D (later remediation steps) can use it. cache-core.js's
  * candle shape comment is otherwise unchanged; this only ADDS a field, so every existing
  * reader of {time,open,high,low,close,date} is unaffected.
+ *
+ * H7 (Remediation spec, 2026-09-21/22): both normalizers now also carry `raw: r` — the
+ * provider's own row, untouched, "kept beside the normalized one" per the spec's candle
+ * contract. This only ADDS a field; every existing reader of {time,open,high,low,close,date,
+ * volume} is unaffected. venue/pair/quoteCurrency/timeframe/provider-timestamp-meaning/
+ * isClosed/fetchedAt/schemaVersion are NOT added here — those apply once these candles are
+ * merged into data/cache/<cgId>.json (cache-core.js), which is where H7's full candle
+ * contract is being satisfied; see that file's header and the H7/H8 handoff.
  */
 
 const KRAKEN_BASE = 'https://api.kraken.com/0/public';
@@ -41,7 +49,7 @@ async function fetchKrakenDaily(ticker) {
   const rows = d.result[key];
   return rows.map(function (r) {
     const ms = r[0] * 1000;
-    return { time: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], date: ymd(ms), volume: +r[6] };
+    return { time: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], date: ymd(ms), volume: +r[6], raw: r };
   }).sort(function (a, b) { return a.time - b.time; });
 }
 
@@ -49,7 +57,7 @@ async function fetchKrakenDaily(ticker) {
 function normalizeCoinbase(rows) {
   return rows.map(function (r) {
     const ms = r[0] * 1000;
-    return { time: r[0], open: +r[3], high: +r[2], low: +r[1], close: +r[4], date: ymd(ms), volume: +r[5] };
+    return { time: r[0], open: +r[3], high: +r[2], low: +r[1], close: +r[4], date: ymd(ms), volume: +r[5], raw: r };
   });
 }
 

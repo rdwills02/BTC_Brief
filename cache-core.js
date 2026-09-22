@@ -42,6 +42,19 @@
  * rule means "refresh whatever you touched, never touch what you didn't," which is exactly the
  * safety the append-only rule was protecting in the first place.
  *
+ * H7 (Remediation spec, 2026-09-21/22): as of this change, each candle object in `ohlc` and
+ * `ohlcDaily` also carries the spec's full candle contract — venue, pair, quoteCurrency,
+ * timeframe, startTime, endTime, providerTimestamp, providerTimestampMeans, isClosed,
+ * fetchedAt, schemaVersion, and (for daily candles) raw — stamped by capture.js immediately
+ * before each merge call below (see capture.js's stampCandleContract/stampCandleContractAll).
+ * This file itself needed NO changes for that: mergeCandlesInto/mergeOhlc/mergeOhlcDailyCandles
+ * merge whole candle OBJECTS wholesale, keyed only by `date` — they never enumerate or assume a
+ * fixed field list, so an enriched candle merges exactly the same way a bare
+ * {time,open,high,low,close,date} one always did. A cache file written before this change still
+ * loads and merges correctly; its older candles simply lack the new contract fields until the
+ * next run's pull re-covers that date (see the merge invariant below — any date THIS pull
+ * covers is authoritative and replaces the cached entry, contract fields included).
+ *
  * ohlc vs ohlcDaily (upgrade #2, 2026-09-17): these are DELIBERATELY SEPARATE arrays,
  * not one shared series. Both would otherwise dedupe by the SAME `date` key, and since
  * pullCoin() populates `ohlc` first every run, a 4-day CoinGecko candle would permanently
