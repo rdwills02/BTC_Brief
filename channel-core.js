@@ -52,6 +52,30 @@ var DETECTOR_VERSION = 'channel-core-h7-2026-09-22';
 // post-mortem data, same as ROCKET_CLOSE_TOL above.
 var CONTAINMENT_RECENT_WINDOW = 20;
 
+// Step 6 (Remediation spec, 2026-09-21/22; REVISED per Step 6 plan review 2026-09-22, R1-R5):
+// research-mode constants. These are used ONLY by the research pair-selection path
+// (detectChannelResearch, meta.research===true) - the flag-off detectChannel body above is
+// unmodified source, so none of these constants can affect it. Per R3, there is no
+// RESEARCH_MODE global - detectChannel(candles, diag, meta) takes meta.research as a PER-CALL
+// flag, not a process-level switch.
+var FIT_WINDOW = 150;         // 1d bars (A2)
+var FIT_WINDOW_GRID = 40;     // 4d bars (A2)
+var BREAK_RUN_MAX = 3;        // consecutive closes through invalidation -> broken (A1)
+var RECLAIM_BARS = 10;        // bars since last break before a reclaim can be considered (A1/H9). PROVISIONAL, spec-given.
+var MIN_ANCHOR_SPAN = 20;     // 1d bars, oldest/newest support touch spacing (A5)
+var MIN_ANCHOR_SPAN_GRID = 5; // 4d bars (= 20 days-equivalent, per Step 6 plan review decision - NOT 20 raw grid bars). PROVISIONAL.
+var MIN_TOUCH_GAP = 3;        // bars a middle touch must sit from either anchor (A5). PROVISIONAL.
+// A3: tol = clamp(TOUCH_TOL_ATR_MULT*ATR14/price, TOUCH_TOL_MIN, TOUCH_TOL_MAX). PROVISIONAL.
+// Step 6 build-restage review (2026-09-22, population finding): SATURATES on the 4d-grid
+// timeframe - measured tol mean 3.97% against a 4% cap (effectively flat 4%, i.e. looser than
+// the old flat 2.5% for almost every grid rail). ATR14 of 4-day bars runs ~2x a daily ATR, and
+// 0.5/1%/4% were written for daily bars ("a 1%-a-day coin") - the per-timeframe multiplier is
+// UNVALIDATED for 4d. Candidate fix (step 10/13, NOT applied here): a grid-specific multiplier
+// (~0.25, i.e. scaled by sqrt(4)) - a tuning decision for the harness, not this step.
+var TOUCH_TOL_ATR_MULT = 0.5;
+var TOUCH_TOL_MIN = 0.01;     // PROVISIONAL.
+var TOUCH_TOL_MAX = 0.04;     // PROVISIONAL.
+
 // --- Small pure util ---
 
 function clamp(v,a,b) { return Math.max(a,Math.min(b,v)); }
@@ -268,12 +292,338 @@ function multiSignalOnOneCandle(triggers) {
   return {hit:false, idx:null, time:null};
 }
 
+// --- Step 6 research-mode helpers (Remediation spec, 2026-09-21/22; REVISED per Step 6 plan
+// review 2026-09-22) --- used ONLY by detectChannelResearch below. None of these are called
+// from the flag-off detectChannel body.
+
+// A3: Wilder-smoothed ATR(14) on CLOSED bars. Standard Wilder recurrence (seed = simple
+// average of the first 14 true ranges, then smoothed) - deliberately not a simple/rolling
+// average, which spikes on a single outlier bar. Returns null when there isn't enough history
+// (needs 15 candles to form 14 true ranges) - callers must fall back to TOUCH_TOL, not treat
+// null as zero volatility.
+function atr14(candles) {
+  var n = candles.length;
+  if (n < 15) return null;
+  var trs = [];
+  for (var i = 1; i < n; i++) {
+    var c = candles[i], p = candles[i-1];
+    trs.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
+  }
+  var atr = 0;
+  for (var j = 0; j < 14; j++) atr += trs[j];
+  atr = atr / 14;
+  for (var k = 14; k < trs.length; k++) atr = (atr * 13 + trs[k]) / 14;
+  return atr;
+}
+// A3: per-coin touch tolerance, clamped. Falls back to the flat TOUCH_TOL (never a wider or
+// narrower silent default) when ATR can't be computed (short history) or price is falsy.
+function computeResearchTol(candles, price) {
+  var a = atr14(candles);
+  if (a == null || !price) return TOUCH_TOL;
+  return clamp(TOUCH_TOL_ATR_MULT * a / price, TOUCH_TOL_MIN, TOUCH_TOL_MAX);
+}
+
+// A2: pivot search bounded to the trailing `windowSize` candles, with pivot indices offset
+// back into FULL-SERIES index space (Step 6 plan review decision: full-series indices
+// throughout, so railAt/candles[idx] need no downstream change). windowSize falsy or >= the
+// series length is a no-op (whole series searched, offset 0) - same as findPivots(candles)
+// directly.
+function findPivotsWindowed(candles, windowSize) {
+  var n = candles.length;
+  var offset = (windowSize && n > windowSize) ? n - windowSize : 0;
+  var sliceArr = offset ? candles.slice(offset) : candles;
+  var p = findPivots(sliceArr);
+  function shift(list) {
+    return list.map(function(pt){ return {idx: pt.idx + offset, price: pt.price, time: pt.time}; });
+  }
+  return {highs: shift(p.highs), lows: shift(p.lows), offset: offset};
+}
+
+// A5: oldest/newest touch spacing + middle-touch gap. Only meaningful once there's a "middle"
+// touch (>=3) - fewer touches never fails this check (there's nothing to space).
+function passesAnchorSpacing(touches, minSpan, minGap) {
+  if (touches.length < 3) return true;
+  var idxs = touches.map(function(t){return t.idx;}).sort(function(a,b){return a-b;});
+  var lo = idxs[0], hi = idxs[idxs.length-1];
+  if (hi - lo < minSpan) return false;
+  for (var i = 1; i < idxs.length-1; i++) {
+    if (idxs[i]-lo < minGap || hi-idxs[i] < minGap) return false;
+  }
+  return true;
+}
+
+// A1: scans every bar firstIdx..lastIdx for a rail-pair candidate. `probed` (low pierced
+// rail*(1-tol)) is tracked separately from `broken-bar` (close pierced it) per H9's own
+// distinction ("a touch inside the tolerance band is not evidence support held; a closed bar
+// back above the rail after a probe is"). lastBreakIdx is the last bar of the MOST RECENT
+// broken-bar run (chronological, not necessarily the longest) - barsSinceBreak is measured
+// against it.
+function scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol) {
+  var maxRun = 0, curRun = 0, lastBreakIdx = -1, anyProbed = false;
+  for (var i = firstIdx; i <= lastIdx; i++) {
+    var thresh = railAt(slope, intercept, i) * (1 - tol);
+    var c = candles[i];
+    if (c.low < thresh) anyProbed = true;
+    if (c.close < thresh) {
+      curRun++;
+      lastBreakIdx = i;
+      if (curRun > maxRun) maxRun = curRun;
+    } else {
+      curRun = 0;
+    }
+  }
+  return {maxRun: maxRun, lastBreakIdx: lastBreakIdx, anyProbed: anyProbed};
+}
+
+// H9: lifecycle state from a scanBreaks() result. Step 6 build review (2026-09-22, "Review of
+// Step 6 build", BLOCKS 2 / R2 correction): the original R2 prose's "broken" clause included
+// "OR no support touch newer than lastBreakIdx", which duplicates the reclaimed-awaiting-retest
+// condition and made that state unreachable under an if/elif-broken-first chain (the 0/2162
+// result on the first build). Ryan's own error in the plan review text, corrected here to the
+// four-rule order given in the build review, evaluated in this exact order on the winning pair
+// over the fit window:
+//   1. no low below rail*(1-tol)                                            -> intact
+//   2. some low below, zero closes below                                    -> wick-probed
+//   3. >=1 close below AND (last close still below OR barsSinceBreak<RECLAIM_BARS) -> broken
+//   4. else (last close back above AND barsSinceBreak>=RECLAIM_BARS):
+//        a support touch newer than lastBreakIdx exists                     -> re-qualified
+//        otherwise                                                          -> reclaimed-awaiting-retest
+// Rule 3 does NOT reference touches at all - that's what makes rule 4 (and therefore
+// reclaimed-awaiting-retest) reachable.
+function computeLifecycle(scan, touches, candles, slope, intercept, lastIdx, tol, reclaimBars) {
+  // Rule 1: intact.
+  if (!scan.anyProbed) {
+    return {state:'intact', maxBreakRun:0, lastBreakIdx:-1, barsSinceBreak:null};
+  }
+  // Rule 2: wick-probed.
+  if (scan.maxRun === 0) {
+    return {state:'wick-probed', maxBreakRun:0, lastBreakIdx:-1, barsSinceBreak:null};
+  }
+  var lastBreakIdx = scan.lastBreakIdx;
+  var barsSinceBreak = lastIdx - lastBreakIdx;
+  var lastCloseBelow = candles[lastIdx].close < railAt(slope, intercept, lastIdx) * (1 - tol);
+  // Rule 3: broken - no touch-newer clause here by design (see header note above).
+  if (lastCloseBelow || barsSinceBreak < reclaimBars) {
+    return {state:'broken', maxBreakRun:scan.maxRun, lastBreakIdx:lastBreakIdx, barsSinceBreak:barsSinceBreak};
+  }
+  // Rule 4: reclaimed - re-qualified if a touch since the break exists, else awaiting retest.
+  var touchNewer = touches.some(function(t){ return t.idx > lastBreakIdx; });
+  var state = touchNewer ? 're-qualified' : 'reclaimed-awaiting-retest';
+  return {state:state, maxBreakRun:scan.maxRun, lastBreakIdx:lastBreakIdx, barsSinceBreak:barsSinceBreak};
+}
+
+// Step 6 (Remediation spec 2026-09-21/22; REVISED per Step 6 plan review 2026-09-22): the
+// research fit. A FULL independent re-fit against A1-A5/H9 rules - windowed pivots (A2),
+// per-coin ATR-scaled tol (A3), anchor spacing (A5), per-pair break-scan + lifecycle (A1/H9) -
+// not an annotation of the flag-off `best`. R1: every candidate pair gets a lifecycle state;
+// pair selection prefers the best-scoring ELIGIBLE (intact/re-qualified) pair, falling back to
+// the best-scoring pair overall (carrying its ineligible state) only when no pair is eligible -
+// so a coin with only broken candidates still returns a real, visible row, never null on that
+// account alone (still returns null for the ordinary reasons: <30 candles, <3 low pivots, no
+// candidate clears containment/position same as the flag-off path).
+function detectChannelResearch(candles, diag, meta) {
+  if (!candles || candles.length < 30) return null;
+  // A5 rejection diagnostics (Step 6 build review handoff format): when the caller passes a
+  // diag object, count every rail-pair candidate that reached the anchor-spacing check and how
+  // many of those passesAnchorSpacing() rejected, keyed by timeframe. Optional and additive -
+  // detectChannelResearch's return value and every existing behavior are unaffected whether or
+  // not diag is passed.
+  var tf = meta.timeframe || '1d';
+  if (diag) {
+    if (!diag.a5) diag.a5 = {};
+    if (!diag.a5[tf]) diag.a5[tf] = {checked:0, rejected:0};
+  }
+  var timeframe = meta.timeframe || '1d'; // A2: meta.timeframe absent -> default 1d/150 (no current production caller hits this - see plan §3)
+  var windowSize = (timeframe === '4d-grid') ? FIT_WINDOW_GRID : FIT_WINDOW;
+  var minAnchorSpan = (timeframe === '4d-grid') ? MIN_ANCHOR_SPAN_GRID : MIN_ANCHOR_SPAN;
+
+  var n = candles.length;
+  var pv = findPivotsWindowed(candles, windowSize);
+  var highs = pv.highs, lows = pv.lows;
+  if (lows.length < 3 || highs.length < 1) return null;
+
+  var price = candles[n-1].close;
+  var tol = computeResearchTol(candles, price);
+  var atr = atr14(candles);
+
+  var ema = emaState(candles);
+  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles),
+    bb3UpperReversion:bb3UpperReversion(candles), threeInsideDown:threeInsideDown(candles)};
+
+  var bestEligible = null, bestAny = null;
+
+  for (var a = 0; a < lows.length-1; a++) {
+    for (var b = a+1; b < lows.length; b++) {
+      var p1 = lows[a], p2 = lows[b];
+      var idxDelta = p2.idx - p1.idx;
+      if (idxDelta < 3) continue;
+
+      var slope = (p2.price - p1.price) / idxDelta;
+      if (slope < -0.05 * p1.price / idxDelta) continue;
+
+      var intercept = p1.price - slope * p1.idx;
+
+      var supTouches = lows.filter(function(l) {
+        var exp = railAt(slope,intercept,l.idx);
+        return exp > 0 && Math.abs(l.price-exp)/exp <= tol;
+      });
+      // Step 6 build-review handoff (changed-row/cause table): optional per-pair diagnostic
+      // log, keyed by the pair's full-series pivot indices + slope so a caller (regression-
+      // runner's runResearch) can match a flag-off winning pair to its research-mode fate by
+      // exact identity rather than guessing from output fields alone. `reached` records the
+      // last gate this pair cleared before falling out of the loop (or 'full' if it became a
+      // real candidate); null fields below simply were never computed for a pair that fell out
+      // earlier. Zero effect on detection output - only appended to, never read, by this code.
+      var pairLogEntry = null;
+      if (diag) {
+        if (!diag.pairLog) diag.pairLog = [];
+        pairLogEntry = {p1idx:p1.idx, p2idx:p2.idx, slope:slope, touches:supTouches.length,
+          reached:'touches', anchorPass:null, eligible:null, lifecycleState:null, score:null};
+        diag.pairLog.push(pairLogEntry);
+      }
+      if (supTouches.length < 3) continue;
+
+      // A5
+      if (diag) diag.a5[tf].checked++;
+      var anchorOk = passesAnchorSpacing(supTouches, minAnchorSpan, MIN_TOUCH_GAP);
+      if (pairLogEntry) { pairLogEntry.anchorPass = anchorOk; if (anchorOk) pairLogEntry.reached = 'anchor'; }
+      if (!anchorOk) {
+        if (diag) diag.a5[tf].rejected++;
+        continue;
+      }
+
+      var firstIdx = Math.min.apply(null, supTouches.map(function(l){return l.idx;}));
+      var lastIdx = n-1;
+      var relHighs = highs.filter(function(h){return h.idx>=firstIdx;});
+      if (!relHighs.length) continue;
+
+      var offsets = relHighs.map(function(h){return h.price-railAt(slope,intercept,h.idx);}).filter(function(o){return o>0;});
+      offsets.sort(function(x,y){return x-y;});
+      if (!offsets.length) continue;
+      var channelH = offsets[Math.floor(offsets.length/2)];
+      if (channelH <= 0) continue;
+
+      var resTouches = relHighs.filter(function(h) {
+        var exp = railAt(slope,intercept,h.idx)+channelH;
+        return exp > 0 && Math.abs(h.price-exp)/exp <= tol;
+      });
+
+      var supNow = railAt(slope,intercept,lastIdx);
+      var resNow = supNow + channelH;
+      var curPrice = candles[lastIdx].close;
+      var position = (curPrice-supNow)/channelH; // B4: unclamped, same rationale as the flag-off path
+
+      var winCandles = candles.slice(firstIdx);
+      var inside = 0;
+      for (var i=0; i<winCandles.length; i++) {
+        var ci = firstIdx+i;
+        var s = railAt(slope,intercept,ci);
+        var r2 = s+channelH;
+        if (winCandles[i].low >= s*(1-tol) && winCandles[i].high <= r2*(1+tol)) inside++;
+      }
+      var containment = (inside/winCandles.length)*100;
+      if (containment < 55) continue;
+      if (pairLogEntry) pairLogEntry.reached = 'containment';
+
+      if (position > 0.75) continue;
+      if (pairLogEntry) pairLogEntry.reached = 'position';
+
+      // A1/H9
+      var scan = scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol);
+      var lifecycle = computeLifecycle(scan, supTouches, candles, slope, intercept, lastIdx, tol, RECLAIM_BARS);
+
+      var slopePct = (slope / Math.abs(railAt(slope,intercept,firstIdx)||1)) * 100;
+      var invalidation = supNow * (1-tol);
+
+      var score = 0;
+      score += Math.min(25, supTouches.length*8);
+      score += Math.min(15, resTouches.length*6);
+      score += (containment/100)*20;
+      var sa = Math.abs(slopePct);
+      if(slope >= 0) { score += sa>=0.05&&sa<=3?15:sa<0.05?8:Math.max(0,15-(sa-3)*3); }
+      else { score += Math.max(0, 8-(sa*3)); }
+      score += position<=0.33?10:position<=0.5?6:position<=0.66?3:0;
+      score += Math.min(6, winCandles.length/20);
+      if(sa > 5) score -= 10;
+      if(slope < 0) score -= 5;
+      score += ema.pts;
+      var patternN = (conf.bb3.hit?1:0) + (conf.bullEngulf.hit?1:0) + (conf.threeInsideUp.hit?1:0);
+      var patternBonus = patternN > 0 ? (2*patternN - 1) : 0;
+      score += patternBonus;
+      score = Math.round(clamp(score,0,100));
+
+      var eligible = (lifecycle.state === 'intact' || lifecycle.state === 're-qualified');
+      if (pairLogEntry) {
+        pairLogEntry.reached = 'full'; pairLogEntry.eligible = eligible;
+        pairLogEntry.lifecycleState = lifecycle.state; pairLogEntry.score = score;
+      }
+      var candidate = {
+        score:score, supportTouches:supTouches.length, resTouches:resTouches.length,
+        containment:Math.round(containment), slope:slopePct, position:position,
+        supportNow:supNow, resistNow:resNow, invalidation:invalidation, channelH:channelH,
+        candles:candles.slice(-150), pivotLows:supTouches,
+        supSlope:slope, supIntercept:intercept, firstIdx:firstIdx, lastIdx:lastIdx,
+        isAscending:slope>=0, isFlat:Math.abs(slopePct)<0.1,
+        emaState:ema.state, ema21:ema.e21, ema50:ema.e50, emaPts:ema.pts,
+        bb3:conf.bb3.hit, bullEngulf:conf.bullEngulf.hit, threeInsideUp:conf.threeInsideUp.hit,
+        bb3Trigger:conf.bb3, bullEngulfTrigger:conf.bullEngulf, threeInsideUpTrigger:conf.threeInsideUp,
+        bb3UpperReversion:conf.bb3UpperReversion.hit, threeInsideDown:conf.threeInsideDown.hit,
+        bb3UpperReversionTrigger:conf.bb3UpperReversion, threeInsideDownTrigger:conf.threeInsideDown,
+        fitId: makeFitId(meta.coinId, meta.timeframe, meta.source, candles[lastIdx].time, firstIdx, lastIdx),
+        timeframe: meta.timeframe || null,
+        candleSource: meta.source || null,
+        lookback: Math.min(n, windowSize),
+        fitStartTime: candles[firstIdx].time,
+        fitEndTime: candles[lastIdx].time,
+        schemaVersion: FIT_SCHEMA_VERSION,
+        detectorVersion: DETECTOR_VERSION,
+        containmentFull: Math.round(containment),
+        containmentRecent: computeRecentContainment(candles, slope, intercept, channelH, firstIdx, lastIdx),
+        touchEvents: supTouches,
+        pivotIds: supTouches.map(function(t){ return t.time; }),
+        nearestResistance: resNow,
+        detectionPrice: curPrice,
+        detectionAsOf: candles[lastIdx].time,
+        lifecycleState: lifecycle.state,
+        maxBreakRun: lifecycle.maxBreakRun,
+        lastBreakIdx: lifecycle.lastBreakIdx,
+        barsSinceBreak: lifecycle.barsSinceBreak,
+        tol: tol,
+        atr14: atr,
+        research: true,
+        breachHistory: []
+      };
+
+      if (eligible && (!bestEligible || candidate.score > bestEligible.score)) bestEligible = candidate;
+      if (!bestAny || candidate.score > bestAny.score) bestAny = candidate;
+    }
+  }
+
+  var winner = bestEligible || bestAny; // R1: eligible pair preferred; else best-scoring pair carries its ineligible state
+  if (!winner) return null;
+
+  var rocket = rocketAtSupport(candles, winner.supSlope, winner.supIntercept);
+  var bb3Coincidence = conf.bb3.hit ? {hit:true, idx:n-1, time:candles[n-1].time} : conf.bb3;
+  var multi = multiSignalOnOneCandle([bb3Coincidence, conf.bullEngulf, conf.threeInsideUp, rocket]);
+  winner.rocket = rocket.hit;
+  winner.rocketTrigger = rocket;
+  winner.multiSignal = multi.hit;
+  winner.multiSignalTrigger = multi;
+
+  return winner;
+}
+
 // --- Channel detection (scoring + per-coin diag) ---
 // H7: OPTIONAL third arg `meta` ({coinId, timeframe, source}) - see header note. Every
 // existing 2-arg caller is unaffected (meta defaults to {}).
+// Step 6 (2026-09-22): meta.research===true routes to detectChannelResearch above INSTEAD of
+// the body below - a per-call dispatch (R3: no module-level RESEARCH_MODE), so the body below
+// is completely unmodified source and the flag-off output is unaffected by this change by
+// construction, not by discipline.
 function detectChannel(candles, diag, meta) {
-  if(!diag) diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
   if(!meta) meta = {};
+  if(meta.research) return detectChannelResearch(candles, diag, meta);
+  if(!diag) diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,scoreOk:0,candidates:0};
   if(!candles || candles.length < 30) return null;
   var p = findPivots(candles);
   var highs = p.highs, lows = p.lows;
@@ -496,6 +846,16 @@ if (typeof module !== 'undefined' && module.exports) {
     bb3UpperReversion: bb3UpperReversion, threeInsideDown: threeInsideDown,
     rocketAtSupport: rocketAtSupport, multiSignalOnOneCandle: multiSignalOnOneCandle,
     findPivots: findPivots, railAt: railAt, makeFitId: makeFitId,
-    computeRecentContainment: computeRecentContainment, detectChannel: detectChannel
+    computeRecentContainment: computeRecentContainment, detectChannel: detectChannel,
+    // Step 6 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash
+    // (so any future tuning is hashed like every other constant) and the research internals
+    // for direct harness testing (invariant checks, e.g. railAt(...)===supportNow).
+    FIT_WINDOW: FIT_WINDOW, FIT_WINDOW_GRID: FIT_WINDOW_GRID, BREAK_RUN_MAX: BREAK_RUN_MAX,
+    RECLAIM_BARS: RECLAIM_BARS, MIN_ANCHOR_SPAN: MIN_ANCHOR_SPAN,
+    MIN_ANCHOR_SPAN_GRID: MIN_ANCHOR_SPAN_GRID, MIN_TOUCH_GAP: MIN_TOUCH_GAP,
+    TOUCH_TOL_ATR_MULT: TOUCH_TOL_ATR_MULT, TOUCH_TOL_MIN: TOUCH_TOL_MIN, TOUCH_TOL_MAX: TOUCH_TOL_MAX,
+    atr14: atr14, computeResearchTol: computeResearchTol, findPivotsWindowed: findPivotsWindowed,
+    passesAnchorSpacing: passesAnchorSpacing, scanBreaks: scanBreaks, computeLifecycle: computeLifecycle,
+    detectChannelResearch: detectChannelResearch
   };
 }
