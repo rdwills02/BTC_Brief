@@ -263,6 +263,53 @@ function rocketAtSupport(candles, supSlope, supIntercept) {
   return hit ? {hit:true, idx:i, time:c.time} : {hit:false, idx:null, time:null};
 }
 
+// E4 (Remediation spec, 2026-09-21/22): research-only sibling to rocketAtSupport() above -
+// flag-off untouched, called only from detectChannelResearch's post-winner rocket call (the
+// OTHER rocketAtSupport call, inside flag-off detectChannel below, is untouched). Two changes
+// from the base function: the near-rail anchor switches from the candle's BODY low (bodyLow,
+// what rocketAtSupport tests) to its WICK low (c.low), per the spec's literal wording - this
+// can pass bars flag-off would reject and reject bars flag-off would pass; report the
+// population delta, no tuning on any single coin. And three added gates: a lower-wick size
+// floor relative to the candle's own body AND to ATR14 (atr reused from the caller, same
+// convention as E3's atr arg - no new ATR computation here), a lifecycle-validity gate (fires
+// only on a currently-eligible rail - same 'intact'/'re-qualified' test detectChannelResearch
+// already computes for bestEligible, passed in rather than re-derived), and a reclaim-not-
+// bounce guard (no fire if the prior ROCKET_PRIOR_CLOSES_BELOW closes were ALL below their own
+// rail value - a rocket needs the rail to have actually been holding, not just poked at from
+// underneath once). Missing history for the prior-5 guard (near the start of a series) can't
+// prove "all below", so it doesn't block - this guard only ever removes fires, never requires
+// history to exist.
+var ROCKET_WICK_BODY = 1.5;         // PROVISIONAL, spec E4: lowerWick >= this * |close-open|.
+var ROCKET_WICK_ATR = 0.5;          // PROVISIONAL, spec E4: lowerWick >= this * ATR14.
+var ROCKET_PRIOR_CLOSES_BELOW = 5;  // PROVISIONAL, spec E4: no fire if this many prior closes are all below the rail.
+function rocketAtSupportResearch(candles, supSlope, supIntercept, tol, atr, lifecycleState) {
+  var n = candles.length; if(n < 1) return {hit:false, idx:null, time:null};
+  var i = n-1, c = candles[i];
+  if(!(c.close > c.open)) return {hit:false, idx:null, time:null}; // must be a green candle, same as rocketAtSupport
+  var range = c.high - c.low;
+  if(range <= 0) return {hit:false, idx:null, time:null};
+  var bodyLow = Math.min(c.open, c.close);
+  var railVal = railAt(supSlope, supIntercept, i);
+  if(!(railVal > 0)) return {hit:false, idx:null, time:null};
+  // E4: anchor is the WICK low (c.low), not the body low rocketAtSupport tests.
+  var nearRail = Math.abs(c.low - railVal) / railVal <= tol;
+  var lowerWick = bodyLow - c.low;
+  var body = Math.abs(c.close - c.open);
+  var wickSizeOk = (atr != null) && (lowerWick > 0) &&
+    (lowerWick >= ROCKET_WICK_BODY * body) && (lowerWick >= ROCKET_WICK_ATR * atr);
+  var closesNearHigh = (c.high - c.close) <= ROCKET_CLOSE_TOL * range;
+  var lifecycleOk = (lifecycleState === 'intact') || (lifecycleState === 're-qualified');
+  var allPriorBelow = true;
+  for (var k = 1; k <= ROCKET_PRIOR_CLOSES_BELOW; k++) {
+    var pi = i - k;
+    if (pi < 0) { allPriorBelow = false; break; }
+    var pRail = railAt(supSlope, supIntercept, pi);
+    if (!(pRail > 0) || !(candles[pi].close < pRail)) { allPriorBelow = false; break; }
+  }
+  var hit = nearRail && wickSizeOk && closesNearHigh && lifecycleOk && !allPriorBelow;
+  return hit ? {hit:true, idx:i, time:c.time} : {hit:false, idx:null, time:null};
+}
+
 // --- Pivots + rails ---
 function findPivots(candles) {
   var highs=[], lows=[];
@@ -730,7 +777,7 @@ function detectChannelResearch(candles, diag, meta) {
   var winner = bestEligible || bestAny; // R1: eligible pair preferred; else best-scoring pair carries its ineligible state
   if (!winner) return null;
 
-  var rocket = rocketAtSupport(candles, winner.supSlope, winner.supIntercept);
+  var rocket = rocketAtSupportResearch(candles, winner.supSlope, winner.supIntercept, tol, atr, winner.lifecycleState);
   var bb3Coincidence = conf.bb3.hit ? {hit:true, idx:n-1, time:candles[n-1].time} : conf.bb3;
   var multi = multiSignalOnOneCandle([bb3Coincidence, conf.bullEngulf, conf.threeInsideUp, rocket]);
   winner.rocket = rocket.hit;
@@ -989,6 +1036,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // the function itself for direct harness testing.
     ENGULF_BODY_ATR_MULT: ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: ENGULF_BODY_RATIO,
     bullEngulfingResearch: bullEngulfingResearch,
+    // E4 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash and
+    // the function itself for direct harness testing.
+    ROCKET_WICK_BODY: ROCKET_WICK_BODY, ROCKET_WICK_ATR: ROCKET_WICK_ATR,
+    ROCKET_PRIOR_CLOSES_BELOW: ROCKET_PRIOR_CLOSES_BELOW,
+    rocketAtSupportResearch: rocketAtSupportResearch,
     // Step 7 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash
     // and the B1 internals for direct harness testing.
     NEAR_FLAT_SLOPE_PCT: NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: WEDGE_LOOKAHEAD,
