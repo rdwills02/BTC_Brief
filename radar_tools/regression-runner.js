@@ -524,18 +524,22 @@ function runStep7Acceptance(current, grids, gridCaches, dailyCaches) {
 }
 
 
-// Step 8 E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23): bullEngulfingResearch
-// tightening. Two comparisons, both over the SAME frozen coin universe/dates
-// runStep7Acceptance already establishes (latest grid date for 4d-grid, latest daily date -
-// the frozen 9/16 capture in this fixture snapshot - for 1d):
-//   1. OLD (channel-core.orig.js, pinned at this step's pre-diff blob) vs NEW (channel-core.js,
-//      this diff) bullEngulf field under research mode, per pass - the actual before/after this
-//      diff makes. Every row that changes is listed and labeled E3 (this is the only spec item
-//      touching bullEngulf, so there is nothing else it could be attributed to).
+// Step 8 E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23; runner fix 2026-09-23 -
+// see RADAR STATE handoff: the original build read OLD off a local channel-core.orig.js
+// snapshot that was never pushed, which threw MODULE_NOT_FOUND and broke run() on main).
+// Two comparisons, both over the SAME frozen coin universe/dates runStep7Acceptance already
+// establishes (latest grid date for 4d-grid, latest daily date - the frozen 9/16 capture in
+// this fixture snapshot - for 1d):
+//   1. OLD vs NEW bullEngulf field under research mode, per pass - the actual before/after E3
+//      makes. OLD is bullEngulfing(candles) called directly on `current` - a pure function of
+//      the candles, unchanged since before E3 and still exported unmodified, which is exactly
+//      what research-mode bullEngulf read before bullEngulfingResearch existed, so no second
+//      module is needed to reconstruct it. Every row that changes is listed and labeled E3
+//      (this is the only spec item touching bullEngulf, so there is nothing else it could be
+//      attributed to).
 //   2. Flag-off vs research bullEngulf under NEW alone, 1d pass only - the population-delta
 //      observation the plan asked for, not a target to tune toward.
 function runStep8E3Acceptance(current, grids, gridCaches, dailyCaches) {
-  const orig = require(path.join(__dirname, 'channel-core.orig.js'));
   const latestGrid = grids[grids.length - 1];
   const latestGridDate = latestGrid.date;
   const coins = latestGrid.coins;
@@ -565,10 +569,15 @@ function runStep8E3Acceptance(current, grids, gridCaches, dailyCaches) {
     for (const cgId of coins) {
       const s = slice(cgId, tf);
       if (!s || s.length < 30) continue;
-      let oldR = null, newR = null;
-      try { oldR = orig.detectChannel(s, undefined, { cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      let newR = null;
       try { newR = current.detectChannel(s, undefined, { cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
-      const oldHit = !!(oldR && oldR.bullEngulf);
+      // Step 8 E3 fix (2026-09-23): OLD is read straight off `current.bullEngulfing` (the
+      // pure, unchanged base function) rather than a second module - see the header comment
+      // above runStep8E3Acceptance for why. Gated on newR existing, same scope the
+      // orig/current pairing always had: fit existence itself is untouched by any bullEngulf
+      // change (structural pair-selection gates don't depend on the pattern flags), so this
+      // reproduces the identical checked/changed set the two-module version produced.
+      const oldHit = !!(newR && current.bullEngulfing(s).hit);
       const newHit = !!(newR && newR.bullEngulf);
       checked++;
       if (oldHit) oldTrue++;
