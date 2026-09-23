@@ -610,6 +610,59 @@ function computeLifecycle(scan, touches, candles, slope, intercept, lastIdx, tol
 // so a coin with only broken candidates still returns a real, visible row, never null on that
 // account alone (still returns null for the ordinary reasons: <30 candles, <3 low pivots, no
 // candidate clears containment/position same as the flag-off path).
+// H11 (Remediation spec, 2026-09-21/22): pattern inspectability records. Used ONLY by
+// detectChannelResearch below, after the winner is chosen. One record per fired pattern among
+// bb3, bullEngulf, threeInsideUp, rocket, bb3UpperReversion, threeInsideDown - each carries
+// where it came from (venue/timeframe/interval, the same meta values fitId is built from),
+// the referenced candles (times + OHLC read straight off `candles`), and a rule string built
+// from the module constants at call time so it can never drift from the thresholds actually
+// applied. `closed` is always true: every candle reaching detection is a closed bar (F1/F2),
+// there is no wall-clock check here. bb3 / bb3UpperReversion / three-inside rules have no named
+// constants (their thresholds are literals inside their own functions, untouched) so their rule
+// text describes the test without a tunable value beyond the Bollinger 20/3/5 shape.
+// conflictingSignalsPair (E6) is carried on the two records whose triggers form the pair (same
+// object as winner.conflictingSignalsPair); null on every other record.
+function buildPatternRecords(candles, conf, rocket, conflict, meta, tol, lifecycleState) {
+  var n = candles.length;
+  var records = [];
+  function add(name, trig, idxs, rule) {
+    if (!trig || !trig.hit) return;
+    var involved = !!conflict && (conflict.bullish === trig || conflict.bearish === trig);
+    records.push({
+      pattern: name,
+      venue: meta.source || null,
+      timeframe: meta.timeframe || null,
+      interval: meta.timeframe || null,
+      closed: true,
+      candleIds: idxs.map(function(i){ return candles[i].time; }),
+      ohlc: idxs.map(function(i){
+        var c = candles[i];
+        return {time:c.time, open:c.open, high:c.high, low:c.low, close:c.close};
+      }),
+      rule: rule,
+      conflictingSignalsPair: involved ? conflict : null
+    });
+  }
+  add('bb3', conf.bb3, [conf.bb3.idx],
+    'bb3 reversion: this bar\'s low pierced the lower Bollinger band (20-bar mean, 3 std) within the last 5 bars; latest close is back inside the band');
+  add('bullEngulf', conf.bullEngulf, [n-2, n-1],
+    'bullish engulfing (research): bearish prior bar, bullish trigger bar; trigger body >= ' + ENGULF_BODY_ATR_MULT +
+    'x ATR14 and >= ' + ENGULF_BODY_RATIO + 'x prior body; trigger close > prior open, trigger open <= prior close; ' +
+    'close 3 bars before the trigger > prior close');
+  add('threeInsideUp', conf.threeInsideUp, [n-3, n-2, n-1],
+    'three inside up (research): bearish bar 1, bullish bar 2 inside bar 1 body, bar 3 closes above bar 2 close and above bar 1 open');
+  add('rocket', rocket, [n-1],
+    'custom support-rejection pattern: green bar; wick low within ' + (tol * 100).toFixed(2) + '% of the support rail; ' +
+    'lower wick >= ' + ROCKET_WICK_BODY + 'x body and >= ' + ROCKET_WICK_ATR + 'x ATR14; ' +
+    'close within ' + ROCKET_CLOSE_TOL + ' of the bar range below the high; rail lifecycle ' + lifecycleState +
+    '; not all of the prior ' + ROCKET_PRIOR_CLOSES_BELOW + ' closes were below the rail');
+  add('bb3UpperReversion', conf.bb3UpperReversion, [conf.bb3UpperReversion.idx],
+    'bb3 upper reversion (bearish exit warning): this bar\'s high pierced the upper Bollinger band (20-bar mean, 3 std) within the last 5 bars; latest close is back inside the band');
+  add('threeInsideDown', conf.threeInsideDown, [n-3, n-2, n-1],
+    'three inside down (bearish exit warning): bullish bar 1, bearish bar 2 inside bar 1 body, bar 3 closes below bar 2 close');
+  return records;
+}
+
 function detectChannelResearch(candles, diag, meta) {
   if (!candles || candles.length < 30) return null;
   // A5 rejection diagnostics (Step 6 build review handoff format): when the caller passes a
@@ -842,6 +895,9 @@ function detectChannelResearch(candles, diag, meta) {
   var conflict = patternConflict || signalConflict([rocket], [conf.bb3UpperReversion, conf.threeInsideDown]);
   winner.conflictingSignals = !!conflict;
   winner.conflictingSignalsPair = conflict;
+
+  // H11: one inspectable record per fired pattern (see buildPatternRecords above).
+  winner.patternRecords = buildPatternRecords(candles, conf, rocket, conflict, meta, tol, winner.lifecycleState);
 
   return winner;
 }
@@ -1108,6 +1164,8 @@ if (typeof module !== 'undefined' && module.exports) {
     NEAR_FLAT_SLOPE_PCT: NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: WEDGE_LOOKAHEAD,
     WEDGE_LOOKAHEAD_GRID: WEDGE_LOOKAHEAD_GRID, RES_RECENT_BARS: RES_RECENT_BARS,
     RES_RECENT_BARS_GRID: RES_RECENT_BARS_GRID,
-    fitIndependentResistance: fitIndependentResistance, isWedge: isWedge
+    fitIndependentResistance: fitIndependentResistance, isWedge: isWedge,
+    // H11 (Remediation spec, 2026-09-21/22) export - the function itself for direct harness testing (no new constants).
+    buildPatternRecords: buildPatternRecords
   };
 }
