@@ -140,6 +140,19 @@ function loadDailyCaches() {
   return caches;
 }
 
+// Step 10 D: a SEPARATE daily loader that also carries `volume` (loadDailyCaches above deliberately strips it, and
+// every earlier section reads that shape). Used only by runStep10DAcceptance - volume-on-touch needs it.
+function loadDailyCachesWithVolume() {
+  const cacheDir = path.join(FIXTURES_DATA_DIR, 'cache');
+  const files = fs.readdirSync(cacheDir).filter(f => f.endsWith('.json'));
+  const caches = {};
+  for (const f of files) {
+    const c = JSON.parse(fs.readFileSync(path.join(cacheDir, f), 'utf8'));
+    caches[c.cgId] = (c.ohlcDaily || []).map(b => { const o = { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, date: b.date }; if (b.volume !== undefined) o.volume = b.volume; return o; });
+  }
+  return caches;
+}
+
 function sliceToDate(ohlc, D) {
   const idx = ohlc.findIndex(c => c.date === D);
   if (idx === -1) return null;
@@ -307,6 +320,7 @@ function run() {
   runStep8E7Acceptance(current, grids, caches, loadDailyCaches());
   runStep8H11Acceptance(current, grids, caches, loadDailyCaches());
   runStep9F3H3Acceptance(current, grids, caches, loadDailyCaches());
+  runStep10DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1215,6 +1229,101 @@ function runStep9F3H3Acceptance(current, grids, gridCaches, dailyCaches) {
   }
   console.log('\nevery changed row attributed to pivot set / containment / rail delta: ' + (bugTotal === 0 ? 'holds' : bugTotal + ' UNATTRIBUTED - SEE ABOVE, THIS IS A BUG') +
     ' (full 2162-row versions in radar_tools/step9-invariant-tests.js, local only)');
+}
+
+// Step 10 D (Remediation spec Plan D; plan + review decisions in the step 8-10 log): research score rebalance.
+// OLD = the same research fit with meta._noD (the pre-D block, in the same function); NEW = the D block. Measured on
+// EVERY dated fixture (all grid dates x their coins; 1d rows from ohlcDaily sliced to the same date where >= 60 daily
+// bars exist), NOT pinned to the frozen date - the floor decision needs the whole population. Aggregates only, per
+// timeframe. No floor is chosen here. The ACT counts below are a SCORE + core-field PROXY (eligible lifecycle AND
+// distToRailPct <= min(2*tol, 0.06) AND channelH/price <= 0.40 AND score >= floor); the real buildAction verdict lives
+// in radar.html and is measured by the local step10-floor-table.js - that table is the source of truth.
+// Structural grid ceiling: grid bars carry no volume and the pattern bonus is 1D-only, so a grid row's best raw is
+// 24+15+15+15+12+6+(5+3) = 95 -> 93.1 after the x100/102 rescale; the floor must be derived per timeframe (step 11).
+function runStep10DAcceptance(current, grids, gridCaches, dailyCaches) {
+  var FLOORS = [80, 82, 84, 86, 88, 90];
+  console.log('\n=== Step 10 D acceptance (scoring rebalance) — research fits, ALL ' + grids.length + ' dated fixtures, per timeframe (1d on ohlcDaily with volume, 4d-grid on ohlc) ===');
+  console.log('OLD = research fit with _noD (55% on wicks, additive block); NEW = D block (70% on closes, table x100/102). ACT_SCORE_FLOOR stays 89 (page); candidate floors ' + FLOORS.join('/') + ' printed as counts only.');
+  console.log('GRID CEILING (structural): no volume on grid bars, pattern bonus 1D-only => max raw 95 => ' + (95 * 100 / current.D_RAW_MAX).toFixed(1) + ' after rescale; per-timeframe floor needed in step 11.');
+  console.log('Constants: D_RAW_MAX=' + current.D_RAW_MAX + ' D_CONT_GATE=' + current.D_CONT_GATE + ' D_AGE_RANGE=' + JSON.stringify(current.D_AGE_RANGE) + ' D_AGE_RANGE_GRID=' + JSON.stringify(current.D_AGE_RANGE_GRID) + ' D_BREAK_PENALTY=' + current.D_BREAK_PENALTY + ' D_VOL_TOUCH_MULT=' + current.D_VOL_TOUCH_MULT + ' D_EMA_SLOPE_BARS=' + current.D_EMA_SLOPE_BARS);
+  function rankAvg(a) {
+    var idx = a.map(function (v, i) { return i; }).sort(function (x, y) { return a[x] - a[y]; }), r = new Array(a.length), i = 0;
+    while (i < idx.length) { var j = i; while (j + 1 < idx.length && a[idx[j + 1]] === a[idx[i]]) j++; var av = (i + j) / 2 + 1; for (var k = i; k <= j; k++) r[idx[k]] = av; i = j + 1; }
+    return r;
+  }
+  function spearman(x, y) {
+    if (x.length < 3) return null;
+    var rx = rankAvg(x), ry = rankAvg(y), n = x.length, mx = 0, my = 0, i;
+    for (i = 0; i < n; i++) { mx += rx[i]; my += ry[i]; } mx /= n; my /= n;
+    var sxy = 0, sxx = 0, syy = 0;
+    for (i = 0; i < n; i++) { sxy += (rx[i] - mx) * (ry[i] - my); sxx += (rx[i] - mx) * (rx[i] - mx); syy += (ry[i] - my) * (ry[i] - my); }
+    return (sxx > 0 && syy > 0) ? sxy / Math.sqrt(sxx * syy) : null;
+  }
+  function pct(sorted, q) { if (!sorted.length) return null; return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]; }
+  function proxyAct(f, floor) {
+    if (!f || f.score < floor) return false;
+    if (!(f.lifecycleState === 'intact' || f.lifecycleState === 're-qualified')) return false;
+    if (f.distToRailPct > Math.min(2 * f.tol, 0.06)) return false;
+    if (f.channelH / f.detectionPrice > 0.40) return false;
+    return true;
+  }
+  var bugs = 0;
+  ['1d', '4d-grid'].forEach(function (tf) {
+    var src = (tf === '1d') ? dailyCaches : gridCaches, minBars = (tf === '1d') ? 60 : 30;
+    var rows = 0, bothFit = 0, oldOnly = 0, newOnly = 0, samePairScoreChanged = 0, pairChanged = 0;
+    var oldS = [], newS = [], both = [], hist = new Array(21).fill(0), maxNew = -1, maxOld = -1, lostByDate = [];
+    var volBonusRows = 0, patBonusRows = 0, brkRows = 0, widthPenRows = 0, ageZero = 0, sumParts = {}, nParts = 0;
+    var perDate = [], anyDate = 0;
+    grids.forEach(function (g) {
+      var nRows = 0, lost = 0, oldAct = 0, act = FLOORS.map(function () { return 0; }), fits = 0;
+      g.coins.forEach(function (cgId) {
+        var c = src[cgId]; if (!c) return;
+        var s = sliceToDate(c, g.date); if (!s || s.length < minBars) return;
+        var meta = { coinId: cgId, timeframe: tf, source: 'fixture', research: true, _noH3: true };
+        var oldF = current.detectChannel(s, null, Object.assign({ _noD: true }, meta));
+        var newF = current.detectChannel(s, null, meta);
+        rows++; nRows++;
+        if (oldF && !newF) { oldOnly++; lost++; }
+        if (!oldF && newF) newOnly++;
+        if (oldF && proxyAct(oldF, 89)) oldAct++;
+        if (newF) {
+          fits++;
+          var b = newF.scoreBreakdown;
+          if (!b) { bugs++; console.log('  BUG: NEW research fit without scoreBreakdown ' + cgId + ' ' + tf + ' ' + g.date); return; }
+          if (newF.score < 0 || newF.score > 100) { bugs++; console.log('  BUG: score out of range ' + cgId + ' ' + tf + ' ' + g.date); }
+          hist[Math.min(20, Math.floor(newF.score / 5))]++;
+          if (newF.score > maxNew) maxNew = newF.score;
+          if (b.vol > 0) volBonusRows++; if (b.pattern > 0) patBonusRows++; if (b.penalties.brk > 0) brkRows++; if (b.penalties.width > 0) widthPenRows++; if (b.age === 0) ageZero++;
+          ['touch', 'res', 'cont', 'slope', 'pos', 'age', 'ema', 'emaSlope', 'pattern', 'vol'].forEach(function (k) { sumParts[k] = (sumParts[k] || 0) + b[k]; }); nParts++;
+          FLOORS.forEach(function (fl, i) { if (proxyAct(newF, fl)) act[i]++; });
+        }
+        if (oldF && oldF.score > maxOld) maxOld = oldF.score;
+        if (oldF && newF) {
+          bothFit++; oldS.push(oldF.score); newS.push(newF.score);
+          var samePair = (oldF.firstIdx === newF.firstIdx && oldF.supSlope === newF.supSlope);
+          if (!samePair) pairChanged++; else if (oldF.score !== newF.score) samePairScoreChanged++;
+        }
+      });
+      if (nRows) { anyDate++; perDate.push(g.date + ' n=' + nRows + ' fits=' + fits + ' lost=' + lost + ' oldACT89=' + oldAct + ' | ' + FLOORS.map(function (fl, i) { return fl + ':' + act[i]; }).join(' ')); }
+    });
+    console.log('\n--- ' + tf + ': rows scored ' + rows + ' over ' + anyDate + ' dates | both fit ' + bothFit + ' | fit lost to the 70%-on-closes gate (OLD fit, NEW none) ' + oldOnly + ' | NEW-only fits ' + newOnly + ' | winning pair changed ' + pairChanged + ' | same pair, score changed ' + samePairScoreChanged + ' | max score old ' + maxOld + ' new ' + maxNew + ' ---');
+    var nNew = hist.reduce(function (a, b) { return a + b; }, 0);
+    console.log('NEW score histogram (5-pt bins, n=' + nNew + '): ' + hist.map(function (v, i) { return (i === 20 ? '100' : (i * 5) + '-' + (i * 5 + 4)) + ':' + v; }).join(' '));
+    console.log('bonus/penalty incidence (NEW rows): vol bonus ' + volBonusRows + ' | pattern bonus ' + patBonusRows + ' | break penalty ' + brkRows + ' | width penalty ' + widthPenRows + ' | age 0 ' + ageZero + ' | mean parts ' + Object.keys(sumParts).map(function (k) { return k + '=' + (sumParts[k] / Math.max(1, nParts)).toFixed(1); }).join(' '));
+    var rho = spearman(oldS, newS), moved10 = 0, i;
+    for (i = 0; i < oldS.length; i++) if (Math.abs(oldS[i] - newS[i]) >= 10) moved10++;
+    console.log('OLD vs NEW on rows with both fits (n=' + oldS.length + '): Spearman rho ' + (rho == null ? 'n/a' : rho.toFixed(3)) + ' | rows moved >= 10 points ' + moved10);
+    console.log('rows crossing (OLD >= 89 / OLD < 89) x (NEW >= cutoff): ' + [80, 82, 84, 86, 88, 90].map(function (cut) {
+      var a = 0, b2 = 0; for (var q = 0; q < oldS.length; q++) if (newS[q] >= cut) { if (oldS[q] >= 89) a++; else b2++; } return cut + ': ' + a + '/' + b2; }).join('  ') + '   (old>=89 total ' + oldS.filter(function (v) { return v >= 89; }).length + ')');
+    var so = oldS.slice().sort(function (a, b) { return a - b; }), sn = newS.slice().sort(function (a, b) { return a - b; });
+    console.log('percentiles P50/P75/P90/P95/P99  OLD ' + [0.5, 0.75, 0.9, 0.95, 0.99].map(function (q) { return pct(so, q); }).join('/') + '  NEW ' + [0.5, 0.75, 0.9, 0.95, 0.99].map(function (q) { return pct(sn, q); }).join('/'));
+    var pe = [89, 75, 60].map(function (cut) { var below = so.filter(function (v) { return v < cut; }).length / Math.max(1, so.length); return { cut: cut, share: below, eq: pct(sn, below) }; });
+    console.log('population-equivalent cutoffs (score at the same percentile as OLD 89/75/60; row shares OLD>=cutoff): ' + pe.map(function (e) { return e.cut + ' -> NEW ' + e.eq + ' (' + ((1 - e.share) * 100).toFixed(1) + '% of rows)'; }).join(' | '));
+    console.log('per date (ACT proxy counts under floors; oldACT89 = OLD research proxy at 89; lost = fits lost to the 70% gate):');
+    perDate.forEach(function (l) { console.log('  ' + l); });
+  });
+  console.log('\nPrior-section deltas: flag-off output unchanged (local step10 suite: deep-equal 2162/2162). Step 9 section above now measures D-mode fits on both sides (OLD there = _noWickClip). Containment for score and gate is measured on raw closes, so a clipped bar can no longer change containment DIRECTLY; the Step 9 classifier still labels a changed row "clip changed containment" whenever containmentFull/containmentRecent differ, and that still happens when a clipped HIGH pivot moves the resistance rail (the closes are judged against the moved rail) - e.g. tron 9/16 1d. The class stays reachable; its meaning is now "clip moved the resistance rail / winning pair", not "clip changed a wick-based containment".');
+  if (bugs) { console.log('Step 10 D acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
 run();
