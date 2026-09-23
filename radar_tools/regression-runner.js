@@ -303,6 +303,7 @@ function run() {
   runStep8E3Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E4Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E5Acceptance(current, grids, caches, loadDailyCaches());
+  runStep8E6Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -858,6 +859,106 @@ function runStep8E5Acceptance(current, grids, gridCaches, dailyCaches) {
     (flipUpTotal + flipDownTotal >= 1 ? ' (at least one flip - not a no-op build)' : ' — ZERO FLIPS, unexpected for a tightened gate'));
   console.log('every changed row attributed (no \'unattributed\'): ' + unattributed +
     (unattributed === 0 ? ' (holds)' : ' — SEE ABOVE'));
+}
+
+
+// Step 8 E6 (Remediation spec, 2026-09-21/22): conflict rule. OLD = research fit with the
+// conflict check ignored — pre-E6, `conflictingSignals` doesn't exist and patternBonus is
+// always applied when patternN>0. NEW = research fit with the conflict check applied — E6's
+// own live behavior (conflictingSignals set, patternBonus excluded when it is). Both read
+// straight off the SAME research winner (newR), same "compute OLD on the research fit's own
+// row" pattern as E3-E5's runner sections. conf.bb3/bullEngulf/threeInsideUp are candle-level
+// and untouched by E6 (see channel-core.js's E6 comments), so patternN — and therefore OLD's
+// patternBonus — is reproduced exactly from newR's own stored bb3/bullEngulf/threeInsideUp
+// fields (E3-E5 outputs, unaffected here), no second module or snapshot file needed. Row set
+// = rows with a research fit (same convention as E3-E5 — no fit, nothing to compare NEW
+// against either).
+//
+// conflictingSignals can only ever flip false->true: OLD never had the field (equivalent to
+// always false), so every changed row is a false->true flip by construction — a true->false
+// flip would mean NEW's field went missing or reverted, which nothing in E6 does, checked
+// directly below rather than assumed.
+function bullishTriggerName(trigger, newR) {
+  if (trigger === newR.bullEngulfTrigger) return 'bullEngulf';
+  if (trigger === newR.threeInsideUpTrigger) return 'threeInsideUp';
+  if (trigger === newR.rocketTrigger) return 'rocket';
+  return 'unknown-bullish';
+}
+function bearishTriggerName(trigger, newR) {
+  if (trigger === newR.bb3UpperReversionTrigger) return 'bb3UpperReversion';
+  if (trigger === newR.threeInsideDownTrigger) return 'threeInsideDown';
+  return 'unknown-bearish';
+}
+
+function runStep8E6Acceptance(current, grids, gridCaches, dailyCaches) {
+  var latestGrid = grids[grids.length - 1];
+  var latestGridDate = latestGrid.date;
+  var coins = latestGrid.coins;
+
+  console.log('\n=== Step 8 E6 acceptance (conflict rule) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length);
+
+  function slice(cgId, tf) {
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
+  }
+
+  console.log('\n--- 1. conflictingSignals: OLD (conflict ignored) vs NEW (conflict applied), per pass — every changed row attributed to its conflicting pair ---');
+  var flipUpTotal = 0, flipDownTotal = 0, badFlipDown = 0, unattributed = 0;
+  var pairCounts = {};
+  for (var ti = 0; ti < 2; ti++) {
+    var tf = ['1d', '4d-grid'][ti];
+    var oldTrue = 0, newTrue = 0, checked = 0, bonusExcludedSum = 0;
+    var changed = [];
+    for (var ci = 0; ci < coins.length; ci++) {
+      var cgId = coins[ci];
+      var s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      var newR = null;
+      try { newR = current.detectChannel(s, undefined, { cgId: cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      if (!newR) continue; // row set = rows with a research fit
+      checked++;
+
+      var patternN = (newR.bb3 ? 1 : 0) + (newR.bullEngulf ? 1 : 0) + (newR.threeInsideUp ? 1 : 0);
+      var oldPatternBonus = patternN > 0 ? (2 * patternN - 1) : 0;
+      var oldHit = false; // OLD structurally always false — see header
+      var newHit = !!newR.conflictingSignals;
+      if (oldHit) oldTrue++;
+      if (newHit) newTrue++;
+
+      if (oldHit !== newHit) {
+        var pair = newR.conflictingSignalsPair;
+        var cause = pair ? (bullishTriggerName(pair.bullish, newR) + ' vs ' + bearishTriggerName(pair.bearish, newR)) : 'unattributed';
+        if (cause === 'unattributed' || cause.indexOf('unknown') !== -1) unattributed++;
+        pairCounts[cause] = (pairCounts[cause] || 0) + 1;
+        var newPatternBonus = newHit ? 0 : oldPatternBonus;
+        changed.push({ cgId: cgId, oldHit: oldHit, newHit: newHit, cause: cause, oldPatternBonus: oldPatternBonus, newPatternBonus: newPatternBonus });
+        if (!oldHit && newHit) { flipUpTotal++; bonusExcludedSum += (oldPatternBonus - newPatternBonus); }
+        else { flipDownTotal++; badFlipDown++; } // structurally impossible — see header, this is a bug if it happens
+      }
+    }
+    console.log(tf + ': checked ' + checked + ' (rows with a research fit) | OLD conflictingSignals true: ' + oldTrue +
+      ' | NEW conflictingSignals true: ' + newTrue + ' | changed rows: ' + changed.length +
+      ' | total patternBonus excluded this pass: ' + bonusExcludedSum);
+    for (var k = 0; k < changed.length; k++) {
+      var c = changed[k];
+      console.log('    ' + c.cgId.padEnd(28) + ' ' + c.oldHit + ' -> ' + c.newHit +
+        '  (E6: ' + c.cause + ', patternBonus ' + c.oldPatternBonus + ' -> ' + c.newPatternBonus + ')');
+    }
+  }
+
+  console.log('\n--- 2. E6 invariants (see radar_tools/step8-e6-invariant-tests.js, local only, for the full 2162-row versions) ---');
+  console.log('false->true flips: ' + flipUpTotal + ' total');
+  console.log('true->false flips: ' + flipDownTotal + ', ' + badFlipDown + ' NOT structurally attributable' +
+    (badFlipDown === 0 ? ' (none — conflictingSignals is a new field, OLD is structurally always false, a true->false flip is structurally impossible)' : ' — UNEXPECTED, SEE ROWS ABOVE, THIS IS A BUG'));
+  console.log('total changed rows (both passes): ' + (flipUpTotal + flipDownTotal) +
+    (flipUpTotal + flipDownTotal >= 1 ? ' (at least one flip - not a no-op build)' : ' — ZERO FLIPS, unexpected for a new gate'));
+  console.log('every changed row attributed to a named conflicting pair (no \'unattributed\'/\'unknown\'): ' + unattributed +
+    (unattributed === 0 ? ' (holds)' : ' — SEE ABOVE'));
+  console.log('\nconflicting pairs by population (both passes combined):');
+  for (var pc of Object.keys(pairCounts).sort(function(a, b){ return pairCounts[b] - pairCounts[a]; })) {
+    console.log('  ' + String(pairCounts[pc]).padStart(5) + '  ' + pc);
+  }
+  if (!Object.keys(pairCounts).length) console.log('  (no conflicting rows on this fixture)');
 }
 
 run();

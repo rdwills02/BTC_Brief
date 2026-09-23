@@ -407,6 +407,29 @@ function multiSignalOnOneCandle(triggers) {
   return {hit:false, idx:null, time:null};
 }
 
+// E6 (Remediation spec, 2026-09-21/22): conflict rule - a bullish trigger and a bearish
+// trigger firing on the same or adjacent candles undermine each other, so research mode
+// shouldn't award the pattern bonus for it and should surface the conflict for H11's popover.
+// Used ONLY by detectChannelResearch below (bearish counterparts bb3UpperReversion/
+// threeInsideDown are pure, flag-off-only inputs already in `conf`, untouched by E3-E5).
+// Same adjacency convention multiSignalOnOneCandle uses above (|idx delta| <= N on each
+// pattern's own idx), widened from <=1 to <=2 per spec and checked cross-polarity (a bullish
+// set against a bearish set) instead of same-polarity. Returns the first conflicting
+// {bullish, bearish} trigger pair found, or null - "a reference to which pair conflicted",
+// not every pair; scanned in the order the caller passes triggers in.
+function signalConflict(bullishTriggers, bearishTriggers) {
+  var bulls = bullishTriggers.filter(function(t){ return t && t.hit && t.idx != null; });
+  var bears = bearishTriggers.filter(function(t){ return t && t.hit && t.idx != null; });
+  for (var i=0; i<bulls.length; i++) {
+    for (var j=0; j<bears.length; j++) {
+      if (Math.abs(bulls[i].idx - bears[j].idx) <= 2) {
+        return {bullish: bulls[i], bearish: bears[j]};
+      }
+    }
+  }
+  return null;
+}
+
 // --- Step 6 research-mode helpers (Remediation spec, 2026-09-21/22; REVISED per Step 6 plan
 // review 2026-09-22) --- used ONLY by detectChannelResearch below. None of these are called
 // from the flag-off detectChannel body.
@@ -618,6 +641,12 @@ function detectChannelResearch(candles, diag, meta) {
   // below, is untouched.
   var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfingResearch(candles, atr), threeInsideUp:threeInsideUpResearch(candles),
     bb3UpperReversion:bb3UpperReversion(candles), threeInsideDown:threeInsideDown(candles)};
+  // E6 (Remediation spec, 2026-09-21/22): candle-level fact, not tied to any one rail-pair
+  // candidate, so computed once here - before the rail-pair loop - and read by every
+  // candidate's patternBonus below exactly the way patternN already reads conf today.
+  // `rocket` isn't known yet (it needs the winning rail); the check is extended with it once
+  // the winner is chosen, at the same point rocket/multi are computed below.
+  var patternConflict = signalConflict([conf.bullEngulf, conf.threeInsideUp], [conf.bb3UpperReversion, conf.threeInsideDown]);
 
   var bestEligible = null, bestAny = null;
 
@@ -742,7 +771,8 @@ function detectChannelResearch(candles, diag, meta) {
       if(slope < 0) score -= 5;
       score += ema.pts;
       var patternN = (conf.bb3.hit?1:0) + (conf.bullEngulf.hit?1:0) + (conf.threeInsideUp.hit?1:0);
-      var patternBonus = patternN > 0 ? (2*patternN - 1) : 0;
+      // E6: patternBonus excluded from score when the candle-level pattern conflict is present.
+      var patternBonus = (patternN > 0 && !patternConflict) ? (2*patternN - 1) : 0;
       score += patternBonus;
       score = Math.round(clamp(score,0,100));
 
@@ -805,6 +835,13 @@ function detectChannelResearch(candles, diag, meta) {
   winner.rocketTrigger = rocket;
   winner.multiSignal = multi.hit;
   winner.multiSignalTrigger = multi;
+
+  // E6: extend the candle-level conflict with `rocket`, now that it's known (rail-dependent,
+  // only available post-winner) - reuses patternConflict when bullEngulf/threeInsideUp already
+  // found a conflicting pair, otherwise checks rocket alone against the same bearish set.
+  var conflict = patternConflict || signalConflict([rocket], [conf.bb3UpperReversion, conf.threeInsideDown]);
+  winner.conflictingSignals = !!conflict;
+  winner.conflictingSignalsPair = conflict;
 
   return winner;
 }
@@ -991,7 +1028,7 @@ function detectChannel(candles, diag, meta) {
           // reclaimed-awaiting-retest/re-qualified) is explicitly out of scope for this step
           // (deferred to work-order Step 6). This is the narrowest honest placeholder: a
           // single-close-below-invalidation flag, not a real lifecycle state machine. Filed
-          // as BACKLOG in the H7/H8 handoff — do not treat this as H9 done.
+          // as BACKLOG in the H7/H8 handoff - do not treat this as H9 done.
           lifecycleState: curPrice < invalidation ? 'single-close-below-invalidation' : 'active',
           // Placeholder only — H5 (freeze issued signals / breach-history population) is
           // explicitly out of scope for this step (deferred to Step 11). Always empty here;
@@ -1064,6 +1101,8 @@ if (typeof module !== 'undefined' && module.exports) {
     rocketAtSupportResearch: rocketAtSupportResearch,
     // E5 (Remediation spec, 2026-09-21/22) export - the function itself for direct harness testing (no new constants).
     threeInsideUpResearch: threeInsideUpResearch,
+    // E6 (Remediation spec, 2026-09-21/22) export - the function itself for direct harness testing (no new constants).
+    signalConflict: signalConflict,
     // Step 7 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash
     // and the B1 internals for direct harness testing.
     NEAR_FLAT_SLOPE_PCT: NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: WEDGE_LOOKAHEAD,
