@@ -764,10 +764,33 @@ function researchWickReadoutHTML(rr) {
   }).join('');
   return lines;
 }
+// Step 10 Diff B: the D-rebalanced research score, its breakdown line, and the provisional label. Every value is a
+// fit field on rr (rr.score, rr.scoreBreakdown); the page does NO scoring arithmetic and types no threshold or
+// rescale constant - "raw -> rescaled" shows the two fit values, penalties show their own fields. The label rides
+// on the research score, the research verdict badge and the research verdict line: the ACT floor on this page is
+// still the old 89 (buildAction untouched), so the research verdict is only provisional until the floor is re-derived.
+var RESEARCH_SCORE_LABEL = 'score rescaled, floor provisional';
+function researchPts(x) { return (typeof x === 'number' && isFinite(x)) ? (Math.abs(x - Math.round(x)) < 1e-9 ? String(Math.round(x)) : x.toFixed(1)) : '?'; }
+var RESEARCH_BD_PARTS = [['touch','touches'],['res','resistance'],['cont','containment'],['slope','slope'],['pos','position'],['age','age'],['ema','EMA'],['emaSlope','EMA slope'],['pattern','pattern'],['vol','volume']];
+function researchScoreHTML(rr) {
+  if (!rr || typeof rr.score !== 'number') return '';
+  var lab = '<span style="font-size:10px;color:var(--muted,#9aa3b2);margin-left:6px">' + researchAttr(RESEARCH_SCORE_LABEL) + '</span>';
+  var out = '<div class="research-score-line" style="margin-top:4px;font-size:12px"><b>Research score <span class="research-score-val">' + researchAttr(String(rr.score)) + '</span></b>' + lab + '</div>';
+  var bd = rr.scoreBreakdown;
+  if (bd && bd.penalties) {
+    var parts = RESEARCH_BD_PARTS.map(function(kv) { return kv[1] + ' ' + researchPts(bd[kv[0]]); }).join(' \u00b7 ');
+    var pens = [['brk','break'],['width','width'],['slopeSteep','steep slope'],['slopeNeg','falling slope']].filter(function(kv) { return bd.penalties[kv[0]]; })
+      .map(function(kv) { return kv[1] + ' \u2212' + researchPts(bd.penalties[kv[0]]) + (kv[0] === 'brk' && bd.runCount2 > 1 ? ' (' + bd.runCount2 + ' runs)' : ''); });
+    out += '<div class="research-breakdown-line" style="margin-top:2px;font-size:11px;color:var(--muted,#9aa3b2)">' + researchAttr(
+      'Breakdown: ' + parts + ' = ' + researchPts(bd.rawPositive) + ' raw \u2192 ' + researchPts(bd.rescaled) + ' rescaled; penalties ' + (pens.length ? pens.join(', ') : 'none') + ' \u2192 ' + researchPts(bd.final)) + '</div>';
+  }
+  return out;
+}
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
   var wick = researchWickReadoutHTML(rr);
-  if (!b.length && !wick) return '';
+  var scoreHtml = researchScoreHTML(rr);
+  if (!b.length && !wick && !scoreHtml) return '';
   var pills = b.map(function(x){
     var base = 'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;';
     if (x.rec) {
@@ -778,7 +801,7 @@ function researchConfluenceHTML(rr) {
   var conflictTag = rr.conflictingSignals
     ? '<span class="cat-tip" data-tip="'+researchAttr(researchConflictTip(rr))+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:rgba(255,176,32,.15);color:#ffb020;margin-right:6px;display:inline-block;margin-bottom:4px;cursor:help">Conflicting signals</span>' : '';
   var pops = b.filter(function(x){ return x.rec; }).map(function(x){ return researchPopoverHTML(x.rec); }).join('');
-  return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border,#2a2f3a)"><span style="font-size:9px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em;margin-right:6px">Research</span>' +
+  return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border,#2a2f3a)"><span style="font-size:9px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em;margin-right:6px">Research</span>' + scoreHtml +
     pills + conflictTag + pops + wick + '</div>';
 }
 
@@ -1995,7 +2018,7 @@ function renderTable() {
     if (RESEARCH_MODE_UI && r.researchRow && typeof buildAction==='function') {
       var raction = buildAction(r.researchRow, {research:true});
       var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-      researchBadge = ' <span class="vbadge '+rvcls+' cat-tip" data-tip="Research mode (Step 6): '+raction.text.replace(/"/g,'&quot;')+'" style="opacity:.7;font-size:9px;padding:2px 5px">R:'+raction.verdict+'</span>';
+      researchBadge = ' <span class="vbadge '+rvcls+' cat-tip" data-tip="Research mode (Step 6): '+raction.text.replace(/"/g,'&quot;')+' ['+RESEARCH_SCORE_LABEL+']" style="opacity:.7;font-size:9px;padding:2px 5px">R:'+raction.verdict+'</span>';
     }
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
@@ -2070,8 +2093,8 @@ function openDetail(r) {
     if (RESEARCH_MODE_UI && r.researchRow) {
       var raction = buildAction(r.researchRow, {research:true});
       var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-      badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span>';
-      actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text;
+      badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span><span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
+      actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text + ' (' + RESEARCH_SCORE_LABEL + ')';
     } else {
       actionTextEl.textContent = action.text;
     }
