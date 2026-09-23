@@ -138,12 +138,13 @@
   // Compact per-coin research block for latest-daily.json (capture.js) — display/ledger summary, never a fit.
   function researchSummary(fit, res) {
     if (!res) return null;
-    var ee = fit && fit.entryEconomics;
+    var ee = fit && fit.entryEconomics, xc = fit && fit.executionContext;
     return {
       verdict: res.verdict, gate: res.gate, reason: res.reason,
       score: fit && num(fit.score) ? fit.score : null, fitId: fit ? (fit.fitId || null) : null,
       lifecycleState: fit ? (fit.lifecycleState || null) : null,
-      entryEconomics: ee ? { entryRef: num(ee.entryRef) ? ee.entryRef : null, stop: num(ee.stop) ? ee.stop : null, target: num(ee.target) ? ee.target : null, netRR: num(ee.netRR) ? ee.netRR : null } : null
+      entryEconomics: ee ? { entryRef: num(ee.entryRef) ? ee.entryRef : null, stop: num(ee.stop) ? ee.stop : null, target: num(ee.target) ? ee.target : null, netRR: num(ee.netRR) ? ee.netRR : null } : null,
+      executionContext: xc ? { volumeCharacter: xc.volumeCharacter || 'unknown', volumeRatio: num(xc.volumeRatio) ? xc.volumeRatio : null } : null   // Step 11-D (H10): descriptive, compact
     };
   }
 

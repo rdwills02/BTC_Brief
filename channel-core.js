@@ -797,6 +797,33 @@ function entryEconomicsOf(fit, pivotHighsAll) {
     target: target, targetSource: targetSource, grossRR: grossRR, netRR: netRR, costPct: H6_COST_PCT, atr14: atr };
 }
 
+// Step 11-D (Remediation spec H10, execution context; step 11 plan 11-D; rulings h, i). DESCRIPTIVE ONLY: no gate reads
+// these, no points (ruling i); C4.touch-volume stays the volume gate. PROVISIONAL, in configHash.
+var H10_BASELINE_BARS = 20;      // trailing closed bars (exclusive of the trigger bar) that form the volume baseline
+var H10_CONTRACTION_MAX = 0.8;   // volumeRatio below this = 'contraction' (pullback on fading volume)
+var H10_EXPANSION_MIN = 1.5;     // volumeRatio above this = 'expansion' (rejection / participation)
+
+// 11-D: trigger-bar (last CLOSED bar) volume vs the mean of the H10_BASELINE_BARS bars before it. Pure: reads the fit's
+// timeframe and the full raw candle series it is handed (same series detectChannelResearch fitted on; the last bar is the
+// trigger bar). 'unknown' when the trigger bar or any baseline bar lacks a positive finite volume, or fewer than
+// H10_BASELINE_BARS bars precede the trigger bar - grid candles carry no volume, so every 4d-grid row is 'unknown'.
+function executionContextOf(fit, candles) {
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  var out = { triggerBarIdx: null, triggerBarTime: null, triggerBarVolume: null, baselineVolume: null, volumeRatio: null, volumeCharacter: 'unknown', baselineBars: H10_BASELINE_BARS };
+  if (!candles || !candles.length) return out;
+  var n = candles.length, t = candles[n - 1];
+  out.triggerBarIdx = n - 1; out.triggerBarTime = (t && t.time != null) ? t.time : null;
+  if (!t || !num(t.volume) || t.volume <= 0) return out;
+  out.triggerBarVolume = t.volume;
+  if (n - 1 < H10_BASELINE_BARS) return out;
+  var sum = 0;
+  for (var i = n - 1 - H10_BASELINE_BARS; i < n - 1; i++) { var v = candles[i] && candles[i].volume; if (!num(v) || v <= 0) return out; sum += v; }
+  out.baselineVolume = sum / H10_BASELINE_BARS;
+  out.volumeRatio = t.volume / out.baselineVolume;
+  out.volumeCharacter = out.volumeRatio < H10_CONTRACTION_MAX ? 'contraction' : (out.volumeRatio > H10_EXPANSION_MIN ? 'expansion' : 'normal');
+  return out;
+}
+
 // 11-A: the research verdict engine. Pure: reads only `fit` and `ctx`, no DOM, no globals beyond the constants above,
 // no Date. Gate order = spec Verdict sequence (Data -> Structure -> Evidence -> Entry -> Context) with Plan C mapped in
 // (step 11 plan, 11-A table; 16 gates after the Diff A review removed struct.descending / struct.upper-third). EVERY gate is evaluated (details.gates, diagnostic, non-short-circuit);
@@ -1287,6 +1314,8 @@ function detectChannelResearch(candles, diag, meta) {
 
   // Step 11-B (H6): entry economics from the fit + the windowed pivot highs (full-series idx) - never re-indexed downstream.
   winner.entryEconomics = entryEconomicsOf(winner, highs);
+  // Step 11-D (H10): execution context on the RAW series (last closed bar = trigger bar). Descriptive; no gate reads it.
+  winner.executionContext = executionContextOf(winner, candles);
 
   return winner;
 }
@@ -1577,6 +1606,9 @@ if (typeof module !== 'undefined' && module.exports) {
     structureLabelOf: structureLabelOf, btcRegimeFromCandles: btcRegimeFromCandles, researchVerdict: researchVerdict,
     // Step 11-B (Remediation spec H6) exports - constants for capture.js's configHash and the function for the harness.
     H6_ENTRY_ATR: H6_ENTRY_ATR, H6_STOP_ATR: H6_STOP_ATR, H6_STOP_CAP_ATR: H6_STOP_CAP_ATR, H6_COST_PCT: H6_COST_PCT,
-    H6_SWING_WINDOW: H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: H6_SWING_WINDOW_GRID, entryEconomicsOf: entryEconomicsOf
+    H6_SWING_WINDOW: H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: H6_SWING_WINDOW_GRID, entryEconomicsOf: entryEconomicsOf,
+    // Step 11-D (Remediation spec H10) exports - constants for capture.js's configHash and the function for the harness.
+    H10_BASELINE_BARS: H10_BASELINE_BARS, H10_CONTRACTION_MAX: H10_CONTRACTION_MAX, H10_EXPANSION_MIN: H10_EXPANSION_MIN,
+    executionContextOf: executionContextOf
   };
 }

@@ -1303,7 +1303,9 @@ async function main() {
       H6_ENTRY_ATR: C.H6_ENTRY_ATR, H6_STOP_ATR: C.H6_STOP_ATR, H6_STOP_CAP_ATR: C.H6_STOP_CAP_ATR, H6_COST_PCT: C.H6_COST_PCT,
       H6_SWING_WINDOW: C.H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: C.H6_SWING_WINDOW_GRID,
       // Step 11-C (H5, C-1 review ruling 2): the setup ledger's close rule (setups-core.js), PROVISIONAL.
-      SETUP_BREAK_CLOSES: S.SETUP_BREAK_CLOSES
+      SETUP_BREAK_CLOSES: S.SETUP_BREAK_CLOSES,
+      // Step 11-D (Remediation spec H10, 2026-09-23): execution-context constants (descriptive only), PROVISIONAL.
+      H10_BASELINE_BARS: C.H10_BASELINE_BARS, H10_CONTRACTION_MAX: C.H10_CONTRACTION_MAX, H10_EXPANSION_MIN: C.H10_EXPANSION_MIN
     })).digest('hex');
     // Step 11-C (H5): setup ledger data/setups.json - read, pure update (setups-core.js), write. Isolated so a ledger
     // failure never costs the capture files above; a missing ledger starts empty. Invariants live in setups-core.js.
