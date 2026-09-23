@@ -1616,9 +1616,9 @@ function researchVerdictText(res, r) {
     case 'unconfirmed': return 'Watch: unconfirmed level - '+(res.gate === 'C3.fresh-touch' ? 'last support touch was '+(g ? g.value : '?')+' bars ago (gate '+(g ? g.threshold : '?')+')' : 'a break run sits inside the freshness window ('+(g ? g.value : '?')+' bars since break, gate '+(g ? g.threshold : '?')+')')+' - wait for a fresh test before treating '+supStr+' as active support.'+tail;
     case 'below-floor': return 'Watch: would be an act zone, but the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+') - watch for a bounce off support near '+supStr+'.'+tail;
     case 'too-wide': return 'Watch: would be an act zone, but the channel is unusually wide ('+(g ? (g.value*100).toFixed(0) : '?')+'%, over the '+(g ? (g.threshold*100) : '?')+'% cap) - treat as a range boundary, not a price target.'+tail;
-    case 'not-at-support': return 'Watch: would be an act zone, but price is already '+(g ? pctOf(g.value) : '?')+' above support - too far from the rail to act on (gate '+(g ? pctOf(g.threshold) : '?')+').'+tail;
+    case 'not-at-support': return 'Watch: price '+(g && g.value ? fmt(g.value.price, d) : '--')+' is outside the H6 entry zone '+(g && g.value ? fmt(g.value.entryLow, d)+' - '+fmt(g.value.entryHigh, d) : '')+' - wait for a pullback into the zone.'+tail;
     case 'extended': return 'Watch: extended - the last 3 bars gained '+(g ? fmt(g.value, d) : '?')+', more than 4x ATR14 ('+(g ? fmt(g.threshold, d) : '?')+'); wait for the move to settle.'+tail;
-    case 'rr-unknown': return 'Watch: entry economics not computed yet (H6 lands in 11-B) - reward-to-risk is Unknown, so ACT is withheld; every gate before it passed.'+tail;
+    case 'rr-unknown': return 'Watch: reward-to-risk is Unknown - no resistance or swing high sits above the entry zone, so there is no target to size against.'+tail;
     case 'rr-too-low': return 'Watch: net reward-to-risk '+(g ? g.value.toFixed(2) : '?')+' is below the '+(g ? g.threshold : '?')+' minimum to nearest resistance.'+tail;
     case 'low-volume': return 'Watch: liquidity - 24h volume '+fmtVol(r.volume24h)+' is below the '+fmtVol(g ? g.threshold : null)+' floor for ACT.'+tail;
     case 'volume-unknown': return 'Watch: liquidity unknown - no 24h volume on this row, so the volume gate fails as Unknown.'+tail;
@@ -1628,6 +1628,19 @@ function researchVerdictText(res, r) {
     case 'btc-regime-unknown': return 'Watch: BTC regime unknown (no btcRegime in the daily capture yet), so the market gate fails as Unknown.'+tail;
     default: return 'Watch: '+res.reason+'.'+tail;
   }
+}
+// Step 11-B (H6 / G6): entry zone, stop, target and R:R beside the research verdict. Every value is read off
+// rr.entryEconomics (channel-core.js entryEconomicsOf) - no page arithmetic, no page-side constant. Empty string when
+// the fit has no economics (short history) so the flag-off panel is untouched.
+function researchEntryHTML(rr) {
+  var ee = rr && rr.entryEconomics;
+  if (!ee || !ee.entryZone) return '';
+  var d = pricePrecision(rr.price);
+  var tgt = (ee.target != null) ? fmt(ee.target, d) + ' (' + (ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') + ')' : 'none above entry';
+  var rr2 = (ee.netRR != null) ? ee.netRR.toFixed(2) + ' net (' + ee.grossRR.toFixed(2) + ' gross, ' + (ee.costPct * 100).toFixed(1) + '% round trip)' : 'Unknown';
+  return '<div class="research-entry-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">Entry (research, H6): zone ' + fmt(ee.entryZone[0], d) + ' - ' + fmt(ee.entryZone[1], d) +
+    ' · stop ' + fmt(ee.stop, d) + ' (' + ee.stopBasis + ', defended low ' + fmt(ee.defendedLow, d) + ')' +
+    ' · target ' + tgt + ' · R:R ' + rr2 + '</div>';
 }
 var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 89 or above. WATCH means one of those conditions is not met, or the score is below 89. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
@@ -2134,6 +2147,7 @@ function openDetail(r) {
       var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
       badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span><span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
       if (raction.gate) badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+raction.gate+'</span>';   // G6 (Step 11-A)
+      badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
       actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text + ' (' + RESEARCH_SCORE_LABEL + ')';
     } else {
       actionTextEl.textContent = action.text;

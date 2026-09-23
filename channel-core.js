@@ -714,7 +714,7 @@ var C1_EMA_SLOPE_MIN = 0;          // spec C1: ema50Slope >= 0 (slope over D_EMA
 var C3_FRESH_BARS = 14;            // spec C3/A4: last support touch <= 14 (1d) bars ago AND no break inside 14 bars
 var C3_FRESH_BARS_GRID = 4;        // PROVISIONAL (ruling a): 4d-grid day-equivalent of 14 d (same convention as MIN_ANCHOR_SPAN_GRID)
 var ACT_WIDTH_MAX = 0.40;          // spec B3: channelH / price above this cannot be ACT (page keeps its own flag-off literal)
-var C2_DIST_TOL_MULT = 2;          // spec B5: distToRailPct <= min(C2_DIST_TOL_MULT*tol, C2_DIST_CAP). Replaced by H6 in 11-B (ruling g).
+var C2_DIST_TOL_MULT = 2;          // spec B5 (RETIRED as a gate in 11-B, ruling g: C2.entry-zone from entryEconomics replaces it; kept in configHash for history)
 var C2_DIST_CAP = 0.06;            // spec B5
 var C4_VOLUME24H_MIN = 25e6;       // spec C4: 24h USD volume floor for ACT (the funnel's low-volume exclusion, made explicit)
 var C4_VOL_TOUCH_MIN = 0.8;        // spec C4: touch-bar volume >= 0.8 x mean of the 20 bars before it (D's volTouch.ratio; distinct from D_VOL_TOUCH_MULT 1.2)
@@ -741,6 +741,60 @@ function btcRegimeFromCandles(candles) {
   }
   var last = candles[n-1];
   return { close: last.close, ema50: e50, ema50Slope: slope, aboveEma50: last.close > e50, asOf: last.time != null ? last.time : null, bars: n };
+}
+
+// Step 11-B (Remediation spec H6, entry economics in ATR terms; step 11 plan 11-B; rulings c, d, e, f, g). All PROVISIONAL
+// except where the spec writes the number. Consumed by entryEconomicsOf() below (research pass only) and by the H6.rr and
+// C2.entry-zone gates in researchVerdict.
+var H6_ENTRY_ATR = 0.5;       // spec H6: entry zone = [supportNow, supportNow + 0.5 x ATR14]
+var H6_STOP_ATR = 0.5;        // spec H6: stop = defended low - 0.5 x ATR14 ...
+var H6_STOP_CAP_ATR = 2;      // spec H6: ... capped at 2 x ATR14 below the entry reference
+var H6_COST_PCT = 0.003;      // spec H6: 0.3% round-trip cost, charged on both legs (ruling f)
+var H6_SWING_WINDOW = 60;     // spec H6: nearest swing high inside 60 (1d) bars when there is no independent resistance
+var H6_SWING_WINDOW_GRID = 15; // PROVISIONAL (ruling e): 4d-grid day-equivalent, same convention as RES_RECENT_BARS_GRID
+// H6_RR_MIN (2.0) is declared with the step 11-A constants above.
+
+// Step 11-B: entry economics on a research fit. Pure: reads the fit and the windowed pivot HIGHS it is handed (full-series
+// idx, the same list detectChannelResearch fitted resistance from); no globals beyond the H6_* constants, no candle
+// re-indexing anywhere else (the index hazard in the step 11 plan). Returns null when the fit lacks a support rail or
+// ATR; `target` null (and netRR null) when no resistance/swing high sits above the entry reference.
+//   entryZone   [supportNow, supportNow + H6_ENTRY_ATR*atr14]; entryRef = mid-zone (ruling c)
+//   defendedLow the most recent support touch bar's pivot low (ruling d) = touchEvents[max idx].price, the analytic low
+//               findPivots recorded for that bar (F3: structural reads use the analytic copy)
+//   stop        max(defendedLow - H6_STOP_ATR*atr14, entryRef - H6_STOP_CAP_ATR*atr14), then never above
+//               entryRef - H6_STOP_ATR*atr14 (a touch recorded above the rail by up to tol can otherwise put the stop
+//               above the entry; stopBasis says which bound won: 'defended-low' | 'cap' | 'min-risk')
+//   target      resistNow when resistanceFit === 'independent' (the B1 line at lastIdx), else the nearest (lowest)
+//               pivot high above entryRef within H6_SWING_WINDOW(_GRID) bars of lastIdx; targetSource
+//               'independent' | 'swing-high' | 'none'
+//   grossRR     (target - entryRef) / (entryRef - stop); netRR charges H6_COST_PCT*entryRef on both legs (ruling f)
+function entryEconomicsOf(fit, pivotHighsAll) {
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  if (!fit || !num(fit.supportNow) || !num(fit.atr14) || !(fit.atr14 > 0) || !num(fit.lastIdx)) return null;
+  var atr = fit.atr14, sup = fit.supportNow;
+  var entryLow = sup, entryHigh = sup + H6_ENTRY_ATR * atr, entryRef = sup + 0.5 * H6_ENTRY_ATR * atr;
+  var touches = fit.touchEvents || fit.pivotLows || [], last = null;
+  for (var i = 0; i < touches.length; i++) if (num(touches[i].idx) && (!last || touches[i].idx > last.idx)) last = touches[i];
+  var defendedLow = (last && num(last.price)) ? last.price : null;
+  if (defendedLow == null) return null;
+  var stopDef = defendedLow - H6_STOP_ATR * atr, stopCap = entryRef - H6_STOP_CAP_ATR * atr, stopMin = entryRef - H6_STOP_ATR * atr;
+  var stop = Math.max(stopDef, stopCap), stopBasis = (stopDef >= stopCap) ? 'defended-low' : 'cap';
+  if (stop > stopMin) { stop = stopMin; stopBasis = 'min-risk'; }
+  var target = null, targetSource = 'none';
+  if (fit.resistanceFit === 'independent' && num(fit.resistNow) && fit.resistNow > entryRef) { target = fit.resistNow; targetSource = 'independent'; }
+  else if (fit.resistanceFit !== 'independent') {
+    var win = (fit.timeframe === '4d-grid') ? H6_SWING_WINDOW_GRID : H6_SWING_WINDOW, hs = pivotHighsAll || [];
+    for (var h = 0; h < hs.length; h++) {
+      var ph = hs[h];
+      if (!num(ph.idx) || !num(ph.price)) continue;
+      if (ph.idx > fit.lastIdx || fit.lastIdx - ph.idx > win) continue;
+      if (ph.price > entryRef && (target == null || ph.price < target)) { target = ph.price; targetSource = 'swing-high'; }
+    }
+  }
+  var risk = entryRef - stop, cost = H6_COST_PCT * entryRef, grossRR = null, netRR = null;
+  if (target != null && risk > 0) { grossRR = (target - entryRef) / risk; netRR = (target - entryRef - cost) / (risk + cost); }
+  return { entryZone: [entryLow, entryHigh], entryRef: entryRef, defendedLow: defendedLow, defendedLowIdx: last.idx, stop: stop, stopBasis: stopBasis,
+    target: target, targetSource: targetSource, grossRR: grossRR, netRR: netRR, costPct: H6_COST_PCT, atr14: atr };
 }
 
 // 11-A: the research verdict engine. Pure: reads only `fit` and `ctx`, no DOM, no globals beyond the constants above,
@@ -797,9 +851,10 @@ function researchVerdict(fit, ctx) {
   // 10 Entry: C2 width (B3)
   var widthFrac = (num(fit.channelH) && num(fit.detectionPrice) && fit.detectionPrice > 0) ? fit.channelH / fit.detectionPrice : null;
   add('C2.width', 'Entry', widthFrac == null ? null : (widthFrac <= ACT_WIDTH_MAX), widthFrac, '<= ' + ACT_WIDTH_MAX, 'WATCH', 'too-wide');
-  // 11 Entry: C2 distance (B5) - replaced by the H6 entry zone in 11-B (ruling g)
-  var distGate = num(fit.tol) ? Math.min(C2_DIST_TOL_MULT * fit.tol, C2_DIST_CAP) : null;
-  add('C2.distance', 'Entry', (num(fit.distToRailPct) && distGate != null) ? (fit.distToRailPct <= distGate) : null, num(fit.distToRailPct) ? fit.distToRailPct : null, distGate, 'WATCH', 'not-at-support');
+  // 11 Entry: C2 entry zone (H6 replaces the B5 distance rule, ruling g): ctx.price inside [entryLow, entryHigh]
+  var ez = fit.entryEconomics && fit.entryEconomics.entryZone;
+  var ezKnown = !!(ez && num(ez[0]) && num(ez[1])) && priceOk;
+  add('C2.entry-zone', 'Entry', ezKnown ? (ctx.price >= ez[0] && ctx.price <= ez[1]) : null, ezKnown ? { price: ctx.price, entryLow: ez[0], entryHigh: ez[1] } : null, 'entryLow <= price <= entryHigh', 'WATCH', 'not-at-support');
   // 12 Entry: C6 spike - close-to-close gain over the last C6_SPIKE_BARS bars vs C6_SPIKE_ATR_MULT x ATR14 (ruling m)
   var cs = fit.candles, gain = null;
   if (cs && cs.length > C6_SPIKE_BARS) {
@@ -807,7 +862,7 @@ function researchVerdict(fit, ctx) {
     if (cLast && cPrev && num(cLast.close) && num(cPrev.close)) gain = cLast.close - cPrev.close;
   }
   add('C6.spike', 'Entry', gain == null ? null : (gain <= C6_SPIKE_ATR_MULT * fit.atr14), gain, C6_SPIKE_ATR_MULT * fit.atr14, 'WATCH', 'extended');
-  // 13 Entry: H6 net R:R - 11-A stub: no entryEconomics field yet -> Unknown -> fail (11-B lands it)
+  // 13 Entry: H6 net R:R (11-B): fit.entryEconomics.netRR; null (no target above entry) -> Unknown -> fail
   var ee = fit.entryEconomics;
   add('H6.rr', 'Entry', (ee && num(ee.netRR)) ? (ee.netRR >= H6_RR_MIN) : null, (ee && num(ee.netRR)) ? ee.netRR : null, '>= ' + H6_RR_MIN, 'WATCH', (ee && num(ee.netRR)) ? 'rr-too-low' : 'rr-unknown');
   // 14 Context: C4 volume24h
@@ -1230,6 +1285,9 @@ function detectChannelResearch(candles, diag, meta) {
   }
   winner.wickClips = wickClips;
 
+  // Step 11-B (H6): entry economics from the fit + the windowed pivot highs (full-series idx) - never re-indexed downstream.
+  winner.entryEconomics = entryEconomicsOf(winner, highs);
+
   return winner;
 }
 
@@ -1516,6 +1574,9 @@ if (typeof module !== 'undefined' && module.exports) {
     C4_VOLUME24H_MIN: C4_VOLUME24H_MIN, C4_VOL_TOUCH_MIN: C4_VOL_TOUCH_MIN, C5_BTC_SLOPE_MIN: C5_BTC_SLOPE_MIN,
     C6_SPIKE_BARS: C6_SPIKE_BARS, C6_SPIKE_ATR_MULT: C6_SPIKE_ATR_MULT, H6_RR_MIN: H6_RR_MIN,
     ACT_SCORE_FLOOR_1D: ACT_SCORE_FLOOR_1D, ACT_SCORE_FLOOR_GRID: ACT_SCORE_FLOOR_GRID,
-    structureLabelOf: structureLabelOf, btcRegimeFromCandles: btcRegimeFromCandles, researchVerdict: researchVerdict
+    structureLabelOf: structureLabelOf, btcRegimeFromCandles: btcRegimeFromCandles, researchVerdict: researchVerdict,
+    // Step 11-B (Remediation spec H6) exports - constants for capture.js's configHash and the function for the harness.
+    H6_ENTRY_ATR: H6_ENTRY_ATR, H6_STOP_ATR: H6_STOP_ATR, H6_STOP_CAP_ATR: H6_STOP_CAP_ATR, H6_COST_PCT: H6_COST_PCT,
+    H6_SWING_WINDOW: H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: H6_SWING_WINDOW_GRID, entryEconomicsOf: entryEconomicsOf
   };
 }
