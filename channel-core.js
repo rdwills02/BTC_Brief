@@ -663,6 +663,66 @@ function buildPatternRecords(candles, conf, rocket, conflict, meta, tol, lifecyc
   return records;
 }
 
+// Step 9 F3 (Remediation spec, 2026-09-21/22; plan approved 2026-09-23): outlier-wick filter.
+// RESEARCH-ONLY - called only from detectChannelResearch below (meta.research === true); flag-off
+// detectChannel never sees it. PROVISIONAL constants, exported, hashed into capture.js's configHash.
+//   F3_WICK_ATR_MULT: a low is an outlier when low < close - this * ATR14 (mirror for high).
+//   F3_CLIP_ATR_MULT: the analytic low becomes min(open,close) - this * ATR14 (mirror for high).
+//   F3_RAIL_UNCHANGED_PCT: H3 - |support/resistance rail delta| below this many percent reads "rail unchanged".
+var F3_WICK_ATR_MULT = 6;
+var F3_CLIP_ATR_MULT = 2;
+var F3_RAIL_UNCHANGED_PCT = 0.05;
+// ATR14 as of EVERY bar: out[k] = atr14(candles.slice(0, k+1)), null for k < 14. Same true-range math
+// and same Wilder smoothing as atr14() above, evaluated as a rolling series instead of once at the
+// end of the series (identical arithmetic order, so the values are bitwise equal - the suite checks
+// every index). Not a second ATR definition.
+function atr14Series(candles) {
+  var n = candles.length, out = new Array(n);
+  for (var k = 0; k < n; k++) out[k] = null;
+  if (n < 15) return out;
+  var trs = [];
+  for (var i = 1; i < n; i++) {
+    var c = candles[i], p = candles[i-1];
+    trs.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
+  }
+  var atr = 0;
+  for (var j = 0; j < 14; j++) atr += trs[j];
+  atr = atr / 14;
+  out[14] = atr;
+  for (var m = 15; m < n; m++) { atr = (atr * 13 + trs[m-1]) / 14; out[m] = atr; }
+  return out;
+}
+// Returns {analytic, clips}. `analytic` is a parallel array: the raw candle OBJECT for every
+// unclipped bar (shared, never written to) and a fresh copy carrying wickClipped:true for a clipped
+// one. Bar i is judged against the ATR14 as of bar i-1 (excluding its own true range, so a spike
+// cannot mask itself) - a bar with no ATR yet (i-1 < 14) is never clipped. The clip never
+// lengthens a wick: analytic low = max(raw low, min(open,close) - F3_CLIP_ATR_MULT*ATR), applied only
+// when that is above the raw low (mirror for the high). Only bars at or after `fromIdx` (the fit
+// window's start, full-series index space) are examined. `clips` lists one entry per clipped SIDE.
+function applyWickClip(candles, fromIdx) {
+  var n = candles.length, atrS = atr14Series(candles), analytic = candles.slice(), clips = [];
+  for (var i = Math.max(fromIdx || 0, 1); i < n; i++) {
+    var a = atrS[i-1];
+    if (a == null) continue;
+    var c = candles[i], aLow = c.low, aHigh = c.high, clipLow = false, clipHigh = false;
+    if (c.low < c.close - F3_WICK_ATR_MULT * a) {
+      var t = Math.max(c.low, Math.min(c.open, c.close) - F3_CLIP_ATR_MULT * a);
+      if (t > c.low) { aLow = t; clipLow = true; }
+    }
+    if (c.high > c.close + F3_WICK_ATR_MULT * a) {
+      var u = Math.min(c.high, Math.max(c.open, c.close) + F3_CLIP_ATR_MULT * a);
+      if (u < c.high) { aHigh = u; clipHigh = true; }
+    }
+    if (!clipLow && !clipHigh) continue;
+    var ac = Object.assign({}, c);
+    ac.low = aLow; ac.high = aHigh; ac.wickClipped = true;
+    analytic[i] = ac;
+    if (clipLow) clips.push({idx:i, time:c.time, side:'low', raw:c.low, clippedTo:aLow, atr:a});
+    if (clipHigh) clips.push({idx:i, time:c.time, side:'high', raw:c.high, clippedTo:aHigh, atr:a});
+  }
+  return {analytic:analytic, clips:clips};
+}
+
 function detectChannelResearch(candles, diag, meta) {
   if (!candles || candles.length < 30) return null;
   // A5 rejection diagnostics (Step 6 build review handoff format): when the caller passes a
@@ -680,13 +740,26 @@ function detectChannelResearch(candles, diag, meta) {
   var minAnchorSpan = (timeframe === '4d-grid') ? MIN_ANCHOR_SPAN_GRID : MIN_ANCHOR_SPAN;
 
   var n = candles.length;
-  var pv = findPivotsWindowed(candles, windowSize);
+  // F3: which array each read below uses - structural reads of a bar's low/high (pivot selection,
+  // the pivot's recorded price, containment) use the ANALYTIC copy `aCandles`; everything else
+  // (ATR14, tol, ema, patterns, rocket, breaks/lifecycle, the fit's own `candles`) reads the RAW
+  // `candles`. meta._noWickClip (harness only, never set by capture.js or the page) skips the clip
+  // so the runner gets its OLD reading from this same function.
+  var clipRes = meta._noWickClip ? null : applyWickClip(candles, n > windowSize ? n - windowSize : 0);
+  var aCandles = clipRes ? clipRes.analytic : candles;
+  var pv = findPivotsWindowed(aCandles, windowSize); // analytic: pivot selection + pivot price
   var highs = pv.highs, lows = pv.lows;
+  // H3: meta._h3Exclude ({side, idx}, internal to this function's own re-fit below) drops one pivot.
+  if (meta._h3Exclude) {
+    var h3x = meta._h3Exclude;
+    if (h3x.side === 'low') lows = lows.filter(function(pt){ return pt.idx !== h3x.idx; });
+    else highs = highs.filter(function(pt){ return pt.idx !== h3x.idx; });
+  }
   if (lows.length < 3 || highs.length < 1) return null;
 
   var price = candles[n-1].close;
-  var tol = computeResearchTol(candles, price);
-  var atr = atr14(candles);
+  var tol = computeResearchTol(candles, price); // raw candles (F3: tol keeps the end-of-series ATR)
+  var atr = atr14(candles);                     // raw candles
 
   var ema = emaState(candles);
   // E3 (Remediation spec, 2026-09-21/22): research-only sibling, reusing this same `atr`
@@ -789,7 +862,7 @@ function detectChannelResearch(candles, diag, meta) {
       var position = (curPrice-supNow)/channelH; // B4: unclamped, same rationale as the flag-off path
       var distToRailPct = (curPrice-supNow)/curPrice; // B5
 
-      var winCandles = candles.slice(firstIdx);
+      var winCandles = aCandles.slice(firstIdx); // F3: containment judges a clipped bar at its ANALYTIC low/high
       var inside = 0;
       for (var i=0; i<winCandles.length; i++) {
         var ci = firstIdx+i;
@@ -805,6 +878,7 @@ function detectChannelResearch(candles, diag, meta) {
       if (pairLogEntry) pairLogEntry.reached = 'position';
 
       // A1/H9
+      // F3: breaks and lifecycle are close-based and read the RAW candles.
       var scan = scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol);
       var lifecycle = computeLifecycle(scan, supTouches, candles, slope, intercept, lastIdx, tol, RECLAIM_BARS);
 
@@ -857,7 +931,7 @@ function detectChannelResearch(candles, diag, meta) {
         schemaVersion: FIT_SCHEMA_VERSION,
         detectorVersion: DETECTOR_VERSION,
         containmentFull: Math.round(containment),
-        containmentRecent: computeRecentContainment(candles, slope, intercept, channelH, firstIdx, lastIdx),
+        containmentRecent: computeRecentContainment(aCandles, slope, intercept, channelH, firstIdx, lastIdx), // F3: containment -> ANALYTIC copy
         touchEvents: supTouches,
         pivotIds: supTouches.map(function(t){ return t.time; }),
         nearestResistance: resNow,
@@ -898,6 +972,38 @@ function detectChannelResearch(candles, diag, meta) {
 
   // H11: one inspectable record per fired pattern (see buildPatternRecords above).
   winner.patternRecords = buildPatternRecords(candles, conf, rocket, conflict, meta, tol, winner.lifecycleState);
+
+  // F3 / H3: every clipped bar in the fit window, one entry per clipped side, plus the H3 sensitivity
+  // read: re-run this same fit with that pivot excluded and report the rail delta (percent, signed:
+  // (without - with) / with * 100). Low side -> support rail (supportNow); high side -> resistance rail
+  // (resistNow), only when the winner's resistance is an independent fit (B1) - a parallel resistance is
+  // derived from the support line, so there is no separate pivot to exclude (reason 'parallel').
+  // reason: null (computed) | 'not-pivot' | 'parallel' | 'no-fit-without-pivot' | 'no-base'.
+  // Raw candles stay untouched: the entry carries raw and clippedTo, the analytic copy is never exposed.
+  var wickClips = [];
+  if (clipRes) {
+    for (var wi = 0; wi < clipRes.clips.length; wi++) {
+      var wc = clipRes.clips[wi];
+      var isPivot = (wc.side === 'low' ? lows : highs).some(function(pt){ return pt.idx === wc.idx; });
+      var wEntry = {idx:wc.idx, time:wc.time, side:wc.side, raw:wc.raw, clippedTo:wc.clippedTo, atr:wc.atr,
+        pivot:isPivot, railDeltaPct:null, railUnchanged:null, reason:null};
+      if (!isPivot) wEntry.reason = 'not-pivot';
+      else if (wc.side === 'high' && winner.resistanceFit !== 'independent') wEntry.reason = 'parallel';
+      else if (!meta._noH3) {
+        var refit = detectChannelResearch(candles, null, Object.assign({}, meta, {_h3Exclude:{side:wc.side, idx:wc.idx}, _noH3:true}));
+        var rBase = (wc.side === 'low') ? winner.supportNow : winner.resistNow;
+        if (!refit) wEntry.reason = 'no-fit-without-pivot';
+        else if (!(rBase > 0)) wEntry.reason = 'no-base';
+        else {
+          var rAlt = (wc.side === 'low') ? refit.supportNow : refit.resistNow;
+          wEntry.railDeltaPct = (rAlt - rBase) / rBase * 100;
+          wEntry.railUnchanged = Math.abs(wEntry.railDeltaPct) < F3_RAIL_UNCHANGED_PCT;
+        }
+      }
+      wickClips.push(wEntry);
+    }
+  }
+  winner.wickClips = wickClips;
 
   return winner;
 }
@@ -1166,6 +1272,10 @@ if (typeof module !== 'undefined' && module.exports) {
     RES_RECENT_BARS_GRID: RES_RECENT_BARS_GRID,
     fitIndependentResistance: fitIndependentResistance, isWedge: isWedge,
     // H11 (Remediation spec, 2026-09-21/22) export - the function itself for direct harness testing (no new constants).
-    buildPatternRecords: buildPatternRecords
+    buildPatternRecords: buildPatternRecords,
+    // Step 9 F3/H3 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash and
+    // the functions themselves for direct harness testing.
+    F3_WICK_ATR_MULT: F3_WICK_ATR_MULT, F3_CLIP_ATR_MULT: F3_CLIP_ATR_MULT, F3_RAIL_UNCHANGED_PCT: F3_RAIL_UNCHANGED_PCT,
+    applyWickClip: applyWickClip, atr14Series: atr14Series
   };
 }

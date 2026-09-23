@@ -1235,7 +1235,13 @@ async function main() {
       // meta.research (still flag-off only), so this doesn't change what it writes, hashed
       // here so any future tuning is visible in configHash like every other detection constant.
       ROCKET_WICK_BODY: C.ROCKET_WICK_BODY, ROCKET_WICK_ATR: C.ROCKET_WICK_ATR,
-      ROCKET_PRIOR_CLOSES_BELOW: C.ROCKET_PRIOR_CLOSES_BELOW
+      ROCKET_PRIOR_CLOSES_BELOW: C.ROCKET_PRIOR_CLOSES_BELOW,
+      // Step 9 F3/H3 (Remediation spec, 2026-09-21/22): the outlier-wick clip constants - same
+      // rationale as the Step 6/7/E3/E4 blocks above: capture.js never sets meta.research (flag-off
+      // only) and persists no wickClips, so this doesn't change what it writes, hashed here so any
+      // future tuning is visible in configHash like every other detection constant.
+      F3_WICK_ATR_MULT: C.F3_WICK_ATR_MULT, F3_CLIP_ATR_MULT: C.F3_CLIP_ATR_MULT,
+      F3_RAIL_UNCHANGED_PCT: C.F3_RAIL_UNCHANGED_PCT
     })).digest('hex');
     const manifest = {
       schemaVersion: 1,
