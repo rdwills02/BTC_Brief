@@ -459,6 +459,26 @@ var detailCandles = null, detailCandlesGrid = null, detailBandsEl = null;
 // by it, and toggleOverlay is toString()-injected into the report so it stays untouched. Null when
 // research mode is off, so the flag-off chart is exactly as before.
 var detailResearchSeries = null;
+// Step 9 Diff B (2026-09-23): F3 wick-clip markers. Base marker set for the same hidden carrier
+// series; setResearchMarks merges it with the pattern marks, so a pill click/clear never wipes it and
+// toggleOverlay (which only rebuilds cs's own markers) never touches it. Empty when research mode is
+// off (no series, no markers, no DOM).
+var detailClipMarks = [];
+function researchNum(x) { return (typeof x === 'number' && isFinite(x)) ? String(Number(x.toPrecision(6))) : String(x); }
+// k = ATR14 multiples removed from the wick (|raw - clippedTo| / atr); all three are wickClips fields.
+function researchClipLabel(w) {
+  var k = (w.atr > 0) ? Math.abs(w.raw - w.clippedTo) / w.atr : NaN;
+  return 'wick clipped: raw ' + researchNum(w.raw) + ' \u2192 ' + researchNum(w.clippedTo) + ' (' + (isFinite(k) ? k.toFixed(1) : '?') + '\u00d7ATR14)';
+}
+function researchClipMarks(rr, candles) {
+  var out = [];
+  ((rr && rr.wickClips) || []).forEach(function(w) {
+    if (!candles || !candles.some(function(c){ return c.time === w.time; })) return;
+    out.push({time:w.time, position: w.side === 'high' ? 'aboveBar' : 'belowBar', color:'#ff5c8a', shape:'circle', text: researchClipLabel(w), size:1});
+  });
+  out.sort(function(a, b){ return a.time - b.time; });
+  return out;
+}
 var RESEARCH_MARK_LETTER = {bb3:'B', bullEngulf:'E', threeInsideUp:'3', rocket:'R', bb3UpperReversion:'U', threeInsideDown:'D'};
 // Marks EVERY referenced candle (all candleIds, not just the trigger); ids [] clears.
 function setResearchMarks(pattern, ids, color) {
@@ -472,7 +492,7 @@ function setResearchMarks(pattern, ids, color) {
       shape: bearish ? 'arrowDown' : 'arrowUp', text: letter + (ids.length > 1 ? ' ' + (i + 1) + '/' + ids.length : ''), size:1});
   });
   marks.sort(function(a, b){ return a.time - b.time; });
-  detailResearchSeries.setMarkers(marks);
+  detailResearchSeries.setMarkers(detailClipMarks.concat(marks).sort(function(a, b){ return a.time - b.time; }));
 }
 var scanning = false;
 var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
@@ -718,9 +738,36 @@ function researchConflictTip(rr) {
   return 'A bullish and a bearish pattern fired on the same or adjacent candles' + (names.length ? ' (' + names.join(' vs ') + ')' : '') +
     '; the pattern bonus is excluded from the research score.';
 }
+// Step 9 Diff B: H3 readout, one line per wickClips entry, every value read off the entry. A pivot entry
+// with a computed railDeltaPct reads 'rail unchanged' when the record says railUnchanged (the core owns
+// F3_RAIL_UNCHANGED_PCT - no threshold typed here), else the signed delta; anything else prints its reason.
+var RESEARCH_CLIP_REASON = {
+  'not-pivot': 'clipped bar is not a rail pivot; no rail effect',
+  'parallel': 'resistance rail is parallel to support; no independent rail delta',
+  'no-fit-without-pivot': 'no channel fit without this pivot',
+  'no-base': 'no base rail to compare against'
+};
+function researchWickReadoutHTML(rr) {
+  var ws = (rr && rr.wickClips) || [];
+  if (!ws.length) return '';
+  var lines = ws.map(function(w) {
+    var head = 'Wick clip ' + researchTimeLabel(w.time) + ' (' + w.side + '): ';
+    var railName = w.side === 'high' ? 'resistance' : 'support';
+    var body;
+    if (w.pivot && typeof w.railDeltaPct === 'number' && isFinite(w.railDeltaPct)) {
+      body = w.railUnchanged ? 'rail unchanged without this pivot'
+        : 'rail moves ' + (w.railDeltaPct > 0 ? '+' : '') + w.railDeltaPct.toFixed(1) + '% without this pivot (' + railName + ')';
+    } else {
+      body = RESEARCH_CLIP_REASON[w.reason] || ('no rail delta (' + w.reason + ')');
+    }
+    return '<div class="research-wick-line" style="margin-top:3px;font-size:11px;color:var(--muted,#9aa3b2)">' + researchAttr(head + body) + '</div>';
+  }).join('');
+  return lines;
+}
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
-  if (!b.length) return '';
+  var wick = researchWickReadoutHTML(rr);
+  if (!b.length && !wick) return '';
   var pills = b.map(function(x){
     var base = 'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;';
     if (x.rec) {
@@ -732,7 +779,7 @@ function researchConfluenceHTML(rr) {
     ? '<span class="cat-tip" data-tip="'+researchAttr(researchConflictTip(rr))+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:rgba(255,176,32,.15);color:#ffb020;margin-right:6px;display:inline-block;margin-bottom:4px;cursor:help">Conflicting signals</span>' : '';
   var pops = b.filter(function(x){ return x.rec; }).map(function(x){ return researchPopoverHTML(x.rec); }).join('');
   return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border,#2a2f3a)"><span style="font-size:9px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em;margin-right:6px">Research</span>' +
-    pills + conflictTag + pops + '</div>';
+    pills + conflictTag + pops + wick + '</div>';
 }
 
 // Step 8 E2 (revised, 2026-09-23, per Ryan's restage instruction): in research mode the
@@ -2320,9 +2367,13 @@ function buildChart(r) {
   // Step 8 H11: hidden carrier series for research-pill candle marks (see setResearchMarks). Only in
   // research mode with a research row; excluded from autoscale so it cannot move the price range.
   detailResearchSeries = null;
+  detailClipMarks = [];
   if (RESEARCH_MODE_UI && r.researchRow) {
     detailResearchSeries = chart.addLineSeries({color:'rgba(0,0,0,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:function(){return null;}});
     detailResearchSeries.setData(r.candles.map(function(c){return {time:c.time,value:c.close};}));
+    // Step 9 Diff B: F3 wick-clip markers (side-aware), the base set setResearchMarks merges under pattern marks.
+    detailClipMarks = researchClipMarks(r.researchRow, r.candles);
+    if (detailClipMarks.length) detailResearchSeries.setMarkers(detailClipMarks);
   }
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
