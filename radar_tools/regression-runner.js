@@ -322,6 +322,7 @@ function run() {
   runStep9F3H3Acceptance(current, grids, caches, loadDailyCaches());
   runStep10DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
+  runStep11BAcceptance(current, grids, caches, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1351,7 +1352,7 @@ function loadGridRowMeta() {
 function runStep11AAcceptance(current, grids, gridCaches, dailyCaches) {
   console.log('\n=== Step 11-A acceptance (research verdict engine, C1-C7 + H6 stub; 16 gates - rail slope is a label, thirds are not a gate) — researchVerdict() on research fits, ALL ' + grids.length + ' dated fixtures, per timeframe ===');
   console.log('Floors: ACT_SCORE_FLOOR_1D=' + current.ACT_SCORE_FLOOR_1D + ' ACT_SCORE_FLOOR_GRID=' + current.ACT_SCORE_FLOOR_GRID + ' (both PROVISIONAL) | C3_FRESH_BARS=' + current.C3_FRESH_BARS + '/' + current.C3_FRESH_BARS_GRID + ' ACT_WIDTH_MAX=' + current.ACT_WIDTH_MAX + ' C2 min(' + current.C2_DIST_TOL_MULT + '*tol,' + current.C2_DIST_CAP + ') C4 ' + current.C4_VOLUME24H_MIN + '/' + current.C4_VOL_TOUCH_MIN + ' C6 ' + current.C6_SPIKE_BARS + 'bars>' + current.C6_SPIKE_ATR_MULT + 'xATR H6_RR_MIN=' + current.H6_RR_MIN);
-  console.log('11-A ships gate 13 (H6.rr) as Unknown -> fail, so research ACT is 0 by construction; "ACT-except-rr" = every other gate passes. Grid rows fail gate 15 (C4.touch-volume) by construction: grid candles carry no volume (BACKLOG F5 extension).');
+  console.log('11-B made gate 13 (H6.rr) live (fit.entryEconomics.netRR; Unknown only when no target sits above the entry), so ACT here is real; "ACT-except-rr" = every gate but H6.rr passes. Grid rows fail gate 15 (C4.touch-volume) by construction: grid candles carry no volume (BACKLOG F5 extension).');
   if (typeof current.researchVerdict !== 'function') { console.log('  BUG: researchVerdict not exported'); process.exitCode = 1; return; }
   const meta = loadGridRowMeta();
   let bugs = 0, impure = 0, order = 0;
@@ -1419,6 +1420,49 @@ function runStep11AAcceptance(current, grids, gridCaches, dailyCaches) {
   if (impure || order) bugs++;
   console.log('Prior-section deltas: none - researchVerdict is additive (new exports + constants); detectChannel research and flag-off outputs are byte-identical to 5be7385b (local step11-a suite), so every earlier section prints the same numbers.');
   if (bugs) { console.log('Step 11-A acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
+}
+
+// Step 11-B (Remediation spec H6; step 11 plan 11-B; rulings c/d/e/f/g): entry economics on every research fit and the first
+// REAL research ACT count (gate 13 H6.rr now reads fit.entryEconomics.netRR; gate 11 is C2.entry-zone). Same ctx as 11-A.
+function runStep11BAcceptance(current, grids, gridCaches, dailyCaches) {
+  console.log('\n=== Step 11-B acceptance (H6 entry economics: zone / stop / target / R:R; C2.entry-zone replaces C2.distance) — ALL ' + grids.length + ' dated fixtures, per timeframe ===');
+  console.log('Constants: H6_ENTRY_ATR=' + current.H6_ENTRY_ATR + ' H6_STOP_ATR=' + current.H6_STOP_ATR + ' H6_STOP_CAP_ATR=' + current.H6_STOP_CAP_ATR + ' H6_COST_PCT=' + current.H6_COST_PCT + ' H6_SWING_WINDOW=' + current.H6_SWING_WINDOW + '/' + current.H6_SWING_WINDOW_GRID + ' H6_RR_MIN=' + current.H6_RR_MIN + ' | floors ' + current.ACT_SCORE_FLOOR_1D + '/' + current.ACT_SCORE_FLOOR_GRID + ' (all PROVISIONAL)');
+  if (typeof current.entryEconomicsOf !== 'function') { console.log('  BUG: entryEconomicsOf not exported'); process.exitCode = 1; return; }
+  const meta = loadGridRowMeta(); const btcSeries = dailyCaches['bitcoin'] || null; let bugs = 0;
+  ['1d', '4d-grid'].forEach(function (tf) {
+    const src = (tf === '1d') ? dailyCaches : gridCaches, minBars = (tf === '1d') ? 60 : 30, floor = (tf === '1d') ? current.ACT_SCORE_FLOOR_1D : current.ACT_SCORE_FLOOR_GRID;
+    let fits = 0, eeNull = 0; const rrHist = { 'null': 0, '<0': 0, '0-1': 0, '1-2': 0, '2-3': 0, '3-5': 0, '5+': 0 }, tgt = {}, stopB = {}, firstFail = {}, verdicts = { ACT: 0, WATCH: 0, WAIT: 0, NONE: 0 }, perDate = []; let gateIds = null, actTotal = 0, zoneIn = 0, zoneKnown = 0;
+    grids.forEach(function (g) {
+      const btc = btcSeries ? current.btcRegimeFromCandles(sliceToDate(btcSeries, g.date) || []) : null;
+      let act = 0; const actIds = []; let n = 0;
+      g.coins.forEach(function (cgId) {
+        const c = src[cgId]; if (!c) return; const s = sliceToDate(c, g.date); if (!s || s.length < minBars) return; n++;
+        const fit = current.detectChannel(s, null, { coinId: cgId, timeframe: tf, source: 'fixture', research: true, _noH3: true });
+        const rowMeta = (meta[g.date] && meta[g.date][cgId]) || {};
+        const res = current.researchVerdict(fit, { price: fit ? fit.detectionPrice : s[s.length - 1].close, volume24h: rowMeta.volume24h != null ? rowMeta.volume24h : null, btc: btc, quote: null, floor: floor });
+        verdicts[res.verdict]++; if (res.gate) firstFail[res.gate] = (firstFail[res.gate] || 0) + 1;
+        if (!gateIds) gateIds = res.details.gates.map(x => x.id);
+        if (res.details.gates.some(x => x.id === 'C2.distance')) { bugs++; console.log('  BUG: C2.distance still present'); }
+        if (!fit) return; fits++;
+        const ee = fit.entryEconomics;
+        if (!ee) { eeNull++; return; }
+        tgt[ee.targetSource] = (tgt[ee.targetSource] || 0) + 1; stopB[ee.stopBasis] = (stopB[ee.stopBasis] || 0) + 1;
+        const v = ee.netRR; rrHist[v == null ? 'null' : v < 0 ? '<0' : v < 1 ? '0-1' : v < 2 ? '1-2' : v < 3 ? '2-3' : v < 5 ? '3-5' : '5+']++;
+        if (!(ee.stop <= ee.entryRef)) { bugs++; console.log('  BUG: stop above entryRef ' + cgId + ' ' + tf + ' ' + g.date); }
+        if ((v == null) !== (ee.target == null)) { bugs++; console.log('  BUG: netRR/target null mismatch ' + cgId); }
+        zoneKnown++; if (fit.detectionPrice >= ee.entryZone[0] && fit.detectionPrice <= ee.entryZone[1]) zoneIn++;
+        if (res.verdict === 'ACT') { act++; actIds.push(cgId + '(rr ' + v.toFixed(2) + ',' + ee.targetSource[0] + ')'); if (!(v >= current.H6_RR_MIN)) { bugs++; console.log('  BUG: ACT with netRR < min ' + cgId); } }
+      });
+      if (n) { actTotal += act; perDate.push(g.date + ' n=' + n + ' ACT=' + act + (tf === '1d' ? ' (OLD@89 ref ' + (STEP10_OLD89_1D[g.date] == null ? '?' : STEP10_OLD89_1D[g.date]) + ')' : '') + (actIds.length ? ' [' + actIds.join(', ') + ']' : '')); }
+    });
+    console.log('\n--- ' + tf + ': research fits ' + fits + ' | entryEconomics null ' + eeNull + ' | target source ' + JSON.stringify(tgt) + ' | stop basis ' + JSON.stringify(stopB) + ' | detectionPrice inside entry zone ' + zoneIn + '/' + zoneKnown + ' ---');
+    console.log('netRR histogram: ' + Object.keys(rrHist).map(k => k + ':' + rrHist[k]).join(' '));
+    console.log('verdicts ACT ' + verdicts.ACT + ' WATCH ' + verdicts.WATCH + ' WAIT ' + verdicts.WAIT + ' NONE ' + verdicts.NONE + ' | REAL research ACT total ' + actTotal + (tf === '1d' ? ' (OLD@89 ref total 18, different population)' : ''));
+    console.log('first-failing gate: ' + (gateIds || []).map(id => id + ':' + (firstFail[id] || 0)).join(' '));
+    console.log('per date:'); perDate.forEach(l => console.log('  ' + l));
+  });
+  console.log('\nPrior-section deltas: the 11-A section above now runs with gate 11 = C2.entry-zone and gate 13 = H6.rr live (its verdict counts, first-failing table and ACT-except-rr line change accordingly; ACT is no longer 0 by construction). detectChannel research output gains the entryEconomics field only; flag-off unchanged (local step11-b suite), so steps 6-10 print the same numbers.');
+  if (bugs) { console.log('Step 11-B acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
 run();
