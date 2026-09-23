@@ -441,6 +441,10 @@ var selectedKey = null;
 // reading itself is always computed at merge time regardless of this flag (see
 // mergeCandidateRow) so toggling never re-fetches or re-scans.
 var RESEARCH_MODE_UI = /[?&]research=1(&|$)/.test(location.search);
+// Step 11-A / C5: BTC regime from data/latest-daily.json's top-level btcRegime (capture.js writes it from
+// channel-core.js btcRegimeFromCandles). null until the daily payload is read or when the capture predates 11-A;
+// researchCtxFor passes it to researchVerdict, where null fails the C5 gate as Unknown.
+var BTC_REGIME = null;
 var detailChart = null;
 // Indicator Upgrades Group 1, item 6 (2026-09-20): overlay-toggle state for the live detail
 // panel's single chart instance. Reset fresh in buildChart() on every openDetail() call (chart
@@ -1433,22 +1437,14 @@ function buildExpl(r, name) {
 // below never fires for those calls).
 function buildAction(r, opts) {
   opts = opts || {};
-  // R5: in research mode, the A1/H9 lifecycle state is checked FIRST - ahead of the old
-  // position<0 proxy below, since it's the more precise reading Step 6 exists to add.
-  // broken/reclaimed-awaiting-retest are disqualifying on their own and return here;
-  // wick-probed/intact/re-qualified fall through unchanged to the existing chain below (R2:
-  // wick-probed does not short-circuit - it's a softer signal than a real close-through).
-  if (opts.research && r.lifecycleState) {
-    if (r.lifecycleState === 'broken') {
-      var reclaimNote = (r.barsSinceBreak != null && r.barsSinceBreak >= RECLAIM_BARS)
-        ? 'reclaimed but not yet confirmed by a fresh touch' : 'not reclaimed';
-      var sinceStr = (r.barsSinceBreak != null) ? (r.barsSinceBreak+' bars since break') : 'break recency unknown';
-      return {verdict:'WAIT', text:'Wait: rail broken - '+(r.maxBreakRun||0)+' consecutive close(s) through invalidation, '+reclaimNote+' ('+sinceStr+').'};
-    }
-    if (r.lifecycleState === 'reclaimed-awaiting-retest') {
-      return {verdict:'WATCH', text:'Watch: rail reclaimed '+r.barsSinceBreak+' bars ago after a break, but has not been retested since - awaiting a fresh support touch before this counts as active support again.'};
-    }
-    // wick-probed, intact, re-qualified: continue below.
+  // Step 11-A (Remediation spec Plan C / Verdict sequence; step 11 plan 11-A + rulings): in research mode the
+  // whole gate chain lives in channel-core.js's pure researchVerdict(fit, ctx). This branch only builds ctx from
+  // the row, calls it and renders the reason as a sentence (researchVerdictText below) - no gate logic on the
+  // page. Returns before the flag-off chain below, which is byte-identical to the pre-11-A file for every
+  // 1-arg caller (opts.research is falsy there, so this branch never fires for those calls).
+  if (opts.research) {
+    var rres = researchVerdict(r, researchCtxFor(r));
+    return {verdict:rres.verdict, text:researchVerdictText(rres, r), reason:rres.reason, gate:rres.gate, stage:rres.stage, details:rres.details};
   }
   var structureLabel = structureLabelFor(r);
   var railBand = r.supportRailAgeBand;
@@ -1474,17 +1470,7 @@ function buildAction(r, opts) {
   var WIDE_CHANNEL_PCT = 50;
   var widthPct = (r.channelH!=null && r.price) ? (r.channelH/r.price*100) : null;
   var isWide = widthPct!=null && widthPct > WIDE_CHANNEL_PCT;
-  // B3 (Remediation spec, 2026-09-21/22; per Step 7 plan review, decision 2): a channel this
-  // wide can't be an ACT entry regardless of score/rail freshness - separate from
-  // WIDE_CHANNEL_PCT=50 above, which only changes the target wording. 0.40 as a fraction to
-  // match distToRailPct's own scale below; widthPct (computed above) is already a percentage.
-  var ACT_WIDTH_MAX = 0.40;
-  // B5 (Remediation spec, 2026-09-21/22; min confirmed per Step 7 plan review): entry distance
-  // gate. r.distToRailPct only exists on a research-mode row (channel-core.js's
-  // detectChannelResearch) - undefined on a flag-off row, so this whole gate is research-only,
-  // same scoping as R5 above. With A3 daily tol floored at 1%, the gate is 2% on daily; on grid
-  // tol saturates at 4% (Step 6 A3 finding), so the gate is 6% there.
-  var distGate = (r.tol != null) ? Math.min(2*r.tol, 0.06) : null;
+  // ACT_WIDTH_MAX / distGate (B3/B5, Step 7) moved to channel-core.js (Step 11-A: ACT_WIDTH_MAX, C2_DIST_TOL_MULT, C2_DIST_CAP).
   // geometryStale: true whenever the support side of this row is about to be presented with a
   // rail-age caveat (i.e. every branch below except the fresh-rail ACT case) - see FIX A above.
   var geometryStale = railBand !== 'fresh';
@@ -1548,17 +1534,8 @@ function buildAction(r, opts) {
     if(r.gridBroken) {
       return {verdict:'WATCH', text:'Watch: would be an act zone on the daily fit, but the 4-Day grid fit is broken (grid close below its own invalidation) - blocked until the grid re-fits. Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
     }
-    // B3/B5 (Remediation spec, 2026-09-21/22; Step 7): research-mode-only gates, checked
-    // ahead of the score floor same as gridBroken above. opts.research guards both - see the
-    // constant comments above for why (distToRailPct doesn't exist on a flag-off row at all).
-    if (opts.research) {
-      if (widthPct!=null && widthPct/100 > ACT_WIDTH_MAX) {
-        return {verdict:'WATCH', text:'Watch: would be an act zone, but the channel is unusually wide ('+widthPct.toFixed(0)+'%, over the '+(ACT_WIDTH_MAX*100)+'% cap) - treat as a range boundary, not a price target. Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
-      }
-      if (r.distToRailPct != null && distGate != null && r.distToRailPct > distGate) {
-        return {verdict:'WATCH', text:'Watch: would be an act zone, but price is already '+(r.distToRailPct*100).toFixed(1)+'% above support - too far from the rail to act on (gate '+(distGate*100).toFixed(1)+'%). Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
-      }
-    }
+    // B3/B5 research gates moved to channel-core.js researchVerdict (Step 11-A, gates C2.width / C2.distance);
+    // the research branch at the top of this function returns before reaching here.
     if(r.score>=ACT_SCORE_FLOOR) {
       return {verdict:'ACT', text:'Act zone: watch for '+actionVerb+' off support near '+supStr+' ('+railNote+'), invalidated below '+invStr+targetClause()+'.'};
     }
@@ -1593,6 +1570,65 @@ function buildAction(r, opts) {
 // output and, per #18's own finding, the single most prominent claim on the page - it had no
 // tooltip at all. One shared string (not per-verdict) so a user seeing any of the three can
 // read the whole rule, not just the branch that produced what they're looking at.
+// Step 11-A: ctx for researchVerdict, built from the research row (rr in mergeCandidateRow). price = the row's
+// live quote (CoinGecko, what the table shows) - on the page this is the independent current-quote breach check
+// the Verdict sequence asks for; the runner uses the fit's own close instead (ruling o). quote stays null until
+// 11-D. Floor is the per-timeframe constant from channel-core.js (ruling k/l).
+function researchCtxFor(r) {
+  return {
+    price: r.price,
+    volume24h: (r.volume24h != null ? r.volume24h : null),
+    btc: (typeof BTC_REGIME !== 'undefined') ? BTC_REGIME : null,
+    quote: null,
+    floor: (r.timeframe === '4d-grid') ? ACT_SCORE_FLOOR_GRID : ACT_SCORE_FLOOR_1D
+  };
+}
+// Step 11-A: reason code -> sentence. Wording only; every number comes from the row/fit or the gate's own
+// value/threshold in res.details, never from a page-side threshold (16 gates; rail slope is a label only, thirds are
+// not a gate - Diff A review). One implementation for the table badge,
+// the detail panel and the published report.
+function researchVerdictText(res, r) {
+  var d = pricePrecision(r.price);
+  var supStr = fmt(r.supportNow, d), resStr = fmt(r.resistNow, d), invStr = fmt(r.invalidation, d);
+  var railNote = railNoteFor(r);
+  var g = null;
+  if (res.details && res.details.gates) { for (var i = 0; i < res.details.gates.length; i++) if (res.details.gates[i].id === res.gate) { g = res.details.gates[i]; break; } }
+  var tail = ' Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+', channel resistance '+resStr+'.';
+  var pctOf = function(v) { return (v*100).toFixed(1)+'%'; };
+  switch (res.reason) {
+    case 'all-gates': return 'Act zone (research): every gate of the entry model passed on this snapshot.'+tail;
+    case 'data-unavailable': return 'Data unavailable: no research fit for this row - no levels shown.';
+    case 'price-unknown': return 'Data unavailable: no current price for this row.';
+    case 'rail-broken': {
+      var reclaimNote = (r.barsSinceBreak != null && r.barsSinceBreak >= RECLAIM_BARS) ? 'reclaimed but not yet confirmed by a fresh touch' : 'not reclaimed';
+      var sinceStr = (r.barsSinceBreak != null) ? (r.barsSinceBreak+' bars since break') : 'break recency unknown';
+      return 'Wait: rail broken - '+(r.maxBreakRun||0)+' consecutive close(s) through invalidation, '+reclaimNote+' ('+sinceStr+').';
+    }
+    case 'awaiting-retest': return 'Watch: rail reclaimed '+r.barsSinceBreak+' bars ago after a break, but has not been retested since - awaiting a fresh support touch before this counts as active support again.';
+    case 'wick-probed': return 'Watch: the rail has been wick-probed (a touch inside the tolerance band is not evidence support held) - a closed bar back above the rail after the probe is needed before this counts as active support.'+tail;
+    case 'lifecycle-unknown': return 'Watch: rail lifecycle state unknown for this fit.'+tail;
+    case 'quote-breach': return 'Wait: the current quote '+fmt(r.price, d)+' is below invalidation '+invStr+' - rail breached on the live quote, not yet on a closed bar.';
+    case 'below-support': return 'Wait: price is below the support rail near '+supStr+' - rail broken, not lower-third positioning. Invalidated below '+invStr+'.';
+    case 'base-forming': {
+      var v = g && g.value;
+      return 'Watch: base forming - price trend is not up yet ('+(v ? 'close '+fmt(v.close, d)+' vs EMA50 '+fmt(v.ema50, d)+', EMA50 slope '+pctOf(v.ema50Slope) : 'trend inputs unknown')+'); ACT needs close above a non-falling EMA50.'+tail;
+    }
+    case 'unconfirmed': return 'Watch: unconfirmed level - '+(res.gate === 'C3.fresh-touch' ? 'last support touch was '+(g ? g.value : '?')+' bars ago (gate '+(g ? g.threshold : '?')+')' : 'a break run sits inside the freshness window ('+(g ? g.value : '?')+' bars since break, gate '+(g ? g.threshold : '?')+')')+' - wait for a fresh test before treating '+supStr+' as active support.'+tail;
+    case 'below-floor': return 'Watch: would be an act zone, but the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+') - watch for a bounce off support near '+supStr+'.'+tail;
+    case 'too-wide': return 'Watch: would be an act zone, but the channel is unusually wide ('+(g ? (g.value*100).toFixed(0) : '?')+'%, over the '+(g ? (g.threshold*100) : '?')+'% cap) - treat as a range boundary, not a price target.'+tail;
+    case 'not-at-support': return 'Watch: would be an act zone, but price is already '+(g ? pctOf(g.value) : '?')+' above support - too far from the rail to act on (gate '+(g ? pctOf(g.threshold) : '?')+').'+tail;
+    case 'extended': return 'Watch: extended - the last 3 bars gained '+(g ? fmt(g.value, d) : '?')+', more than 4x ATR14 ('+(g ? fmt(g.threshold, d) : '?')+'); wait for the move to settle.'+tail;
+    case 'rr-unknown': return 'Watch: entry economics not computed yet (H6 lands in 11-B) - reward-to-risk is Unknown, so ACT is withheld; every gate before it passed.'+tail;
+    case 'rr-too-low': return 'Watch: net reward-to-risk '+(g ? g.value.toFixed(2) : '?')+' is below the '+(g ? g.threshold : '?')+' minimum to nearest resistance.'+tail;
+    case 'low-volume': return 'Watch: liquidity - 24h volume '+fmtVol(r.volume24h)+' is below the '+fmtVol(g ? g.threshold : null)+' floor for ACT.'+tail;
+    case 'volume-unknown': return 'Watch: liquidity unknown - no 24h volume on this row, so the volume gate fails as Unknown.'+tail;
+    case 'dead-volume': return 'Watch: the last support test came on dead volume ('+(g ? g.value.toFixed(2) : '?')+'x the 20-bar average, gate '+(g ? g.threshold : '?')+'x).'+tail;
+    case 'touch-volume-unknown': return 'Watch: touch-bar volume unknown ('+(r.timeframe === '4d-grid' ? 'grid candles carry no volume' : 'fewer than 20 prior bars with volume')+'), so the volume-on-touch gate fails as Unknown.'+tail;
+    case 'btc-regime': return 'Watch: BTC regime - BTC is '+(g && g.value && g.value.aboveEma50 ? 'above' : 'below')+' its EMA50 with slope '+(g && g.value ? pctOf(g.value.ema50Slope) : '?')+'; no alt is ACT while BTC is below a falling EMA50.'+tail;
+    case 'btc-regime-unknown': return 'Watch: BTC regime unknown (no btcRegime in the daily capture yet), so the market gate fails as Unknown.'+tail;
+    default: return 'Watch: '+res.reason+'.'+tail;
+  }
+}
 var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 89 or above. WATCH means one of those conditions is not met, or the score is below 89. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
 function verdictRankFor(r) {
@@ -1658,6 +1694,7 @@ async function fetchDailyMap(referenceDate) {
     var dailyRes = await fetch('data/latest-daily.json?t=' + Date.now());
     if(dailyRes.ok) {
       dailyCap = await dailyRes.json();
+      if(dailyCap && dailyCap.btcRegime !== undefined) BTC_REGIME = dailyCap.btcRegime || null;   // Step 11-A / C5
       if(dailyCap && dailyCap.coins && dailyCap.coins.length) {
         dailyCap.coins.forEach(function(c) {
           var a = adaptDailyCoin(c);
@@ -2019,6 +2056,8 @@ function renderTable() {
       var raction = buildAction(r.researchRow, {research:true});
       var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
       researchBadge = ' <span class="vbadge '+rvcls+' cat-tip" data-tip="Research mode (Step 6): '+raction.text.replace(/"/g,'&quot;')+' ['+RESEARCH_SCORE_LABEL+']" style="opacity:.7;font-size:9px;padding:2px 5px">R:'+raction.verdict+'</span>';
+      // G6 (Step 11-A): the first failed gate as a small grey tag so the table explains itself without the panel.
+      if (raction.gate) researchBadge += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:3px">'+raction.gate+'</span>';
     }
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
@@ -2094,6 +2133,7 @@ function openDetail(r) {
       var raction = buildAction(r.researchRow, {research:true});
       var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
       badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span><span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
+      if (raction.gate) badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+raction.gate+'</span>';   // G6 (Step 11-A)
       actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text + ' (' + RESEARCH_SCORE_LABEL + ')';
     } else {
       actionTextEl.textContent = action.text;
@@ -3320,6 +3360,7 @@ async function loadCachedOrResting() {
           var dailyRes = await fetch('data/latest-daily.json?t=' + Date.now());
           if(dailyRes.ok) {
             dailyCap = await dailyRes.json();
+            if(dailyCap && dailyCap.btcRegime !== undefined) BTC_REGIME = dailyCap.btcRegime || null;   // Step 11-A / C5
             if(dailyCap && dailyCap.coins && dailyCap.coins.length) {
               dailyCap.coins.forEach(function(c) {
                 var a = adaptDailyCoin(c);

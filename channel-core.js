@@ -705,6 +705,131 @@ var D_VOL_TOUCH_BONUS = 4;
 var D_VOL_TOUCH_MULT = 1.2;
 var D_VOL_WINDOW = 20;                      // mean of the 20 bars BEFORE the most recent support touch bar (exclusive)
 var D_RAW_MAX = 102;                        // 24+15+15+15+12+6+(5+3)+3+4
+// Step 11-A (Remediation spec Plan C, C1-C7; H6 R:R stub; Verdict sequence 785-814). Research-only:
+// consumed by researchVerdict() below, which the page calls from buildAction(r,{research:true}) and the
+// runner calls directly. Nothing here is read by detectChannel (flag-off). Status per constant:
+// spec-given = the value is written in the spec; PROVISIONAL = set by the analysis thread from the
+// harness (step 11 plan review, rulings k/b) and may move before promotion (step 13).
+var C1_EMA_SLOPE_MIN = 0;          // spec C1: ema50Slope >= 0 (slope over D_EMA_SLOPE_BARS, the one slope)
+var C3_FRESH_BARS = 14;            // spec C3/A4: last support touch <= 14 (1d) bars ago AND no break inside 14 bars
+var C3_FRESH_BARS_GRID = 4;        // PROVISIONAL (ruling a): 4d-grid day-equivalent of 14 d (same convention as MIN_ANCHOR_SPAN_GRID)
+var ACT_WIDTH_MAX = 0.40;          // spec B3: channelH / price above this cannot be ACT (page keeps its own flag-off literal)
+var C2_DIST_TOL_MULT = 2;          // spec B5: distToRailPct <= min(C2_DIST_TOL_MULT*tol, C2_DIST_CAP). Replaced by H6 in 11-B (ruling g).
+var C2_DIST_CAP = 0.06;            // spec B5
+var C4_VOLUME24H_MIN = 25e6;       // spec C4: 24h USD volume floor for ACT (the funnel's low-volume exclusion, made explicit)
+var C4_VOL_TOUCH_MIN = 0.8;        // spec C4: touch-bar volume >= 0.8 x mean of the 20 bars before it (D's volTouch.ratio; distinct from D_VOL_TOUCH_MULT 1.2)
+var C5_BTC_SLOPE_MIN = 0;          // spec C5: BTC above its EMA50 and ema50Slope >= 0, else "WATCH: BTC regime"
+var C6_SPIKE_BARS = 3;             // spec C6: gain over the last 3 bars ...
+var C6_SPIKE_ATR_MULT = 4;         // spec C6: ... above 4 x ATR14 -> WATCH extended
+var H6_RR_MIN = 2.0;               // spec H6: net reward-to-risk >= 2.0. 11-A: no entryEconomics field yet -> Unknown -> gate fails (11-B lands it)
+var ACT_SCORE_FLOOR_1D = 80;       // PROVISIONAL (ruling k; step 10 floor table: NEW@80 = 19 ACT over 24 dates vs OLD@89 = 18). Gate 11, Evidence stage.
+var ACT_SCORE_FLOOR_GRID = 66;     // PROVISIONAL (ruling k/b): the 1d share of OLD(_noD)>=89 research rows (96/1569 = 6.12%) applied to the grid NEW score distribution (458 fits, max 79) -> 66; the runner step 11-A section re-derives it and flags a mismatch. Unreachable this step anyway (grid rows fail C4 touch-volume: no grid volume).
+
+// 11-A: today's radar.html structureLabelFor(r), moved here so the verdict engine has no page dependency.
+function structureLabelOf(fit) { return fit.isFlat ? 'flat' : (fit.slope > 0 ? 'ascending' : 'descending'); }
+
+// 11-A / C5: BTC regime from BTC's own daily candles (capture.js's data/cache/bitcoin.json ohlcDaily; the runner's
+// fixture copy sliced to the date). Same emaLast + D_EMA_SLOPE_BARS definition as the alt ema50Slope, so capture, page
+// and runner cannot disagree. Returns null when there is no series; ema50Slope null when the series is too short.
+function btcRegimeFromCandles(candles) {
+  if (!candles || !candles.length) return null;
+  var closes = candles.map(function(c){ return c.close; });
+  var n = closes.length, e50 = emaLast(closes, 50), slope = null;
+  if (n > D_EMA_SLOPE_BARS) {
+    var e50Prev = emaLast(closes.slice(0, n - D_EMA_SLOPE_BARS), 50);
+    if (e50Prev > 0) slope = (e50 - e50Prev) / e50Prev;
+  }
+  var last = candles[n-1];
+  return { close: last.close, ema50: e50, ema50Slope: slope, aboveEma50: last.close > e50, asOf: last.time != null ? last.time : null, bars: n };
+}
+
+// 11-A: the research verdict engine. Pure: reads only `fit` and `ctx`, no DOM, no globals beyond the constants above,
+// no Date. Gate order = spec Verdict sequence (Data -> Structure -> Evidence -> Entry -> Context) with Plan C mapped in
+// (step 11 plan, 11-A table; 16 gates after the Diff A review removed struct.descending / struct.upper-third). EVERY gate is evaluated (details.gates, diagnostic, non-short-circuit);
+// verdict/reason/gate come from the FIRST gate whose pass !== true. Unknown input (pass === null) fails a gate exactly
+// like a false. No score bypasses a gate.
+//   ctx = { price, volume24h, btc:{aboveEma50, ema50Slope}|null, quote:{ageSec|null, spreadPct|null}|null, floor }
+//   returns { verdict:'ACT'|'WATCH'|'WAIT'|'NONE', reason, gate, stage, details:{ gates:[...], meetsFloor, firstFail } }
+function researchVerdict(fit, ctx) {
+  ctx = ctx || {};
+  var gates = [], label = null;
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  function add(id, stage, pass, value, threshold, failVerdict, reason) {
+    gates.push({ id:id, stage:stage, pass:pass, value:(value === undefined ? null : value), threshold:(threshold === undefined ? null : threshold), failVerdict:failVerdict, reason:reason });
+  }
+  // 1 Data: fit
+  var fitOk = !!(fit && num(fit.supportNow) && num(fit.invalidation) && num(fit.atr14) && num(fit.lastIdx));
+  add('data.fit', 'Data', fitOk, fit ? 'fit' : null, 'supportNow/invalidation/atr14/lastIdx finite', 'NONE', 'data-unavailable');
+  // 2 Data: price
+  var priceOk = num(ctx.price) && ctx.price > 0;
+  add('data.price', 'Data', (ctx.price == null) ? null : priceOk, num(ctx.price) ? ctx.price : null, '> 0', 'NONE', 'price-unknown');
+  if (!fitOk) return finish();
+  var tf = fit.timeframe || '1d', isGrid = (tf === '4d-grid');
+  // 3 Structure: lifecycle (H9: only intact / re-qualified can be ACT)
+  var ls = fit.lifecycleState;
+  var lsPass = (ls === 'intact' || ls === 're-qualified') ? true : (ls == null ? null : false);
+  var lsVerdict = ls === 'broken' ? 'WAIT' : 'WATCH';
+  var lsReason = ls === 'broken' ? 'rail-broken' : (ls === 'reclaimed-awaiting-retest' ? 'awaiting-retest' : (ls === 'wick-probed' ? 'wick-probed' : 'lifecycle-unknown'));
+  add('struct.lifecycle', 'Structure', lsPass, ls == null ? null : ls, 'intact | re-qualified', lsVerdict, lsReason);
+  // 4 Structure: current-quote breach. PASS when ctx.price >= invalidation; breach (WAIT) when below. Unknown price -> null.
+  add('struct.quote-breach', 'Structure', priceOk ? (ctx.price >= fit.invalidation) : null, priceOk ? ctx.price : null, fit.invalidation, 'WAIT', 'quote-breach');
+  // 5 Structure: below rail (B4)
+  add('struct.below-rail', 'Structure', num(fit.position) ? (fit.position >= 0) : null, num(fit.position) ? fit.position : null, '>= 0', 'WAIT', 'below-support');
+  // Rail slope is a structure LABEL only (spec C1; Diff A review): no descending gate, no thirds gate - "not at
+  // support" is C2.distance. The label rides in details for the page.
+  label = (num(fit.slope) || fit.isFlat) ? structureLabelOf(fit) : null;
+  // 6 Structure: C1 trend
+  var c1Known = num(fit.detectionPrice) && num(fit.ema50) && num(fit.ema50Slope);
+  add('C1.trend', 'Structure', c1Known ? (fit.detectionPrice > fit.ema50 && fit.ema50Slope >= C1_EMA_SLOPE_MIN) : null,
+      c1Known ? { close: fit.detectionPrice, ema50: fit.ema50, ema50Slope: fit.ema50Slope } : null, 'close > ema50 && ema50Slope >= ' + C1_EMA_SLOPE_MIN, 'WATCH', 'base-forming');
+  // 7 Evidence: C3 fresh touch
+  var freshBars = isGrid ? C3_FRESH_BARS_GRID : C3_FRESH_BARS;
+  var touches = fit.touchEvents || fit.pivotLows || [], maxTouchIdx = -1;
+  for (var ti = 0; ti < touches.length; ti++) if (num(touches[ti].idx) && touches[ti].idx > maxTouchIdx) maxTouchIdx = touches[ti].idx;
+  var barsSinceTouch = (maxTouchIdx >= 0) ? fit.lastIdx - maxTouchIdx : null;
+  add('C3.fresh-touch', 'Evidence', barsSinceTouch == null ? null : (barsSinceTouch <= freshBars), barsSinceTouch, '<= ' + freshBars, 'WATCH', 'unconfirmed');
+  // 8 Evidence: C3 no recent break (null barsSinceBreak = never broke)
+  var bsb = fit.barsSinceBreak;
+  add('C3.no-recent-break', 'Evidence', (bsb == null) ? true : (num(bsb) ? bsb >= freshBars : null), bsb == null ? null : bsb, '>= ' + freshBars + ' (or never)', 'WATCH', 'unconfirmed');
+  // 9 Evidence: C7 score floor (ruling k: a gate, the Evidence-stage proxy for structure quality)
+  var floorKnown = num(fit.score) && num(ctx.floor);
+  add('C7.floor', 'Evidence', floorKnown ? (fit.score >= ctx.floor) : null, num(fit.score) ? fit.score : null, num(ctx.floor) ? ctx.floor : null, 'WATCH', 'below-floor');
+  // 10 Entry: C2 width (B3)
+  var widthFrac = (num(fit.channelH) && num(fit.detectionPrice) && fit.detectionPrice > 0) ? fit.channelH / fit.detectionPrice : null;
+  add('C2.width', 'Entry', widthFrac == null ? null : (widthFrac <= ACT_WIDTH_MAX), widthFrac, '<= ' + ACT_WIDTH_MAX, 'WATCH', 'too-wide');
+  // 11 Entry: C2 distance (B5) - replaced by the H6 entry zone in 11-B (ruling g)
+  var distGate = num(fit.tol) ? Math.min(C2_DIST_TOL_MULT * fit.tol, C2_DIST_CAP) : null;
+  add('C2.distance', 'Entry', (num(fit.distToRailPct) && distGate != null) ? (fit.distToRailPct <= distGate) : null, num(fit.distToRailPct) ? fit.distToRailPct : null, distGate, 'WATCH', 'not-at-support');
+  // 12 Entry: C6 spike - close-to-close gain over the last C6_SPIKE_BARS bars vs C6_SPIKE_ATR_MULT x ATR14 (ruling m)
+  var cs = fit.candles, gain = null;
+  if (cs && cs.length > C6_SPIKE_BARS) {
+    var cLast = cs[cs.length - 1], cPrev = cs[cs.length - 1 - C6_SPIKE_BARS];
+    if (cLast && cPrev && num(cLast.close) && num(cPrev.close)) gain = cLast.close - cPrev.close;
+  }
+  add('C6.spike', 'Entry', gain == null ? null : (gain <= C6_SPIKE_ATR_MULT * fit.atr14), gain, C6_SPIKE_ATR_MULT * fit.atr14, 'WATCH', 'extended');
+  // 13 Entry: H6 net R:R - 11-A stub: no entryEconomics field yet -> Unknown -> fail (11-B lands it)
+  var ee = fit.entryEconomics;
+  add('H6.rr', 'Entry', (ee && num(ee.netRR)) ? (ee.netRR >= H6_RR_MIN) : null, (ee && num(ee.netRR)) ? ee.netRR : null, '>= ' + H6_RR_MIN, 'WATCH', (ee && num(ee.netRR)) ? 'rr-too-low' : 'rr-unknown');
+  // 14 Context: C4 volume24h
+  add('C4.volume24h', 'Context', num(ctx.volume24h) ? (ctx.volume24h >= C4_VOLUME24H_MIN) : null, num(ctx.volume24h) ? ctx.volume24h : null, '>= ' + C4_VOLUME24H_MIN, 'WATCH', num(ctx.volume24h) ? 'low-volume' : 'volume-unknown');
+  // 15 Context: C4 touch-bar volume (D's volTouch; null on grid rows / < 20 prior bars / missing volume)
+  var vt = fit.scoreBreakdown && fit.scoreBreakdown.volTouch;
+  var vtKnown = !!(vt && num(vt.ratio));
+  add('C4.touch-volume', 'Context', vtKnown ? (vt.ratio >= C4_VOL_TOUCH_MIN) : null, vtKnown ? vt.ratio : null, '>= ' + C4_VOL_TOUCH_MIN, 'WATCH', vtKnown ? 'dead-volume' : 'touch-volume-unknown');
+  // 16 Context: C5 BTC regime
+  var btc = ctx.btc, btcKnown = !!(btc && typeof btc.aboveEma50 === 'boolean' && num(btc.ema50Slope));
+  add('C5.btc-regime', 'Context', btcKnown ? (btc.aboveEma50 && btc.ema50Slope >= C5_BTC_SLOPE_MIN) : null, btcKnown ? { aboveEma50: btc.aboveEma50, ema50Slope: btc.ema50Slope } : null, 'aboveEma50 && ema50Slope >= ' + C5_BTC_SLOPE_MIN, 'WATCH', btcKnown ? 'btc-regime' : 'btc-regime-unknown');
+  return finish();
+
+  function finish() {
+    var first = null;
+    for (var i = 0; i < gates.length; i++) if (gates[i].pass !== true) { first = gates[i]; break; }
+    var meetsFloor = (fit && num(fit.score) && num(ctx.floor)) ? (fit.score >= ctx.floor) : null;
+    if (!first) return { verdict:'ACT', reason:'all-gates', gate:null, stage:null, details:{ gates:gates, meetsFloor:meetsFloor, firstFail:null, structureLabel:label } };
+    return { verdict:first.failVerdict, reason:first.reason, gate:first.id, stage:first.stage, details:{ gates:gates, meetsFloor:meetsFloor, firstFail:first.id, structureLabel:label } };
+  }
+}
+
 // ATR14 as of EVERY bar: out[k] = atr14(candles.slice(0, k+1)), null for k < 14. Same true-range math
 // and same Wilder smoothing as atr14() above, evaluated as a rolling series instead of once at the
 // end of the series (identical arithmetic order, so the values are bitwise equal - the suite checks
@@ -1383,6 +1508,14 @@ if (typeof module !== 'undefined' && module.exports) {
     D_POS_PTS: D_POS_PTS, D_AGE_RANGE: D_AGE_RANGE, D_AGE_RANGE_GRID: D_AGE_RANGE_GRID, D_AGE_MAX: D_AGE_MAX,
     D_WIDTH_FRAC: D_WIDTH_FRAC, D_WIDTH_PENALTY: D_WIDTH_PENALTY, D_EMA_SLOPE_BONUS: D_EMA_SLOPE_BONUS,
     D_EMA_SLOPE_BARS: D_EMA_SLOPE_BARS, D_PATTERN_MAX: D_PATTERN_MAX, D_VOL_TOUCH_BONUS: D_VOL_TOUCH_BONUS,
-    D_VOL_TOUCH_MULT: D_VOL_TOUCH_MULT, D_VOL_WINDOW: D_VOL_WINDOW, D_RAW_MAX: D_RAW_MAX
+    D_VOL_TOUCH_MULT: D_VOL_TOUCH_MULT, D_VOL_WINDOW: D_VOL_WINDOW, D_RAW_MAX: D_RAW_MAX,
+    // Step 11-A (Remediation spec Plan C / Verdict sequence) exports - constants for capture.js's configHash and the
+    // verdict engine + helpers for the page (globals in the browser) and the harness.
+    C1_EMA_SLOPE_MIN: C1_EMA_SLOPE_MIN, C3_FRESH_BARS: C3_FRESH_BARS, C3_FRESH_BARS_GRID: C3_FRESH_BARS_GRID,
+    ACT_WIDTH_MAX: ACT_WIDTH_MAX, C2_DIST_TOL_MULT: C2_DIST_TOL_MULT, C2_DIST_CAP: C2_DIST_CAP,
+    C4_VOLUME24H_MIN: C4_VOLUME24H_MIN, C4_VOL_TOUCH_MIN: C4_VOL_TOUCH_MIN, C5_BTC_SLOPE_MIN: C5_BTC_SLOPE_MIN,
+    C6_SPIKE_BARS: C6_SPIKE_BARS, C6_SPIKE_ATR_MULT: C6_SPIKE_ATR_MULT, H6_RR_MIN: H6_RR_MIN,
+    ACT_SCORE_FLOOR_1D: ACT_SCORE_FLOOR_1D, ACT_SCORE_FLOOR_GRID: ACT_SCORE_FLOOR_GRID,
+    structureLabelOf: structureLabelOf, btcRegimeFromCandles: btcRegimeFromCandles, researchVerdict: researchVerdict
   };
 }

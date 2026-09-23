@@ -945,6 +945,7 @@ async function main() {
   let gridUpdatedThisRun = false;
   let dailyPassOk = false, dailyUpdatedThisRun = false, dailyLastClosedCandle = null;
   let btcPassOk = false, btcUpdatedThisRun = false, btcLastClosedCandle = null;
+  let btcRegime = null;   // Step 11-A / C5: btcRegimeFromCandles(btcCache.ohlcDaily) - written into latest-daily.json and the manifest
 
   const { list: universe, counts: universeCounts } = await buildUniverse();
   console.log('universe:', universe.length, 'coins');
@@ -995,6 +996,13 @@ async function main() {
     btcPassOk = true;
     btcUpdatedThisRun = btcClosed.length > 0;
     btcLastClosedCandle = btcCache.ohlcDaily.length ? btcCache.ohlcDaily[btcCache.ohlcDaily.length - 1].date : null;
+    // Step 11-A (Remediation spec C5): the BTC regime the page and the runner gate on. One core helper
+    // (channel-core.js btcRegimeFromCandles: emaLast(50) + the D_EMA_SLOPE_BARS slope, same definition as the alt
+    // ema50Slope) evaluated here on the merged closed-bar series, so capture, page and runner cannot disagree.
+    // Written as top-level `btcRegime` on latest-daily.json (the page already fetches that file) and into the
+    // manifest's passes.btcRegime beside ok/lastClosedCandle/updated. Null when the series is empty.
+    btcRegime = C.btcRegimeFromCandles(btcCache.ohlcDaily);
+    console.log('BTC regime:', btcRegime ? ('close ' + btcRegime.close + ' ema50 ' + (btcRegime.ema50 != null ? btcRegime.ema50.toFixed(1) : 'n/a') + ' slope ' + (btcRegime.ema50Slope != null ? (btcRegime.ema50Slope * 100).toFixed(2) + '%' : 'n/a') + ' above ' + btcRegime.aboveEma50) : 'null');
   } catch (e) {
     console.warn('BTC daily capture failed (regime gate will have no data until this succeeds):', e.message);
   }
@@ -1163,7 +1171,8 @@ async function main() {
         touches: dailyDiag.touches,
         containment: dailyDiag.containment
       },
-      coins: dailyCoins
+      coins: dailyCoins,
+      btcRegime: btcRegime   // Step 11-A / C5: {close, ema50, ema50Slope, aboveEma50, asOf, bars} | null - see the BTC pass above
     };
     const dailyDayPath = path.join(DAILY_DIR, todayDate + '.json');
     fs.mkdirSync(path.dirname(dailyDayPath), { recursive: true });
@@ -1252,7 +1261,15 @@ async function main() {
       D_WIDTH_FRAC: C.D_WIDTH_FRAC, D_WIDTH_PENALTY: C.D_WIDTH_PENALTY,
       D_EMA_SLOPE_BONUS: C.D_EMA_SLOPE_BONUS, D_EMA_SLOPE_BARS: C.D_EMA_SLOPE_BARS,
       D_PATTERN_MAX: C.D_PATTERN_MAX, D_VOL_TOUCH_BONUS: C.D_VOL_TOUCH_BONUS,
-      D_VOL_TOUCH_MULT: C.D_VOL_TOUCH_MULT, D_VOL_WINDOW: C.D_VOL_WINDOW, D_RAW_MAX: C.D_RAW_MAX
+      D_VOL_TOUCH_MULT: C.D_VOL_TOUCH_MULT, D_VOL_WINDOW: C.D_VOL_WINDOW, D_RAW_MAX: C.D_RAW_MAX,
+      // Step 11-A (Remediation spec Plan C / C7, 2026-09-23): the research verdict-gate constants and the per-timeframe
+      // ACT floors (PROVISIONAL). capture.js never computes a research verdict; hashed so any tuning is visible in
+      // configHash like every other detection constant (ruling l).
+      C1_EMA_SLOPE_MIN: C.C1_EMA_SLOPE_MIN, C3_FRESH_BARS: C.C3_FRESH_BARS, C3_FRESH_BARS_GRID: C.C3_FRESH_BARS_GRID,
+      ACT_WIDTH_MAX: C.ACT_WIDTH_MAX, C2_DIST_TOL_MULT: C.C2_DIST_TOL_MULT, C2_DIST_CAP: C.C2_DIST_CAP,
+      C4_VOLUME24H_MIN: C.C4_VOLUME24H_MIN, C4_VOL_TOUCH_MIN: C.C4_VOL_TOUCH_MIN, C5_BTC_SLOPE_MIN: C.C5_BTC_SLOPE_MIN,
+      C6_SPIKE_BARS: C.C6_SPIKE_BARS, C6_SPIKE_ATR_MULT: C.C6_SPIKE_ATR_MULT, H6_RR_MIN: C.H6_RR_MIN,
+      ACT_SCORE_FLOOR_1D: C.ACT_SCORE_FLOOR_1D, ACT_SCORE_FLOOR_GRID: C.ACT_SCORE_FLOOR_GRID
     })).digest('hex');
     const manifest = {
       schemaVersion: 1,
@@ -1272,7 +1289,7 @@ async function main() {
         // was already captured (updated:false, ok:true — "nothing new was due", not a failure).
         grid: { ok: true, lastClosedCandle: newestGrid, updated: gridUpdatedThisRun },
         daily: { ok: dailyPassOk, lastClosedCandle: dailyLastClosedCandle, updated: dailyUpdatedThisRun },
-        btcRegime: { ok: btcPassOk, lastClosedCandle: btcLastClosedCandle, updated: btcUpdatedThisRun }
+        btcRegime: { ok: btcPassOk, lastClosedCandle: btcLastClosedCandle, updated: btcUpdatedThisRun, regime: btcRegime }   // Step 11-A / C5: regime = the same object written to latest-daily.json
       }
     };
     fs.writeFileSync(path.join(DATA_DIR, 'capture-manifest.json'), JSON.stringify(manifest, null, 2));
