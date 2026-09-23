@@ -306,6 +306,7 @@ function run() {
   runStep8E6Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E7Acceptance(current, grids, caches, loadDailyCaches());
   runStep8H11Acceptance(current, grids, caches, loadDailyCaches());
+  runStep9F3H3Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1133,6 +1134,87 @@ function runStep8H11Acceptance(current, grids, gridCaches, dailyCaches) {
   }
   console.log('invariant (every record candleId resolves to a slice candle with matching OHLC; every fired flag has exactly one record, no record for a false flag): ' +
     (badTotal === 0 ? 'holds on every research row, both passes' : badTotal + ' row(s) violate - SEE ABOVE, THIS IS A BUG'));
+}
+
+// Step 9 F3/H3 (Remediation spec, 2026-09-21/22): outlier-wick clip + sensitivity readout.
+// OLD = current.detectChannel(... {research:true, _noWickClip:true}) - the SAME research function with
+// the clip switched off (harness lever, never set by capture.js or the page); NEW = default. Per pass:
+// population of clipped bars (applyWickClip run directly on every slice - independent of whether the
+// coin has a research fit), then over rows with a research fit on either side: how many changed and why.
+// Every changed row is attributed to exactly one of
+//   "clip moved pivot set"          - findPivotsWindowed on the raw vs analytic series gives different pivot idx sets
+//   "clip changed containment"      - same pivot set, containment differs (or the fit appears/vanishes on the 55% gate)
+//   "clip changed rail delta only"  - same pivot set and containment, rail/score differ (analytic pivot price)
+// anything else prints as a BUG. Compared field-for-field on the fit with wickClips stripped (OLD has none).
+// H3 table: wickClips entries on research fits, pivot candidates, computed deltas, how many exceed
+// F3_RAIL_UNCHANGED_PCT, and the reason counts for the rest. Per-timeframe only (fixtures carry no
+// dailySource - venue breakdown is a post-push check against live data/latest-daily.json).
+function runStep9F3H3Acceptance(current, grids, gridCaches, dailyCaches) {
+  var latestGrid = grids[grids.length - 1];
+  var latestGridDate = latestGrid.date;
+  var coins = latestGrid.coins;
+
+  console.log('\n=== Step 9 F3/H3 acceptance (outlier-wick clip, ATR14 as of bar i-1; H3 sensitivity) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length +
+    ' | F3_WICK_ATR_MULT=' + current.F3_WICK_ATR_MULT + ' F3_CLIP_ATR_MULT=' + current.F3_CLIP_ATR_MULT + ' F3_RAIL_UNCHANGED_PCT=' + current.F3_RAIL_UNCHANGED_PCT);
+
+  function slice(cgId, tf) {
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
+  }
+  function sig(list) { return list.map(function (p) { return p.idx; }).join(','); }
+  function stripClips(fit) { if (!fit) return null; var o = Object.assign({}, fit); delete o.wickClips; return JSON.stringify(o); }
+
+  var bugTotal = 0;
+  for (var ti = 0; ti < 2; ti++) {
+    var tf = ['1d', '4d-grid'][ti];
+    var w = (tf === '1d') ? current.FIT_WINDOW : current.FIT_WINDOW_GRID;
+    var sliced = 0, clipLow = 0, clipHigh = 0, coinsWithClip = 0;
+    var rows = 0, changed = [], classes = { 'clip moved pivot set': 0, 'clip changed containment': 0, 'clip changed rail delta only': 0 };
+    var entries = 0, pivotEntries = 0, computed = 0, exceed = 0, reasons = {}, rowsWithClips = 0;
+    for (var ci = 0; ci < coins.length; ci++) {
+      var cgId = coins[ci];
+      var s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      sliced++;
+      var from = s.length > w ? s.length - w : 0;
+      var clipRes = current.applyWickClip(s, from);
+      var lo = clipRes.clips.filter(function (c) { return c.side === 'low'; }).length;
+      var hi = clipRes.clips.length - lo;
+      clipLow += lo; clipHigh += hi; if (clipRes.clips.length) coinsWithClip++;
+
+      var meta = { cgId: cgId, timeframe: tf, source: 'fixture', research: true };
+      var oldR = null, newR = null;
+      try { oldR = current.detectChannel(s, undefined, Object.assign({ _noWickClip: true }, meta)); } catch (e) { /* null */ }
+      try { newR = current.detectChannel(s, undefined, meta); } catch (e) { /* null */ }
+      if (!oldR && !newR) continue;
+      rows++;
+      if (newR && newR.wickClips.length) {
+        rowsWithClips++;
+        newR.wickClips.forEach(function (c) {
+          entries++;
+          if (c.pivot) pivotEntries++;
+          if (c.railDeltaPct !== null) { computed++; if (!c.railUnchanged) exceed++; }
+          else reasons[c.reason] = (reasons[c.reason] || 0) + 1;
+        });
+      }
+      if (stripClips(oldR) === stripClips(newR)) continue;
+      var rawPv = current.findPivotsWindowed(s, w), aPv = current.findPivotsWindowed(clipRes.analytic, w);
+      var cls = null;
+      if (sig(rawPv.lows) !== sig(aPv.lows) || sig(rawPv.highs) !== sig(aPv.highs)) cls = 'clip moved pivot set';
+      else if (!oldR || !newR || oldR.containmentFull !== newR.containmentFull || oldR.containmentRecent !== newR.containmentRecent) cls = 'clip changed containment';
+      else if (oldR.supportNow !== newR.supportNow || oldR.resistNow !== newR.resistNow || oldR.score !== newR.score) cls = 'clip changed rail delta only';
+      if (cls) classes[cls]++; else bugTotal++;
+      changed.push({ cgId: cgId, cls: cls || 'UNATTRIBUTED - BUG', o: oldR ? oldR.score + '/' + oldR.lifecycleState : 'null', n: newR ? newR.score + '/' + newR.lifecycleState : 'null' });
+    }
+    console.log('\n' + tf + ': slices ' + sliced + ' | population clipped bars in fit window: low ' + clipLow + ', high ' + clipHigh + ' (coins with >=1: ' + coinsWithClip + ')');
+    console.log('    research rows (either side) ' + rows + ' | rows carrying wickClips ' + rowsWithClips + ' | changed rows (fit fields excl. wickClips) ' + changed.length +
+      ' | moved pivot set ' + classes['clip moved pivot set'] + ', changed containment ' + classes['clip changed containment'] + ', rail delta only ' + classes['clip changed rail delta only']);
+    changed.forEach(function (c) { console.log('      ' + c.cgId.padEnd(28) + ' ' + c.cls + '  (score/state OLD ' + c.o + ' -> NEW ' + c.n + ')'); });
+    console.log('    H3: wickClips entries ' + entries + ' | pivot candidates ' + pivotEntries + ' | railDeltaPct computed ' + computed + ' (>= ' + current.F3_RAIL_UNCHANGED_PCT + '%: ' + exceed + ') | not computed: ' +
+      (Object.keys(reasons).length ? Object.keys(reasons).map(function (k) { return k + '=' + reasons[k]; }).join(' ') : 'none'));
+  }
+  console.log('\nevery changed row attributed to pivot set / containment / rail delta: ' + (bugTotal === 0 ? 'holds' : bugTotal + ' UNATTRIBUTED - SEE ABOVE, THIS IS A BUG') +
+    ' (full 2162-row versions in radar_tools/step9-invariant-tests.js, local only)');
 }
 
 run();
