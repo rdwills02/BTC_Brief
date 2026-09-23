@@ -146,6 +146,24 @@ function sliceToDate(ohlc, D) {
   return ohlc.slice(0, idx + 1);
 }
 
+// Step 8 E3/E4 remediation (restaged 2026-09-23): 1d passes are pinned to this frozen capture
+// date, not the latest available daily date - dailyCaches (ohlcDaily) has been repopulated past
+// this fixture snapshot's original capture since (this session, from a later pinned commit), so
+// `latestDailyDate` drifts as the fixture mirror gets refreshed, breaking cross-run
+// comparability of the 1d numbers (observed: it resolves to 2026-09-21, not the frozen 9/16
+// capture the spec's 1d population figures were taken against). 4d-grid stays on the latest
+// grid date - grid snapshots are the reproducible unit there, nothing to pin against. Shared by
+// every Step 8+ acceptance section (E3 section 1, E4 section 1, and E5-E7 as they're built) so
+// each doesn't reinvent its own pin.
+const FROZEN_916_DATE = '2026-09-16';
+
+function pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate) {
+  const src = (tf === '1d') ? dailyCaches[cgId] : gridCaches[cgId];
+  if (!src) return null;
+  const D = (tf === '1d') ? FROZEN_916_DATE : latestGridDate;
+  return sliceToDate(src, D);
+}
+
 function histBucket(score) {
   if (score < 40) return '<40';
   if (score < 60) return '40-59';
@@ -283,6 +301,7 @@ function run() {
   runResearch(current, grids, caches);
   runStep7Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E3Acceptance(current, grids, caches, loadDailyCaches());
+  runStep8E4Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -544,22 +563,11 @@ function runStep8E3Acceptance(current, grids, gridCaches, dailyCaches) {
   const latestGridDate = latestGrid.date;
   const coins = latestGrid.coins;
 
-  let latestDailyDate = null;
-  for (const cgId of coins) {
-    const d = dailyCaches[cgId];
-    if (!d || !d.length) continue;
-    const last = d[d.length - 1].date;
-    if (!latestDailyDate || last > latestDailyDate) latestDailyDate = last;
-  }
-
   console.log('\n=== Step 8 E3 acceptance (bullEngulfingResearch tightening) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
-  console.log('Latest grid date: ' + latestGridDate + ' | latest daily date: ' + latestDailyDate + ' | coin universe: ' + coins.length);
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length);
 
   function slice(cgId, tf) {
-    const src = (tf === '1d') ? dailyCaches[cgId] : gridCaches[cgId];
-    if (!src) return null;
-    const D = (tf === '1d') ? latestDailyDate : latestGridDate;
-    return sliceToDate(src, D);
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
   }
 
   console.log('\n--- 1. OLD vs NEW bullEngulf (research mode), per pass — every changed row attributed to E3 ---');
@@ -596,9 +604,11 @@ function runStep8E3Acceptance(current, grids, gridCaches, dailyCaches) {
   // Pinned to the literal 2026-09-16 date, NOT latestDailyDate above - dailyCaches (ohlcDaily)
   // extends past 9/16 in this fixture snapshot (repopulated this session from a later pinned
   // commit), so latestDailyDate resolves to 2026-09-21, not the frozen 9/16 capture Ryan asked
-  // for. Caught by checking the printed date rather than assuming section 1's derivation
-  // applies here too.
-  const FROZEN_916_DATE = '2026-09-16';
+  // for. Uses the shared module-level FROZEN_916_DATE (section 1 above now pins its own 1d
+  // slice to the same constant, via pinnedSlice) - no local re-declaration here, since a local
+  // const of the same name would shadow the module-level one for this function's ENTIRE body
+  // (TDZ applies from the top of the enclosing scope, not just after the declaration line) and
+  // break section 1's earlier reference to it above.
   let flagOffTrue = 0, researchTrue = 0, checked1d = 0, missing916 = 0;
   for (const cgId of coins) {
     const src = dailyCaches[cgId];
@@ -614,6 +624,164 @@ function runStep8E3Acceptance(current, grids, gridCaches, dailyCaches) {
   }
   console.log('1d, frozen ' + FROZEN_916_DATE + ' capture universe: checked ' + checked1d + ' (missing/short: ' + missing916 +
     ') | flag-off bullEngulf true: ' + flagOffTrue + ' | research (post-E3) bullEngulf true: ' + researchTrue);
+}
+
+
+// Step 8 E4 (Remediation spec, 2026-09-21/22; restaged 2026-09-23 per review): rocketAtSupportResearch.
+// OLD = current.rocketAtSupport(candles, ...) called DIRECTLY ON THE RESEARCH WINNER's own rail
+// (newR.supSlope/newR.supIntercept) - never a snapshot file, and never a separate flag-off
+// detectChannel() call with its own, possibly-different winning rail. This isolates the E4
+// diff completely: OLD and NEW are always evaluated against the identical rail and candle: the
+// only thing that can differ is which function computed the boolean. Row set = rows with a
+// research fit (no fit, no rail to test OLD against either).
+//
+// Attribution walks the same six gates in the same order rocketAtSupportResearch itself
+// short-circuits: near-rail, wick-body, wick-ATR, close-tol, lifecycle, prior-5. near-rail is
+// the ONE gate whose definition actually differs between the two functions (OLD: body low +
+// flat TOUCH_TOL; NEW: wick low + the research fit's own per-coin tol) - every other NEW gate
+// is a pure ADDITION with no OLD counterpart, so it can only turn a hit OFF, never on. That
+// means a false->true flip can only ever be explained by near-rail (OLD's test failed where
+// NEW's, different by definition, passed) - anything else attributed to a false->true flip
+// would be a bug, checked below rather than assumed.
+function classifyE4(current, s, newR) {
+  const i = s.length - 1, c = s[i];
+  const bodyLow = Math.min(c.open, c.close);
+  const railVal = current.railAt(newR.supSlope, newR.supIntercept, i);
+  const nearRailOld = railVal > 0 && Math.abs(bodyLow - railVal) / railVal <= current.TOUCH_TOL;
+  const nearRailNew = railVal > 0 && Math.abs(c.low - railVal) / railVal <= newR.tol;
+  if (nearRailOld !== nearRailNew) return 'near-rail';
+
+  const lowerWick = bodyLow - c.low;
+  const body = Math.abs(c.close - c.open);
+  if (!(lowerWick >= current.ROCKET_WICK_BODY * body)) return 'wick-body';
+  if (!(newR.atr14 != null && lowerWick >= current.ROCKET_WICK_ATR * newR.atr14)) return 'wick-ATR';
+
+  const range = c.high - c.low;
+  if (!(range > 0 && (c.high - c.close) <= current.ROCKET_CLOSE_TOL * range)) return 'close-tol';
+
+  if (!(newR.lifecycleState === 'intact' || newR.lifecycleState === 're-qualified')) return 'lifecycle';
+
+  let allPriorBelow = true;
+  for (let k = 1; k <= current.ROCKET_PRIOR_CLOSES_BELOW; k++) {
+    const pi = i - k;
+    if (pi < 0) { allPriorBelow = false; break; }
+    const pRail = current.railAt(newR.supSlope, newR.supIntercept, pi);
+    if (!(pRail > 0) || !(s[pi].close < pRail)) { allPriorBelow = false; break; }
+  }
+  if (allPriorBelow) return 'prior-5';
+
+  return 'unattributed';
+}
+
+function runStep8E4Acceptance(current, grids, gridCaches, dailyCaches) {
+  const latestGrid = grids[grids.length - 1];
+  const latestGridDate = latestGrid.date;
+  const coins = latestGrid.coins;
+
+  console.log('\n=== Step 8 E4 acceptance (rocketAtSupportResearch) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length);
+
+  function slice(cgId, tf) {
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
+  }
+
+  console.log('\n--- 1. rocket: OLD (rocketAtSupport on the research winner\'s own rail) vs NEW (research fit .rocket), per pass — every changed row attributed to a cause ---');
+  let flipUpTotal = 0, flipDownTotal = 0, badFlipUp = 0;
+  let lifecycleViolations = 0;
+  // Gate funnel (population measurement, not per-coin): where research rows fall out of
+  // rocketAtSupportResearch's gate chain, in the same order the function short-circuits.
+  const funnel = { rows: 0, fit: 0, greenValid: 0, nearRailWick: 0, wickBody: 0, wickAtr: 0, closeTol: 0, lifecycle: 0, prior5: 0, hit: 0 };
+  for (const tf of ['1d', '4d-grid']) {
+    let oldTrue = 0, newTrue = 0, checked = 0;
+    const changed = [];
+    for (const cgId of coins) {
+      const s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      funnel.rows++;
+      let newR = null;
+      try { newR = current.detectChannel(s, undefined, { cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      if (!newR) continue; // row set = rows with a research fit
+      funnel.fit++;
+
+      // Invariant: no research rocket on a rail that isn't intact/re-qualified.
+      if (newR.rocket && !(newR.lifecycleState === 'intact' || newR.lifecycleState === 're-qualified')) {
+        lifecycleViolations++;
+        console.log('RESEARCH ROCKET ON INELIGIBLE RAIL', cgId, tf, newR.lifecycleState);
+      }
+
+      const i = s.length - 1, c = s[i];
+      if (c.close > c.open && (c.high - c.low) > 0) {
+        funnel.greenValid++;
+        const bodyLow = Math.min(c.open, c.close);
+        const railVal = current.railAt(newR.supSlope, newR.supIntercept, i);
+        if (railVal > 0 && Math.abs(c.low - railVal) / railVal <= newR.tol) {
+          funnel.nearRailWick++;
+          const lowerWick = bodyLow - c.low;
+          const body = Math.abs(c.close - c.open);
+          if (lowerWick >= current.ROCKET_WICK_BODY * body) {
+            funnel.wickBody++;
+            if (newR.atr14 != null && lowerWick >= current.ROCKET_WICK_ATR * newR.atr14) {
+              funnel.wickAtr++;
+              const range = c.high - c.low;
+              if ((c.high - c.close) <= current.ROCKET_CLOSE_TOL * range) {
+                funnel.closeTol++;
+                if (newR.lifecycleState === 'intact' || newR.lifecycleState === 're-qualified') {
+                  funnel.lifecycle++;
+                  let allBelow = true;
+                  for (let k = 1; k <= current.ROCKET_PRIOR_CLOSES_BELOW; k++) {
+                    const pi = i - k;
+                    if (pi < 0) { allBelow = false; break; }
+                    const pr = current.railAt(newR.supSlope, newR.supIntercept, pi);
+                    if (!(pr > 0) || !(s[pi].close < pr)) { allBelow = false; break; }
+                  }
+                  if (!allBelow) { funnel.prior5++; funnel.hit++; }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const oldHit = current.rocketAtSupport(s, newR.supSlope, newR.supIntercept).hit;
+      const newHit = !!newR.rocket;
+      checked++;
+      if (oldHit) oldTrue++;
+      if (newHit) newTrue++;
+      if (oldHit !== newHit) {
+        const cause = classifyE4(current, s, newR);
+        changed.push({ cgId: cgId, oldHit: oldHit, newHit: newHit, cause: cause });
+        if (!oldHit && newHit) {
+          flipUpTotal++;
+          if (cause !== 'near-rail') badFlipUp++;
+        } else {
+          flipDownTotal++;
+        }
+      }
+    }
+    console.log(tf + ': checked ' + checked + ' (rows with a research fit) | OLD rocket true: ' + oldTrue +
+      ' | NEW rocket true: ' + newTrue + ' | changed rows: ' + changed.length);
+    for (const c of changed) {
+      console.log('    ' + c.cgId.padEnd(28) + ' ' + (c.oldHit ? 'true' : 'false') + ' -> ' + (c.newHit ? 'true' : 'false') +
+        '  (E4: ' + c.cause + ')');
+    }
+  }
+
+  console.log('\n--- 2. Gate funnel (both passes combined) — where rows fall out, in short-circuit order ---');
+  console.log('rows checked: ' + funnel.rows + ' | research fit exists: ' + funnel.fit +
+    ' | green/valid-range candle: ' + funnel.greenValid + ' | near rail (wick anchor, within tol): ' + funnel.nearRailWick);
+  console.log('wick-body floor (>=' + current.ROCKET_WICK_BODY + 'x body): ' + funnel.wickBody +
+    ' | wick-ATR floor (>=' + current.ROCKET_WICK_ATR + 'x ATR14): ' + funnel.wickAtr +
+    ' | close-tol: ' + funnel.closeTol + ' | lifecycle (intact/re-qualified): ' + funnel.lifecycle +
+    ' | prior-5 (not all below): ' + funnel.prior5 + ' | HIT: ' + funnel.hit);
+
+  console.log('\n--- 3. E4 invariants (see radar_tools/step8-e4-invariant-tests.js, local only, for the full 2162-row versions) ---');
+  console.log('research rocket fired on an ineligible (non intact/re-qualified) rail: ' + lifecycleViolations +
+    (lifecycleViolations === 0 ? ' (none - gate holding)' : ' — VIOLATIONS, SEE ABOVE'));
+  console.log('false->true flips: ' + flipUpTotal + ' total, ' + badFlipUp + ' NOT attributed to the near-rail anchor class' +
+    (badFlipUp === 0 ? ' (every false->true flip is the legitimate anchor class)' : ' — UNEXPECTED, SEE ROWS ABOVE'));
+  console.log('true->false flips: ' + flipDownTotal);
+  console.log('total changed rows (both passes): ' + (flipUpTotal + flipDownTotal) +
+    (flipUpTotal + flipDownTotal >= 1 ? ' (at least one flip - not a no-op build)' : ' — ZERO FLIPS, unexpected for a tightened/re-anchored gate'));
 }
 
 run();

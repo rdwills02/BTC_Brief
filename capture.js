@@ -1229,7 +1229,13 @@ async function main() {
       // two new constants - same rationale as the Step 6/7 blocks above: capture.js never sets
       // meta.research (still flag-off only), so this doesn't change what it writes, hashed
       // here so any future tuning is visible in configHash like every other detection constant.
-      ENGULF_BODY_ATR_MULT: C.ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: C.ENGULF_BODY_RATIO
+      ENGULF_BODY_ATR_MULT: C.ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: C.ENGULF_BODY_RATIO,
+      // Step 8 E4 (Remediation spec, 2026-09-21/22): rocketAtSupportResearch's three new
+      // constants - same rationale as the Step 6/7/E3 blocks above: capture.js never sets
+      // meta.research (still flag-off only), so this doesn't change what it writes, hashed
+      // here so any future tuning is visible in configHash like every other detection constant.
+      ROCKET_WICK_BODY: C.ROCKET_WICK_BODY, ROCKET_WICK_ATR: C.ROCKET_WICK_ATR,
+      ROCKET_PRIOR_CLOSES_BELOW: C.ROCKET_PRIOR_CLOSES_BELOW
     })).digest('hex');
     const manifest = {
       schemaVersion: 1,
