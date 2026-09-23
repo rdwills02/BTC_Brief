@@ -321,6 +321,7 @@ function run() {
   runStep8H11Acceptance(current, grids, caches, loadDailyCaches());
   runStep9F3H3Acceptance(current, grids, caches, loadDailyCaches());
   runStep10DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
+  runStep11AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1324,6 +1325,100 @@ function runStep10DAcceptance(current, grids, gridCaches, dailyCaches) {
   });
   console.log('\nPrior-section deltas: flag-off output unchanged (local step10 suite: deep-equal 2162/2162). Step 9 section above now measures D-mode fits on both sides (OLD there = _noWickClip). Containment for score and gate is measured on raw closes, so a clipped bar can no longer change containment DIRECTLY; the Step 9 classifier still labels a changed row "clip changed containment" whenever containmentFull/containmentRecent differ, and that still happens when a clipped HIGH pivot moves the resistance rail (the closes are judged against the moved rail) - e.g. tron 9/16 1d. The class stays reachable; its meaning is now "clip moved the resistance rail / winning pair", not "clip changed a wick-based containment".');
   if (bugs) { console.log('Step 10 D acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
+}
+
+// Step 11-A (Remediation spec Plan C / Verdict sequence; step 11 plan 11-A, analysis-thread rulings k/b/a/o): research
+// verdicts from channel-core.js's pure researchVerdict() on every dated fixture, per timeframe. Replaces the local
+// step10-floor-table.js (which extracted buildAction from radar.html). ctx on the runner: price = the fit's own
+// detectionPrice (ruling o / BLOCKS #1 side-finding: the grid capture's `price` is another venue/timestamp and produces
+// spurious quote breaches), volume24h = the dated fixture row's volume24h (capture-time CoinGecko), btc = 
+// btcRegimeFromCandles(bitcoin ohlcDaily sliced to the date), quote = null (11-D), floor = the per-timeframe constant.
+// OLD@89 reference per date = the step 10 floor table (real buildAction, rows with a flag-off fit; 1411 rows) - a
+// different population from the research rows counted here, printed for orientation only.
+var STEP10_OLD89_1D = { '2026-06-16':0,'2026-06-20':0,'2026-06-24':0,'2026-06-28':1,'2026-07-02':1,'2026-07-06':1,'2026-07-10':0,'2026-07-14':2,'2026-07-18':2,'2026-07-22':0,'2026-07-26':3,'2026-07-30':0,'2026-08-03':1,'2026-08-07':0,'2026-08-11':1,'2026-08-15':1,'2026-08-19':0,'2026-08-23':0,'2026-08-27':0,'2026-08-31':0,'2026-09-04':0,'2026-09-08':1,'2026-09-12':0,'2026-09-16':4 };
+function loadGridRowMeta() {
+  const out = {};
+  const gridDirs = fs.readdirSync(FIXTURES_DATA_DIR, { withFileTypes: true }).filter(e => e.isDirectory() && e.name !== 'cache').map(e => e.name);
+  for (const dir of gridDirs) {
+    for (const f of fs.readdirSync(path.join(FIXTURES_DATA_DIR, dir)).filter(f => f.endsWith('.json'))) {
+      const g = JSON.parse(fs.readFileSync(path.join(FIXTURES_DATA_DIR, dir, f), 'utf8'));
+      out[g.date] = {};
+      g.coins.forEach(c => { out[g.date][c.cgId] = { volume24h: (c.volume24h != null ? c.volume24h : null), price: c.price }; });
+    }
+  }
+  return out;
+}
+function runStep11AAcceptance(current, grids, gridCaches, dailyCaches) {
+  console.log('\n=== Step 11-A acceptance (research verdict engine, C1-C7 + H6 stub; 16 gates - rail slope is a label, thirds are not a gate) — researchVerdict() on research fits, ALL ' + grids.length + ' dated fixtures, per timeframe ===');
+  console.log('Floors: ACT_SCORE_FLOOR_1D=' + current.ACT_SCORE_FLOOR_1D + ' ACT_SCORE_FLOOR_GRID=' + current.ACT_SCORE_FLOOR_GRID + ' (both PROVISIONAL) | C3_FRESH_BARS=' + current.C3_FRESH_BARS + '/' + current.C3_FRESH_BARS_GRID + ' ACT_WIDTH_MAX=' + current.ACT_WIDTH_MAX + ' C2 min(' + current.C2_DIST_TOL_MULT + '*tol,' + current.C2_DIST_CAP + ') C4 ' + current.C4_VOLUME24H_MIN + '/' + current.C4_VOL_TOUCH_MIN + ' C6 ' + current.C6_SPIKE_BARS + 'bars>' + current.C6_SPIKE_ATR_MULT + 'xATR H6_RR_MIN=' + current.H6_RR_MIN);
+  console.log('11-A ships gate 13 (H6.rr) as Unknown -> fail, so research ACT is 0 by construction; "ACT-except-rr" = every other gate passes. Grid rows fail gate 15 (C4.touch-volume) by construction: grid candles carry no volume (BACKLOG F5 extension).');
+  if (typeof current.researchVerdict !== 'function') { console.log('  BUG: researchVerdict not exported'); process.exitCode = 1; return; }
+  const meta = loadGridRowMeta();
+  let bugs = 0, impure = 0, order = 0;
+  const btcSeries = dailyCaches['bitcoin'] || null;
+  if (!btcSeries) console.log('  NOTE: no bitcoin daily cache in fixtures -> ctx.btc null on every row (C5 fails as Unknown).');
+  const dailyOldShare = { n: 0, ge89: 0 };
+  const gridNewScores = [];
+  ['1d', '4d-grid'].forEach(function (tf) {
+    const src = (tf === '1d') ? dailyCaches : gridCaches, minBars = (tf === '1d') ? 60 : 30, floor = (tf === '1d') ? current.ACT_SCORE_FLOOR_1D : current.ACT_SCORE_FLOOR_GRID;
+    let rows = 0, fits = 0, exceptRrTotal = 0, gateIds = null; const verdicts = { ACT: 0, WATCH: 0, WAIT: 0, NONE: 0 }, firstFail = {}, allFail = {}, allUnknown = {}, perDate = [];
+    const frozen = { firstFail: {}, exceptRr: [], lifecycle: {} };
+    grids.forEach(function (g) {
+      const btc = btcSeries ? current.btcRegimeFromCandles(sliceToDate(btcSeries, g.date) || []) : null;
+      let nRows = 0, nFits = 0; const v = { ACT: 0, WATCH: 0, WAIT: 0, NONE: 0 }; let exceptRr = 0; const exceptRrIds = [];
+      g.coins.forEach(function (cgId) {
+        const c = src[cgId]; if (!c) return;
+        const s = sliceToDate(c, g.date); if (!s || s.length < minBars) return;
+        const m = { coinId: cgId, timeframe: tf, source: 'fixture', research: true, _noH3: true };
+        const fit = current.detectChannel(s, null, m);
+        if (tf === '1d') { const oldF = current.detectChannel(s, null, Object.assign({ _noD: true }, m)); if (oldF) { dailyOldShare.n++; if (oldF.score >= 89) dailyOldShare.ge89++; } }
+        if (tf === '4d-grid' && fit) gridNewScores.push(fit.score);
+        const rowMeta = (meta[g.date] && meta[g.date][cgId]) || {};
+        const ctx = { price: fit ? fit.detectionPrice : s[s.length - 1].close, volume24h: rowMeta.volume24h != null ? rowMeta.volume24h : null, btc: btc, quote: null, floor: floor };
+        const res = current.researchVerdict(fit, ctx);
+        const res2 = current.researchVerdict(fit, ctx);
+        if (JSON.stringify(res) !== JSON.stringify(res2)) impure++;
+        rows++; nRows++; if (fit) { fits++; nFits++; }
+        verdicts[res.verdict]++; v[res.verdict]++;
+        const gs = res.details.gates; if (!gateIds) gateIds = gs.map(x => x.id);
+        let seenFail = false;
+        gs.forEach(function (gt) {
+          if (gt.pass !== true) { allFail[gt.id] = (allFail[gt.id] || 0) + 1; if (gt.pass === null) allUnknown[gt.id] = (allUnknown[gt.id] || 0) + 1; }
+          if (seenFail && gt.id === res.gate) order++;
+          if (gt.pass !== true && !seenFail) { seenFail = true; if (gt.id !== res.gate) order++; }
+        });
+        if (res.gate) firstFail[res.gate] = (firstFail[res.gate] || 0) + 1;
+        if (res.verdict === 'ACT' && !(fit && fit.entryEconomics)) { bugs++; console.log('  BUG: ACT without entryEconomics (rr stub bypassed) ' + cgId + ' ' + tf + ' ' + g.date); }
+        const failing = gs.filter(x => x.pass !== true).map(x => x.id);
+        if (failing.length === 1 && failing[0] === 'H6.rr') { exceptRr++; exceptRrIds.push(cgId); }
+        if (tf === '1d' && g.date === FROZEN_916_DATE) {
+          if (res.gate) { (frozen.firstFail[res.gate] = frozen.firstFail[res.gate] || []).push(cgId + (res.gate === 'struct.lifecycle' ? '(' + fit.lifecycleState + ')' : '')); }
+          if (fit) frozen.lifecycle[fit.lifecycleState] = (frozen.lifecycle[fit.lifecycleState] || 0) + 1;
+          if (failing.length === 1 && failing[0] === 'H6.rr') frozen.exceptRr.push(cgId);
+        }
+      });
+      if (nRows) { exceptRrTotal += exceptRr; perDate.push(g.date + ' n=' + nRows + ' fits=' + nFits + ' ACT/WATCH/WAIT/NONE=' + v.ACT + '/' + v.WATCH + '/' + v.WAIT + '/' + v.NONE + ' ACT-except-rr=' + exceptRr + (tf === '1d' ? ' (OLD@89 ref ' + (STEP10_OLD89_1D[g.date] == null ? '?' : STEP10_OLD89_1D[g.date]) + ')' : '') + (exceptRrIds.length ? ' [' + exceptRrIds.join(',') + ']' : '')); }
+    });
+    console.log('\n--- ' + tf + ': rows ' + rows + ' | research fits ' + fits + ' | verdicts ACT ' + verdicts.ACT + ' WATCH ' + verdicts.WATCH + ' WAIT ' + verdicts.WAIT + ' NONE ' + verdicts.NONE + ' | ACT-except-rr total ' + exceptRrTotal + (tf === '1d' ? ' (OLD@89 ref total ' + Object.keys(STEP10_OLD89_1D).reduce((a, k) => a + STEP10_OLD89_1D[k], 0) + ', different population)' : '') + ' ---');
+    console.log('first-failing gate (what stops each row): ' + (gateIds || []).map(id => id + ':' + (firstFail[id] || 0)).join(' '));
+    console.log('all-gate failures (non-short-circuit, incl. Unknown): ' + (gateIds || []).map(id => id + ':' + (allFail[id] || 0) + (allUnknown[id] ? '(unk ' + allUnknown[id] + ')' : '')).join(' '));
+    console.log('per date:'); perDate.forEach(l => console.log('  ' + l));
+    if (tf === '1d') {
+      console.log('frozen ' + FROZEN_916_DATE + ' 1d observations (per-coin landings, recorded, not asserted): lifecycle ' + JSON.stringify(frozen.lifecycle));
+      Object.keys(frozen.firstFail).forEach(k => console.log('  ' + k + ' (' + frozen.firstFail[k].length + '): ' + frozen.firstFail[k].join(', ')));
+      console.log('  ACT-except-rr (' + frozen.exceptRr.length + '): ' + (frozen.exceptRr.join(', ') || '(none)'));
+    }
+  });
+  const p = dailyOldShare.n ? dailyOldShare.ge89 / dailyOldShare.n : null;
+  const sorted = gridNewScores.slice().sort((a, b) => a - b);
+  let derived = null;
+  if (p != null && sorted.length) { for (let f = 0; f <= 100; f++) { const share = sorted.filter(x => x >= f).length / sorted.length; if (share <= p) { derived = f; break; } } }
+  console.log('\nACT_SCORE_FLOOR_GRID derivation (ruling k/b): 1d research rows with an OLD (_noD) fit ' + dailyOldShare.n + ', OLD>=89 ' + dailyOldShare.ge89 + ' (share ' + (p == null ? 'n/a' : (p * 100).toFixed(2) + '%') + ') | grid NEW research fits ' + sorted.length + ', max ' + (sorted.length ? sorted[sorted.length - 1] : 'n/a') + ' | smallest floor whose grid share <= that share: ' + derived + ' | constant ACT_SCORE_FLOOR_GRID=' + current.ACT_SCORE_FLOOR_GRID + ' -> ' + (derived === current.ACT_SCORE_FLOOR_GRID ? 'MATCH' : 'MISMATCH (re-set the constant)'));
+  if (derived !== null && derived !== current.ACT_SCORE_FLOOR_GRID) { bugs++; console.log('  BUG: ACT_SCORE_FLOOR_GRID does not match its stated derivation'); }
+  console.log('purity (same input twice, deep-equal): ' + (impure ? impure + ' MISMATCH' : 'ok') + ' | gate-order (first pass!==true equals reported gate): ' + (order ? order + ' MISMATCH' : 'ok'));
+  if (impure || order) bugs++;
+  console.log('Prior-section deltas: none - researchVerdict is additive (new exports + constants); detectChannel research and flag-off outputs are byte-identical to 5be7385b (local step11-a suite), so every earlier section prints the same numbers.');
+  if (bugs) { console.log('Step 11-A acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
 run();
