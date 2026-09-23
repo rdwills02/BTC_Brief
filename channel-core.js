@@ -1028,7 +1028,7 @@ function detectChannel(candles, diag, meta) {
           // reclaimed-awaiting-retest/re-qualified) is explicitly out of scope for this step
           // (deferred to work-order Step 6). This is the narrowest honest placeholder: a
           // single-close-below-invalidation flag, not a real lifecycle state machine. Filed
-          // as BACKLOG in the H7/H8 handoff - do not treat this as H9 done.
+          // as BACKLOG in the H7/H8 handoff — do not treat this as H9 done.
           lifecycleState: curPrice < invalidation ? 'single-close-below-invalidation' : 'active',
           // Placeholder only — H5 (freeze issued signals / breach-history population) is
           // explicitly out of scope for this step (deferred to Step 11). Always empty here;
