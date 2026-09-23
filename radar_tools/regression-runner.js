@@ -324,6 +324,7 @@ function run() {
   runStep11AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11BAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11CAcceptance(current, grids, caches, loadDailyCachesWithVolume());
+  runStep11DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1536,6 +1537,42 @@ function runStep11CAcceptance(current, grids, gridCaches, dailyCaches) {
   if (bugs2 || reopened) { bugs++; console.log('  BUG: synthetic replay violated a ledger invariant'); }
   console.log('Prior-section deltas: none - channel-core.js is untouched by 11-C (setups-core.js is a new file; capture.js adds a research block + ledger I/O), so every section above prints the same numbers.');
   if (bugs) { console.log('Step 11-C acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
+}
+
+// Step 11-D (Remediation spec H10; step 11 plan 11-D; rulings h, i): execution context on every research fit. Descriptive
+// only - no gate reads it, so verdict counts are those of the 11-B section. Distribution of volumeCharacter per timeframe,
+// and the character of the rows that reach ACT or are one gate short (ACT-except-rr).
+function runStep11DAcceptance(current, grids, gridCaches, dailyCaches) {
+  console.log('\n=== Step 11-D acceptance (H10 execution context: trigger-bar volume vs ' + current.H10_BASELINE_BARS + '-bar baseline; descriptive, no gate) — ALL ' + grids.length + ' dated fixtures, per timeframe ===');
+  console.log('Constants (PROVISIONAL): H10_BASELINE_BARS=' + current.H10_BASELINE_BARS + ' H10_CONTRACTION_MAX=' + current.H10_CONTRACTION_MAX + ' H10_EXPANSION_MIN=' + current.H10_EXPANSION_MIN);
+  if (typeof current.executionContextOf !== 'function') { console.log('  BUG: executionContextOf not exported'); process.exitCode = 1; return; }
+  const meta = loadGridRowMeta(); const btcSeries = dailyCaches['bitcoin'] || null; let bugs = 0;
+  ['1d', '4d-grid'].forEach(function (tf) {
+    const src = (tf === '1d') ? dailyCaches : gridCaches, minBars = (tf === '1d') ? 60 : 30, floor = (tf === '1d') ? current.ACT_SCORE_FLOOR_1D : current.ACT_SCORE_FLOOR_GRID;
+    const dist = { contraction: 0, normal: 0, expansion: 0, unknown: 0 }, actDist = {}, nearDist = {}; let fits = 0, missing = 0; const ratios = [];
+    grids.forEach(function (g) {
+      const btc = btcSeries ? current.btcRegimeFromCandles(sliceToDate(btcSeries, g.date) || []) : null;
+      g.coins.forEach(function (cgId) {
+        const c = src[cgId]; if (!c) return; const s = sliceToDate(c, g.date); if (!s || s.length < minBars) return;
+        const fit = current.detectChannel(s, null, { coinId: cgId, timeframe: tf, source: 'fixture', research: true, _noH3: true });
+        if (!fit) return; fits++;
+        const xc = fit.executionContext; if (!xc) { missing++; return; }
+        dist[xc.volumeCharacter] = (dist[xc.volumeCharacter] || 0) + 1; if (xc.volumeRatio != null) ratios.push(xc.volumeRatio);
+        if (xc.volumeCharacter === 'unknown' && xc.volumeRatio != null) { bugs++; console.log('  BUG: unknown with a ratio ' + cgId); }
+        const rowMeta = (meta[g.date] && meta[g.date][cgId]) || {};
+        const res = current.researchVerdict(fit, { price: fit.detectionPrice, volume24h: rowMeta.volume24h != null ? rowMeta.volume24h : null, btc: btc, quote: null, floor: floor });
+        const failing = res.details.gates.filter(x => x.pass !== true).map(x => x.id);
+        if (res.verdict === 'ACT') actDist[xc.volumeCharacter] = (actDist[xc.volumeCharacter] || 0) + 1;
+        if (failing.length === 1 && failing[0] === 'H6.rr') nearDist[xc.volumeCharacter] = (nearDist[xc.volumeCharacter] || 0) + 1;
+      });
+    });
+    ratios.sort((a, b) => a - b); const pct = q => ratios.length ? ratios[Math.min(ratios.length - 1, Math.floor(q * ratios.length))].toFixed(2) : 'n/a';
+    console.log('\n--- ' + tf + ': research fits ' + fits + ' | executionContext missing ' + missing + ' | volumeCharacter contraction ' + dist.contraction + ' / normal ' + dist.normal + ' / expansion ' + dist.expansion + ' / unknown ' + dist.unknown + ' | ratio P10/P50/P90 ' + pct(0.1) + '/' + pct(0.5) + '/' + pct(0.9) + ' ---');
+    console.log('character of ACT rows ' + JSON.stringify(actDist) + ' | of ACT-except-rr rows ' + JSON.stringify(nearDist));
+    if (tf === '4d-grid' && (dist.unknown !== fits - missing)) { bugs++; console.log('  BUG: a grid row has a volume character'); }
+  });
+  console.log('\nPrior-section deltas: none - executionContext is a new descriptive field on the research fit; no gate, score or flag-off output changes (local step11-d suite), so every section above prints the same numbers.');
+  if (bugs) { console.log('Step 11-D acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
 run();
