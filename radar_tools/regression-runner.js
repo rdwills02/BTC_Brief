@@ -305,6 +305,7 @@ function run() {
   runStep8E5Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E6Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E7Acceptance(current, grids, caches, loadDailyCaches());
+  runStep8H11Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1056,6 +1057,82 @@ function runStep8E7Acceptance(current, grids, gridCaches, dailyCaches) {
       ' — ZERO FLIPS, unexpected given E3-E5 changed bullEngulf/threeInsideUp/rocket individually on this fixture'));
   console.log('every changed row attributed to at least one of E3/E4/E5: ' + unattributed +
     (unattributed === 0 ? ' (holds)' : ' — SEE ABOVE, THIS IS A BUG'));
+}
+
+// Step 8 H11 (Remediation spec, 2026-09-21/22): patternRecords[] on the research fit. Reports,
+// per pass, how many research rows carry >= 1 record, records per pattern, and two invariants
+// checked on every research row in the pinned slice: every record's candleIds resolve to
+// candles in the slice (and its ohlc matches those candles), and every fired pattern flag has
+// exactly one record (and no record exists for a flag that is false). Reads only the exported
+// detectChannel output - no local re-derivation of any pattern test. No detector code is
+// compared OLD-vs-NEW here: patternRecords is a new field, flag-off output is covered by the
+// local step8-h11-invariant-tests.js suite.
+const H11_PATTERNS = ['bb3', 'bullEngulf', 'threeInsideUp', 'rocket', 'bb3UpperReversion', 'threeInsideDown'];
+
+function runStep8H11Acceptance(current, grids, gridCaches, dailyCaches) {
+  var latestGrid = grids[grids.length - 1];
+  var latestGridDate = latestGrid.date;
+  var coins = latestGrid.coins;
+
+  console.log('\n=== Step 8 H11 acceptance (patternRecords on the research fit) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length);
+
+  function slice(cgId, tf) {
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
+  }
+
+  var badTotal = 0;
+  for (var ti = 0; ti < 2; ti++) {
+    var tf = ['1d', '4d-grid'][ti];
+    var checked = 0, withRecord = 0, records = 0, flagsTrue = 0, bad = [];
+    var perPattern = {};
+    H11_PATTERNS.forEach(function (p) { perPattern[p] = 0; });
+    for (var ci = 0; ci < coins.length; ci++) {
+      var cgId = coins[ci];
+      var s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      var newR = null;
+      try { newR = current.detectChannel(s, undefined, { cgId: cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      if (!newR) continue; // row set = rows with a research fit
+      checked++;
+      var recs = newR.patternRecords || [];
+      if (recs.length >= 1) withRecord++;
+      records += recs.length;
+
+      var byTime = {};
+      for (var si = 0; si < s.length; si++) byTime[s[si].time] = s[si];
+      var problems = [];
+      for (var ri = 0; ri < recs.length; ri++) {
+        var r = recs[ri];
+        if (perPattern[r.pattern] !== undefined) perPattern[r.pattern]++;
+        else problems.push('unknown pattern ' + r.pattern);
+        if (!r.candleIds || !r.candleIds.length) problems.push(r.pattern + ': empty candleIds');
+        for (var k = 0; k < (r.candleIds || []).length; k++) {
+          var cd = byTime[r.candleIds[k]];
+          if (!cd) { problems.push(r.pattern + ': candleId ' + r.candleIds[k] + ' not in slice'); continue; }
+          var o = r.ohlc && r.ohlc[k];
+          if (!o || o.time !== cd.time || o.open !== cd.open || o.high !== cd.high || o.low !== cd.low || o.close !== cd.close) {
+            problems.push(r.pattern + ': ohlc[' + k + '] does not match slice candle');
+          }
+        }
+      }
+      for (var pi = 0; pi < H11_PATTERNS.length; pi++) {
+        var pn = H11_PATTERNS[pi];
+        var nRec = recs.filter(function (x) { return x.pattern === pn; }).length;
+        var flag = !!newR[pn];
+        if (flag) flagsTrue++;
+        if (nRec !== (flag ? 1 : 0)) problems.push(pn + ': flag ' + flag + ' but ' + nRec + ' record(s)');
+      }
+      if (problems.length) bad.push({ cgId: cgId, problems: problems });
+    }
+    console.log(tf + ': research rows ' + checked + ' | rows with >=1 record: ' + withRecord + ' | records: ' + records +
+      ' (pattern flags true: ' + flagsTrue + ') | per pattern: ' +
+      H11_PATTERNS.map(function (p) { return p + '=' + perPattern[p]; }).join(' '));
+    for (var bi = 0; bi < bad.length; bi++) console.log('    VIOLATION ' + bad[bi].cgId + ': ' + bad[bi].problems.join('; '));
+    badTotal += bad.length;
+  }
+  console.log('invariant (every record candleId resolves to a slice candle with matching OHLC; every fired flag has exactly one record, no record for a false flag): ' +
+    (badTotal === 0 ? 'holds on every research row, both passes' : badTotal + ' row(s) violate - SEE ABOVE, THIS IS A BUG'));
 }
 
 run();
