@@ -304,6 +304,7 @@ function run() {
   runStep8E4Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E5Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E6Acceptance(current, grids, caches, loadDailyCaches());
+  runStep8E7Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -959,6 +960,102 @@ function runStep8E6Acceptance(current, grids, gridCaches, dailyCaches) {
     console.log('  ' + String(pairCounts[pc]).padStart(5) + '  ' + pc);
   }
   if (!Object.keys(pairCounts).length) console.log('  (no conflicting rows on this fixture)');
+}
+
+
+// Step 8 E7 (Remediation spec, 2026-09-21/22): multi-signal input trace. TRACE, not a build —
+// detectChannelResearch's own multiSignalOnOneCandle call (channel-core.js, right after the
+// research winner/rocket are known) was ALREADY fed the research-floored triggers before this
+// item was opened: conf.bullEngulf = bullEngulfingResearch(...) (E3), conf.threeInsideUp =
+// threeInsideUpResearch(...) (E5), rocket = rocketAtSupportResearch(...) (E4). bb3Coincidence
+// has no research variant (bb3Reversion is unchanged by every E-item) so it is identical on
+// both sides by construction. Traced directly against the pushed source on 2026-09-23 — not
+// inferred from field names, comments, or the E3-E6 diffs alone. Confirmed: E7 needs NO
+// detector code change. channel-core.js is untouched by this item.
+//
+// This section is OLD (multiSignalOnOneCandle called on the BASE/unfloored triggers —
+// bullEngulfing/threeInsideUp/rocketAtSupport — computed DIRECTLY on the research winner's own
+// slice/rail, same "compute OLD on the research fit's own row" pattern as E3-E6) vs NEW
+// (newR.multiSignal, E6's existing live field — this item changes nothing about how it's
+// computed). Row set = rows with a research fit (same convention as E3-E6).
+//
+// All four trigger functions fed into multiSignalOnOneCandle at this call site report idx=n-1
+// on every hit — bullEngulfing/bullEngulfingResearch, threeInsideUp/threeInsideUpResearch,
+// rocketAtSupport/rocketAtSupportResearch all evaluate only the trailing candle (verified by
+// reading each function's return statement); bb3Coincidence is deliberately forced to idx=n-1
+// by detectChannelResearch itself (see its own inline comment). So multiSignalOnOneCandle's
+// |idx delta|<=1 adjacency test is always satisfied between any two hits at this call site —
+// the call reduces to "at least 2 of these 4 booleans true". That means every OLD-vs-NEW flip
+// is fully explained by which of bullEngulf/threeInsideUp/rocket changed individually between
+// its base and research-floored form (checked directly below, not assumed) — bb3 never differs.
+function bb3CoincidenceOf(newR, s) {
+  return newR.bb3 ? { hit: true, idx: s.length - 1, time: s[s.length - 1].time } : newR.bb3Trigger;
+}
+
+function runStep8E7Acceptance(current, grids, gridCaches, dailyCaches) {
+  var latestGrid = grids[grids.length - 1];
+  var latestGridDate = latestGrid.date;
+  var coins = latestGrid.coins;
+
+  console.log('\n=== Step 8 E7 acceptance (multi-signal input trace — no detector code change) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length);
+
+  function slice(cgId, tf) {
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
+  }
+
+  console.log('\n--- 1. multiSignal: OLD (multiSignalOnOneCandle on base/unfloored triggers, same research winner\'s slice/rail) vs NEW (research fit .multiSignal), per pass — every changed row attributed ---');
+  var flipUpTotal = 0, flipDownTotal = 0, unattributed = 0;
+  for (var ti = 0; ti < 2; ti++) {
+    var tf = ['1d', '4d-grid'][ti];
+    var oldTrue = 0, newTrue = 0, checked = 0;
+    var changed = [];
+    for (var ci = 0; ci < coins.length; ci++) {
+      var cgId = coins[ci];
+      var s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      var newR = null;
+      try { newR = current.detectChannel(s, undefined, { cgId: cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      if (!newR) continue; // row set = rows with a research fit
+      checked++;
+
+      var bb3C = bb3CoincidenceOf(newR, s);
+      var bullEngulfOld = current.bullEngulfing(s);
+      var threeInsideUpOld = current.threeInsideUp(s);
+      var rocketOld = current.rocketAtSupport(s, newR.supSlope, newR.supIntercept);
+      var oldMulti = current.multiSignalOnOneCandle([bb3C, bullEngulfOld, threeInsideUpOld, rocketOld]);
+
+      var oldHit = !!oldMulti.hit;
+      var newHit = !!newR.multiSignal;
+      if (oldHit) oldTrue++;
+      if (newHit) newTrue++;
+
+      if (oldHit !== newHit) {
+        var causes = [];
+        if (bullEngulfOld.hit !== newR.bullEngulf) causes.push('E3(bullEngulf ' + bullEngulfOld.hit + '->' + newR.bullEngulf + ')');
+        if (threeInsideUpOld.hit !== newR.threeInsideUp) causes.push('E5(threeInsideUp ' + threeInsideUpOld.hit + '->' + newR.threeInsideUp + ')');
+        if (rocketOld.hit !== newR.rocket) causes.push('E4(rocket ' + rocketOld.hit + '->' + newR.rocket + ')');
+        var cause = causes.length ? causes.join(', ') : 'unattributed';
+        if (!causes.length) unattributed++;
+        changed.push({ cgId: cgId, oldHit: oldHit, newHit: newHit, cause: cause });
+        if (!oldHit && newHit) flipUpTotal++; else flipDownTotal++;
+      }
+    }
+    console.log(tf + ': checked ' + checked + ' (rows with a research fit) | OLD multiSignal true: ' + oldTrue +
+      ' | NEW multiSignal true: ' + newTrue + ' | changed rows: ' + changed.length);
+    for (var k = 0; k < changed.length; k++) {
+      var c = changed[k];
+      console.log('    ' + c.cgId.padEnd(28) + ' ' + c.oldHit + ' -> ' + c.newHit + '  (' + c.cause + ')');
+    }
+  }
+
+  console.log('\n--- 2. E7 invariants (see radar_tools/step8-e7-invariant-tests.js, local only, for the full 2162-row versions) ---');
+  console.log('false->true flips: ' + flipUpTotal + ' | true->false flips: ' + flipDownTotal +
+    ' | total changed rows (both passes): ' + (flipUpTotal + flipDownTotal) +
+    (flipUpTotal + flipDownTotal >= 1 ? ' (at least one flip - confirms the E3-E5 floors do reach multiSignal, not a no-op trace)' :
+      ' — ZERO FLIPS, unexpected given E3-E5 changed bullEngulf/threeInsideUp/rocket individually on this fixture'));
+  console.log('every changed row attributed to at least one of E3/E4/E5: ' + unattributed +
+    (unattributed === 0 ? ' (holds)' : ' — SEE ABOVE, THIS IS A BUG'));
 }
 
 run();
