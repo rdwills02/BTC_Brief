@@ -323,6 +323,7 @@ function run() {
   runStep10DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11BAcceptance(current, grids, caches, loadDailyCachesWithVolume());
+  runStep11CAcceptance(current, grids, caches, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1463,6 +1464,78 @@ function runStep11BAcceptance(current, grids, gridCaches, dailyCaches) {
   });
   console.log('\nPrior-section deltas: the 11-A section above now runs with gate 11 = C2.entry-zone and gate 13 = H6.rr live (its verdict counts, first-failing table and ACT-except-rr line change accordingly; ACT is no longer 0 by construction). detectChannel research output gains the entryEconomics field only; flag-off unchanged (local step11-b suite), so steps 6-10 print the same numbers.');
   if (bugs) { console.log('Step 11-B acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
+}
+
+// Step 11-C (Remediation spec H5, option (i); step 11 plan 11-C): replay the 24 dated fixtures through setups-core.js's
+// pure updateSetupLedger() as if each were a capture (1d rows only, the timeframe capture.js writes research for; ctx as in
+// 11-A/B: price = the fit's own close, volume24h from the dated fixture row, btc per date, ACT_SCORE_FLOOR_1D). Prints
+// aggregates only: opens/closes per date, open count at the end, max invalidation raise, breach count, idempotency.
+function runStep11CAcceptance(current, grids, gridCaches, dailyCaches) {
+  console.log('\n=== Step 11-C acceptance (H5 setup ledger replay via setups-core.js updateSetupLedger; same-rail raises, close at SETUP_BREAK_CLOSES consecutive frozen-rail breaches) — ' + grids.length + ' dated fixtures as captures, 1d ===');
+  let S;
+  try { S = require(path.join(REPO_ROOT, 'setups-core.js')); } catch (e) { console.log('  BUG: setups-core.js not loadable: ' + e.message); process.exitCode = 1; return; }
+  const meta = loadGridRowMeta(); const btcSeries = dailyCaches['bitcoin'] || null; let bugs = 0;
+  let ledger = S.emptyLedger(); const perDate = []; let maxRaisePct = 0, raises = 0, breaches = 0, idem = 0, actRows = 0;
+  const snapshots = {};
+  grids.forEach(function (g) {
+    const btc = btcSeries ? current.btcRegimeFromCandles(sliceToDate(btcSeries, g.date) || []) : null;
+    const rows = g.coins.map(function (cgId) {
+      const c = dailyCaches[cgId]; const s = c ? sliceToDate(c, g.date) : null;
+      const fit = (s && s.length >= 60) ? current.detectChannel(s, null, { coinId: cgId, timeframe: '1d', source: 'fixture', research: true, _noH3: true }) : null;
+      const rowMeta = (meta[g.date] && meta[g.date][cgId]) || {};
+      const res = current.researchVerdict(fit, { price: fit ? fit.detectionPrice : (s && s.length ? s[s.length - 1].close : null), volume24h: rowMeta.volume24h != null ? rowMeta.volume24h : null, btc: btc, quote: null, floor: current.ACT_SCORE_FLOOR_1D });
+      if (res.verdict === 'ACT') actRows++;
+      return { cgId: cgId, timeframe: '1d', verdict: res.verdict, lifecycleState: fit ? fit.lifecycleState : null, price: fit ? fit.detectionPrice : null,
+        fit: fit ? { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, entryEconomics: fit.entryEconomics || null } : null };
+    });
+    const before = ledger, m = { detectorVersion: current.DETECTOR_VERSION, configHash: 'fixture-replay' };
+    ledger = S.updateSetupLedger(before, g.date, rows, m);
+    const again = S.updateSetupLedger(ledger, g.date, rows, m);
+    if (JSON.stringify(again) !== JSON.stringify(ledger)) idem++;
+    const opened = ledger.setups.length - before.setups.length;
+    const closed = ledger.setups.filter(x => x.status === 'closed').length - before.setups.filter(x => x.status === 'closed').length;
+    const open = ledger.setups.filter(x => x.status === 'open').length;
+    // invariants across the replay
+    before.setups.forEach(function (b) {
+      const n = ledger.setups.find(x => x.id === b.id);
+      if (!n) { bugs++; console.log('  BUG: record deleted ' + b.id); return; }
+      if (n.invalidation < b.invalidation) { bugs++; console.log('  BUG: invalidation lowered ' + b.id); }
+      if (n.invalidation > b.invalidation) { raises++; maxRaisePct = Math.max(maxRaisePct, (n.invalidation - b.invalidation) / b.invalidation * 100); }
+      if (n.breachHistory.length < b.breachHistory.length || b.breachHistory.some((d, i) => n.breachHistory[i] !== d)) { bugs++; console.log('  BUG: breachHistory shrank/changed ' + b.id); }
+      if (b.status === 'closed' && n.status !== 'closed') { bugs++; console.log('  BUG: closed setup reopened ' + b.id); }
+    });
+    breaches = ledger.setups.reduce((a, x) => a + x.breachHistory.length, 0);
+    perDate.push(g.date + ' rows=' + rows.length + ' ACT=' + rows.filter(r => r.verdict === 'ACT').length + ' opened=' + opened + ' closed=' + closed + ' open=' + open + (opened ? ' [' + ledger.setups.slice(-opened).map(x => x.id).join(', ') + ']' : ''));
+    snapshots[g.date] = JSON.stringify(ledger);
+  });
+  console.log('per date (opens/closes/open-at-end):'); perDate.forEach(l => console.log('  ' + l));
+  console.log('SETUP_BREAK_CLOSES=' + S.SETUP_BREAK_CLOSES + ' (PROVISIONAL) | raises suppressed (anchor mismatch) ' + ledger.setups.reduce((a, x) => a + x.raisesSuppressed, 0) + ' | live-broken-but-open setups at end ' + ledger.setups.filter(x => x.status === 'open' && x.liveLifecycleState === 'broken').length);
+  const openIds = ledger.setups.filter(x => x.status === 'open').map(x => x.id + ' inv ' + x.invalidation + (x.invalidationRaises ? ' (+' + x.invalidationRaises + ' raises)' : '') + (x.raisesSuppressed ? ' (' + x.raisesSuppressed + ' suppressed)' : '') + ' breaches ' + x.breachHistory.length + ' consecutive ' + x.consecutiveBreaches + ' live ' + x.liveLifecycleState);
+  console.log('end of replay: setups ' + ledger.setups.length + ' | open ' + ledger.setups.filter(x => x.status === 'open').length + ' | closed ' + ledger.setups.filter(x => x.status === 'closed').length + ' (' + JSON.stringify(ledger.setups.filter(x => x.status === 'closed').reduce((a, x) => { a[x.closeReason] = (a[x.closeReason] || 0) + 1; return a; }, {})) + ') | ACT rows across dates ' + actRows + ' | invalidation raises ' + raises + ', max raise ' + maxRaisePct.toFixed(2) + '% | breach entries ' + breaches + ' | same-day re-run identical on ' + (grids.length - idem) + '/' + grids.length + ' dates');
+  openIds.forEach(l => console.log('  open: ' + l));
+  console.log('ledger key order (first record): ' + (ledger.setups.length ? Object.keys(ledger.setups[0]).join(',') : '(no setups)'));
+  if (idem) { bugs++; console.log('  BUG: ledger not idempotent on ' + idem + ' date(s)'); }
+  // Mechanics replay (labelled SYNTHETIC): the real verdict opens one setup on the last date, so raise / breach / close /
+  // re-open paths never run on the fixtures. Replay again with a synthetic verdict - ACT := fit present and lifecycle
+  // intact|re-qualified - purely to exercise the ledger on real fits. Not a research result; aggregates only.
+  let L2 = S.emptyLedger(), raises2 = 0, maxRaise2 = 0, reopened = 0, bugs2 = 0; const closeReasons = {};
+  grids.forEach(function (g) {
+    const rows = g.coins.map(function (cgId) {
+      const c = dailyCaches[cgId]; const s = c ? sliceToDate(c, g.date) : null;
+      const fit = (s && s.length >= 60) ? current.detectChannel(s, null, { coinId: cgId, timeframe: '1d', source: 'fixture', research: true, _noH3: true }) : null;
+      const elig = !!(fit && (fit.lifecycleState === 'intact' || fit.lifecycleState === 're-qualified'));
+      return { cgId: cgId, timeframe: '1d', verdict: elig ? 'ACT' : (fit ? 'WATCH' : 'NONE'), lifecycleState: fit ? fit.lifecycleState : null, price: fit ? fit.detectionPrice : null,
+        fit: fit ? { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, entryEconomics: fit.entryEconomics || null } : null };
+    });
+    const before = L2; L2 = S.updateSetupLedger(before, g.date, rows, { detectorVersion: current.DETECTOR_VERSION, configHash: 'synthetic' });
+    before.setups.forEach(function (b) { const n = L2.setups.find(x => x.id === b.id); if (!n) { bugs2++; return; } if (n.invalidation < b.invalidation) bugs2++; if (n.invalidation > b.invalidation) { raises2++; maxRaise2 = Math.max(maxRaise2, (n.invalidation - b.invalidation) / b.invalidation * 100); } if (b.status === 'closed' && n.status !== 'closed') reopened++; if (n.breachHistory.length < b.breachHistory.length) bugs2++; });
+  });
+  L2.setups.filter(x => x.status === 'closed').forEach(x => { closeReasons[x.closeReason] = (closeReasons[x.closeReason] || 0) + 1; });
+  const coinsWithMulti = {}; L2.setups.forEach(x => { coinsWithMulti[x.cgId] = (coinsWithMulti[x.cgId] || 0) + 1; });
+  console.log('SYNTHETIC mechanics replay (ACT := eligible fit; NOT the research verdict): setups ' + L2.setups.length + ' | open at end ' + L2.setups.filter(x => x.status === 'open').length + ' | closed ' + JSON.stringify(closeReasons) + ' | coins with >1 setup id (new id after close) ' + Object.keys(coinsWithMulti).filter(k => coinsWithMulti[k] > 1).length + ' | invalidation raises ' + raises2 + ' (max ' + maxRaise2.toFixed(2) + '%), suppressed by anchor mismatch ' + L2.setups.reduce((a, x) => a + x.raisesSuppressed, 0) + ' | open setups whose live lifecycle is broken ' + L2.setups.filter(x => x.status === 'open' && x.liveLifecycleState === 'broken').length + ' | breach entries ' + L2.setups.reduce((a, x) => a + x.breachHistory.length, 0) + ' | closed ids reopened ' + reopened + ' | invariant violations ' + bugs2);
+  if (bugs2 || reopened) { bugs++; console.log('  BUG: synthetic replay violated a ledger invariant'); }
+  console.log('Prior-section deltas: none - channel-core.js is untouched by 11-C (setups-core.js is a new file; capture.js adds a research block + ledger I/O), so every section above prints the same numbers.');
+  if (bugs) { console.log('Step 11-C acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
 run();
