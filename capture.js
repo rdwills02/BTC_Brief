@@ -1224,7 +1224,12 @@ async function main() {
       // channel-core.js - not exported from this module, so not hashed here.
       NEAR_FLAT_SLOPE_PCT: C.NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: C.WEDGE_LOOKAHEAD,
       WEDGE_LOOKAHEAD_GRID: C.WEDGE_LOOKAHEAD_GRID, RES_RECENT_BARS: C.RES_RECENT_BARS,
-      RES_RECENT_BARS_GRID: C.RES_RECENT_BARS_GRID
+      RES_RECENT_BARS_GRID: C.RES_RECENT_BARS_GRID,
+      // Step 8 E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23): bullEngulfingResearch's
+      // two new constants - same rationale as the Step 6/7 blocks above: capture.js never sets
+      // meta.research (still flag-off only), so this doesn't change what it writes, hashed
+      // here so any future tuning is visible in configHash like every other detection constant.
+      ENGULF_BODY_ATR_MULT: C.ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: C.ENGULF_BODY_RATIO
     })).digest('hex');
     const manifest = {
       schemaVersion: 1,

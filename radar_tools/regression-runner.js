@@ -282,6 +282,7 @@ function run() {
 
   runResearch(current, grids, caches);
   runStep7Acceptance(current, grids, caches, loadDailyCaches());
+  runStep8E3Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -520,6 +521,90 @@ function runStep7Acceptance(current, grids, gridCaches, dailyCaches) {
     }
     console.log(tf + ': ' + independent + ' independent fits, ' + parallel + ' parallel fallbacks.');
   }
+}
+
+
+// Step 8 E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23): bullEngulfingResearch
+// tightening. Two comparisons, both over the SAME frozen coin universe/dates
+// runStep7Acceptance already establishes (latest grid date for 4d-grid, latest daily date -
+// the frozen 9/16 capture in this fixture snapshot - for 1d):
+//   1. OLD (channel-core.orig.js, pinned at this step's pre-diff blob) vs NEW (channel-core.js,
+//      this diff) bullEngulf field under research mode, per pass - the actual before/after this
+//      diff makes. Every row that changes is listed and labeled E3 (this is the only spec item
+//      touching bullEngulf, so there is nothing else it could be attributed to).
+//   2. Flag-off vs research bullEngulf under NEW alone, 1d pass only - the population-delta
+//      observation the plan asked for, not a target to tune toward.
+function runStep8E3Acceptance(current, grids, gridCaches, dailyCaches) {
+  const orig = require(path.join(__dirname, 'channel-core.orig.js'));
+  const latestGrid = grids[grids.length - 1];
+  const latestGridDate = latestGrid.date;
+  const coins = latestGrid.coins;
+
+  let latestDailyDate = null;
+  for (const cgId of coins) {
+    const d = dailyCaches[cgId];
+    if (!d || !d.length) continue;
+    const last = d[d.length - 1].date;
+    if (!latestDailyDate || last > latestDailyDate) latestDailyDate = last;
+  }
+
+  console.log('\n=== Step 8 E3 acceptance (bullEngulfingResearch tightening) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' | latest daily date: ' + latestDailyDate + ' | coin universe: ' + coins.length);
+
+  function slice(cgId, tf) {
+    const src = (tf === '1d') ? dailyCaches[cgId] : gridCaches[cgId];
+    if (!src) return null;
+    const D = (tf === '1d') ? latestDailyDate : latestGridDate;
+    return sliceToDate(src, D);
+  }
+
+  console.log('\n--- 1. OLD vs NEW bullEngulf (research mode), per pass — every changed row attributed to E3 ---');
+  for (const tf of ['1d', '4d-grid']) {
+    let oldTrue = 0, newTrue = 0, checked = 0;
+    const changed = [];
+    for (const cgId of coins) {
+      const s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      let oldR = null, newR = null;
+      try { oldR = orig.detectChannel(s, undefined, { cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      try { newR = current.detectChannel(s, undefined, { cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      const oldHit = !!(oldR && oldR.bullEngulf);
+      const newHit = !!(newR && newR.bullEngulf);
+      checked++;
+      if (oldHit) oldTrue++;
+      if (newHit) newTrue++;
+      if (oldHit !== newHit) changed.push({ cgId: cgId, oldHit: oldHit, newHit: newHit });
+    }
+    console.log(tf + ': checked ' + checked + ' | OLD bullEngulf true: ' + oldTrue + ' | NEW bullEngulf true: ' + newTrue +
+      ' | changed rows: ' + changed.length);
+    for (const c of changed) {
+      console.log('    ' + c.cgId.padEnd(28) + ' ' + (c.oldHit ? 'true' : 'false') + ' -> ' + (c.newHit ? 'true' : 'false') +
+        '  (E3: bullEngulfingResearch tightening)');
+    }
+  }
+
+  console.log('\n--- 2. Population-delta OBSERVATION (not a target): flag-off vs research bullEngulf under NEW, 1d pass, frozen 9/16 capture ---');
+  // Pinned to the literal 2026-09-16 date, NOT latestDailyDate above - dailyCaches (ohlcDaily)
+  // extends past 9/16 in this fixture snapshot (repopulated this session from a later pinned
+  // commit), so latestDailyDate resolves to 2026-09-21, not the frozen 9/16 capture Ryan asked
+  // for. Caught by checking the printed date rather than assuming section 1's derivation
+  // applies here too.
+  const FROZEN_916_DATE = '2026-09-16';
+  let flagOffTrue = 0, researchTrue = 0, checked1d = 0, missing916 = 0;
+  for (const cgId of coins) {
+    const src = dailyCaches[cgId];
+    const s = src ? sliceToDate(src, FROZEN_916_DATE) : null;
+    if (!s) { missing916++; continue; }
+    if (s.length < 30) continue;
+    let flagOffR = null, researchR = null;
+    try { flagOffR = current.detectChannel(s, undefined, { cgId, timeframe: '1d', source: 'fixture' }); } catch (e) { /* null */ }
+    try { researchR = current.detectChannel(s, undefined, { cgId, timeframe: '1d', source: 'fixture', research: true }); } catch (e) { /* null */ }
+    checked1d++;
+    if (flagOffR && flagOffR.bullEngulf) flagOffTrue++;
+    if (researchR && researchR.bullEngulf) researchTrue++;
+  }
+  console.log('1d, frozen ' + FROZEN_916_DATE + ' capture universe: checked ' + checked1d + ' (missing/short: ' + missing916 +
+    ') | flag-off bullEngulf true: ' + flagOffTrue + ' | research (post-E3) bullEngulf true: ' + researchTrue);
 }
 
 run();
