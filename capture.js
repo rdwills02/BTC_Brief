@@ -70,6 +70,7 @@ const crypto = require('crypto');          // H8 — config hash
 const U = require('./universe-core.js');   // adjust path if capture.js not in repo root
 const C = require('./channel-core.js');
 const K = require('./cache-core.js');
+const S = require('./setups-core.js');   // Step 11-C (H5): pure setup-ledger logic; this file only does the I/O around it
 const X = require('./exchange-map.js');    // upgrade #2
 const EX = require('./exchange-ohlcv.js'); // upgrade #2
 
@@ -946,6 +947,8 @@ async function main() {
   let dailyPassOk = false, dailyUpdatedThisRun = false, dailyLastClosedCandle = null;
   let btcPassOk = false, btcUpdatedThisRun = false, btcLastClosedCandle = null;
   let btcRegime = null;   // Step 11-A / C5: btcRegimeFromCandles(btcCache.ohlcDaily) - written into latest-daily.json and the manifest
+  let researchRows = null;   // Step 11-C (H5): per-coin research verdict rows for the setup ledger (built in the daily pass below)
+  let setupsSummary = null;  // Step 11-C: {opened, closed, open} for the manifest
 
   const { list: universe, counts: universeCounts } = await buildUniverse();
   console.log('universe:', universe.length, 'coins');
@@ -1145,6 +1148,31 @@ async function main() {
         };
       }
     });
+    // Step 11-C (Remediation spec H5, option (i)): the RESEARCH pass per coin, as an ADDITIONAL block on the daily row -
+    // detectChannel(..., research:true) on the same closed-bar candles rowForDaily just used, then researchVerdict with
+    // ctx = capture quote, capture-time volume24h, this run's own btcRegime, the 1d floor. Nothing above (flag-off
+    // detectionDaily, the page's default verdict path) is touched; a research failure leaves research:null on the row.
+    // The same rows feed the setup ledger (data/setups.json) once configHash is known, in the manifest block below.
+    researchRows = [];
+    let researchAct = 0, researchFits = 0;
+    dailyCoins.forEach((row, i) => {
+      const p = pulls[i];
+      row.research = null;
+      try {
+        const cands = (p && p.dailyCandles && p.dailyCandles.length >= 30) ? toLeanCandles(p.dailyCandles) : null;
+        const fit = cands ? C.detectChannel(cands, null, { coinId: row.cgId, timeframe: '1d', source: row.dailySource, research: true }) : null;
+        const res = C.researchVerdict(fit, { price: row.price, volume24h: row.volume24h, btc: btcRegime, quote: null, floor: C.ACT_SCORE_FLOOR_1D });
+        row.research = S.researchSummary(fit, res);
+        if (fit) researchFits++;
+        if (res.verdict === 'ACT') researchAct++;
+        researchRows.push({ cgId: row.cgId, timeframe: '1d', verdict: res.verdict, lifecycleState: fit ? fit.lifecycleState : null, price: row.price,
+          fit: fit ? { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, entryEconomics: fit.entryEconomics || null } : null });
+      } catch (e) {
+        console.warn('research pass failed for', row.cgId, '- research:null on the row:', e.message);
+        researchRows.push({ cgId: row.cgId, timeframe: '1d', verdict: null, lifecycleState: null, price: row.price, fit: null });
+      }
+    });
+    console.log('research pass (11-C): fits', researchFits, 'ACT', researchAct, 'of', dailyCoins.length, 'coins; btcRegime', btcRegime ? (btcRegime.aboveEma50 ? 'above' : 'below') + ' EMA50, slope ' + (btcRegime.ema50Slope != null ? (btcRegime.ema50Slope * 100).toFixed(2) + '%' : 'n/a') : 'null');
     // F1 (Remediation spec): so the page can PROVE the last bar it detected on is closed,
     // rather than trust the pipeline. lastBarTime is the newest bar time actually present
     // across every coin's (already closed-bar-filtered, see pullCoin/dropUnclosedBars) daily
@@ -1273,8 +1301,28 @@ async function main() {
       // Step 11-B (Remediation spec H6, 2026-09-23): entry-economics constants (PROVISIONAL). Research pass only; hashed
       // so any tuning is visible in configHash like every other detection constant.
       H6_ENTRY_ATR: C.H6_ENTRY_ATR, H6_STOP_ATR: C.H6_STOP_ATR, H6_STOP_CAP_ATR: C.H6_STOP_CAP_ATR, H6_COST_PCT: C.H6_COST_PCT,
-      H6_SWING_WINDOW: C.H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: C.H6_SWING_WINDOW_GRID
+      H6_SWING_WINDOW: C.H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: C.H6_SWING_WINDOW_GRID,
+      // Step 11-C (H5, C-1 review ruling 2): the setup ledger's close rule (setups-core.js), PROVISIONAL.
+      SETUP_BREAK_CLOSES: S.SETUP_BREAK_CLOSES
     })).digest('hex');
+    // Step 11-C (H5): setup ledger data/setups.json - read, pure update (setups-core.js), write. Isolated so a ledger
+    // failure never costs the capture files above; a missing ledger starts empty. Invariants live in setups-core.js.
+    try {
+      if (researchRows) {
+        const setupsPath = path.join(DATA_DIR, 'setups.json');
+        const prior = fs.existsSync(setupsPath) ? JSON.parse(fs.readFileSync(setupsPath, 'utf8')) : null;
+        const before = S.normalizeLedger(prior);
+        const next = S.updateSetupLedger(prior, ymd(Date.now()), researchRows, { detectorVersion: C.DETECTOR_VERSION, configHash: configHash });
+        const openBefore = before.setups.filter(x => x.status === 'open').length, openAfter = next.setups.filter(x => x.status === 'open').length;
+        setupsSummary = { opened: next.setups.length - before.setups.length,
+          closed: next.setups.filter(x => x.status === 'closed').length - before.setups.filter(x => x.status === 'closed').length,
+          open: openAfter, openBefore: openBefore, total: next.setups.length };
+        fs.writeFileSync(setupsPath, JSON.stringify(next, null, 1));
+        console.log('wrote data/setups.json: opened', setupsSummary.opened, 'closed', setupsSummary.closed, 'open', openAfter, 'total', next.setups.length);
+      }
+    } catch (e) {
+      console.warn('setup ledger update failed (capture files above are unaffected):', e.message);
+    }
     const manifest = {
       schemaVersion: 1,
       detectorVersion: C.DETECTOR_VERSION,
@@ -1293,7 +1341,8 @@ async function main() {
         // was already captured (updated:false, ok:true — "nothing new was due", not a failure).
         grid: { ok: true, lastClosedCandle: newestGrid, updated: gridUpdatedThisRun },
         daily: { ok: dailyPassOk, lastClosedCandle: dailyLastClosedCandle, updated: dailyUpdatedThisRun },
-        btcRegime: { ok: btcPassOk, lastClosedCandle: btcLastClosedCandle, updated: btcUpdatedThisRun, regime: btcRegime }   // Step 11-A / C5: regime = the same object written to latest-daily.json
+        btcRegime: { ok: btcPassOk, lastClosedCandle: btcLastClosedCandle, updated: btcUpdatedThisRun, regime: btcRegime },   // Step 11-A / C5: regime = the same object written to latest-daily.json
+        research: { ok: researchRows !== null, coins: researchRows ? researchRows.length : 0, setups: setupsSummary }   // Step 11-C (H5): research pass + ledger summary
       }
     };
     fs.writeFileSync(path.join(DATA_DIR, 'capture-manifest.json'), JSON.stringify(manifest, null, 2));
