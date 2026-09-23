@@ -153,6 +153,41 @@ function bullEngulfing(candles) {
   var hit = (a.close<a.open) && (b.close>b.open) && (b.close>=a.open) && (b.open<=a.close);
   return hit ? {hit:true, idx:n-1, time:b.time} : {hit:false, idx:null, time:null};
 }
+// E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23): research-only sibling to
+// bullEngulfing() above - flag-off untouched, unchanged, still called only from detectChannel.
+// Called only from detectChannelResearch. Same base shape (a=candles[n-2] bearish,
+// b=candles[n-1] bullish) tightened per spec: a real-body-size floor relative to volatility
+// (ATR14, reused from the caller - no new ATR computation here) AND relative to the prior
+// candle's own body (not just "engulfs" by price alone), and a prior-3-net-down context bar.
+// Literal reading, per the Build Prompt's ambiguity rule: "the close three bars before the
+// pattern's own first candle is higher than the close one bar before it" -
+// candles[n-4].close > candles[n-2].close. The alternate reading (net-down over a's own 3
+// predecessors) is filed as BACKLOG, not guessed further here.
+//
+// Close/open crossing - ANALYSIS-THREAD DECISION, restage 2026-09-23, on a population basis,
+// not a spec quote: the first build made BOTH sides of the crossing strict (b.close > a.open
+// AND b.open < a.close), which on the real fixture population (12 research-mode bullEngulf
+// rows, full historical grid-date slice) flipped all 12 true->false, 11 of them attributed to
+// strictness alone rather than the new size floors - i.e. the strict open-side test was doing
+// nearly all of the "tightening" by itself, on exact-equality bars this population actually
+// has, not a handful of edge cases. b.close > a.open stays strict (that side wasn't the
+// documented population driver). b.open <= a.close is relaxed back to the base function's own
+// non-strict test - a bar where the new candle's open lands exactly on the prior candle's
+// close still counts as engulfing here, same as it always has in bullEngulfing().
+var ENGULF_BODY_ATR_MULT = 0.5; // PROVISIONAL, spec E3: body >= this * ATR14.
+var ENGULF_BODY_RATIO = 1.2;    // PROVISIONAL, spec E3: body >= this * the prior candle's own body.
+function bullEngulfingResearch(candles, atr) {
+  var n = candles.length;
+  if (n < 4) return {hit:false, idx:null, time:null};
+  var a = candles[n-2], b = candles[n-1];
+  var bodyB = b.close - b.open;
+  var bodyA = Math.abs(a.close - a.open);
+  var sizeOk = (atr != null) && (bodyB >= ENGULF_BODY_ATR_MULT * atr) && (bodyB >= ENGULF_BODY_RATIO * bodyA);
+  var crossOk = (a.close < a.open) && (b.close > b.open) && (b.close > a.open) && (b.open <= a.close);
+  var priorDownOk = candles[n-4].close > candles[n-2].close;
+  var hit = sizeOk && crossOk && priorDownOk;
+  return hit ? {hit:true, idx:n-1, time:b.time} : {hit:false, idx:null, time:null};
+}
 function threeInsideUp(candles) {
   var n=candles.length; if(n<3) return {hit:false, idx:null, time:null};
   var c1=candles[n-3], c2=candles[n-2], c3=candles[n-1];
@@ -510,7 +545,10 @@ function detectChannelResearch(candles, diag, meta) {
   var atr = atr14(candles);
 
   var ema = emaState(candles);
-  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfing(candles), threeInsideUp:threeInsideUp(candles),
+  // E3 (Remediation spec, 2026-09-21/22): research-only sibling, reusing this same `atr`
+  // (computed just above) - flag-off's own bullEngulfing(candles) call, in detectChannel
+  // below, is untouched.
+  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfingResearch(candles, atr), threeInsideUp:threeInsideUp(candles),
     bb3UpperReversion:bb3UpperReversion(candles), threeInsideDown:threeInsideDown(candles)};
 
   var bestEligible = null, bestAny = null;
@@ -947,6 +985,10 @@ if (typeof module !== 'undefined' && module.exports) {
     atr14: atr14, computeResearchTol: computeResearchTol, findPivotsWindowed: findPivotsWindowed,
     passesAnchorSpacing: passesAnchorSpacing, scanBreaks: scanBreaks, computeLifecycle: computeLifecycle,
     detectChannelResearch: detectChannelResearch,
+    // E3 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash and
+    // the function itself for direct harness testing.
+    ENGULF_BODY_ATR_MULT: ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: ENGULF_BODY_RATIO,
+    bullEngulfingResearch: bullEngulfingResearch,
     // Step 7 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash
     // and the B1 internals for direct harness testing.
     NEAR_FLAT_SLOPE_PCT: NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: WEDGE_LOOKAHEAD,
