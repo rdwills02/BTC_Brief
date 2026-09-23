@@ -1241,7 +1241,18 @@ async function main() {
       // only) and persists no wickClips, so this doesn't change what it writes, hashed here so any
       // future tuning is visible in configHash like every other detection constant.
       F3_WICK_ATR_MULT: C.F3_WICK_ATR_MULT, F3_CLIP_ATR_MULT: C.F3_CLIP_ATR_MULT,
-      F3_RAIL_UNCHANGED_PCT: C.F3_RAIL_UNCHANGED_PCT
+      F3_RAIL_UNCHANGED_PCT: C.F3_RAIL_UNCHANGED_PCT,
+      // Step 10 D (Remediation spec Plan D, 2026-09-21/22): the research score-rebalance constants - same rationale as
+      // the blocks above: capture.js never sets meta.research, so this doesn't change what it writes; hashed so any
+      // future tuning is visible in configHash like every other detection constant.
+      D_TOUCH_PTS: C.D_TOUCH_PTS, D_RES_PTS: C.D_RES_PTS, D_RES_PARALLEL_MAX: C.D_RES_PARALLEL_MAX,
+      D_CONT_GATE: C.D_CONT_GATE, D_CONT_MAX: C.D_CONT_MAX, D_BREAK_PENALTY: C.D_BREAK_PENALTY,
+      D_POS_MULT: C.D_POS_MULT, D_POS_FULL_CAP: C.D_POS_FULL_CAP, D_POS_PTS: C.D_POS_PTS,
+      D_AGE_RANGE: C.D_AGE_RANGE, D_AGE_RANGE_GRID: C.D_AGE_RANGE_GRID, D_AGE_MAX: C.D_AGE_MAX,
+      D_WIDTH_FRAC: C.D_WIDTH_FRAC, D_WIDTH_PENALTY: C.D_WIDTH_PENALTY,
+      D_EMA_SLOPE_BONUS: C.D_EMA_SLOPE_BONUS, D_EMA_SLOPE_BARS: C.D_EMA_SLOPE_BARS,
+      D_PATTERN_MAX: C.D_PATTERN_MAX, D_VOL_TOUCH_BONUS: C.D_VOL_TOUCH_BONUS,
+      D_VOL_TOUCH_MULT: C.D_VOL_TOUCH_MULT, D_VOL_WINDOW: C.D_VOL_WINDOW, D_RAW_MAX: C.D_RAW_MAX
     })).digest('hex');
     const manifest = {
       schemaVersion: 1,

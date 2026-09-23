@@ -547,8 +547,11 @@ function isWedge(supSlope, supIntercept, resSlope, resIntercept, firstIdx, endId
 // back above the rail after a probe is"). lastBreakIdx is the last bar of the MOST RECENT
 // broken-bar run (chronological, not necessarily the longest) - barsSinceBreak is measured
 // against it.
-function scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol) {
-  var maxRun = 0, curRun = 0, lastBreakIdx = -1, anyProbed = false;
+// Step 10 D: optional `countRuns` (research call only) adds runCount2 = number of DISTINCT runs of exactly
+// 2 consecutive closes below the band. Absent -> the returned object is exactly what it was before, so
+// every flag-off caller is byte-unchanged.
+function scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol, countRuns) {
+  var maxRun = 0, curRun = 0, lastBreakIdx = -1, anyProbed = false, runCount2 = 0;
   for (var i = firstIdx; i <= lastIdx; i++) {
     var thresh = railAt(slope, intercept, i) * (1 - tol);
     var c = candles[i];
@@ -558,10 +561,14 @@ function scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol) {
       lastBreakIdx = i;
       if (curRun > maxRun) maxRun = curRun;
     } else {
+      if (curRun === 2) runCount2++;
       curRun = 0;
     }
   }
-  return {maxRun: maxRun, lastBreakIdx: lastBreakIdx, anyProbed: anyProbed};
+  if (curRun === 2) runCount2++;
+  var out = {maxRun: maxRun, lastBreakIdx: lastBreakIdx, anyProbed: anyProbed};
+  if (countRuns) out.runCount2 = runCount2;
+  return out;
 }
 
 // H9: lifecycle state from a scanBreaks() result. Step 6 build review (2026-09-22, "Review of
@@ -672,6 +679,32 @@ function buildPatternRecords(candles, conf, rocket, conflict, meta, tol, lifecyc
 var F3_WICK_ATR_MULT = 6;
 var F3_CLIP_ATR_MULT = 2;
 var F3_RAIL_UNCHANGED_PCT = 0.05;
+
+// Step 10 D (Remediation spec Plan D, 2026-09-21/22; plan + review decisions in the step 8-10 log): the research
+// score rebalance. ALL PROVISIONAL, research-only (detectChannelResearch; flag-off detectChannel's score is
+// untouched). Positive components sum to D_RAW_MAX = 102 and are rescaled x100/102 ONCE (D_RAW_MAX); penalties
+// are absolute points subtracted after the rescale; the result is clamped to 0..100 (review decision c).
+var D_TOUCH_PTS = [0, 10, 16, 20, 22, 24];  // support touches 2,3,4,5,6,7+ (index min(n,7)-2)
+var D_RES_PTS = [0, 8, 12, 15];             // resistance touches 0,1,2,3+ (index min(n,3))
+var D_RES_PARALLEL_MAX = 6;                 // cap when the resistance is the parallel fallback (B2)
+var D_CONT_GATE = 70;                       // % of bar CLOSES inside the channel; also the pair-eligibility gate (research)
+var D_CONT_MAX = 15;                        // points = (pct - D_CONT_GATE)/(100 - D_CONT_GATE) * D_CONT_MAX
+var D_BREAK_PENALTY = 10;                   // points per distinct break run of exactly 2 closes (runCount2)
+var D_POS_MULT = [2, 4];                    // distToRailPct <= min(2*tol, D_POS_FULL_CAP) -> full, <= 4*tol -> middle
+var D_POS_FULL_CAP = 0.06;                  // same cap as the B5 ACT gate in radar.html buildAction
+var D_POS_PTS = [12, 6, 0];
+var D_AGE_RANGE = [30, 120, 150];           // 1d bars: 0 at/below [0], linear to D_AGE_MAX at [1], held to [2], 0 above [2]
+var D_AGE_RANGE_GRID = [8, 30, 40];         // 4d-grid bars (= daily range / 4; ceiling = FIT_WINDOW_GRID)
+var D_AGE_MAX = 6;
+var D_WIDTH_FRAC = [0.40, 0.60];            // channelH / price thresholds
+var D_WIDTH_PENALTY = [8, 15];
+var D_EMA_SLOPE_BONUS = 3;                  // +3 iff ema50Slope > 0 (no above-50 requirement)
+var D_EMA_SLOPE_BARS = 10;                  // ema50Slope = (ema50[n-1] - ema50[n-1-N]) / ema50[n-1-N}, N = 10 (C1)
+var D_PATTERN_MAX = 3;                      // 1D only, capped min(D_PATTERN_MAX, 2n-1); 0 on conflict (E6) and on 4d-grid
+var D_VOL_TOUCH_BONUS = 4;
+var D_VOL_TOUCH_MULT = 1.2;
+var D_VOL_WINDOW = 20;                      // mean of the 20 bars BEFORE the most recent support touch bar (exclusive)
+var D_RAW_MAX = 102;                        // 24+15+15+15+12+6+(5+3)+3+4
 // ATR14 as of EVERY bar: out[k] = atr14(candles.slice(0, k+1)), null for k < 14. Same true-range math
 // and same Wilder smoothing as atr14() above, evaluated as a rolling series instead of once at the
 // end of the series (identical arithmetic order, so the values are bitwise equal - the suite checks
@@ -862,16 +895,30 @@ function detectChannelResearch(candles, diag, meta) {
       var position = (curPrice-supNow)/channelH; // B4: unclamped, same rationale as the flag-off path
       var distToRailPct = (curPrice-supNow)/curPrice; // B5
 
-      var winCandles = aCandles.slice(firstIdx); // F3: containment judges a clipped bar at its ANALYTIC low/high
-      var inside = 0;
-      for (var i=0; i<winCandles.length; i++) {
-        var ci = firstIdx+i;
-        var s = railAt(slope,intercept,ci);
-        var r2 = railAt(resSlope,resIntercept,ci); // R3: both rails checked per bar, generalizes the old flat s+channelH
-        if (winCandles[i].low >= s*(1-tol) && winCandles[i].high <= r2*(1+tol)) inside++;
+      var winCandles = aCandles.slice(firstIdx); // F3: fit-window length (containment in _noD mode judges a clipped bar at its ANALYTIC low/high)
+      var inside = 0, containment;
+      if (meta._noD) {
+        for (var i=0; i<winCandles.length; i++) {
+          var ci = firstIdx+i;
+          var s = railAt(slope,intercept,ci);
+          var r2 = railAt(resSlope,resIntercept,ci); // R3: both rails checked per bar, generalizes the old flat s+channelH
+          if (winCandles[i].low >= s*(1-tol) && winCandles[i].high <= r2*(1+tol)) inside++;
+        }
+        containment = (inside/winCandles.length)*100;
+        if (containment < 55) continue;
+      } else {
+        // Step 10 D: containment for the SCORE and the eligibility gate is measured on bar CLOSES (RAW candles;
+        // a close is identical in the raw and analytic copies), same tol bands and both-rails-per-bar geometry.
+        // The F3 analytic low/high containment above is now unused for score and gate (kept for _noD, for
+        // aCandles' other readers: pivots, containmentRecent, the H3 re-fit).
+        for (var ic=firstIdx; ic<=lastIdx; ic++) {
+          var sC = railAt(slope,intercept,ic);
+          var rC = railAt(resSlope,resIntercept,ic);
+          if (candles[ic].close >= sC*(1-tol) && candles[ic].close <= rC*(1+tol)) inside++;
+        }
+        containment = (inside/winCandles.length)*100;
+        if (containment < D_CONT_GATE) continue;
       }
-      var containment = (inside/winCandles.length)*100;
-      if (containment < 55) continue;
       if (pairLogEntry) pairLogEntry.reached = 'containment';
 
       if (position > 0.75) continue;
@@ -879,29 +926,81 @@ function detectChannelResearch(candles, diag, meta) {
 
       // A1/H9
       // F3: breaks and lifecycle are close-based and read the RAW candles.
-      var scan = scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol);
+      var scan = scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol, !meta._noD);
       var lifecycle = computeLifecycle(scan, supTouches, candles, slope, intercept, lastIdx, tol, RECLAIM_BARS);
 
       var slopePct = (slope / Math.abs(railAt(slope,intercept,firstIdx)||1)) * 100;
       var invalidation = supNow * (1-tol);
 
-      var score = 0;
-      score += Math.min(25, supTouches.length*8);
-      score += Math.min(15, resTouches.length*6);
-      score += (containment/100)*20;
-      var sa = Math.abs(slopePct);
-      if(slope >= 0) { score += sa>=0.05&&sa<=3?15:sa<0.05?8:Math.max(0,15-(sa-3)*3); }
-      else { score += Math.max(0, 8-(sa*3)); }
-      score += position<=0.33?10:position<=0.5?6:position<=0.66?3:0;
-      score += Math.min(6, winCandles.length/20);
-      if(sa > 5) score -= 10;
-      if(slope < 0) score -= 5;
-      score += ema.pts;
+      var score = 0, scoreBreakdown = null, ema50Slope = null;
       var patternN = (conf.bb3.hit?1:0) + (conf.bullEngulf.hit?1:0) + (conf.threeInsideUp.hit?1:0);
-      // E6: patternBonus excluded from score when the candle-level pattern conflict is present.
-      var patternBonus = (patternN > 0 && !patternConflict) ? (2*patternN - 1) : 0;
-      score += patternBonus;
-      score = Math.round(clamp(score,0,100));
+      var sa = Math.abs(slopePct);
+      if (meta._noD) {
+        // Step 10 D: meta._noD (harness only, never set by capture.js or the page) runs the PRE-D research block
+        // verbatim, so the runner's OLD derives from this same function (the _noWickClip pattern).
+        score += Math.min(25, supTouches.length*8);
+        score += Math.min(15, resTouches.length*6);
+        score += (containment/100)*20;
+        if(slope >= 0) { score += sa>=0.05&&sa<=3?15:sa<0.05?8:Math.max(0,15-(sa-3)*3); }
+        else { score += Math.max(0, 8-(sa*3)); }
+        score += position<=0.33?10:position<=0.5?6:position<=0.66?3:0;
+        score += Math.min(6, winCandles.length/20);
+        if(sa > 5) score -= 10;
+        if(slope < 0) score -= 5;
+        score += ema.pts;
+        // E6: patternBonus excluded from score when the candle-level pattern conflict is present.
+        var patternBonus = (patternN > 0 && !patternConflict) ? (2*patternN - 1) : 0;
+        score += patternBonus;
+        score = Math.round(clamp(score,0,100));
+      } else {
+        // Step 10 D. Read sources per component: everything below reads RAW candles / fit locals; the F3 analytic
+        // copy is not consulted by the score (containment above is on raw closes).
+        var dSlopePts = 0;
+        if (slope >= 0) { dSlopePts = sa>=0.05&&sa<=3?15:sa<0.05?8:Math.max(0,15-(sa-3)*3); }
+        else { dSlopePts = Math.max(0, 8-(sa*3)); }
+        var dTouch = D_TOUCH_PTS[clamp(supTouches.length,2,7)-2];
+        var dRes = D_RES_PTS[Math.min(resTouches.length,3)];
+        if (resistanceFit === 'parallel') dRes = Math.min(dRes, D_RES_PARALLEL_MAX);
+        var dCont = clamp((containment - D_CONT_GATE) / (100 - D_CONT_GATE) * D_CONT_MAX, 0, D_CONT_MAX);
+        var dPos = (distToRailPct <= Math.min(D_POS_MULT[0]*tol, D_POS_FULL_CAP)) ? D_POS_PTS[0]
+          : (distToRailPct <= D_POS_MULT[1]*tol) ? D_POS_PTS[1] : D_POS_PTS[2];
+        var ageR = (timeframe === '4d-grid') ? D_AGE_RANGE_GRID : D_AGE_RANGE, ageBars = winCandles.length, dAge;
+        if (ageBars > ageR[2] || ageBars <= ageR[0]) dAge = 0;
+        else if (ageBars >= ageR[1]) dAge = D_AGE_MAX;
+        else dAge = D_AGE_MAX * (ageBars - ageR[0]) / (ageR[1] - ageR[0]);
+        // ema50Slope (C1's definition): (ema50[n-1] - ema50[n-1-N]) / ema50[n-1-N]. emaLast over a prefix is the same
+        // fold, so it is bitwise the series value at that index. null when there are <= N closes or a non-positive base.
+        if (n > D_EMA_SLOPE_BARS) {
+          var e50Prev = emaLast(candles.slice(0, n - D_EMA_SLOPE_BARS).map(function(c){return c.close;}), 50);
+          if (e50Prev > 0) ema50Slope = (ema.e50 - e50Prev) / e50Prev;
+        }
+        var dEmaSlope = (ema50Slope !== null && ema50Slope > 0) ? D_EMA_SLOPE_BONUS : 0;
+        // Pattern bonus: 1D only; E6 conflict already excluded via patternConflict; shape 1/3/3.
+        var dPattern = (timeframe === '1d' && patternN > 0 && !patternConflict) ? Math.min(D_PATTERN_MAX, 2*patternN - 1) : 0;
+        // Volume on the most recent support touch bar vs the mean of the D_VOL_WINDOW bars before it (exclusive).
+        // Missing / non-finite / non-positive volume in any of those bars, or too few prior bars -> 0, never a throw.
+        var dVol = 0, volTouch = null;
+        var tIdx = -1; for (var vt=0; vt<supTouches.length; vt++) if (supTouches[vt].idx > tIdx) tIdx = supTouches[vt].idx;
+        if (tIdx >= D_VOL_WINDOW) {
+          var vTouch = candles[tIdx].volume, vSum = 0, vOk = (typeof vTouch === 'number' && isFinite(vTouch) && vTouch > 0);
+          for (var vk=tIdx-D_VOL_WINDOW; vOk && vk<tIdx; vk++) {
+            var vv = candles[vk].volume;
+            if (typeof vv === 'number' && isFinite(vv) && vv > 0) vSum += vv; else vOk = false;
+          }
+          if (vOk) { var vMean = vSum / D_VOL_WINDOW; volTouch = {idx:tIdx, volume:vTouch, mean20:vMean, ratio:vTouch / vMean}; if (vTouch >= D_VOL_TOUCH_MULT * vMean) dVol = D_VOL_TOUCH_BONUS; }
+        }
+        var dBreak = D_BREAK_PENALTY * scan.runCount2;
+        var widthFrac = channelH / curPrice, dWidth = widthFrac > D_WIDTH_FRAC[1] ? D_WIDTH_PENALTY[1] : widthFrac > D_WIDTH_FRAC[0] ? D_WIDTH_PENALTY[0] : 0;
+        var dSlopeSteep = sa > 5 ? 10 : 0, dSlopeNeg = slope < 0 ? 5 : 0;
+        var rawPositive = dTouch + dRes + dCont + dSlopePts + dPos + dAge + ema.pts + dEmaSlope + dPattern + dVol;
+        var rescaled = rawPositive * 100 / D_RAW_MAX; // the ONE rescale; penalties below are absolute points
+        var penaltyTotal = dBreak + dWidth + dSlopeSteep + dSlopeNeg;
+        score = Math.round(clamp(rescaled - penaltyTotal, 0, 100));
+        scoreBreakdown = {touch:dTouch, res:dRes, cont:dCont, slope:dSlopePts, pos:dPos, age:dAge, ema:ema.pts, emaSlope:dEmaSlope,
+          pattern:dPattern, vol:dVol, rawPositive:rawPositive, rescaled:rescaled,
+          penalties:{brk:dBreak, width:dWidth, slopeSteep:dSlopeSteep, slopeNeg:dSlopeNeg}, penaltyTotal:penaltyTotal,
+          final:score, runCount2:scan.runCount2, volTouch:volTouch};
+      }
 
       var eligible = (lifecycle.state === 'intact' || lifecycle.state === 're-qualified');
       if (pairLogEntry) {
@@ -946,6 +1045,7 @@ function detectChannelResearch(candles, diag, meta) {
         research: true,
         breachHistory: []
       };
+      if (scoreBreakdown) { candidate.scoreBreakdown = scoreBreakdown; candidate.ema50Slope = ema50Slope; candidate.breakRunCount2 = scan.runCount2; } // Step 10 D (absent under _noD)
 
       if (eligible && (!bestEligible || candidate.score > bestEligible.score)) bestEligible = candidate;
       if (!bestAny || candidate.score > bestAny.score) bestAny = candidate;
@@ -1276,6 +1376,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // Step 9 F3/H3 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash and
     // the functions themselves for direct harness testing.
     F3_WICK_ATR_MULT: F3_WICK_ATR_MULT, F3_CLIP_ATR_MULT: F3_CLIP_ATR_MULT, F3_RAIL_UNCHANGED_PCT: F3_RAIL_UNCHANGED_PCT,
-    applyWickClip: applyWickClip, atr14Series: atr14Series
+    applyWickClip: applyWickClip, atr14Series: atr14Series,
+    // Step 10 D (Remediation spec Plan D) exports - constants for capture.js's configHash and the harness.
+    D_TOUCH_PTS: D_TOUCH_PTS, D_RES_PTS: D_RES_PTS, D_RES_PARALLEL_MAX: D_RES_PARALLEL_MAX, D_CONT_GATE: D_CONT_GATE,
+    D_CONT_MAX: D_CONT_MAX, D_BREAK_PENALTY: D_BREAK_PENALTY, D_POS_MULT: D_POS_MULT, D_POS_FULL_CAP: D_POS_FULL_CAP,
+    D_POS_PTS: D_POS_PTS, D_AGE_RANGE: D_AGE_RANGE, D_AGE_RANGE_GRID: D_AGE_RANGE_GRID, D_AGE_MAX: D_AGE_MAX,
+    D_WIDTH_FRAC: D_WIDTH_FRAC, D_WIDTH_PENALTY: D_WIDTH_PENALTY, D_EMA_SLOPE_BONUS: D_EMA_SLOPE_BONUS,
+    D_EMA_SLOPE_BARS: D_EMA_SLOPE_BARS, D_PATTERN_MAX: D_PATTERN_MAX, D_VOL_TOUCH_BONUS: D_VOL_TOUCH_BONUS,
+    D_VOL_TOUCH_MULT: D_VOL_TOUCH_MULT, D_VOL_WINDOW: D_VOL_WINDOW, D_RAW_MAX: D_RAW_MAX
   };
 }
