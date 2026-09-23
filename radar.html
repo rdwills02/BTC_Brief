@@ -181,6 +181,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .cat-toggle{opacity:.62;transition:opacity .12s}
 .cat-toggle:hover{opacity:.85}
 .cat-toggle.active{opacity:1;box-shadow:0 0 0 1px currentColor inset}
+/* Step 8 H11 (2026-09-23): research-mode pills that carry a patternRecord are click-to-inspect
+   (popover + every referenced candle marked on the chart). Same dim/active convention as .cat-toggle. */
+.research-pill{opacity:.75;transition:opacity .12s}
+.research-pill:hover{opacity:.95}
+.research-pill.active{opacity:1;box-shadow:0 0 0 1px currentColor inset}
+.research-pop-body table{border-collapse:collapse;margin-top:6px;font-variant-numeric:tabular-nums}
+.research-pop-body th,.research-pop-body td{padding:2px 8px;text-align:right;font-size:10px;border-bottom:1px solid var(--border,#2a2f3a)}
+.research-pop-body th{color:var(--muted,#6b7280);font-weight:600}
 @media (max-width: 640px) {
   .header{height:auto;min-height:52px;flex-wrap:wrap;padding:8px 12px;gap:6px}
   .nav-links{display:none}
@@ -445,6 +453,27 @@ var detailCS = null, detailEmaSeries = null, detailPivotMarkers = null, detailTr
 // needs the chart instance + the candle series it was built from) without threading them through
 // every call site - same module-level-state pattern as detailCS/detailTriggers above.
 var detailCandles = null, detailCandlesGrid = null, detailBandsEl = null;
+// Step 8 H11 (2026-09-23): research-pill click-to-inspect draws on its OWN hidden line series (set
+// up in buildChart, research mode only) rather than cs.setMarkers(), because toggleOverlay
+// rebuilds cs's whole marker array on every overlay click - a research mark on cs would be wiped
+// by it, and toggleOverlay is toString()-injected into the report so it stays untouched. Null when
+// research mode is off, so the flag-off chart is exactly as before.
+var detailResearchSeries = null;
+var RESEARCH_MARK_LETTER = {bb3:'B', bullEngulf:'E', threeInsideUp:'3', rocket:'R', bb3UpperReversion:'U', threeInsideDown:'D'};
+// Marks EVERY referenced candle (all candleIds, not just the trigger); ids [] clears.
+function setResearchMarks(pattern, ids, color) {
+  if (!detailResearchSeries) return;
+  var bearish = (pattern === 'bb3UpperReversion' || pattern === 'threeInsideDown');
+  var letter = RESEARCH_MARK_LETTER[pattern] || '';
+  var marks = [];
+  (ids || []).forEach(function(t, i) {
+    if (!detailCandles || !detailCandles.some(function(c){ return c.time === t; })) return;
+    marks.push({time:t, position: bearish ? 'aboveBar' : 'belowBar', color: color || '#ffd166',
+      shape: bearish ? 'arrowDown' : 'arrowUp', text: letter + (ids.length > 1 ? ' ' + (i + 1) + '/' + ids.length : ''), size:1});
+  });
+  marks.sort(function(a, b){ return a.time - b.time; });
+  detailResearchSeries.setMarkers(marks);
+}
 var scanning = false;
 var diag = {universe:0,volExcluded:0,catExcluded:0,ohlcOk:0,railPairs:0,posSlope:0,touches:0,containment:0,candidates:0};
 // Computed once per scan in runScan() from radar.html's own localStorage history (see
@@ -629,24 +658,81 @@ function confluenceHTML(r) {
 // fit's own candle series isn't the one buildChart(r) renders for the flag-off row) and
 // keeping them separate means confluenceList itself is untouched, so the flag-off view stays
 // byte-identical to before this diff.
+// Step 8 H11 (Remediation spec, 2026-09-21/22): each pattern pill carries its patternRecord
+// (rr.patternRecords, built by detectChannelResearch - matched here by pattern name). The
+// pill's tooltip IS the record's rule string - generated in channel-core.js from the E3/E4
+// constants - so it can never drift from the thresholds actually applied; this replaces the
+// typed tooltip literals E2 shipped. The multi-signal pill is a meta-pill with no record of
+// its own (it is not one of the six patterns), so it keeps its one descriptive literal.
+// A pill whose record is missing (never the case for a live research fit) still renders, with a
+// neutral tooltip and no click-to-inspect.
+function researchAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function researchRecordFor(rr, pattern) {
+  var recs = rr && rr.patternRecords;
+  if (!recs) return null;
+  for (var i = 0; i < recs.length; i++) if (recs[i].pattern === pattern) return recs[i];
+  return null;
+}
+function researchPill(rr, pattern, t, c, bg) {
+  var rec = researchRecordFor(rr, pattern);
+  return {t:t, c:c, bg:bg, pattern:pattern, rec:rec,
+    tip: rec ? rec.rule : 'Research-mode fit (no pattern record on this row).'};
+}
 function researchConfluenceList(rr) {
   var b = [];
-  if (rr.bb3) b.push({t:'3BB mean-reversion',c:'#7b6ef6',bg:'rgba(123,110,246,.15)',tip:'Research-mode fit: price pushed below the lower 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a mean-reversion bounce signal.'});
-  if (rr.bullEngulf) b.push({t:'Bullish engulfing',c:'#5b8def',bg:'rgba(91,141,239,.15)',tip:'Research-mode fit: the latest candle\u2019s bullish body fully engulfs the prior candle\u2019s bearish body - a reversal pattern.'});
-  if (rr.threeInsideUp) b.push({t:'3 Inside Up',c:'#f472b6',bg:'rgba(244,114,182,.15)',tip:'Research-mode fit: a bearish candle, then a smaller bullish candle inside its range, then a higher close - a 3-candle bullish reversal pattern.'});
-  if (rr.rocket) b.push({t:'Rocket at support',c:'#22d3ee',bg:'rgba(34,211,238,.15)',tip:'Research-mode fit: a green candle with its real body resting at the fitted support rail, a lower wick below it, and a close near the bar\u2019s high - a bullish reversal-off-support pattern.'});
-  if (rr.multiSignal) b.push({t:'Multiple signals aligned',c:'#ffd166',bg:'rgba(255,209,102,.15)',tip:'Research-mode fit: two or more of the pattern signals above triggered on the same or an adjacent candle.'});
-  if (rr.bb3UpperReversion) b.push({t:'3BB upper reversion',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Research-mode fit: price pushed above the upper 3-std Bollinger Band in the last ~5 bars and has closed back inside it - a bearish exit-warning signal on an existing long, not a short-entry signal.'});
-  if (rr.threeInsideDown) b.push({t:'3 Inside Down',c:'#e8754a',bg:'rgba(232,117,74,.15)',tip:'Research-mode fit: a bullish candle, then a smaller bearish candle inside its range, then a lower close - a 3-candle bearish reversal pattern. Exit-warning on an existing long, not a short-entry signal.'});
+  if (rr.bb3) b.push(researchPill(rr, 'bb3', '3BB mean-reversion', '#7b6ef6', 'rgba(123,110,246,.15)'));
+  if (rr.bullEngulf) b.push(researchPill(rr, 'bullEngulf', 'Bullish engulfing', '#5b8def', 'rgba(91,141,239,.15)'));
+  if (rr.threeInsideUp) b.push(researchPill(rr, 'threeInsideUp', '3 Inside Up', '#f472b6', 'rgba(244,114,182,.15)'));
+  if (rr.rocket) b.push(researchPill(rr, 'rocket', 'Rocket at support', '#22d3ee', 'rgba(34,211,238,.15)'));
+  if (rr.multiSignal) b.push({t:'Multiple signals aligned',c:'#ffd166',bg:'rgba(255,209,102,.15)',pattern:null,rec:null,tip:'Research-mode fit: two or more of the pattern signals above triggered on the same or an adjacent candle.'});
+  if (rr.bb3UpperReversion) b.push(researchPill(rr, 'bb3UpperReversion', '3BB upper reversion', '#e8754a', 'rgba(232,117,74,.15)'));
+  if (rr.threeInsideDown) b.push(researchPill(rr, 'threeInsideDown', '3 Inside Down', '#e8754a', 'rgba(232,117,74,.15)'));
   return b;
+}
+// Candle times are unix seconds on every series this page charts; anything else prints as-is.
+function researchTimeLabel(t) {
+  return (typeof t === 'number' && isFinite(t)) ? new Date(t * 1000).toISOString().slice(0, 10) : String(t);
+}
+// Popover body for one record: source, timeframe, interval, closed/provisional, the rule that
+// passed, and the OHLC of EVERY referenced candle (2 for engulfing, 3 for three-inside, ...).
+// Rendered hidden next to the pills; the click handler (wired in init) shows the one matching the
+// clicked pill and marks the same candles on the chart from the pill's data-candle-ids.
+function researchPopoverHTML(rec) {
+  var rows = rec.ohlc.map(function(o, i) {
+    return '<tr><td style="text-align:left">' + (i + 1) + ' &middot; ' + researchAttr(researchTimeLabel(o.time)) + '</td>' +
+      '<td>' + o.open + '</td><td>' + o.high + '</td><td>' + o.low + '</td><td>' + o.close + '</td></tr>';
+  }).join('');
+  var conflict = rec.conflictingSignalsPair
+    ? '<div style="margin-top:4px;color:#ffb020">Conflicting signals: this pattern is one side of a bullish/bearish pair that fired on the same or adjacent candles.</div>' : '';
+  return '<div class="research-pop-body" data-pattern="' + researchAttr(rec.pattern) + '" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--border,#2a2f3a);border-radius:6px;font-size:11px;line-height:1.4">' +
+    '<div><b>' + researchAttr(rec.pattern) + '</b> &middot; venue ' + researchAttr(rec.venue) + ' &middot; timeframe ' + researchAttr(rec.timeframe) +
+    ' &middot; interval ' + researchAttr(rec.interval) + ' &middot; ' + (rec.closed ? 'closed' : 'provisional') + '</div>' +
+    '<div style="margin-top:4px">' + researchAttr(rec.rule) + '</div>' +
+    '<table><tr><th style="text-align:left">candle</th><th>open</th><th>high</th><th>low</th><th>close</th></tr>' + rows + '</table>' +
+    conflict + '</div>';
+}
+function researchConflictTip(rr) {
+  var names = (rr.patternRecords || []).filter(function(x){ return x.conflictingSignalsPair; }).map(function(x){ return x.pattern; });
+  return 'A bullish and a bearish pattern fired on the same or adjacent candles' + (names.length ? ' (' + names.join(' vs ') + ')' : '') +
+    '; the pattern bonus is excluded from the research score.';
 }
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
   if (!b.length) return '';
+  var pills = b.map(function(x){
+    var base = 'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;';
+    if (x.rec) {
+      return '<span class="cat-tip research-pill" data-pattern="'+researchAttr(x.pattern)+'" data-color="'+x.c+'" data-candle-ids="'+researchAttr(JSON.stringify(x.rec.candleIds))+'" data-tip="'+researchAttr(x.tip)+'" style="'+base+'cursor:pointer">'+x.t+'</span>';
+    }
+    return '<span class="cat-tip" data-tip="'+researchAttr(x.tip)+'" style="'+base+'cursor:help">'+x.t+'</span>';
+  }).join('');
+  var conflictTag = rr.conflictingSignals
+    ? '<span class="cat-tip" data-tip="'+researchAttr(researchConflictTip(rr))+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:rgba(255,176,32,.15);color:#ffb020;margin-right:6px;display:inline-block;margin-bottom:4px;cursor:help">Conflicting signals</span>' : '';
+  var pops = b.filter(function(x){ return x.rec; }).map(function(x){ return researchPopoverHTML(x.rec); }).join('');
   return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border,#2a2f3a)"><span style="font-size:9px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em;margin-right:6px">Research</span>' +
-    b.map(function(x){
-      return '<span class="cat-tip" data-tip="'+x.tip+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;cursor:help">'+x.t+'</span>';
-    }).join('') + '</div>';
+    pills + conflictTag + pops + '</div>';
 }
 
 // Step 8 E2 (revised, 2026-09-23, per Ryan's restage instruction): in research mode the
@@ -2231,6 +2317,13 @@ function buildChart(r) {
   detailCandles = r.candles;
   detailCandlesGrid = r.candlesGrid;
   detailBandsEl = bandsEl;
+  // Step 8 H11: hidden carrier series for research-pill candle marks (see setResearchMarks). Only in
+  // research mode with a research row; excluded from autoscale so it cannot move the price range.
+  detailResearchSeries = null;
+  if (RESEARCH_MODE_UI && r.researchRow) {
+    detailResearchSeries = chart.addLineSeries({color:'rgba(0,0,0,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:function(){return null;}});
+    detailResearchSeries.setData(r.candles.map(function(c){return {time:c.time,value:c.close};}));
+  }
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
   // Indicator Upgrades Group 4, item 4 (2026-09-21), confirmed live by Ryan: applyOptions
@@ -2688,6 +2781,24 @@ window.addEventListener('load', function() {
     } else {
       pill.classList.toggle('active', !!detailOverlay[key]);
     }
+  });
+  // Step 8 H11 (2026-09-23): research pills (.research-pill, only rendered in research mode) open the
+  // popover for their patternRecord and mark every referenced candle on the chart. One pill active at
+  // a time; clicking the active pill closes it and clears the marks. Separate from the .cat-toggle
+  // handler above (research pills carry no cat-toggle class, so the two never overlap).
+  document.getElementById('dp-confluence').addEventListener('click', function(e) {
+    var pill = e.target.closest('.research-pill');
+    if(!pill) return;
+    var box = document.getElementById('dp-confluence');
+    var wasActive = pill.classList.contains('active');
+    box.querySelectorAll('.research-pill').forEach(function(p){ p.classList.remove('active'); });
+    box.querySelectorAll('.research-pop-body').forEach(function(d){ d.style.display = 'none'; });
+    if(wasActive) { setResearchMarks(null, [], null); return; }
+    pill.classList.add('active');
+    var pat = pill.dataset.pattern;
+    box.querySelectorAll('.research-pop-body').forEach(function(d){ if(d.dataset.pattern === pat) d.style.display = 'block'; });
+    var ids = []; try { ids = JSON.parse(pill.dataset.candleIds || '[]'); } catch(err) { ids = []; }
+    setResearchMarks(pat, ids, pill.dataset.color);
   });
   document.getElementById('chart-expand-btn').addEventListener('click', function() {
     var wrap = document.getElementById('chart-wrap');
