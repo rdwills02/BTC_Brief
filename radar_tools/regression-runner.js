@@ -302,6 +302,7 @@ function run() {
   runStep7Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E3Acceptance(current, grids, caches, loadDailyCaches());
   runStep8E4Acceptance(current, grids, caches, loadDailyCaches());
+  runStep8E5Acceptance(current, grids, caches, loadDailyCaches());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -782,6 +783,81 @@ function runStep8E4Acceptance(current, grids, gridCaches, dailyCaches) {
   console.log('true->false flips: ' + flipDownTotal);
   console.log('total changed rows (both passes): ' + (flipUpTotal + flipDownTotal) +
     (flipUpTotal + flipDownTotal >= 1 ? ' (at least one flip - not a no-op build)' : ' — ZERO FLIPS, unexpected for a tightened/re-anchored gate'));
+}
+
+
+// Step 8 E5 (Remediation spec, 2026-09-21/22; restaged 2026-09-23): threeInsideUpResearch.
+// OLD = current.threeInsideUp(slice).hit, computed DIRECTLY ON THE RESEARCH WINNER'S OWN
+// SLICE (same "compute OLD on the research fit's own row" pattern as E3/E4's runner sections,
+// so OLD and NEW are always evaluated against the identical candle set - only the function
+// differs). Row set = rows with a research fit (same convention as E3/E4 - no fit, nothing to
+// compare NEW against either).
+//
+// threeInsideUpResearch is threeInsideUp's own four conditions AND one more (c3.close >
+// c1.open) - a strict tightening, not a re-anchor like E4's near-rail switch. That means NEW
+// can only ever be a SUBSET of OLD: every possible flip is true->false, and a false->true flip
+// would be a bug in either function, checked directly below rather than assumed impossible.
+function classifyE5(s) {
+  var n = s.length, c1 = s[n - 3], c3 = s[n - 1];
+  if (!(c3.close > c1.open)) return 'c3-not-above-c1-open';
+  return 'unattributed';
+}
+
+function runStep8E5Acceptance(current, grids, gridCaches, dailyCaches) {
+  var latestGrid = grids[grids.length - 1];
+  var latestGridDate = latestGrid.date;
+  var coins = latestGrid.coins;
+
+  console.log('\n=== Step 8 E5 acceptance (threeInsideUpResearch) — 1d on ohlcDaily (frozen 9/16 capture), 4d-grid on ohlc ===');
+  console.log('Latest grid date: ' + latestGridDate + ' (used for 4d-grid) | 1d pinned date: ' + FROZEN_916_DATE + ' (used for 1d - frozen capture, see pinnedSlice) | coin universe: ' + coins.length);
+
+  function slice(cgId, tf) {
+    return pinnedSlice(cgId, tf, gridCaches, dailyCaches, latestGridDate);
+  }
+
+  console.log('\n--- 1. threeInsideUp: OLD (current.threeInsideUp on the research winner\'s own slice) vs NEW (research fit .threeInsideUp), per pass — every changed row attributed ---');
+  var flipUpTotal = 0, flipDownTotal = 0, badFlipUp = 0, unattributed = 0;
+  for (var ti = 0; ti < 2; ti++) {
+    var tf = ['1d', '4d-grid'][ti];
+    var oldTrue = 0, newTrue = 0, checked = 0;
+    var changed = [];
+    for (var ci = 0; ci < coins.length; ci++) {
+      var cgId = coins[ci];
+      var s = slice(cgId, tf);
+      if (!s || s.length < 30) continue;
+      var newR = null;
+      try { newR = current.detectChannel(s, undefined, { cgId: cgId, timeframe: tf, source: 'fixture', research: true }); } catch (e) { /* null */ }
+      if (!newR) continue; // row set = rows with a research fit
+      var oldHit = current.threeInsideUp(s).hit;
+      var newHit = !!newR.threeInsideUp;
+      checked++;
+      if (oldHit) oldTrue++;
+      if (newHit) newTrue++;
+      if (oldHit !== newHit) {
+        var cause = classifyE5(s);
+        if (cause === 'unattributed') unattributed++;
+        changed.push({ cgId: cgId, oldHit: oldHit, newHit: newHit, cause: cause });
+        if (!oldHit && newHit) { flipUpTotal++; badFlipUp++; } // structurally impossible — see header
+        else { flipDownTotal++; }
+      }
+    }
+    console.log(tf + ': checked ' + checked + ' (rows with a research fit) | OLD threeInsideUp true: ' + oldTrue +
+      ' | NEW threeInsideUp true: ' + newTrue + ' | changed rows: ' + changed.length);
+    for (var k = 0; k < changed.length; k++) {
+      var c = changed[k];
+      console.log('    ' + c.cgId.padEnd(28) + ' ' + (c.oldHit ? 'true' : 'false') + ' -> ' + (c.newHit ? 'true' : 'false') +
+        '  (E5: ' + c.cause + ')');
+    }
+  }
+
+  console.log('\n--- 2. E5 invariants (see radar_tools/step8-e5-invariant-tests.js, local only, for the full 2162-row versions) ---');
+  console.log('false->true flips: ' + flipUpTotal + ' total, ' + badFlipUp + ' NOT structurally attributable' +
+    (badFlipUp === 0 ? ' (none — threeInsideUpResearch is a strict tightening of threeInsideUp, a false->true flip is structurally impossible)' : ' — UNEXPECTED, SEE ROWS ABOVE, THIS IS A BUG'));
+  console.log('true->false flips: ' + flipDownTotal);
+  console.log('total changed rows (both passes): ' + (flipUpTotal + flipDownTotal) +
+    (flipUpTotal + flipDownTotal >= 1 ? ' (at least one flip - not a no-op build)' : ' — ZERO FLIPS, unexpected for a tightened gate'));
+  console.log('every changed row attributed (no \'unattributed\'): ' + unattributed +
+    (unattributed === 0 ? ' (holds)' : ' — SEE ABOVE'));
 }
 
 run();

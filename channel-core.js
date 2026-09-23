@@ -199,6 +199,27 @@ function threeInsideUp(candles) {
   return hit ? {hit:true, idx:n-1, time:c3.time} : {hit:false, idx:null, time:null};
 }
 
+// E5 (Remediation spec, 2026-09-21/22): research-only sibling to threeInsideUp() above -
+// flag-off untouched (detectChannel's own conf.threeInsideUp call, below, still calls
+// threeInsideUp() directly). Same style as bullEngulfingResearch/rocketAtSupportResearch: one
+// added confirmation gate, no re-derivation of the base pattern. Per Ryan's restage
+// instruction (2026-09-23): threeInsideUpResearch = threeInsideUp's own four conditions, plus
+// c3 (the confirmation candle) closing back above c1's open - i.e. the inside-bar setup isn't
+// just "up from c2's close" (threeInsideUp's own c3Up test) but has actually reclaimed the
+// first bearish candle's open, a stronger confirmation of the reversal. No new constants -
+// c1.open is already a field on the candle object, nothing to tune or fold into configHash.
+function threeInsideUpResearch(candles) {
+  var n=candles.length; if(n<3) return {hit:false, idx:null, time:null};
+  var c1=candles[n-3], c2=candles[n-2], c3=candles[n-1];
+  var c1Bear = c1.close<c1.open;
+  var c2Bull = c2.close>c2.open;
+  var c2Inside = Math.max(c2.open,c2.close)<=c1.open && Math.min(c2.open,c2.close)>=c1.close;
+  var c3Up = c3.close>c2.close;
+  var c3ReclaimsC1Open = c3.close>c1.open;
+  var hit = c1Bear && c2Bull && c2Inside && c3Up && c3ReclaimsC1Open;
+  return hit ? {hit:true, idx:n-1, time:c3.time} : {hit:false, idx:null, time:null};
+}
+
 // Indicator Upgrades Group 2 (2026-09-20): bearish exit-warning mirror of bb3Reversion, band
 // inverted. Same 20-bar window, same 3-std-dev multiplier, same "last ~5 bars" trigger-search
 // window as bb3Reversion - sign-flipped, not re-derived. Display-only exit-warning flag on an
@@ -595,7 +616,7 @@ function detectChannelResearch(candles, diag, meta) {
   // E3 (Remediation spec, 2026-09-21/22): research-only sibling, reusing this same `atr`
   // (computed just above) - flag-off's own bullEngulfing(candles) call, in detectChannel
   // below, is untouched.
-  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfingResearch(candles, atr), threeInsideUp:threeInsideUp(candles),
+  var conf = {bb3:bb3Reversion(candles), bullEngulf:bullEngulfingResearch(candles, atr), threeInsideUp:threeInsideUpResearch(candles),
     bb3UpperReversion:bb3UpperReversion(candles), threeInsideDown:threeInsideDown(candles)};
 
   var bestEligible = null, bestAny = null;
@@ -1041,6 +1062,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ROCKET_WICK_BODY: ROCKET_WICK_BODY, ROCKET_WICK_ATR: ROCKET_WICK_ATR,
     ROCKET_PRIOR_CLOSES_BELOW: ROCKET_PRIOR_CLOSES_BELOW,
     rocketAtSupportResearch: rocketAtSupportResearch,
+    // E5 (Remediation spec, 2026-09-21/22) export - the function itself for direct harness testing (no new constants).
+    threeInsideUpResearch: threeInsideUpResearch,
     // Step 7 (Remediation spec, 2026-09-21/22) exports - constants for capture.js's configHash
     // and the B1 internals for direct harness testing.
     NEAR_FLAT_SLOPE_PCT: NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: WEDGE_LOOKAHEAD,
