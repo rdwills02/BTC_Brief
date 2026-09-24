@@ -1718,6 +1718,70 @@ function researchEntryHTML(rr) {
     ' · stop ' + fmt(ee.stop, d) + ' (' + ee.stopBasis + ', defended low ' + fmt(ee.defendedLow, d) + ')' +
     ' · target ' + tgt + ' · R:R ' + rr2 + '</div>';
 }
+// Step 11-E (Remediation spec H12, correlated signals) + C-2 (H5 frozen-signal display). Research mode only; every
+// function below is a pure renderer over data the page already holds (researchVerdict output, BTC_REGIME) or over the
+// read-only setup ledger data/setups.json (C-2). Nothing here gates, scores or writes.
+var SETUPS_LEDGER = null;   // C-2: parsed data/setups.json (setups-core.js key order), research mode only; null until loaded / on failure
+function btcRegimeLabel(regime) {
+  if (!regime || typeof regime.aboveEma50 !== 'boolean' || typeof regime.ema50Slope !== 'number') return 'BTC regime: unknown';
+  return 'BTC regime: ' + (regime.aboveEma50 ? 'above' : 'below') + ' ' + (regime.ema50Slope >= 0 ? 'rising' : 'falling') + ' EMA50';
+}
+// Research-ACT rows over `rows` (allResults): verdict from the same buildAction(rr,{research:true}) the badges use, and
+// whether the C5 gate passed on this capture (same day, same BTC bar - every row shares BTC_REGIME, so M is the count of
+// ACTs whose regime gate passed; ACT requires every gate, so M == N whenever C5 is evaluated, and the line says so).
+function researchActRows(rows) {
+  var out = [];
+  (rows || []).forEach(function (r) {
+    if (!r || !r.researchRow || typeof buildAction !== 'function') return;
+    var a = buildAction(r.researchRow, { research: true });
+    if (a.verdict !== 'ACT') return;
+    var g = a.details && a.details.gates ? a.details.gates.filter(function (x) { return x.id === 'C5.btc-regime'; })[0] : null;
+    out.push({ symbol: r.symbol, c5Pass: !!(g && g.pass === true) });
+  });
+  return out;
+}
+function researchCorrelationLine(acts) {
+  var n = acts.length, m = acts.filter(function (a) { return a.c5Pass; }).length;
+  var s = 'Research ACT: ' + n + ' — ' + m + ' share the BTC regime bet';
+  if (n >= 2) s += ' [' + acts.map(function (a) { return a.symbol; }).join(', ') + ']';
+  return s;
+}
+function researchCorrelatedHTML(r, acts) {
+  if (!r || !r.researchRow || !acts || !acts.length) return '';
+  if (!acts.some(function (a) { return a.symbol === r.symbol; })) return '';
+  return '<div class="research-correlated-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">Correlated: ' + (acts.length - 1) + ' other ACTs today (one BTC bet)</div>';
+}
+// C-2: the setup record for a research row - the open one for (cgId, timeframe), else the most recently closed one.
+function researchSetupFor(rr, ledger) {
+  if (!rr || !ledger || !Array.isArray(ledger.setups)) return null;
+  var tf = rr.timeframe || '1d', mine = ledger.setups.filter(function (s) { return s && s.cgId === rr.cgId && s.timeframe === tf; });
+  var open = mine.filter(function (s) { return s.status === 'open'; })[0];
+  if (open) return open;
+  var closed = mine.filter(function (s) { return s.status === 'closed'; }).sort(function (a, b) { return (b.closedAt || '') < (a.closedAt || '') ? -1 : 1; });
+  return closed[0] || null;
+}
+function researchSetupHTML(rr, ledger) {
+  var s = researchSetupFor(rr, ledger);
+  if (!s) return '';
+  var d = pricePrecision(rr.price), txt;
+  if (s.status === 'open') {
+    txt = 'Setup ' + s.id + ' since ' + s.openedAt + ' · frozen invalidation ' + fmt(s.invalidation, d);
+    if (typeof s.liveInvalidation === 'number' && s.liveInvalidation !== s.invalidation) {
+      txt += ' (live fit: ' + fmt(s.liveInvalidation, d) + ', ' + (s.raisesSuppressed > 0 ? 'not raised — different rail' : 'raised') + ')';
+    }
+  } else {
+    txt = 'Last setup ' + s.id + ' closed ' + s.closedAt + ' (' + s.closeReason + ')';
+  }
+  return '<div class="research-setup-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">' + researchAttr(txt) + '</div>';
+}
+// C-2: one read of data/setups.json at load, research mode only. Any failure leaves SETUPS_LEDGER null (no setup lines);
+// never blocks the page.
+function loadResearchSetups() {
+  if (!RESEARCH_MODE_UI || typeof fetch !== 'function') return Promise.resolve(null);
+  return fetch('data/setups.json?t=' + Date.now()).then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (j) { SETUPS_LEDGER = (j && Array.isArray(j.setups)) ? j : null; return SETUPS_LEDGER; })
+    .catch(function () { SETUPS_LEDGER = null; return null; });
+}
 var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 89 or above. WATCH means one of those conditions is not met, or the score is below 89. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
 function verdictRankFor(r) {
@@ -1994,6 +2058,9 @@ function renderDiag() {
       breadth4D.threeInsideUp+' 3 inside up, '+breadth4D.rocket+' rocket-at-support' +
       ' (of '+allResults.length+' scanned)';
     document.getElementById('diag-funnel').innerHTML += '<div style="margin-top:6px;font-size:11px;color:var(--text2)">'+breadthLine+'</div>';
+    // Step 11-E (H12): BTC regime chip (C5's input) + same-day research-ACT grouping - several ACTs on one BTC bar are one bet.
+    var regimeOk = !!(BTC_REGIME && BTC_REGIME.aboveEma50 && BTC_REGIME.ema50Slope >= 0);
+    document.getElementById('diag-funnel').innerHTML += '<div style="margin-top:4px;font-size:11px;color:var(--text2)"><span class="vbadge '+(regimeOk ? 'va-act' : 'va-watch')+'" style="font-size:10px">'+btcRegimeLabel(BTC_REGIME)+'</span> '+researchCorrelationLine(researchActRows(allResults))+'</div>';
   }
 }
 
@@ -2224,6 +2291,7 @@ function openDetail(r) {
       badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span><span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
       if (raction.gate) badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+raction.gate+'</span>';   // G6 (Step 11-A)
       badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
+      badgeHtml += researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(r.researchRow, SETUPS_LEDGER);   // Step 11-E (H12) + C-2 (H5): display only
       actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text + ' (' + RESEARCH_SCORE_LABEL + ')';
     } else {
       actionTextEl.textContent = action.text;
@@ -3118,6 +3186,7 @@ window.addEventListener('load', function() {
     if(r) openDetail(r);
   });
   loadCachedOrResting();
+  if (RESEARCH_MODE_UI) loadResearchSetups();   // C-2 (H5): read-only ledger, research mode only, never blocks
 });
 
 // On load: render the last cached scan with zero API calls, or a resting "ready" state
