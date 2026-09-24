@@ -463,6 +463,7 @@ var detailCandles = null, detailCandlesGrid = null, detailBandsEl = null;
 // by it, and toggleOverlay is toString()-injected into the report so it stays untouched. Null when
 // research mode is off, so the flag-off chart is exactly as before.
 var detailResearchSeries = null;
+var detailResearchRow = null;   // Step 12-B: the research row whose overlays are on the chart (null flag-off)
 // Step 9 Diff B (2026-09-23): F3 wick-clip markers. Base marker set for the same hidden carrier
 // series; setResearchMarks merges it with the pattern marks, so a pill click/clear never wipes it and
 // toggleOverlay (which only rebuilds cs's own markers) never touches it. Empty when research mode is
@@ -866,10 +867,73 @@ function researchQuoteRefresh(r) {
     if (cur && cur.getAttribute('data-symbol') === sym) cur.textContent = researchQuoteText(q);
   });
 }
+// Step 12-B (Remediation spec G4, G5, G7, G8; step 12 plan + rulings a-f). Research mode only. Pure renderers over the
+// research fit (rr) and the row; the chart overlays are DIVs positioned by time through chart.timeScale(), never by an
+// index into rr.candles (index hazard). Nothing here gates, scores or writes.
+var RESEARCH_OVERLAY_ID = 'detail-chart-research';   // sibling of #detail-chart-bands, created only in research mode (no flag-off DOM)
+function gridBarSpanLabel(gridDate) {
+  // 4-Day bar label as a span "9/20-9/23 (closed)": since F2 the stored date is the bar's OPEN day; the bar covers open..open+3d.
+  var d = new Date(gridDate);
+  if (isNaN(d)) return formatShortDate(gridDate);
+  return formatShortDate(gridDate) + '–' + formatShortDate(new Date(d.getTime() + 3 * 86400000).toISOString()) + ' (closed)';
+}
+function researchBarSeconds(rr) { return (rr && rr.timeframe === '4d-grid') ? 4 * 86400 : 86400; }   // ruling c: bar span from the fit's timeframe
+// G4 age line + G5 "bars since break" + G8 resistance recency, one Research-block line, values off rr only.
+function researchStructureHTML(rr) {
+  if (!rr || typeof rr.firstIdx !== 'number' || typeof rr.lastIdx !== 'number') return '';
+  var parts = [];
+  parts.push('rail anchored ' + (rr.lastIdx - rr.firstIdx) + ' bars ago (fit window ' + (typeof rr.lookback === 'number' ? rr.lookback : '?') + ' bars)');
+  var br = Array.isArray(rr.breakRuns) ? rr.breakRuns : null;
+  if (br && br.length) parts.push((rr.lastIdx - br[br.length - 1].endIdx) + ' bars since break (' + br.length + ' run' + (br.length === 1 ? '' : 's') + ', longest ' + br.reduce(function (m, x) { return Math.max(m, x.len); }, 0) + ')');
+  else parts.push('no break in window');
+  if (rr.resistanceFit === 'independent' && Array.isArray(rr.pivotHighs) && rr.pivotHighs.length) {
+    var ra = computeRailAgeResearch(rr.candles, rr.pivotHighs, rr.timeframe, null);   // ruling a: same day convention as support
+    parts.push('R last touched ' + (ra.days == null ? '?' : ra.days) + 'd ago (' + rr.pivotHighs.length + ' touches)' + (rr.timeframe === '4d-grid' ? ' (~4d)' : ''));
+  } else parts.push('R: parallel (no independent touches)');
+  return '<div class="research-structure-line" style="margin-top:2px;font-size:11px;color:var(--muted,#9aa3b2)">' + researchAttr('Structure: ' + parts.join(' · ')) + '</div>';
+}
+// G7: dormant partial-bar marker (lastBarComplete is a ROW field; E1 filters open bars, so this cannot fire on today's
+// data paths). Muted square labeled "partial" (lightweight-charts 4.1 has no hollow marker shape).
+function researchPartialBarMark(r, candles) {
+  if (!r || r.lastBarComplete !== false || !candles || !candles.length) return [];
+  var c = candles[candles.length - 1];
+  return [{ time: c.time, position: 'aboveBar', color: '#6b7280', shape: 'square', text: 'partial', size: 1 }];
+}
+// G4 + G5 overlays: a 1px line at fitStartTime with a translucent shade over the bars before it (ruling b), and one red
+// shade per breakRuns[] span from startTime to endTime + one bar. Positions come from chart.timeScale().timeToCoordinate;
+// a null coordinate (time off the visible scale) skips that element, never throws. Returns the element specs it drew.
+function renderResearchOverlays(chart, rr, el, widthPx) {
+  if (!el) return [];
+  el.innerHTML = '';
+  if (!chart || !rr) return [];
+  var ts = chart.timeScale(), out = [], barSec = researchBarSeconds(rr);
+  function add(spec) {
+    var d = document.createElement('div');
+    d.className = spec.cls; d.setAttribute('data-kind', spec.kind);
+    if (spec.time != null) d.setAttribute('data-time', String(spec.time));
+    if (spec.start != null) { d.setAttribute('data-start', String(spec.start)); d.setAttribute('data-end', String(spec.end)); }
+    d.style.cssText = 'position:absolute;top:0;bottom:0;left:' + spec.left + 'px;width:' + spec.width + 'px;' + spec.style;
+    el.appendChild(d); out.push(spec);
+  }
+  if (typeof rr.fitStartTime === 'number') {
+    var x0 = ts.timeToCoordinate(rr.fitStartTime);
+    if (x0 != null) {
+      if (x0 > 0) add({ kind: 'fit-shade', cls: 'research-fit-shade', time: rr.fitStartTime, left: 0, width: x0, style: 'background:rgba(107,114,128,.10)' });
+      add({ kind: 'fit-start', cls: 'research-fit-start', time: rr.fitStartTime, left: x0, width: 1, style: 'background:rgba(154,163,178,.55)' });
+    }
+  }
+  (Array.isArray(rr.breakRuns) ? rr.breakRuns : []).forEach(function (run) {
+    var xl = ts.timeToCoordinate(run.startTime), xr = ts.timeToCoordinate(run.endTime + barSec);
+    if (xl == null) return;
+    if (xr == null) { var xe = ts.timeToCoordinate(run.endTime); if (xe == null) return; xr = (typeof widthPx === 'number' && widthPx > xe) ? widthPx : xe + 1; }
+    add({ kind: 'break-run', cls: 'research-break-run', start: run.startTime, end: run.endTime, left: Math.min(xl, xr), width: Math.max(1, Math.abs(xr - xl)), style: 'background:rgba(232,117,74,.15)' });
+  });
+  return out;
+}
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
   var wick = researchWickReadoutHTML(rr);
-  var scoreHtml = researchScoreHTML(rr) + researchExecutionHTML(rr);   // Step 11-D D-2: execution line rides with the score
+  var scoreHtml = researchScoreHTML(rr) + researchExecutionHTML(rr) + researchStructureHTML(rr);   // Step 11-D D-2 execution line, Step 12-B structure line (G4/G5/G8) ride with the score
   if (!b.length && !wick && !scoreHtml) return '';
   var pills = b.map(function(x){
     var base = 'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;';
@@ -1098,11 +1162,12 @@ function formatShortDate(dateStr) {
 // One "1D 9/19" or "4-Day 9/16" chip, coloured against its OWN freshness window (never the
 // other stream's window). fresh is null when the date can't be parsed, so a bad date is never
 // counted as a staleness hit by renderHeaderTimestamp below.
-function headerChip(label, dateStr, freshMaxDays, cadenceTitle) {
+function headerChip(label, dateStr, freshMaxDays, cadenceTitle, displayText) {
   var age = headerDateAgeDays(dateStr);
   var fresh = age==null ? null : age <= freshMaxDays;
   var color = fresh==null ? 'var(--muted)' : (fresh ? 'var(--bull)' : 'var(--bear)');
-  return {fresh: fresh, html: '<span title="'+cadenceTitle+'" style="color:'+color+'">'+label+' '+formatShortDate(dateStr)+'</span>'};
+  // Step 12-B: displayText (the 4-Day span label) replaces the bare date in the chip text only; freshness math unchanged.
+  return {fresh: fresh, html: '<span title="'+cadenceTitle+'" style="color:'+color+'">'+label+' '+(displayText || formatShortDate(dateStr))+'</span>'};
 }
 // Renders the #last-update header from whichever stream(s) are present - only the chip for a
 // present stream renders (no blank/"n/a" for a missing one, per the work order) - and returns
@@ -1119,7 +1184,7 @@ function renderHeaderTimestamp(dailyDate, gridDate) {
   }
   if(gridDate) {
     var c2 = headerChip('4-Day', gridDate, HEADER_FRESH_4D_DAYS,
-      '4-Day: the OHLC grid pass. A new candle lands every 4 days, so up to '+HEADER_FRESH_4D_DAYS+' days old is current, not stale.');
+      '4-Day: the OHLC grid pass. A new candle lands every 4 days, so up to '+HEADER_FRESH_4D_DAYS+' days old is current, not stale.', gridBarSpanLabel(gridDate));   // Step 12-B: span label (ruling d)
     chips.push(c2.html);
     if(c2.fresh===false) anyStale = true;
   }
@@ -1139,13 +1204,13 @@ function nextGridCandleLabel(gridDateStr) {
 function buildStreamExplainer(gridDate, dailyDate, dailyStaleFlag) {
   var nextGrid = nextGridCandleLabel(gridDate);
   if(!dailyDate) {
-    return '4-Day grid only (' + formatShortDate(gridDate) + ') - no 1D pass available. ' +
+    return '4-Day grid only (' + gridBarSpanLabel(gridDate) + ') - no 1D pass available. ' +
       'The grid advances every 4 days, so this date is current' + (nextGrid ? ' - next candle ~'+nextGrid : '') + '. ' +
       'Click Scan for live data.';
   }
   var parts = [
-    'Two passes merged: 1D (daily candles, '+formatShortDate(dailyDate)+') and 4-Day (grid, '+formatShortDate(gridDate)+').',
-    'The 4-Day grid advances every 4 days, so '+formatShortDate(gridDate)+' is current' + (nextGrid ? ' - next candle ~'+nextGrid : '') + '.',
+    'Two passes merged: 1D (daily candles, '+formatShortDate(dailyDate)+') and 4-Day (grid, '+gridBarSpanLabel(gridDate)+').',
+    'The 4-Day grid advances every 4 days, so '+gridBarSpanLabel(gridDate)+' is current' + (nextGrid ? ' - next candle ~'+nextGrid : '') + '.',
     'Scan pulls a fresh 4-Day pass only; the 1D pass stays as of the last capture run.',
     // H2 (Remediation spec, 2026-09-21/22): wording kept in sync with the srcBadgeHTML badge
     // rename below - this line used to say "Rows tagged CONFIRMED", which no longer matches
@@ -2416,6 +2481,9 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart,
 // plain absolutely-positioned div on top of the chart canvas, positioned via timeToCoordinate().
 function renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candlesGrid) {
   bandsEl.innerHTML = '';
+  // Step 12-B: research overlays (G4 fit window, G5 break runs) live in a sibling element and are re-placed on the same
+  // toggle/resize events that re-place the bands; nothing runs with research mode off.
+  if (RESEARCH_MODE_UI && detailResearchRow) renderResearchOverlays(chart, detailResearchRow, document.getElementById(RESEARCH_OVERLAY_ID), bandsEl.clientWidth);
   if(!candles || candles.length < 2) return;
   var ts = chart.timeScale();
   var GRID_INTERVAL_DAYS = 4; // confirmed in capture data (grid_interval_days) and this app's
@@ -2436,7 +2504,7 @@ function renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candle
   var bands = [];
   for(var bi=0; bi<bandKeys.length; bi++) {
     var bk = bandKeys[bi], bt = triggers[bk];
-    if(!state[bk] || !bt) continue;
+    if(!state[bk] || !bt || RESEARCH_MODE_UI) continue;   // Step 12-B (G2/E2): research mode drops the 4-Day pills, so it draws no 4-Day bands either
     var leftX = ts.timeToCoordinate(bt.time);
     if(leftX == null) continue; // trigger candle scrolled out of view - skip, don't crash
     var rightRaw = bt.time + GRID_INTERVAL_DAYS*86400;
@@ -2522,6 +2590,14 @@ function buildChart(r) {
   // explicitly here so reopening a different coin doesn't leave a stale band from the last one.
   var bandsEl = document.getElementById('detail-chart-bands');
   if(bandsEl) bandsEl.innerHTML = '';
+  // Step 12-B: the research overlay layer is created only in research mode with a research row, and removed otherwise,
+  // so the flag-off DOM is unchanged.
+  var researchEl = document.getElementById(RESEARCH_OVERLAY_ID);
+  if (RESEARCH_MODE_UI && r.researchRow) {
+    if (!researchEl && bandsEl && bandsEl.parentNode) { researchEl = document.createElement('div'); researchEl.id = RESEARCH_OVERLAY_ID; researchEl.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1'; bandsEl.parentNode.insertBefore(researchEl, bandsEl); }
+    if (researchEl) researchEl.innerHTML = '';
+  } else if (researchEl && researchEl.parentNode) researchEl.parentNode.removeChild(researchEl);
+  detailResearchRow = (RESEARCH_MODE_UI && r.researchRow) ? r.researchRow : null;
   if(detailChart){detailChart.remove();detailChart=null;}
   var chart=LightweightCharts.createChart(container,{
     width:container.clientWidth,height:container.clientHeight,
@@ -2595,11 +2671,14 @@ function buildChart(r) {
     detailResearchSeries = chart.addLineSeries({color:'rgba(0,0,0,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:function(){return null;}});
     detailResearchSeries.setData(r.candles.map(function(c){return {time:c.time,value:c.close};}));
     // Step 9 Diff B: F3 wick-clip markers (side-aware), the base set setResearchMarks merges under pattern marks.
-    detailClipMarks = researchClipMarks(r.researchRow, r.candles);
+    detailClipMarks = researchClipMarks(r.researchRow, r.candles).concat(researchPartialBarMark(r, r.candles));   // Step 12-B (G7): dormant partial-bar marker rides with the clip marks
     if (detailClipMarks.length) detailResearchSeries.setMarkers(detailClipMarks);
   }
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
+  // Step 12-B (G4/G5): first placement of the research overlays one frame after fitContent (timeToCoordinate reads a stale
+  // scale when called synchronously - see the ResizeObserver note below).
+  if (RESEARCH_MODE_UI && r.researchRow) { var rrOv = r.researchRow, elOv = document.getElementById(RESEARCH_OVERLAY_ID), chOv = chart, wOv = bandsEl ? bandsEl.clientWidth : null; requestAnimationFrame(function () { if (detailResearchRow === rrOv) renderResearchOverlays(chOv, rrOv, elOv, wOv); }); }
   // Indicator Upgrades Group 4, item 4 (2026-09-21), confirmed live by Ryan: applyOptions
   // alone resizes the canvas but never recomputes bar spacing, so growing the panel left
   // blank canvas past the real data and shrinking it clipped the oldest candles off-screen
