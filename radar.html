@@ -133,7 +133,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
    renderPatternBands() in toggleOverlay's module, never by buildChart's container.innerHTML
    reset (this element is a SIBLING of #detail-chart, not a child, so it survives that reset). */
 #detail-chart-bands{position:absolute;inset:0;pointer-events:none;z-index:2}
-.levels-table{width:100%;border-collapse:collapse;font-size:11px}.levels-table th,.levels-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.levels-table th{color:var(--muted);font-weight:600}.levels-table .lv-label{color:var(--muted)}.lv-sub{display:block;font-size:9px;color:var(--muted)}.lv-diff{background:rgba(245,166,35,.18)}
+.levels-table{width:100%;border-collapse:collapse;font-size:11px}.levels-table th,.levels-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.levels-table th{color:var(--muted);font-weight:600}.levels-table .lv-label{color:var(--muted)}.lv-sub{display:block;font-size:9px;color:var(--muted)}.lv-diff{background:rgba(245,166,35,.18)}.lv-keys{display:block;margin-top:2px;font-size:9px;color:var(--muted)}.lv-key{display:inline-block;margin-right:8px;white-space:nowrap}.lv-key b{font-weight:600;color:var(--text2,#c8cdd8)}
 .chart-legend{position:absolute;top:8px;left:10px;font-size:10px;color:var(--muted);z-index:10;pointer-events:none;display:flex;gap:12px}
 .legend-item{display:flex;align-items:center;gap:4px}
 .legend-dot{width:10px;height:2px;border-radius:1px}
@@ -1065,7 +1065,7 @@ function levelsTableHTML(r) {
   var head = '<tr><th></th><th>Main</th>' + (RESEARCH_MODE_UI ? '<th>Research</th>' : '') + '</tr>';
   var body = rows.map(function (x) {
     var diff = RESEARCH_MODE_UI && num(x.mainNum) && num(x.resNum) && x.mainNum !== 0 && Math.abs(x.resNum - x.mainNum) / Math.abs(x.mainNum) * 100 > LEVELS_HILITE_PCT;
-    return '<tr data-level="' + x.label + '"><td class="lv-label">' + x.label + '</td><td>' + x.mainHtml + '</td>' + (RESEARCH_MODE_UI ? '<td' + (diff ? ' class="lv-diff" data-diff="1" title="Main and Research differ by more than ' + LEVELS_HILITE_PCT + '%"' : '') + '>' + x.resHtml + '</td>' : '') + '</tr>';
+    return '<tr data-level="' + x.label + '"><td class="lv-label">' + x.label + levelKeysHTML(x.label, RESEARCH_MODE_UI) + '</td><td>' + x.mainHtml + '</td>' + (RESEARCH_MODE_UI ? '<td' + (diff ? ' class="lv-diff" data-diff="1" title="Main and Research differ by more than ' + LEVELS_HILITE_PCT + '%"' : '') + '>' + x.resHtml + '</td>' : '') + '</tr>';
   }).join('');
   return '<div class="ds-title">Levels</div><table class="levels-table">' + head + body + '</table>';
 }
@@ -1075,21 +1075,49 @@ function renderLevelsAndFitWindow(r) {
   if (lv) lv.innerHTML = levelsTableHTML(r);
 }
 // G9: legend under the chart, research mode only (element created by buildChart's research branch).
+// 14-C-2: one swatch vocabulary for the Levels table row labels and the chart legend. Colours/styles are the chart's own (series options in
+// buildChart / addResearchChartSeries); "main" = the flag-off rails (Support solid teal, Resistance dotted orange, Invalidation dotted grey per
+// the brief), "res" = the research overlays. kind: solid|dotted|dashed = line style, band = entry-zone fill, tick = stop/target tick.
+var LEVEL_KEY = {
+  'Floor':        { main: { kind: 'solid',  color: '#00c896', tag: 'Support',    name: 'Support rail' },       res: { kind: 'dashed', color: '#7fe8c8', tag: 'R sup', name: 'Research support' } },
+  'Ceiling':      { main: { kind: 'dotted', color: '#e8754a', tag: 'Resistance', name: 'Resistance rail' },    res: { kind: 'dashed', color: '#f0a07a', tag: 'R res', name: 'Research resistance' } },
+  'Invalidation': { main: { kind: 'dotted', color: '#9aa3b2', tag: '',           name: 'Invalidation line' }, res: { kind: 'dashed', color: '#ff5c8a', tag: 'R inv', name: 'Research invalidation' } },
+  'Entry zone':   { res: { kind: 'band', color: 'rgba(0,200,150,.18)', tag: '', name: 'Entry zone band' } },
+  'Stop':         { res: { kind: 'tick', color: '#e8754a', tag: 'S', name: 'Stop tick' } },
+  'Target':       { res: { kind: 'tick', color: '#00c896', tag: 'T', name: 'Target tick' } }
+};
+function swatchHTML(k) {
+  if (k.kind === 'band') return '<span class="lv-sw" style="display:inline-block;width:14px;height:8px;background:' + k.color + ';border:1px solid #00c896;vertical-align:middle;margin-right:3px"></span>';
+  if (k.kind === 'tick') return '<span class="lv-sw" style="display:inline-block;width:10px;height:3px;background:' + k.color + ';vertical-align:middle;margin-right:3px"></span>';
+  return '<span class="lv-sw" style="display:inline-block;width:16px;border-top:2px ' + k.kind + ' ' + k.color + ';vertical-align:middle;margin-right:3px"></span>';
+}
+function keyHTML(k, col) { return '<span class="lv-key" data-col="' + col + '" title="' + (col === 'main' ? 'Main chart: ' : 'Research chart: ') + k.name + '">' + swatchHTML(k) + (k.tag ? '<b>' + k.tag + '</b>' : '') + '</span>'; }
+function levelKeysHTML(label, research) {
+  var k = LEVEL_KEY[label], out = '';
+  if (!k) return '';
+  if (k.main) out += keyHTML(k.main, 'main');
+  if (research && k.res) out += keyHTML(k.res, 'research');
+  return out ? '<span class="lv-keys">' + out + '</span>' : '';
+}
 function researchLegendHTML(rr) {
-  var sw = function (color, style) { return '<span style="display:inline-block;width:14px;border-top:2px ' + style + ' ' + color + ';vertical-align:middle;margin-right:4px"></span>'; };
   var box = function (color) { return '<span style="display:inline-block;width:10px;height:10px;background:' + color + ';vertical-align:middle;margin-right:4px"></span>'; };
   var dot = function (color) { return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';vertical-align:middle;margin-right:4px"></span>'; };
-  var n = (rr && typeof rr.lookback === 'number') ? rr.lookback : '?';
+  var ent = function (k, text, tip) { return '<span title="' + tip + '">' + swatchHTML(k) + text + (k.tag ? ' (' + k.tag + ')' : '') + '</span>'; };
+  var n = (rr && typeof rr.lookback === 'number') ? rr.lookback : '?', K = LEVEL_KEY;
   return [
-    '<span title="Research support rail (dashed): the research fit\u2019s own support line">' + sw('#7fe8c8', 'dashed') + 'Research support</span>',
-    '<span title="Research resistance (dashed): independent line when B1 fitted one, else the parallel projection">' + sw('#f0a07a', 'dashed') + 'Research resistance</span>',
-    '<span title="Research invalidation (dashed): closes below this count as a break">' + sw('#ff5c8a', 'dashed') + 'Research invalidation</span>',
-    '<span title="Entry zone: support to support + 0.5\u00d7ATR14 (H6)">' + box('rgba(0,200,150,.25)') + 'Entry zone</span>',
-    '<span title="Before the ' + n + '-bar fit window \u2014 not used to fit the rails">' + box('rgba(107,114,128,.35)') + 'Before fit window</span>',
+    ent(K['Floor'].res, 'Research support', 'Research support rail (dashed): the research fit’s own support line'),
+    ent(K['Ceiling'].res, 'Research resistance', 'Research resistance (dashed): independent line when B1 fitted one, else the parallel projection'),
+    ent(K['Invalidation'].res, 'Research invalidation', 'Research invalidation (dashed): closes below this count as a break'),
+    ent(K['Entry zone'].res, 'Entry zone', 'Entry zone: support to support + 0.5×ATR14 (H6)'),
+    ent(K['Stop'].res, 'Stop', 'Stop: research stop (H6), tick at the right edge'),
+    ent(K['Target'].res, 'Target', 'Target: research target (H6), tick at the right edge'),
+    '<span title="Before the ' + n + '-bar fit window — not used to fit the rails">' + box('rgba(107,114,128,.35)') + 'Before fit window</span>',
     '<span title="Break run: consecutive closes below the support rail (shaded per run)">' + box('rgba(160,82,45,.5)') + 'Break run</span>',
-    '<span title="Wick clipped: raw high/low \u2192 clipped value (k\u00d7ATR14), F3 outlier handling">' + dot('#ff5c8a') + 'Wick clipped</span>',
-    '<span title="Main (flag-off) rails are dimmed to 50% while the research rails are shown">' + sw('rgba(0,200,150,.5)', 'solid') + 'Main rails (dimmed)</span>'
-  ].join(' \u00b7 ');
+    '<span title="Wick clipped: raw high/low → clipped value (k×ATR14), F3 outlier handling">' + dot('#ff5c8a') + 'Wick clipped</span>',
+    ent(K['Floor'].main, 'Main support', 'Main (flag-off) support rail, dimmed to 50% while the research rails are shown'),
+    ent(K['Ceiling'].main, 'Main resistance', 'Main (flag-off) resistance rail, dimmed to 50% while the research rails are shown'),
+    ent(K['Invalidation'].main, 'Main invalidation', 'Main (flag-off) invalidation line, dimmed while the research rails are shown')
+  ].join(' · ');
 }
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
