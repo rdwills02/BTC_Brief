@@ -790,10 +790,86 @@ function researchScoreHTML(rr) {
   }
   return out;
 }
+// Step 11-D D-2 (Remediation spec H10; rulings h, i): execution context DISPLAY in the Research block. Nothing here
+// gates, scores or blocks: the verdict comes from researchVerdict alone, and the venue call below runs only at
+// detail-open in research mode, never on table render, never with research mode off.
+var H10_REFERENCE_TRADE_USD = 1000;   // labeled reference size for the slippage caption - an ASSUMED display constant, never inferred from anything
+var H10_QUOTE_TIMEOUT_MS = 3000;      // venue ticker call budget at detail-open; past it the line reads Unknown (timeout)
+function researchExecutionHTML(rr) {
+  var xc = rr && rr.executionContext;
+  if (!xc) return '';
+  var vol = (xc.volumeCharacter === 'unknown' || typeof xc.volumeRatio !== 'number') ? 'Execution: volume unknown'
+    : 'Execution: trigger-bar volume ' + xc.volumeRatio.toFixed(2) + '× ' + xc.baselineBars + '-bar baseline (' + xc.volumeCharacter + ')';
+  return '<div class="research-exec-line" style="margin-top:2px;font-size:11px;color:var(--muted,#9aa3b2)">' + researchAttr(vol) +
+    ' · <span id="research-quote-line">Spread/quote: Unknown (not fetched)</span>' +
+    ' · slippage reference size $' + H10_REFERENCE_TRADE_USD.toLocaleString() + ' (assumed, not inferred)</div>';
+}
+// Decision venue for the ticker call: kraken / coinbase rows only (the row's dailySource, capture.js); anything else,
+// including grid-only rows and the CoinGecko fallback, has no decision venue.
+function researchQuoteVenue(dailySource, symbol) {
+  var symU = String(symbol || '').toUpperCase();
+  if (!symU) return null;
+  if (dailySource === 'kraken') return { venue: 'kraken', url: 'https://api.kraken.com/0/public/Ticker?pair=' + symU + 'USD' };
+  if (dailySource === 'coinbase') return { venue: 'coinbase', url: 'https://api.exchange.coinbase.com/products/' + symU + '-USD/ticker' };
+  return null;
+}
+// Parse a venue ticker payload into {spreadPct, ageSec}. Kraken publishes no quote timestamp, so its age is measured
+// from fetch completion (0 s at render); Coinbase carries `time`. Returns null when the payload is not a usable quote.
+function researchQuoteParse(venue, body, nowMs) {
+  try {
+    var bid, ask, ageSec;
+    if (venue === 'kraken') {
+      if (!body || !body.result || (body.error && body.error.length)) return null;
+      var keys = Object.keys(body.result); if (!keys.length) return null;
+      var t = body.result[keys[0]]; bid = parseFloat(t.b && t.b[0]); ask = parseFloat(t.a && t.a[0]); ageSec = 0;
+    } else if (venue === 'coinbase') {
+      if (!body) return null;
+      bid = parseFloat(body.bid); ask = parseFloat(body.ask);
+      var ts = Date.parse(body.time); ageSec = isFinite(ts) ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
+    } else return null;
+    if (!(bid > 0) || !(ask > 0) || ask < bid) return null;
+    return { spreadPct: (ask - bid) / ((ask + bid) / 2) * 100, ageSec: ageSec };
+  } catch (e) { return null; }
+}
+function researchQuoteText(q) {
+  if (!q || q.status !== 'ok') return 'Spread/quote: Unknown (' + ((q && q.reason) || 'unknown') + ')';
+  return 'Spread ' + q.spreadPct.toFixed(2) + '% · quote age ' + (q.ageSec == null ? '?' : q.ageSec) + ' s';
+}
+// One ticker call with a hard timeout. Every failure mode - no venue, non-2xx, CORS/network TypeError, timeout, bad
+// payload - resolves to {status:'unknown', reason}; it never rejects and never throws into the caller.
+function researchQuoteFetch(dailySource, symbol, fetchImpl, timeoutMs, nowFn) {
+  var v = researchQuoteVenue(dailySource, symbol), now = nowFn || function () { return Date.now(); };
+  if (!v) return Promise.resolve({ status: 'unknown', reason: 'no decision venue' });
+  var f = fetchImpl || (typeof fetch === 'function' ? fetch : null);
+  if (!f) return Promise.resolve({ status: 'unknown', reason: 'venue unreachable' });
+  return new Promise(function (resolve) {
+    var done = false, timer = setTimeout(function () { if (!done) { done = true; resolve({ status: 'unknown', reason: 'timeout' }); } }, timeoutMs || H10_QUOTE_TIMEOUT_MS);
+    var finish = function (r) { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+    var p; try { p = f(v.url); } catch (e) { finish({ status: 'unknown', reason: 'venue unreachable' }); return; }
+    Promise.resolve(p).then(function (res) {
+      if (!res || !res.ok) { finish({ status: 'unknown', reason: 'venue error HTTP ' + (res && res.status != null ? res.status : '?') }); return null; }
+      return Promise.resolve(res.json()).then(function (body) {
+        var q = researchQuoteParse(v.venue, body, now());
+        finish(q ? { status: 'ok', venue: v.venue, spreadPct: q.spreadPct, ageSec: q.ageSec } : { status: 'unknown', reason: 'bad payload' });
+      });
+    }).catch(function () { finish({ status: 'unknown', reason: 'venue unreachable' }); });
+  });
+}
+// Called from openDetail only, research mode only. Fills #research-quote-line in place; a stale response for a
+// different row is dropped (the line carries the symbol it was issued for).
+function researchQuoteRefresh(r) {
+  var el = document.getElementById('research-quote-line');
+  if (!el) return;
+  var sym = r.symbol; el.setAttribute('data-symbol', sym); el.textContent = 'Spread/quote: fetching…';
+  researchQuoteFetch(r.dailySource, sym).then(function (q) {
+    var cur = document.getElementById('research-quote-line');
+    if (cur && cur.getAttribute('data-symbol') === sym) cur.textContent = researchQuoteText(q);
+  });
+}
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
   var wick = researchWickReadoutHTML(rr);
-  var scoreHtml = researchScoreHTML(rr);
+  var scoreHtml = researchScoreHTML(rr) + researchExecutionHTML(rr);   // Step 11-D D-2: execution line rides with the score
   if (!b.length && !wick && !scoreHtml) return '';
   var pills = b.map(function(x){
     var base = 'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;';
@@ -2163,6 +2239,8 @@ function openDetail(r) {
   // RESEARCH_MODE_UI off, or no researchRow, this is confluenceHTML(r), byte-identical to
   // before this diff.
   document.getElementById('dp-confluence').innerHTML=dpConfluenceHTML(r);
+  // Step 11-D D-2 (H10): venue ticker at detail-open only, research mode only; display-only, never gates, never blocks.
+  if (RESEARCH_MODE_UI && r.researchRow) { try { researchQuoteRefresh(r); } catch (e) {} }
   if(r.candles) {
     buildChart(r);
   } else {
