@@ -929,12 +929,46 @@ function researchRailData(rr, candles) {
   var mk = function (fn) { return times.map(function (t, j) { return { time: t, value: fn(i0 + j) }; }); };
   return { sup: mk(supAt), res: mk(resAt), inv: mk(function () { return rr.invalidation; }), n: n, ext: ext, step: step, t0: t0, i0: i0, future: future };
 }
-// Pre-window shade and break-run shade as 0/1 step series (1 = shaded bar; a run covers startTime..endTime plus one bar of step).
+// Pre-window shade and break-run shade as step series. 14-C: value 1 ONLY inside shaded spans; every other bar is a whitespace point ({time} only),
+// because an area series fills from its line to the pane bottom, so a 0-valued bar drew a strip along the bottom. The bar just after a span also
+// carries 1, closing the span there (a step series draws its last point with no width): the pre-window shade ends at the fit-start bar and a
+// break run covers startTime..endTime plus one bar of step. Null when nothing is shaded.
 function researchShadeData(rr, candles) {
-  var pre = null, runs = null, br = Array.isArray(rr.breakRuns) ? rr.breakRuns : [];
-  if (typeof rr.fitStartTime === 'number' && candles.length && candles[0].time < rr.fitStartTime) pre = candles.map(function (c) { return { time: c.time, value: c.time < rr.fitStartTime ? 1 : 0 }; });
-  if (br.length) runs = candles.map(function (c) { return { time: c.time, value: br.some(function (x) { return c.time >= x.startTime && c.time <= x.endTime; }) ? 1 : 0 }; });
-  return { pre: pre, runs: runs };
+  var br = Array.isArray(rr.breakRuns) ? rr.breakRuns : [];
+  var build = function (inShade) {
+    var on = candles.map(inShade), any = false;
+    var out = candles.map(function (c, i) { if (on[i]) any = true; return (on[i] || (i > 0 && on[i - 1])) ? { time: c.time, value: 1 } : { time: c.time }; });
+    return any ? out : null;
+  };
+  return {
+    pre: typeof rr.fitStartTime === 'number' ? build(function (c) { return c.time < rr.fitStartTime; }) : null,
+    runs: br.length ? build(function (c) { return br.some(function (x) { return c.time >= x.startTime && c.time <= x.endTime; }); }) : null
+  };
+}
+// G9b (14-C): hover tooltip text for the research overlays; same wording as the legend / Structure line. Pure.
+var RESEARCH_TIP_ID = 'detail-chart-tooltip';
+function researchTooltipLines(rr, candles, time, price, d) {
+  var out = [];
+  if (!rr || !candles || !candles.length || typeof time !== 'number') return out;
+  if (typeof rr.fitStartTime === 'number' && time >= candles[0].time && time < rr.fitStartTime) out.push('Before the ' + (typeof rr.lookback === 'number' ? rr.lookback : '?') + '-bar fit window \u2014 not used to fit the rails');
+  (Array.isArray(rr.breakRuns) ? rr.breakRuns : []).forEach(function (run) {
+    if (time >= run.startTime && time <= run.endTime) out.push('Break run: ' + run.len + ' consecutive close' + (run.len === 1 ? '' : 's') + ' below the support rail, ' + researchDateLabel(run.startTime) + '\u2013' + researchDateLabel(run.endTime));
+  });
+  var ee = rr.entryEconomics;   // the entry-zone band is drawn from the last candle through the margin
+  if (ee && Array.isArray(ee.entryZone) && time >= candles[candles.length - 1].time && typeof price === 'number' && price >= ee.entryZone[0] && price <= ee.entryZone[1]) out.push('Entry zone ' + fmt(ee.entryZone[0], d) + ' \u2013 ' + fmt(ee.entryZone[1], d));
+  (Array.isArray(rr.wickClips) ? rr.wickClips : []).forEach(function (w) { if (w.time === time) { var t = researchClipLabel(w); out.push(t.charAt(0).toUpperCase() + t.slice(1)); } });
+  return out;
+}
+// Research mode only. The handler reads the crosshair and writes only the tooltip div's text/position/display: no chart call, no setData.
+function attachResearchTooltip(chart, series, r, tipEl, wrapEl) {
+  var d = pricePrecision(r.price);
+  chart.subscribeCrosshairMove(function (param) {
+    var lines = (param && param.time != null && param.point) ? researchTooltipLines(r.researchRow, r.candles, param.time, series.coordinateToPrice(param.point.y), d) : [];
+    if (!lines.length) { tipEl.style.display = 'none'; return; }
+    tipEl.textContent = lines.join('\n');
+    var maxLeft = Math.max(0, (wrapEl.clientWidth || 0) - 250);
+    tipEl.style.left = (maxLeft ? Math.min(param.point.x + 12, maxLeft) : param.point.x + 12) + 'px'; tipEl.style.top = (param.point.y + 14) + 'px'; tipEl.style.display = 'block';
+  });
 }
 function addShadeSeries(chart, data, color) {
   var s = chart.addAreaSeries({ priceScaleId: 'r-shade', lineColor: 'rgba(0,0,0,0)', topColor: color, bottomColor: color, lineWidth: 1, lineType: 1 /* WithSteps */, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: function () { return { priceRange: { minValue: 0, maxValue: 1 } }; } });
@@ -964,9 +998,9 @@ function addResearchChartSeries(chart, r, main) {
   if (!rails) return st;
   var line = function (color, w, style) { return chart.addLineSeries({ color: color, lineWidth: w, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }); };
   var shade = researchShadeData(rr, candles);
-  if (shade.pre || shade.runs) chart.priceScale('r-shade').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
   if (shade.pre) st.shades.pre = addShadeSeries(chart, shade.pre, 'rgba(107,114,128,.14)');
   if (shade.runs) st.shades.runs = addShadeSeries(chart, shade.runs, 'rgba(160,82,45,.22)');
+  if (shade.pre || shade.runs) chart.priceScale('r-shade').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });   // 14-C: after the series exist, so the scale is real when configured
   var ee = rr.entryEconomics, tail = [rails.t0].concat(rails.future);
   if (ee && Array.isArray(ee.entryZone)) {
     st.band = chart.addBaselineSeries({ baseValue: { type: 'price', price: ee.entryZone[0] }, topFillColor1: 'rgba(0,200,150,.18)', topFillColor2: 'rgba(0,200,150,.18)', topLineColor: 'rgba(0,0,0,0)', bottomFillColor1: 'rgba(0,0,0,0)', bottomFillColor2: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: function () { return null; } });
@@ -2804,8 +2838,13 @@ function buildChart(r) {
     var legendEl = document.getElementById(RESEARCH_LEGEND_ID), wrapEl = container.parentNode;
     if (!legendEl && wrapEl && wrapEl.parentNode) { legendEl = document.createElement('div'); legendEl.id = RESEARCH_LEGEND_ID; legendEl.style.cssText = 'font-size:10px;color:var(--muted,#9aa3b2);line-height:1.6;padding:8px 18px 6px;margin:0 0 6px;display:block;clear:both'; wrapEl.parentNode.insertBefore(legendEl, wrapEl.nextSibling); }
     if (legendEl) legendEl.innerHTML = researchLegendHTML(r.researchRow);
+    // 14-C (G9b): hover tooltip div (research mode only) + crosshair subscription
+    var tipEl = document.getElementById(RESEARCH_TIP_ID);
+    if (!tipEl && wrapEl) { tipEl = document.createElement('div'); tipEl.id = RESEARCH_TIP_ID; tipEl.style.cssText = 'position:absolute;z-index:20;display:none;pointer-events:none;white-space:pre-line;max-width:240px;padding:4px 8px;font-size:11px;line-height:1.4;color:var(--text,#e6e8f0);background:rgba(20,22,38,.94);border:1px solid var(--border,#1e2035);border-radius:4px'; wrapEl.appendChild(tipEl); }
+    if (tipEl) { tipEl.style.display = 'none'; attachResearchTooltip(chart, cs, r, tipEl, wrapEl); }
   } else {
     detailResearchDraw = null;
+    var tipOld = document.getElementById(RESEARCH_TIP_ID); if (tipOld && tipOld.parentNode) tipOld.parentNode.removeChild(tipOld);
     var legendOld = document.getElementById(RESEARCH_LEGEND_ID); if (legendOld && legendOld.parentNode) legendOld.parentNode.removeChild(legendOld);
   }
   detailOverlay = {}; // chart opens clean - no overlay active by default
