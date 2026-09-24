@@ -325,6 +325,7 @@ function run() {
   runStep11BAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11CAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
+  runStep12AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1573,6 +1574,35 @@ function runStep11DAcceptance(current, grids, gridCaches, dailyCaches) {
   });
   console.log('\nPrior-section deltas: none - executionContext is a new descriptive field on the research fit; no gate, score or flag-off output changes (local step11-d suite), so every section above prints the same numbers.');
   if (bugs) { console.log('Step 11-D acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
+}
+
+// Step 12-A (Remediation spec G5; step 12 plan): fit.breakRuns on every research fit - maximal runs of closes below the
+// invalidation line, with full-series idx and bar times. No constants (configHash unchanged), no gate reads it.
+function runStep12AAcceptance(current, grids, gridCaches, dailyCaches) {
+  console.log('\n=== Step 12-A acceptance (G5 breakRuns on the research fit; descriptive, no constants) — ALL ' + grids.length + ' dated fixtures, per timeframe ===');
+  let bugs = 0;
+  ['1d', '4d-grid'].forEach(function (tf) {
+    const src = (tf === '1d') ? dailyCaches : gridCaches, minBars = (tf === '1d') ? 60 : 30;
+    let fits = 0, withRuns = 0, missing = 0; const hist = {}; let runs = 0;
+    grids.forEach(function (g) {
+      g.coins.forEach(function (cgId) {
+        const c = src[cgId]; if (!c) return; const s = sliceToDate(c, g.date); if (!s || s.length < minBars) return;
+        const fit = current.detectChannel(s, null, { coinId: cgId, timeframe: tf, source: 'fixture', research: true, _noH3: true });
+        if (!fit) return; fits++;
+        const br = fit.breakRuns; if (!Array.isArray(br)) { missing++; return; }
+        if (br.length) withRuns++;
+        br.forEach(function (r) { runs++; const k = r.len >= 5 ? '5+' : String(r.len); hist[k] = (hist[k] || 0) + 1; });
+        const mx = br.reduce((a, r) => Math.max(a, r.len), 0);
+        if (mx !== fit.maxBreakRun) { bugs++; console.log('  BUG: maxBreakRun ' + fit.maxBreakRun + ' != max run len ' + mx + ' ' + cgId + ' ' + tf + ' ' + g.date); }
+        if (br.length && br[br.length - 1].endIdx !== fit.lastBreakIdx) { bugs++; console.log('  BUG: lastBreakIdx mismatch ' + cgId); }
+        if (br.filter(r => r.len === 2).length !== fit.breakRunCount2) { bugs++; console.log('  BUG: runCount2 mismatch ' + cgId); }
+      });
+    });
+    console.log('--- ' + tf + ': research fits ' + fits + ' | breakRuns missing ' + missing + ' | rows with >= 1 run ' + withRuns + ' | runs ' + runs + ' | run-length histogram ' + ['1', '2', '3', '4', '5+'].map(k => k + ':' + (hist[k] || 0)).join(' ') + ' ---');
+    if (missing) { bugs++; console.log('  BUG: breakRuns missing on ' + missing + ' research fits'); }
+  });
+  console.log('Prior-section deltas: none - breakRuns is a new descriptive field on the research fit (scanBreaks returns it only when countRuns); flag-off never calls scanBreaks; no constant, gate or score changes (local step12-a suite), so every section above prints the same numbers.');
+  if (bugs) { console.log('Step 12-A acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
 run();
