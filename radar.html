@@ -156,6 +156,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .va-act{background:rgba(0,200,150,.15);color:var(--bull)}
 .va-watch{background:rgba(245,166,35,.12);color:var(--neut)}
 .va-wait{background:rgba(107,114,128,.15);color:var(--muted)}
+.va-near{background:rgba(245,166,35,.22);color:var(--neut)}
+.va-dev{background:rgba(123,110,246,.15);color:#9b93f7}
 .inv-box{display:flex;align-items:center;justify-content:space-between;background:var(--bear-bg);border:1px solid rgba(232,117,74,.25);border-radius:6px;padding:10px 14px}
 .inv-label{font-size:11px;color:var(--muted)}
 .inv-value{font-size:15px;font-weight:700;color:var(--bear)}
@@ -229,6 +231,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div class="diag-title" id="diag-title">Scan Details — live updating</div>
   <div class="diag-grid" id="diag-grid"></div>
   <div class="diag-funnel" id="diag-funnel"></div>
+  <div id="verdict-note" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
 </div>
 
 <div class="filters">
@@ -276,8 +279,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
     <input type="checkbox" id="show-all"> Show all
   </label>
-  <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Step 6 (Remediation spec): shows the new rail-validity rules (A1-A5, H9) as a secondary badge beside the current verdict. Detection-only preview, not yet the primary reading.">
-    <input type="checkbox" id="research-mode"> Research mode
+  <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Shows the previous scanner's verdicts (the pre-audit rules) instead of the research states. Same as ?legacy=1.">
+    <input type="checkbox" id="research-mode"> Legacy verdicts
   </label>
 </div>
 
@@ -443,7 +446,10 @@ var selectedKey = null;
 // init, below) reflects and updates this on change. This is display-only - the research
 // reading itself is always computed at merge time regardless of this flag (see
 // mergeCandidateRow) so toggling never re-fetches or re-scans.
-var RESEARCH_MODE_UI = /[?&]research=1(&|$)/.test(location.search);
+// Step 15-A (Ryan's decision, 2026-09-24): the RESEARCH view is the default; the pre-audit verdicts sit behind ?legacy=1 (checkbox "Legacy verdicts"). RESEARCH_MODE_UI keeps its
+// name and meaning (research rules on screen) so every research-only path below is unchanged; it is now true unless ?legacy=1. Display only - nothing here changes a verdict.
+var LEGACY_UI = /[?&]legacy=1(&|$)/.test(location.search);
+var RESEARCH_MODE_UI = !LEGACY_UI;
 // Step 11-A / C5: BTC regime from data/latest-daily.json's top-level btcRegime (capture.js writes it from
 // channel-core.js btcRegimeFromCandles). null until the daily payload is read or when the capture predates 11-A;
 // researchCtxFor passes it to researchVerdict, where null fails the C5 gate as Unknown.
@@ -2210,14 +2216,62 @@ function loadResearchSetups() {
 }
 var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third of the channel, a non-descending structure, and a channel score of 89 or above. WATCH means one of those conditions is not met, or the score is below 89. WAIT means price is in the upper third or the structure is descending - not a favorable entry zone.';
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
+// Step 15-A: four-state research vocabulary, PAGE-SIDE over researchVerdict's gate id (channel-core.js verdict strings ACT/WATCH/WAIT/NONE are unchanged).
+//   ACT = verdict ACT; NEAR = structure + score pass, price/timing only; DEVELOPING = a valid channel not yet earned; WAIT = structure/liquidity/trend fails; "- no fit" = NONE / no research row.
+// A gate id that is not in this table is a BUG (state 'BUG': logged, shown, ranked first) - never a silent default.
+var RESEARCH_STATE_BY_GATE = { 'C3.fresh-touch': 'NEAR', 'C2.entry-zone': 'NEAR', 'C6.spike': 'NEAR', 'H6.rr': 'NEAR', 'C5.btc-regime': 'NEAR',
+  'C7.floor': 'DEVELOPING', 'C3.no-recent-break': 'DEVELOPING', 'C4.touch-volume': 'DEVELOPING',
+  'struct.lifecycle': 'WAIT', 'struct.quote-breach': 'WAIT', 'struct.below-rail': 'WAIT', 'C1.trend': 'WAIT', 'C2.width': 'WAIT', 'C4.volume24h': 'WAIT' };
+var RESEARCH_NOFIT_GATES = { 'data.fit': 1, 'data.price': 1 };
+var RESEARCH_STATE_RANK = { BUG: -1, ACT: 0, NEAR: 1, DEVELOPING: 2, WAIT: 3, NOFIT: 4 };
+var RESEARCH_GATE_WORDS = { 'C3.fresh-touch': 'no fresh support touch', 'C2.entry-zone': 'price not in the entry zone', 'C6.spike': 'price already extended', 'H6.rr': 'reward:risk too low', 'C5.btc-regime': 'BTC regime',
+  'C7.floor': 'below the score floor', 'C3.no-recent-break': 'recent rail break', 'C4.touch-volume': 'weak volume on the touch',
+  'struct.lifecycle': 'channel not intact', 'struct.quote-breach': 'price below invalidation', 'struct.below-rail': 'price below the rail', 'C1.trend': 'trend (EMA50)', 'C2.width': 'channel too wide', 'C4.volume24h': '24h volume too low' };
+function researchStateFor(r) {
+  var rr = r ? r.researchRow : null;
+  if (!rr) return { state: 'NOFIT', gate: null, verdict: null, action: null };
+  var a = buildAction(rr, { research: true }), g = a.gate, st;
+  if (a.verdict === 'ACT') st = 'ACT';
+  else if (a.verdict === 'NONE') st = RESEARCH_NOFIT_GATES.hasOwnProperty(g) ? 'NOFIT' : 'BUG';
+  else st = RESEARCH_STATE_BY_GATE.hasOwnProperty(g) ? RESEARCH_STATE_BY_GATE[g] : 'BUG';
+  if (st === 'BUG') { try { console.error('Radar BUG: research verdict ' + a.verdict + ' with unmapped gate ' + g); } catch (e) {} }
+  return { state: st, gate: g, verdict: a.verdict, action: a };
+}
+function researchStateRank(r) { return RESEARCH_STATE_RANK[researchStateFor(r).state]; }
+// Primary badge (state) + the failing check in plain words + the legacy verdict as a small muted tag.
+function researchStateCellHTML(rs, legacyAction, size) {
+  var cls = { ACT: 'va-act', NEAR: 'va-near', DEVELOPING: 'va-dev', WAIT: 'va-wait', NOFIT: '', BUG: 'va-wait' }[rs.state];
+  var label = rs.state === 'NOFIT' ? '— no fit' : rs.state;
+  var tip = rs.action ? 'Research: ' + rs.action.text + ' [' + RESEARCH_SCORE_LABEL + ']' : 'Research: no fit on this series (no rail pair passed the research gates on these candles)';
+  var style = (size === 'detail' ? 'font-size:10px;' : '') + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
+  var why = rs.state === 'BUG' ? 'unmapped gate ' + rs.gate : (rs.state === 'NEAR' || rs.state === 'DEVELOPING' || rs.state === 'WAIT') ? RESEARCH_GATE_WORDS[rs.gate] : '';
+  return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '"' + (style ? ' style="' + style + '"' : '') + '>' + label + '</span>' +
+    (why ? '<span class="rs-why" style="font-size:10px;color:var(--muted,#9aa3b2);margin-left:5px">' + why + '</span>' : '') +
+    '<span class="rs-legacy" style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:5px">legacy: ' + legacyAction.verdict + '</span>';
+}
+function researchStateCounts(rows) {
+  var c = { ACT: 0, NEAR: 0, DEVELOPING: 0, WAIT: 0, NOFIT: 0, BUG: 0 };
+  rows.forEach(function (r) { c[researchStateFor(r).state]++; });
+  return c;
+}
+function researchDiagStrip(rows) {
+  var c = researchStateCounts(rows);
+  var tile = function (cls, label, n) { return '<div class="diag-item ' + cls + '"><div class="diag-label">' + label + '</div><div class="diag-value">' + n + '</div></div>'; };
+  document.getElementById('diag-grid').innerHTML += tile('va-act', 'ACT', c.ACT) + tile('va-near', 'NEAR', c.NEAR) + tile('va-dev', 'DEVELOPING', c.DEVELOPING) + tile('va-wait', 'WAIT', c.WAIT) + tile('', 'No fit', c.NOFIT) + (c.BUG ? tile('', 'BUG', c.BUG) : '');
+  document.getElementById('diag-funnel').innerHTML += ' &nbsp;|&nbsp; <span class="vbadge va-act">' + c.ACT + ' ACT</span> <span class="vbadge va-near">' + c.NEAR + ' NEAR</span> <span class="vbadge va-dev">' + c.DEVELOPING + ' DEVELOPING</span> <span class="vbadge va-wait">' + c.WAIT + ' WAIT</span> <span class="vbadge" style="opacity:.6">' + c.NOFIT + ' no fit</span>' + (c.BUG ? ' <span class="vbadge" style="color:#ff5c8a">' + c.BUG + ' BUG</span>' : '');
+}
+function renderVerdictNote() {
+  var el = document.getElementById('verdict-note'); if (!el) return;
+  el.textContent = RESEARCH_MODE_UI ? 'Verdicts follow the research rules (under forward evaluation). Zero ACT is the normal reading most days. Previous scanner: ?legacy=1.' : 'Legacy verdicts: the previous scanner (pre-audit rules). Research rules: remove ?legacy=1.';
+}
 function verdictRankFor(r) {
   var v = null;
   try { v = buildAction(r).verdict; } catch(e) {}
   return VERDICT_RANK.hasOwnProperty(v) ? VERDICT_RANK[v] : 3;
 }
-function sortRowsByVerdict(rows) {
+function sortRowsByVerdict(rows, research) {   // Step 15-A: `research` (the table's default view) ranks by the four research states; every other caller (report) keeps the legacy rank
   return rows.map(function(r){
-    return {r:r, vr:verdictRankFor(r), vol:(r.volume24h!=null ? r.volume24h : -1)};
+    return {r:r, vr:(research ? researchStateRank(r) : verdictRankFor(r)), vol:(r.volume24h!=null ? r.volume24h : -1)};
   }).sort(function(a,b){
     if(a.vr!==b.vr) return a.vr-b.vr;
     if(a.vol!==b.vol) return b.vol-a.vol;
@@ -2452,6 +2506,9 @@ function renderDiag() {
   // above - never `filtered`, so these stay pinned to the raw scan output and don't drift when
   // a filter slider is touched. Reuses the existing vbadge/va-act/va-watch/va-wait classes as-is
   // (already defined, same colors as the Action column) - zero new CSS.
+  if (RESEARCH_MODE_UI) {   // Step 15-A: ACT / NEAR / DEVELOPING / WAIT (+ no fit) for the research state, counted over allResults like the legacy strip below
+    researchDiagStrip(allResults);
+  } else {
   var vaCounts = {ACT:0, WATCH:0, WAIT:0};
   allResults.forEach(function(r) {
     var v = buildAction(r).verdict;
@@ -2463,6 +2520,7 @@ function renderDiag() {
     '<div class="diag-item va-wait"><div class="diag-label">Wait</div><div class="diag-value">'+vaCounts.WAIT+'</div></div>';
   document.getElementById('diag-funnel').innerHTML +=
     ' &nbsp;|&nbsp; <span class="vbadge va-act">'+vaCounts.ACT+' Act</span> <span class="vbadge va-watch">'+vaCounts.WATCH+' Watch</span> <span class="vbadge va-wait">'+vaCounts.WAIT+' Wait</span>';
+  }
 
   // Step 8 E2 (Remediation spec, 2026-09-21/22): market-breadth header stat, research mode
   // only - additive, appended after the Act/Watch/Wait strip above rather than interleaved
@@ -2577,7 +2635,7 @@ function sortFiltered() {
   // Backlog #14: 'default' is the Recommended ordering (verdict > 24h volume > score) -
   // see sortRowsByVerdict above. Every other sortCol keeps its prior column-sort behavior
   // untouched below.
-  if(sortCol==='default') { filtered = sortRowsByVerdict(filtered); return; }
+  if(sortCol==='default') { filtered = sortRowsByVerdict(filtered, RESEARCH_MODE_UI); return; }
   filtered.sort(function(a,b) {
     var av=a[sortCol], bv=b[sortCol];
     if(sortCol==='position') return av-bv;
@@ -2633,20 +2691,11 @@ function renderTable() {
     // dimmer badge inside the same cell rather than a new column (avoids touching every
     // colspan/header this table already has). Toggle-gated; researchRow absent (row too short,
     // or the research computation threw - see mergeCandidateRow) shows nothing extra.
-    var researchBadge = '';
-    if (RESEARCH_MODE_UI && !r.researchRow) {   // Step 14-A (G11): no research fit on this series
-      researchBadge = ' <span class="vbadge cat-tip" data-tip="Research: no fit on this series (no rail pair passed the research gates on these candles)" style="opacity:.55;font-size:9px;padding:2px 5px;color:var(--muted,#9aa3b2)">R:— no fit</span>';
-    }
-    if (RESEARCH_MODE_UI && r.researchRow && typeof buildAction==='function') {
-      var raction = buildAction(r.researchRow, {research:true});
-      var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-      researchBadge = ' <span class="vbadge '+rvcls+' cat-tip" data-tip="Research mode (Step 6): '+raction.text.replace(/"/g,'&quot;')+' ['+RESEARCH_SCORE_LABEL+']" style="opacity:.7;font-size:9px;padding:2px 5px">R:'+raction.verdict+'</span>';
-      // G6 (Step 11-A): the first failed gate as a small grey tag so the table explains itself without the panel.
-      if (raction.gate) researchBadge += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:3px">'+raction.gate+'</span>';
-    }
+    var actionCell = '<span class="vbadge '+vcls+'">'+action.verdict+'</span>';
+    if (RESEARCH_MODE_UI) actionCell = researchStateCellHTML(researchStateFor(r), action);   // Step 15-A: research state primary, failing check in words, legacy verdict as a muted tag
     return '<tr data-key="'+r.symbol+'">'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
-      '<td><span class="vbadge '+vcls+'">'+action.verdict+'</span>'+researchBadge+'</td>'+
+      '<td>'+actionCell+'</td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
       '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
       '<td style="color:var(--text2);font-variant-numeric:tabular-nums">'+fmtVol(r.volume24h)+'</td>'+
@@ -2713,19 +2762,18 @@ function openDetail(r) {
     var action = buildAction(r);
     var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
     var badgeHtml = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
-    // Step 6: research verdict beside the old one, same as the table row - see renderTable's
-    // own comment for why this is a second badge, not a replacement or a new field.
-    if (RESEARCH_MODE_UI && r.researchRow) {
-      var raction = buildAction(r.researchRow, {research:true});
-      var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-      badgeHtml += ' <span class="vbadge '+rvcls+'" style="opacity:.7;font-size:10px">R:'+raction.verdict+'</span><span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
-      if (raction.gate) badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+raction.gate+'</span>';   // G6 (Step 11-A)
-      badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
-      badgeHtml += researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(r.researchRow, SETUPS_LEDGER);   // Step 11-E (H12) + C-2 (H5): display only
-      actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text + ' (' + RESEARCH_SCORE_LABEL + ')';
-    } else if (RESEARCH_MODE_UI) {   // Step 14-A (G11)
-      badgeHtml += ' <span class="vbadge" style="opacity:.55;font-size:10px;color:var(--muted,#9aa3b2)">R:— no fit</span>';
-      actionTextEl.textContent = action.text + '  |  Research: no fit on this series';
+    // Step 15-A: default (research) view - the research state is the primary badge with the failing check in words, the legacy verdict a small muted tag; legacy view keeps the line above untouched.
+    if (RESEARCH_MODE_UI) {
+      var rs = researchStateFor(r);
+      badgeHtml = researchStateCellHTML(rs, action, 'detail');
+      if (r.researchRow) {
+        badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
+        badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
+        badgeHtml += researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(r.researchRow, SETUPS_LEDGER);   // Step 11-E (H12) + C-2 (H5): display only
+        actionTextEl.textContent = (rs.action ? rs.action.text : 'Research: no fit on this series') + ' (' + RESEARCH_SCORE_LABEL + ')  |  Legacy: ' + action.text;
+      } else {
+        actionTextEl.textContent = 'Research: no fit on this series  |  Legacy: ' + action.text;
+      }
     } else {
       actionTextEl.textContent = action.text;
     }
@@ -3624,10 +3672,16 @@ window.addEventListener('load', function() {
   // row at merge time (mergeCandidateRow); toggling just changes whether renderTable()/
   // openDetail() show it. Query param ?research=1 sets the initial checked state for
   // link-sharing (RESEARCH_MODE_UI itself is set from the same param at page load, above).
-  document.getElementById('research-mode').checked = RESEARCH_MODE_UI;
+  // Step 15-A: the checkbox is now "Legacy verdicts" (checked = the ?legacy=1 view); it reflects and updates the address. The research reading is computed at merge time on every row, so a
+  // toggle only re-renders (sort, table, counts, detail) - no re-fetch or re-scan.
+  document.getElementById('research-mode').checked = LEGACY_UI;
+  renderVerdictNote();
   document.getElementById('research-mode').addEventListener('change', function() {
-    RESEARCH_MODE_UI = this.checked;
-    renderTable();
+    LEGACY_UI = this.checked; RESEARCH_MODE_UI = !LEGACY_UI;
+    try { var u = new URL(location.href); if (LEGACY_UI) u.searchParams.set('legacy', '1'); else u.searchParams.delete('legacy'); u.searchParams.delete('research'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
+    renderVerdictNote();
+    if (RESEARCH_MODE_UI && !SETUPS_LEDGER) loadResearchSetups();
+    renderDiag(); applyFilters();
     if(selectedKey) { var r = filtered.find(function(x){return x.symbol===selectedKey;}); if(r) openDetail(r); }
   });
   document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
