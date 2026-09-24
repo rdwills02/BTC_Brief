@@ -552,22 +552,30 @@ function isWedge(supSlope, supIntercept, resSlope, resIntercept, firstIdx, endId
 // every flag-off caller is byte-unchanged.
 function scanBreaks(candles, slope, intercept, firstIdx, lastIdx, tol, countRuns) {
   var maxRun = 0, curRun = 0, lastBreakIdx = -1, anyProbed = false, runCount2 = 0;
+  // Step 12-A (G5): with countRuns, also collect every maximal run of closes below the invalidation line as
+  // {startIdx, endIdx, len, startTime, endTime} (full-series idx + the bars' own times, so the page shades by time and
+  // never re-indexes). Same scan, same threshold; flag-off never calls this function, and callers without countRuns
+  // (the _noD harness reading) get the pre-12-A shape untouched.
+  var runs = [], runStart = -1;
   for (var i = firstIdx; i <= lastIdx; i++) {
     var thresh = railAt(slope, intercept, i) * (1 - tol);
     var c = candles[i];
     if (c.low < thresh) anyProbed = true;
     if (c.close < thresh) {
+      if (curRun === 0) runStart = i;
       curRun++;
       lastBreakIdx = i;
       if (curRun > maxRun) maxRun = curRun;
     } else {
       if (curRun === 2) runCount2++;
+      if (curRun > 0) runs.push({startIdx: runStart, endIdx: i - 1, len: curRun, startTime: candles[runStart].time, endTime: candles[i - 1].time});
       curRun = 0;
     }
   }
   if (curRun === 2) runCount2++;
+  if (curRun > 0) runs.push({startIdx: runStart, endIdx: lastIdx, len: curRun, startTime: candles[runStart].time, endTime: candles[lastIdx].time});
   var out = {maxRun: maxRun, lastBreakIdx: lastBreakIdx, anyProbed: anyProbed};
-  if (countRuns) out.runCount2 = runCount2;
+  if (countRuns) { out.runCount2 = runCount2; out.runs = runs; }
   return out;
 }
 
@@ -1253,6 +1261,7 @@ function detectChannelResearch(candles, diag, meta) {
         breachHistory: []
       };
       if (scoreBreakdown) { candidate.scoreBreakdown = scoreBreakdown; candidate.ema50Slope = ema50Slope; candidate.breakRunCount2 = scan.runCount2; } // Step 10 D (absent under _noD)
+      if (scan.runs) candidate.breakRuns = scan.runs; // Step 12-A (G5): break runs with times, research only (absent under _noD)
 
       if (eligible && (!bestEligible || candidate.score > bestEligible.score)) bestEligible = candidate;
       if (!bestAny || candidate.score > bestAny.score) bestAny = candidate;
