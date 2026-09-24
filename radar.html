@@ -133,6 +133,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
    renderPatternBands() in toggleOverlay's module, never by buildChart's container.innerHTML
    reset (this element is a SIBLING of #detail-chart, not a child, so it survives that reset). */
 #detail-chart-bands{position:absolute;inset:0;pointer-events:none;z-index:2}
+.levels-table{width:100%;border-collapse:collapse;font-size:11px}.levels-table th,.levels-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.levels-table th{color:var(--muted);font-weight:600}.levels-table .lv-label{color:var(--muted)}.lv-sub{display:block;font-size:9px;color:var(--muted)}.lv-diff{background:rgba(245,166,35,.18)}
 .chart-legend{position:absolute;top:8px;left:10px;font-size:10px;color:var(--muted);z-index:10;pointer-events:none;display:flex;gap:12px}
 .legend-item{display:flex;align-items:center;gap:4px}
 .legend-dot{width:10px;height:2px;border-radius:1px}
@@ -344,6 +345,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="detail-chart"></div>
         <div id="detail-chart-bands"></div>
       </div>
+      <div id="dp-fitwindow" style="font-size:11px;color:var(--muted,#9aa3b2);padding:6px 18px 0"></div>
+      <div class="ds" id="dp-levels"></div>
       <div class="ds">
         <div class="ds-title">Confluence Signals (from daily OHLC)</div>
         <div id="dp-confluence"></div>
@@ -870,7 +873,6 @@ function researchQuoteRefresh(r) {
 // Step 12-B (Remediation spec G4, G5, G7, G8; step 12 plan + rulings a-f). Research mode only. Pure renderers over the
 // research fit (rr) and the row; the chart overlays are DIVs positioned by time through chart.timeScale(), never by an
 // index into rr.candles (index hazard). Nothing here gates, scores or writes.
-var RESEARCH_OVERLAY_ID = 'detail-chart-research';   // sibling of #detail-chart-bands, created only in research mode (no flag-off DOM)
 function gridBarSpanLabel(gridDate) {
   // 4-Day bar label as a span "9/20-9/23 (closed)": since F2 the stored date is the bar's OPEN day; the bar covers open..open+3d.
   var d = new Date(gridDate);
@@ -884,7 +886,7 @@ function researchStructureHTML(rr) {
   var parts = [];
   parts.push('rail anchored ' + (rr.lastIdx - rr.firstIdx) + ' bars ago (fit window ' + (typeof rr.lookback === 'number' ? rr.lookback : '?') + ' bars)');
   var br = Array.isArray(rr.breakRuns) ? rr.breakRuns : null;
-  if (br && br.length) parts.push((rr.lastIdx - br[br.length - 1].endIdx) + ' bars since break (' + br.length + ' run' + (br.length === 1 ? '' : 's') + ', longest ' + br.reduce(function (m, x) { return Math.max(m, x.len); }, 0) + ')');
+  if (br && br.length) parts.push((rr.lastIdx - br[br.length - 1].endIdx) + ' bars since break (' + br.length + ' run' + (br.length === 1 ? '' : 's') + ', longest ' + br.reduce(function (m, x) { return Math.max(m, x.len); }, 0) + '; ' + br.slice(-3).map(function (x) { return x.len + ' close' + (x.len === 1 ? '' : 's') + ' ' + researchDateLabel(x.startTime) + '\u2013' + researchDateLabel(x.endTime); }).join(', ') + ')');
   else parts.push('no break in window');
   if (rr.resistanceFit === 'independent' && Array.isArray(rr.pivotHighs) && rr.pivotHighs.length) {
     var ra = computeRailAgeResearch(rr.candles, rr.pivotHighs, rr.timeframe, null);   // ruling a: same day convention as support
@@ -901,22 +903,142 @@ function researchPartialBarMark(r, candles) {
   var c = candles[candles.length - 1];
   return [{ time: c.time, position: 'aboveBar', color: '#6b7280', shape: 'square', text: 'partial', size: 1 }];
 }
-// G4 + G5 overlays: a 1px line at fitStartTime with a translucent shade over the bars before it (ruling b), and one red
-// shade per breakRuns[] span from startTime to endTime + one bar. Positions come from chart.timeScale().timeToCoordinate;
-// a null coordinate (time off the visible scale) skips that element, never throws. Returns the element specs it drew.
 // Step 14-A (detail-panel transparency, G9/G10/G11). Research mode only; flag-off DOM and chart calls unchanged.
-var detailPriceSeries = null;   // 14-A: the candlestick series of the open chart (research branch only) for priceToCoordinate
 var RESEARCH_LEGEND_ID = 'detail-chart-legend-research';
 function researchDateLabel(t) { return formatShortDate(new Date(t * 1000).toISOString()); }
-// G10: the research fit's own rails over the chart's candles. The page research fit is computed on merged.candles, the
-// same array the chart draws, so index i in r.candles is the fit's own index (rr.lastIdx == r.candles.length-1; the suite
-// asserts it). Resistance follows the independent line when B1 fitted one, else the parallel projection.
+// Step 14-B (redraw fix, rail start, rail extension + tags, Levels table, fit-window line). Everything research draws ON THE CHART
+// is a lightweight-charts SERIES, so the library owns placement across pan / zoom / panel resize: no DOM overlay and no handler of
+// ours (subscribe*/ResizeObserver/requestAnimationFrame) remains for it. Display only; no detection input changes.
+var LEVELS_HILITE_PCT = 5;     // G12 (display only): a Main/Research pair differing by more than this % is highlighted
+var RAIL_EXT_MIN_BARS = 12;    // (e) research rails run at least this many bars past the last candle ...
+var RAIL_EXT_FRAC = 0.15;      // ... or this fraction of the candle count when larger, so the tag margin is wide enough to stagger in
+function railExtBars(n) { return Math.max(RAIL_EXT_MIN_BARS, Math.ceil(RAIL_EXT_FRAC * n)); }
+function barStepSec(candles, rr) { var n = candles.length; return (n >= 2 && candles[n - 1].time > candles[n - 2].time) ? candles[n - 1].time - candles[n - 2].time : researchBarSeconds(rr); }
+function railSlopePct(slope, intercept, idx) { var b = Math.abs(railAt(slope, intercept, idx)); return (typeof slope === 'number' && b) ? slope / b * 100 : null; }
+// (b)+(e) the research fit's rails from rr.firstIdx (not candle 0) to `ext` bars past the last candle, along their own slope.
+// Index i in r.candles is the fit's own index (rr.lastIdx == r.candles.length-1; the suite asserts it); future bar k (1..ext) is index n-1+k.
 function researchRailData(rr, candles) {
   if (!rr || !candles || !candles.length || typeof rr.supSlope !== 'number') return null;
-  var sup = candles.map(function (c, i) { return { time: c.time, value: railAt(rr.supSlope, rr.supIntercept, i) }; });
-  var res = candles.map(function (c, i) { return { time: c.time, value: (rr.resistanceFit === 'independent' && typeof rr.resSlope === 'number') ? railAt(rr.resSlope, rr.resIntercept, i) : railAt(rr.supSlope, rr.supIntercept, i) + rr.channelH }; });
-  var inv = [{ time: candles[0].time, value: rr.invalidation }, { time: candles[candles.length - 1].time, value: rr.invalidation }];
-  return { sup: sup, res: res, inv: inv };
+  var n = candles.length, ext = railExtBars(n), step = barStepSec(candles, rr), t0 = candles[n - 1].time;
+  var i0 = (typeof rr.firstIdx === 'number' && rr.firstIdx >= 0 && rr.firstIdx < n) ? rr.firstIdx : 0;
+  var future = []; for (var k = 1; k <= ext; k++) future.push(t0 + k * step);
+  var times = []; for (var i = i0; i < n; i++) times.push(candles[i].time); times = times.concat(future);
+  var indep = rr.resistanceFit === 'independent' && typeof rr.resSlope === 'number';
+  var supAt = function (idx) { return railAt(rr.supSlope, rr.supIntercept, idx); };
+  var resAt = function (idx) { return indep ? railAt(rr.resSlope, rr.resIntercept, idx) : supAt(idx) + rr.channelH; };
+  var mk = function (fn) { return times.map(function (t, j) { return { time: t, value: fn(i0 + j) }; }); };
+  return { sup: mk(supAt), res: mk(resAt), inv: mk(function () { return rr.invalidation; }), n: n, ext: ext, step: step, t0: t0, i0: i0, future: future };
+}
+// Pre-window shade and break-run shade as 0/1 step series (1 = shaded bar; a run covers startTime..endTime plus one bar of step).
+function researchShadeData(rr, candles) {
+  var pre = null, runs = null, br = Array.isArray(rr.breakRuns) ? rr.breakRuns : [];
+  if (typeof rr.fitStartTime === 'number' && candles.length && candles[0].time < rr.fitStartTime) pre = candles.map(function (c) { return { time: c.time, value: c.time < rr.fitStartTime ? 1 : 0 }; });
+  if (br.length) runs = candles.map(function (c) { return { time: c.time, value: br.some(function (x) { return c.time >= x.startTime && c.time <= x.endTime; }) ? 1 : 0 }; });
+  return { pre: pre, runs: runs };
+}
+function addShadeSeries(chart, data, color) {
+  var s = chart.addAreaSeries({ priceScaleId: 'r-shade', lineColor: 'rgba(0,0,0,0)', topColor: color, bottomColor: color, lineWidth: 1, lineType: 1 /* WithSteps */, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: function () { return { priceRange: { minValue: 0, maxValue: 1 } }; } });
+  s.setData(data); return s;
+}
+// (d)+(e) tags: one marker per tag, on the series that carries the level, at a distinct bar inside the right-hand margin (a fraction of
+// `ext`, so no two share a bar; above/below alternates by level so same-side tags are a slot apart). Labels "R sup / R res / R inv".
+function researchRailTags(rr, rails) {
+  var d = pricePrecision(rr.price), ee = rr.entryEconomics || {}, out = [];
+  var defs = [
+    { id: 'sup', text: 'R sup', pos: 'belowBar', frac: 0.15, color: '#7fe8c8', ok: true },
+    { id: 'res', text: 'R res', pos: 'aboveBar', frac: 0.30, color: '#f0a07a', ok: true },
+    { id: 'inv', text: 'R inv', pos: 'belowBar', frac: 0.50, color: '#ff5c8a', ok: true },
+    { id: 'target', text: 'T ' + (typeof ee.target === 'number' ? fmt(ee.target, d) : ''), pos: 'aboveBar', frac: 0.65, color: '#00c896', ok: typeof ee.target === 'number' },
+    { id: 'stop', text: 'S ' + (typeof ee.stop === 'number' ? fmt(ee.stop, d) : ''), pos: 'belowBar', frac: 0.85, color: '#e8754a', ok: typeof ee.stop === 'number' }
+  ];
+  defs.forEach(function (df) {
+    if (!df.ok) return;
+    var slot = Math.min(rails.ext, Math.max(1, Math.round(df.frac * rails.ext)));
+    out.push({ id: df.id, text: df.text, position: df.pos, color: df.color, slot: slot, time: rails.t0 + slot * rails.step });
+  });
+  return out;
+}
+// Draws every research chart element as a series and returns the state (series data + tags) the suite compares against a fresh render.
+function addResearchChartSeries(chart, r, main) {
+  var rr = r.researchRow, candles = r.candles, rails = researchRailData(rr, candles), st = { rails: rails, tags: [], shades: {}, band: null, ticks: {} };
+  if (!rails) return st;
+  var line = function (color, w, style) { return chart.addLineSeries({ color: color, lineWidth: w, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }); };
+  var shade = researchShadeData(rr, candles);
+  if (shade.pre || shade.runs) chart.priceScale('r-shade').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
+  if (shade.pre) st.shades.pre = addShadeSeries(chart, shade.pre, 'rgba(107,114,128,.14)');
+  if (shade.runs) st.shades.runs = addShadeSeries(chart, shade.runs, 'rgba(160,82,45,.22)');
+  var ee = rr.entryEconomics, tail = [rails.t0].concat(rails.future);
+  if (ee && Array.isArray(ee.entryZone)) {
+    st.band = chart.addBaselineSeries({ baseValue: { type: 'price', price: ee.entryZone[0] }, topFillColor1: 'rgba(0,200,150,.18)', topFillColor2: 'rgba(0,200,150,.18)', topLineColor: 'rgba(0,0,0,0)', bottomFillColor1: 'rgba(0,0,0,0)', bottomFillColor2: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: function () { return null; } });
+    st.band.setData(tail.map(function (t) { return { time: t, value: ee.entryZone[1] }; }));
+  }
+  var sSup = line('#7fe8c8', 1, 2), sRes = line('#f0a07a', 1, 2), sInv = line('#ff5c8a', 1, 2);
+  sSup.setData(rails.sup); sRes.setData(rails.res); sInv.setData(rails.inv);
+  var tick = function (color, price) { var s = line(color, 2, 0); s.setData(rails.future.slice(Math.floor(rails.ext / 2)).map(function (t) { return { time: t, value: price }; })); return s; };
+  var bySeries = { sup: sSup, res: sRes, inv: sInv };
+  if (ee && typeof ee.target === 'number') bySeries.target = st.ticks.target = tick('#00c896', ee.target);
+  if (ee && typeof ee.stop === 'number') bySeries.stop = st.ticks.stop = tick('#e8754a', ee.stop);
+  st.tags = researchRailTags(rr, rails);
+  st.tags.forEach(function (t) { bySeries[t.id].setMarkers([{ time: t.time, position: t.position, color: t.color, shape: 'circle', text: t.text, size: 1 }]); });
+  // main rails: dimmed to 50% and run along their own slope through the same margin (research mode only)
+  var n = candles.length, startCI = r.lastIdx - (n - 1);
+  main.sup.applyOptions({ color: 'rgba(0,200,150,0.5)' }); main.res.applyOptions({ color: 'rgba(232,117,74,0.5)' }); main.inv.applyOptions({ color: 'rgba(232,117,74,0.2)' });
+  main.sup.setData(main.supData.concat(rails.future.map(function (t, k) { return { time: t, value: railAt(r.supSlope, r.supIntercept, startCI + n + k) }; })));
+  main.res.setData(main.resData.concat(rails.future.map(function (t, k) { return { time: t, value: railAt(r.supSlope, r.supIntercept, startCI + n + k) + r.channelH }; })));
+  main.inv.setData([{ time: candles[0].time, value: r.invalidation }].concat([candles[n - 1].time].concat(rails.future).map(function (t) { return { time: t, value: r.invalidation }; })));
+  return st;
+}
+var detailResearchDraw = null;   // 14-B: state of the last research series draw (null flag-off / no fit)
+// G13: "Fit window: N bars (chart shows M)"; N = lastIdx - firstIdx + 1 of the fit, M = candles drawn.
+function fitWindowBody(n, m) { return n + ' bars' + (m != null ? ' (chart shows ' + m + ')' : '') + ((m != null && n > m) ? ' — rails were fitted on bars not shown' : ''); }
+function fitWindowLines(r) {
+  var m = r.candles ? r.candles.length : null, out = [];
+  if (typeof r.firstIdx === 'number' && typeof r.lastIdx === 'number') out.push({ label: 'Fit window', body: fitWindowBody(r.lastIdx - r.firstIdx + 1, m) });
+  var rr = RESEARCH_MODE_UI ? r.researchRow : null;
+  if (rr && typeof rr.firstIdx === 'number' && typeof rr.lastIdx === 'number') out.push({ label: 'Research fit window', body: fitWindowBody(rr.lastIdx - rr.firstIdx + 1, m) });
+  return out;
+}
+function fitWindowTilesHTML(r) {
+  return fitWindowLines(r).map(function (x) { return '<div class="score-item fit-window-tile"><div class="si-label">' + x.label + '</div><div class="si-value">' + x.body + '</div></div>'; }).join('');
+}
+// G12: Levels table. Main column re-displays numbers already on the page (supportNow, resistNow, invalidation, slope); it has no entry
+// zone / stop / target / R:R model, so those cells read "—". Research column only in research mode ("no fit" when researchRow is null).
+function levelsTableHTML(r) {
+  var d = pricePrecision(r.price), rr = RESEARCH_MODE_UI ? r.researchRow : null, ee = rr && rr.entryEconomics;
+  var num = function (v) { return typeof v === 'number' && isFinite(v); };
+  var f = function (v) { return num(v) ? fmt(v, d) : '—'; };
+  var sub = function (t) { return t ? '<span class="lv-sub">' + t + '</span>' : ''; };
+  var slopeS = function (p) { return num(p) ? sub('slope ' + (p >= 0 ? '+' : '') + p.toFixed(3) + '%/bar') : ''; };
+  var rows = [];
+  function row(label, mainHtml, mainNum, resHtml, resNum) { rows.push({ label: label, mainHtml: mainHtml, mainNum: mainNum, resHtml: resHtml, resNum: resNum }); }
+  var tolBand = (rr && num(rr.tol) && num(rr.supportNow)) ? sub('± touch tol ' + f(rr.supportNow * (1 - rr.tol)) + ' – ' + f(rr.supportNow * (1 + rr.tol))) : '';
+  row('Floor', f(r.supportNow) + slopeS(r.slope), r.supportNow, rr ? f(rr.supportNow) + slopeS(rr.slope) + tolBand : 'no fit', rr ? rr.supportNow : null);
+  var resCell = 'no fit', resNum = null;
+  if (rr) {
+    var chProj = rr.resistNow, recent = (ee && ee.targetSource === 'swing-high' && num(ee.target)) ? ee.target : null;
+    var rs = (rr.resistanceFit === 'independent' && num(rr.resSlope)) ? railSlopePct(rr.resSlope, rr.resIntercept, rr.firstIdx) : rr.slope;
+    resNum = chProj;
+    resCell = (recent != null && num(chProj) && Math.abs(recent - chProj) / Math.abs(chProj) > 0.001)
+      ? 'Recent highs ' + f(recent) + '<span class="lv-sub">Channel projection ' + f(chProj) + '</span>' + slopeS(rs)
+      : (rr.resistanceFit === 'independent' ? 'Independent line ' : 'Channel projection ') + f(chProj) + slopeS(rs);
+  }
+  row('Ceiling', f(r.resistNow) + slopeS(r.slope), r.resistNow, resCell, resNum);
+  row('Invalidation', f(r.invalidation), r.invalidation, rr ? f(rr.invalidation) : 'no fit', rr ? rr.invalidation : null);
+  row('Entry zone', '—', null, rr ? (ee && Array.isArray(ee.entryZone) ? f(ee.entryZone[0]) + ' – ' + f(ee.entryZone[1]) : '—') : 'no fit', null);
+  row('Stop', '—', null, rr ? (ee && num(ee.stop) ? f(ee.stop) + sub(ee.stopBasis) : '—') : 'no fit', null);
+  row('Target', '—', null, rr ? (ee && num(ee.target) ? f(ee.target) + sub(ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') : 'none above entry') : 'no fit', null);
+  row('R:R', '—', null, rr ? (ee && num(ee.netRR) ? ee.netRR.toFixed(2) + ' net' + sub(ee.grossRR.toFixed(2) + ' gross') : 'Unknown') : 'no fit', null);
+  var head = '<tr><th></th><th>Main</th>' + (RESEARCH_MODE_UI ? '<th>Research</th>' : '') + '</tr>';
+  var body = rows.map(function (x) {
+    var diff = RESEARCH_MODE_UI && num(x.mainNum) && num(x.resNum) && x.mainNum !== 0 && Math.abs(x.resNum - x.mainNum) / Math.abs(x.mainNum) * 100 > LEVELS_HILITE_PCT;
+    return '<tr data-level="' + x.label + '"><td class="lv-label">' + x.label + '</td><td>' + x.mainHtml + '</td>' + (RESEARCH_MODE_UI ? '<td' + (diff ? ' class="lv-diff" data-diff="1" title="Main and Research differ by more than ' + LEVELS_HILITE_PCT + '%"' : '') + '>' + x.resHtml + '</td>' : '') + '</tr>';
+  }).join('');
+  return '<div class="ds-title">Levels</div><table class="levels-table">' + head + body + '</table>';
+}
+function renderLevelsAndFitWindow(r) {
+  var fw = document.getElementById('dp-fitwindow'), lv = document.getElementById('dp-levels');
+  if (fw) fw.innerHTML = fitWindowLines(r).map(function (x) { return '<div>' + x.label + ': ' + x.body + '</div>'; }).join('');
+  if (lv) lv.innerHTML = levelsTableHTML(r);
 }
 // G9: legend under the chart, research mode only (element created by buildChart's research branch).
 function researchLegendHTML(rr) {
@@ -934,58 +1056,6 @@ function researchLegendHTML(rr) {
     '<span title="Wick clipped: raw high/low \u2192 clipped value (k\u00d7ATR14), F3 outlier handling">' + dot('#ff5c8a') + 'Wick clipped</span>',
     '<span title="Main (flag-off) rails are dimmed to 50% while the research rails are shown">' + sw('rgba(0,200,150,.5)', 'solid') + 'Main rails (dimmed)</span>'
   ].join(' \u00b7 ');
-}
-// G10: entry-zone band and stop/target ticks, priced through the candlestick series' priceToCoordinate. Returns specs drawn.
-function renderResearchPriceOverlays(series, rr, el, widthPx) {
-  if (!el || !series || !rr || !rr.entryEconomics || typeof series.priceToCoordinate !== 'function') return [];
-  var ee = rr.entryEconomics, out = [], w = (typeof widthPx === 'number' && widthPx > 0) ? widthPx : 0, d = pricePrecision(rr.price);
-  function add(spec) {
-    var el2 = document.createElement('div');
-    el2.className = spec.cls; el2.setAttribute('data-kind', spec.kind); el2.setAttribute('data-price', String(spec.price)); el2.setAttribute('title', spec.title);
-    el2.style.cssText = 'position:absolute;' + spec.style; el2.textContent = spec.text || '';
-    el.appendChild(el2); out.push(spec);
-  }
-  if (Array.isArray(ee.entryZone)) {
-    var yHi = series.priceToCoordinate(ee.entryZone[1]), yLo = series.priceToCoordinate(ee.entryZone[0]);
-    if (yHi != null && yLo != null) add({ kind: 'entry-zone', cls: 'research-entry-zone', price: ee.entryZone[0], title: 'Entry zone ' + fmt(ee.entryZone[0], d) + ' \u2013 ' + fmt(ee.entryZone[1], d), style: 'left:0;right:0;top:' + Math.min(yHi, yLo) + 'px;height:' + Math.max(1, Math.abs(yLo - yHi)) + 'px;background:rgba(0,200,150,.12)' });
-  }
-  [['stop', ee.stop, '#e8754a'], ['target', ee.target, '#00c896']].forEach(function (t) {
-    if (typeof t[1] !== 'number') return;
-    var y = series.priceToCoordinate(t[1]); if (y == null) return;
-    add({ kind: t[0], cls: 'research-' + t[0] + '-tick', price: t[1], title: (t[0] === 'stop' ? 'Stop ' : 'Target ') + fmt(t[1], d), text: (t[0] === 'stop' ? 'S ' : 'T ') + fmt(t[1], d), style: 'right:0;top:' + (y - 1) + 'px;height:2px;width:' + (w ? Math.min(60, Math.max(24, Math.round(w * 0.06))) : 36) + 'px;background:' + t[2] + ';font-size:9px;line-height:0;color:' + t[2] + ';text-align:right;padding-bottom:12px' });
-  });
-  return out;
-}
-function renderResearchOverlays(chart, rr, el, widthPx) {
-  if (!el) return [];
-  el.innerHTML = '';
-  if (!chart || !rr) return [];
-  var ts = chart.timeScale(), out = [], barSec = researchBarSeconds(rr);
-  function add(spec) {
-    var d = document.createElement('div');
-    d.className = spec.cls; d.setAttribute('data-kind', spec.kind);
-    if (spec.time != null) d.setAttribute('data-time', String(spec.time));
-    if (spec.start != null) { d.setAttribute('data-start', String(spec.start)); d.setAttribute('data-end', String(spec.end)); }
-    d.style.cssText = 'position:absolute;top:0;bottom:0;left:' + spec.left + 'px;width:' + spec.width + 'px;' + spec.style;
-    if (spec.title) d.setAttribute('title', spec.title);   // 14-A (G9)
-    el.appendChild(d); out.push(spec);
-  }
-  if (typeof rr.fitStartTime === 'number') {
-    var x0 = ts.timeToCoordinate(rr.fitStartTime);
-    if (x0 != null) {
-      if (x0 > 0) add({ kind: 'fit-shade', cls: 'research-fit-shade', time: rr.fitStartTime, left: 0, width: x0, style: 'background:rgba(107,114,128,.10)', title: 'Before the ' + (typeof rr.lookback === 'number' ? rr.lookback : '?') + '-bar fit window — not used to fit the rails' });
-      add({ kind: 'fit-start', cls: 'research-fit-start', time: rr.fitStartTime, left: x0, width: 1, style: 'background:rgba(154,163,178,.55)' });
-    }
-  }
-  (Array.isArray(rr.breakRuns) ? rr.breakRuns : []).forEach(function (run) {
-    var xl = ts.timeToCoordinate(run.startTime), xr = ts.timeToCoordinate(run.endTime + barSec);
-    if (xl == null) return;
-    if (xr == null) { var xe = ts.timeToCoordinate(run.endTime); if (xe == null) return; xr = (typeof widthPx === 'number' && widthPx > xe) ? widthPx : xe + 1; }
-    add({ kind: 'break-run', cls: 'research-break-run', start: run.startTime, end: run.endTime, left: Math.min(xl, xr), width: Math.max(1, Math.abs(xr - xl)), style: 'background:rgba(232,117,74,.15)', title: 'Break run: ' + run.len + ' consecutive close' + (run.len === 1 ? '' : 's') + ' below the support rail, ' + researchDateLabel(run.startTime) + '–' + researchDateLabel(run.endTime) });
-  });
-  // 14-A (G10): entry zone band + stop/target ticks, re-placed with the time overlays
-  if (detailPriceSeries) renderResearchPriceOverlays(detailPriceSeries, rr, el, widthPx).forEach(function (sp) { out.push(sp); });
-  return out;
 }
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
@@ -2378,9 +2448,10 @@ function openDetail(r) {
     '<div class="score-item"><div class="si-label">Resistance touches</div><div class="si-value">'+r.resTouches+'</div></div>'+
     '<div class="score-item"><div class="si-label">Containment</div><div class="si-value" style="color:'+(r.containment>75?'var(--bull)':'var(--neut)')+'">'+r.containment+'%</div></div>'+
     '<div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:'+(r.slope>=0?'var(--bull)':'var(--bear)')+'">'+( r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
-    '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+
+    '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+fitWindowTilesHTML(r)+
     '<div class="score-item"><div class="si-label">Price vs EMA</div><div class="si-value" style="color:'+(r.emaState==='above_both'?'var(--bull)':r.emaState==='above_50'?'var(--neut)':'var(--bear)')+'">'+(r.emaState==='above_both'?'Above 21 & 50':r.emaState==='above_50'?'Above 50':'Below 50')+'</div></div>'+
     '<div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:'+sc+'">'+r.score+'/100</div></div>';
+  try { renderLevelsAndFitWindow(r); } catch (e) {}   // Step 14-B (G12/G13): Levels table + fit-window line; fault-isolated, display only
   // B4: clamp only at the bar's pixel width - see the table renderer's own comment above.
   var pw=Math.round(clamp(r.position,0,1)*100);
   document.getElementById('dp-pos-label').textContent=positionLabelFor(r);
@@ -2544,9 +2615,7 @@ function toggleOverlay(key, state, cs, emaSeries, pivotMarkers, triggers, chart,
 // plain absolutely-positioned div on top of the chart canvas, positioned via timeToCoordinate().
 function renderPatternBands(state, triggers, chart, candles, bandsEl, cs, candlesGrid) {
   bandsEl.innerHTML = '';
-  // Step 12-B: research overlays (G4 fit window, G5 break runs) live in a sibling element and are re-placed on the same
-  // toggle/resize events that re-place the bands; nothing runs with research mode off.
-  if (RESEARCH_MODE_UI && detailResearchRow) renderResearchOverlays(chart, detailResearchRow, document.getElementById(RESEARCH_OVERLAY_ID), bandsEl.clientWidth);
+  // Step 14-B: research overlays are chart series now (library-owned placement); nothing research-specific is re-placed here.
   if(!candles || candles.length < 2) return;
   var ts = chart.timeScale();
   var GRID_INTERVAL_DAYS = 4; // confirmed in capture data (grid_interval_days) and this app's
@@ -2653,13 +2722,6 @@ function buildChart(r) {
   // explicitly here so reopening a different coin doesn't leave a stale band from the last one.
   var bandsEl = document.getElementById('detail-chart-bands');
   if(bandsEl) bandsEl.innerHTML = '';
-  // Step 12-B: the research overlay layer is created only in research mode with a research row, and removed otherwise,
-  // so the flag-off DOM is unchanged.
-  var researchEl = document.getElementById(RESEARCH_OVERLAY_ID);
-  if (RESEARCH_MODE_UI && r.researchRow) {
-    if (!researchEl && bandsEl && bandsEl.parentNode) { researchEl = document.createElement('div'); researchEl.id = RESEARCH_OVERLAY_ID; researchEl.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1'; bandsEl.parentNode.insertBefore(researchEl, bandsEl); }
-    if (researchEl) researchEl.innerHTML = '';
-  } else if (researchEl && researchEl.parentNode) researchEl.parentNode.removeChild(researchEl);
   detailResearchRow = (RESEARCH_MODE_UI && r.researchRow) ? r.researchRow : null;
   if(detailChart){detailChart.remove();detailChart=null;}
   var chart=LightweightCharts.createChart(container,{
@@ -2736,28 +2798,18 @@ function buildChart(r) {
     // Step 9 Diff B: F3 wick-clip markers (side-aware), the base set setResearchMarks merges under pattern marks.
     detailClipMarks = researchClipMarks(r.researchRow, r.candles).concat(researchPartialBarMark(r, r.candles));   // Step 12-B (G7): dormant partial-bar marker rides with the clip marks
     if (detailClipMarks.length) detailResearchSeries.setMarkers(detailClipMarks);
-    // Step 14-A (G10): the research fit's own rails, dashed, with legend titles; the main rails dimmed to 50% so both fits read.
-    detailPriceSeries = cs;
-    var rails = researchRailData(r.researchRow, r.candles);
-    if (rails) {
-      chart.addLineSeries({color:'#7fe8c8',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Research support'}).setData(rails.sup);
-      chart.addLineSeries({color:'#f0a07a',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Research resistance'}).setData(rails.res);
-      chart.addLineSeries({color:'#ff5c8a',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Research invalidation'}).setData(rails.inv);
-      mainSup.applyOptions({color:'rgba(0,200,150,0.5)'}); mainRes.applyOptions({color:'rgba(232,117,74,0.5)'}); mainInv.applyOptions({color:'rgba(232,117,74,0.2)'});
-    }
-    // Step 14-A (G9): legend under the chart (created only here; removed when leaving research mode below)
-    var legendEl = document.getElementById(RESEARCH_LEGEND_ID);
-    if (!legendEl && container.parentNode) { legendEl = document.createElement('div'); legendEl.id = RESEARCH_LEGEND_ID; legendEl.style.cssText = 'font-size:10px;color:var(--muted,#9aa3b2);margin-top:4px;line-height:1.6'; container.parentNode.appendChild(legendEl); }
+    // Step 14-B: every research overlay (rails from rr.firstIdx + margin, shades, entry band, stop/target ticks, tags) is a series.
+    detailResearchDraw = addResearchChartSeries(chart, r, {sup: mainSup, res: mainRes, inv: mainInv, supData: supData, resData: resData});
+    // 14-B (c): legend on its own block row under the chart, above the fit-window line and Levels table
+    var legendEl = document.getElementById(RESEARCH_LEGEND_ID), wrapEl = container.parentNode;
+    if (!legendEl && wrapEl && wrapEl.parentNode) { legendEl = document.createElement('div'); legendEl.id = RESEARCH_LEGEND_ID; legendEl.style.cssText = 'font-size:10px;color:var(--muted,#9aa3b2);line-height:1.6;padding:8px 18px 6px;margin:0 0 6px;display:block;clear:both'; wrapEl.parentNode.insertBefore(legendEl, wrapEl.nextSibling); }
     if (legendEl) legendEl.innerHTML = researchLegendHTML(r.researchRow);
   } else {
-    detailPriceSeries = null;
+    detailResearchDraw = null;
     var legendOld = document.getElementById(RESEARCH_LEGEND_ID); if (legendOld && legendOld.parentNode) legendOld.parentNode.removeChild(legendOld);
   }
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
-  // Step 12-B (G4/G5): first placement of the research overlays one frame after fitContent (timeToCoordinate reads a stale
-  // scale when called synchronously - see the ResizeObserver note below).
-  if (RESEARCH_MODE_UI && r.researchRow) { var rrOv = r.researchRow, elOv = document.getElementById(RESEARCH_OVERLAY_ID), chOv = chart, wOv = bandsEl ? bandsEl.clientWidth : null; requestAnimationFrame(function () { if (detailResearchRow === rrOv) renderResearchOverlays(chOv, rrOv, elOv, wOv); }); }
   // Indicator Upgrades Group 4, item 4 (2026-09-21), confirmed live by Ryan: applyOptions
   // alone resizes the canvas but never recomputes bar spacing, so growing the panel left
   // blank canvas past the real data and shrinking it clipped the oldest candles off-screen
