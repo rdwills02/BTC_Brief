@@ -959,11 +959,83 @@ function researchTooltipLines(rr, candles, time, price, d) {
   (Array.isArray(rr.wickClips) ? rr.wickClips : []).forEach(function (w) { if (w.time === time) { var t = researchClipLabel(w); out.push(t.charAt(0).toUpperCase() + t.slice(1)); } });
   return out;
 }
-// Research mode only. The handler reads the crosshair and writes only the tooltip div's text/position/display: no chart call, no setData.
+// Step 14-C-3: every research-mode chart element answers the crosshair. One handler (attachResearchTooltip); the element under the cursor is
+// picked by proximity (nearest wins within TIP_NEAR_PX vertically; tags and S dots have their own boxes), then the area lines of 14-C
+// (pre-window, break run, entry band, clip dot), then the hovered candle's block. Reads only (priceToCoordinate / timeToCoordinate /
+// coordinateToPrice); it changes nothing but the tooltip div. Display only; no detection input.
+var TIP_NEAR_PX = 6;         // a rail is "hovered" when the cursor is within this many px of it; the nearest element wins
+var TIP_TAG_HALF_W = 18;     // half-size of the box around a tag's anchor point (marker text is drawn about this wide)
+var TIP_TAG_HALF_H = 22;
+var TIP_DOT_OFFSET = 10;     // an S touch dot (belowBar marker) is centred about this many px below the candle's low
+function tipCtx(r) {
+  var rr = r.researchRow, cs = r.candles, n = cs.length, rails = researchRailData(rr, cs), timeIdx = {};
+  cs.forEach(function (c, i) { timeIdx[c.time] = i; });
+  return { r: r, rr: rr, cs: cs, n: n, d: pricePrecision(r.price), step: barStepSec(cs, rr), t0: cs[n - 1].time, ext: rails ? rails.ext : 0, startCI: r.lastIdx - (n - 1), timeIdx: timeIdx,
+    tags: rails ? researchRailTags(rr, rails) : [], atrS: (typeof atr14Series === 'function') ? atr14Series(cs) : null };
+}
+function tipSlope(p) { return (p >= 0 ? '+' : '') + p.toFixed(3) + '%/bar'; }
+function researchTagPrice(ctx, id) { var rr = ctx.rr, ee = rr.entryEconomics || {}; return id === 'sup' ? rr.supportNow : id === 'res' ? rr.resistNow : id === 'inv' ? rr.invalidation : id === 'stop' ? ee.stop : ee.target; }
+function researchTagLines(ctx, t) {
+  var rr = ctx.rr, ee = rr.entryEconomics || {}, f = function (v) { return fmt(v, ctx.d); };
+  if (t.id === 'sup') return ['R sup ' + f(rr.supportNow) + ' — research support rail at the last closed bar (the research fit’s own support line)'];
+  if (t.id === 'res') return ['R res ' + f(rr.resistNow) + ' — research resistance at the last closed bar (' + (rr.resistanceFit === 'independent' ? 'independent line, B1' : 'parallel projection of the support rail') + ')'];
+  if (t.id === 'inv') return ['R inv ' + f(rr.invalidation) + ' — research invalidation: closes below this count as a break'];
+  if (t.id === 'stop') return ['S ' + f(ee.stop) + ' — research stop (H6, basis ' + ee.stopBasis + ')'];
+  return ['T ' + f(ee.target) + ' — research target (H6, ' + (ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') + ')'];
+}
+// The hovered candle: date, O/H/L/C, both wicks in x ATR14 (measured from the close, ATR14 as of the PRIOR bar - exactly what F3 judges), and F3's verdict.
+function researchCandleLines(ctx, i) {
+  var c = ctx.cs[i], rr = ctx.rr, f = function (v) { return fmt(v, ctx.d); }, a = (ctx.atrS && i >= 1) ? ctx.atrS[i - 1] : null, out = [];
+  out.push(researchTimeLabel(c.time) + '  O ' + f(c.open) + '  H ' + f(c.high) + '  L ' + f(c.low) + '  C ' + f(c.close));
+  if (a == null) { out.push('Wicks: no ATR14 at the prior bar (F3 does not judge the first 15 bars)'); return out; }
+  out.push('Upper wick ' + ((c.high - c.close) / a).toFixed(1) + '×ATR14, lower wick ' + ((c.close - c.low) / a).toFixed(1) + '×ATR14 (from the close; ATR14 at the prior bar)');
+  var lb = (typeof rr.lookback === 'number') ? rr.lookback : ctx.n;
+  if (i < Math.max(ctx.n - lb, 1)) { out.push('F3: not examined (before the ' + lb + '-bar window)'); return out; }
+  var mult = (typeof F3_WICK_ATR_MULT === 'number') ? F3_WICK_ATR_MULT : '?', clips = (rr.wickClips || []).filter(function (w) { return w.time === c.time; });
+  out.push('F3: ' + [['upper', 'high'], ['lower', 'low']].map(function (s) { var w = clips.filter(function (x) { return x.side === s[1]; })[0]; return w ? s[0] + ' clipped → ' + researchNum(w.clippedTo) : s[0] + ' kept (below ' + mult + '× threshold)'; }).join(', '));
+  return out;
+}
+function researchHoverLines(ctx, time, x, y, price, yOf, xOf) {
+  var r = ctx.r, rr = ctx.rr, cs = ctx.cs, n = ctx.n, d = ctx.d, f = function (v) { return fmt(v, d); }, best = null;
+  var ci = ctx.timeIdx[time], idx = (ci != null) ? ci : ((time > ctx.t0 && ctx.step > 0) ? n - 1 + Math.round((time - ctx.t0) / ctx.step) : null);
+  var cand = function (dist, prio, lines) { if (best == null || dist < best.dist || (dist === best.dist && prio < best.prio)) best = { dist: dist, prio: prio, lines: lines }; };
+  ctx.tags.forEach(function (t) {   // R sup / R res / R inv / S / T tags: a box around the marker anchor
+    var yl = yOf(researchTagPrice(ctx, t.id)), xt = xOf(t.time);
+    if (yl != null && xt != null && Math.abs(x - xt) <= TIP_TAG_HALF_W && Math.abs(y - yl) <= TIP_TAG_HALF_H) cand(0, 0, researchTagLines(ctx, t));
+  });
+  if (ci != null) (r.pivotLows || []).forEach(function (p) {   // S touch dots (main fit), belowBar markers
+    if (p.time !== time) return;
+    var low = (typeof p.price === 'number') ? p.price : cs[ci].low, yl = yOf(low); if (yl == null) return;
+    var dist = Math.abs(y - (yl + TIP_DOT_OFFSET)); if (dist > TIP_DOT_OFFSET) return;
+    var rail = railAt(r.supSlope, r.supIntercept, ctx.startCI + ci), pct = rail ? (low - rail) / Math.abs(rail) * 100 : null;
+    cand(dist, 1, ['S touch ' + researchDateLabel(time) + ' — low ' + f(low) + (pct != null ? ', ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% from the main support rail (' + f(rail) + ')' : '')]);
+  });
+  if (idx != null && idx <= n - 1 + ctx.ext) {   // rails: research (dashed, from rr.firstIdx) and the dimmed main rails, value at the hovered bar
+    var dl = researchDateLabel(time) + (time > ctx.t0 ? ' (projected)' : ''), indep = rr.resistanceFit === 'independent' && typeof rr.resSlope === 'number';
+    var rails = [];
+    if (typeof rr.firstIdx === 'number' && idx >= rr.firstIdx && typeof rr.supSlope === 'number') {
+      rails.push({ p: 2, v: railAt(rr.supSlope, rr.supIntercept, idx), t: 'Research support', s: railSlopePct(rr.supSlope, rr.supIntercept, rr.firstIdx) });
+      rails.push({ p: 2, v: indep ? railAt(rr.resSlope, rr.resIntercept, idx) : railAt(rr.supSlope, rr.supIntercept, idx) + rr.channelH, t: 'Research resistance', s: indep ? railSlopePct(rr.resSlope, rr.resIntercept, rr.firstIdx) : railSlopePct(rr.supSlope, rr.supIntercept, rr.firstIdx) });
+      rails.push({ p: 2, v: rr.invalidation, t: 'Research invalidation', s: 0, flat: true });
+    }
+    rails.forEach(function (o) { var yl = yOf(o.v); if (yl == null) return; var dist = Math.abs(y - yl); if (dist <= TIP_NEAR_PX) cand(dist, o.p, [o.t + ' ' + f(o.v) + ' · ' + dl + ' · slope ' + (o.flat ? '0%/bar (flat)' : tipSlope(o.s))]); });
+    var N = r.lastIdx - r.firstIdx + 1, mi = ctx.startCI + idx;
+    [['Main-page support', railAt(r.supSlope, r.supIntercept, mi), ' — fitted on ' + N + ' bars'], ['Main-page resistance', railAt(r.supSlope, r.supIntercept, mi) + r.channelH, ' — fitted on ' + N + ' bars'], ['Main-page invalidation', r.invalidation, '']].forEach(function (o) {
+      var yl = yOf(o[1]); if (yl == null) return; var dist = Math.abs(y - yl); if (dist <= TIP_NEAR_PX) cand(dist, 3, [o[0] + ' ' + f(o[1]) + o[2]]);
+    });
+  }
+  var out = best ? best.lines.slice() : [];
+  researchTooltipLines(rr, cs, time, price, d).forEach(function (l) { out.push(l); });
+  if (ci != null) researchCandleLines(ctx, ci).forEach(function (l) { out.push(l); });
+  return out;
+}
+// Research mode only. The handler reads the crosshair and writes only the tooltip div's text/position/display.
 function attachResearchTooltip(chart, series, r, tipEl, wrapEl) {
-  var d = pricePrecision(r.price);
+  var ctx = tipCtx(r), ts = chart.timeScale();
+  var yOf = function (p) { return series.priceToCoordinate(p); }, xOf = function (t) { return ts.timeToCoordinate(t); };
   chart.subscribeCrosshairMove(function (param) {
-    var lines = (param && param.time != null && param.point) ? researchTooltipLines(r.researchRow, r.candles, param.time, series.coordinateToPrice(param.point.y), d) : [];
+    var lines = [];
+    try { if (param && param.time != null && param.point) lines = researchHoverLines(ctx, param.time, param.point.x, param.point.y, series.coordinateToPrice(param.point.y), yOf, xOf); } catch (e) { lines = []; }
     if (!lines.length) { tipEl.style.display = 'none'; return; }
     tipEl.textContent = lines.join('\n');
     var maxLeft = Math.max(0, (wrapEl.clientWidth || 0) - 250);
@@ -1076,12 +1148,11 @@ function renderLevelsAndFitWindow(r) {
 }
 // G9: legend under the chart, research mode only (element created by buildChart's research branch).
 // 14-C-2: one swatch vocabulary for the Levels table row labels and the chart legend. Colours/styles are the chart's own (series options in
-// buildChart / addResearchChartSeries); "main" = the flag-off rails (Support solid teal, Resistance dotted orange, Invalidation dotted grey per
-// the brief), "res" = the research overlays. kind: solid|dotted|dashed = line style, band = entry-zone fill, tick = stop/target tick.
+// buildChart / addResearchChartSeries); "main" = the flag-off rails as drawn (Support solid teal, Resistance dotted orange, Invalidation dashed orange at 40%), "res" = the research overlays. kind: solid|dotted|dashed = line style, band = entry-zone fill, tick = stop/target tick.
 var LEVEL_KEY = {
   'Floor':        { main: { kind: 'solid',  color: '#00c896', tag: 'Support',    name: 'Support rail' },       res: { kind: 'dashed', color: '#7fe8c8', tag: 'R sup', name: 'Research support' } },
   'Ceiling':      { main: { kind: 'dotted', color: '#e8754a', tag: 'Resistance', name: 'Resistance rail' },    res: { kind: 'dashed', color: '#f0a07a', tag: 'R res', name: 'Research resistance' } },
-  'Invalidation': { main: { kind: 'dotted', color: '#9aa3b2', tag: '',           name: 'Invalidation line' }, res: { kind: 'dashed', color: '#ff5c8a', tag: 'R inv', name: 'Research invalidation' } },
+  'Invalidation': { main: { kind: 'dashed', color: 'rgba(232,117,74,0.4)', tag: '',           name: 'Invalidation line' }, res: { kind: 'dashed', color: '#ff5c8a', tag: 'R inv', name: 'Research invalidation' } },
   'Entry zone':   { res: { kind: 'band', color: 'rgba(0,200,150,.18)', tag: '', name: 'Entry zone band' } },
   'Stop':         { res: { kind: 'tick', color: '#e8754a', tag: 'S', name: 'Stop tick' } },
   'Target':       { res: { kind: 'tick', color: '#00c896', tag: 'T', name: 'Target tick' } }
