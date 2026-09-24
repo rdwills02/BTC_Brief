@@ -8,6 +8,7 @@
  *   id            "<cgId>:<timeframe>:<first ACT capture date>"
  *   status        "open" | "closed"
  *   openedAt      capture date (YYYY-MM-DD) of the first research ACT
+ *   openPrice     the capture quote at open (the row's price the zone gate passed on) - frozen at open, never updated (Step 13-B, ruling f)
  *   lastSeenAt    last capture date the coin had a research fit
  *   cgId, timeframe
  *   entryZone [low, high], entryRef, supSlope, supIntercept, supportNow   — frozen at open
@@ -36,7 +37,7 @@
   function makeRecord(r) {
     // fixed key order
     return {
-      id: r.id, status: r.status, openedAt: r.openedAt, lastSeenAt: r.lastSeenAt, cgId: r.cgId, timeframe: r.timeframe,
+      id: r.id, status: r.status, openedAt: r.openedAt, openPrice: (typeof r.openPrice === 'number' && isFinite(r.openPrice)) ? r.openPrice : null, lastSeenAt: r.lastSeenAt, cgId: r.cgId, timeframe: r.timeframe,
       entryZone: r.entryZone, entryRef: r.entryRef, supSlope: r.supSlope, supIntercept: r.supIntercept, supportNow: r.supportNow,
       anchorIds: r.anchorIds.slice(), invalidation: r.invalidation, invalidationRaises: r.invalidationRaises, raisesSuppressed: r.raisesSuppressed,
       liveInvalidation: r.liveInvalidation, liveFitId: r.liveFitId, liveLifecycleState: r.liveLifecycleState,
@@ -52,7 +53,7 @@
         var s = ledger.setups[i];
         if (!s || typeof s.id !== 'string') continue;
         out.setups.push(makeRecord({
-          id: s.id, status: s.status === 'closed' ? 'closed' : 'open', openedAt: s.openedAt || null, lastSeenAt: s.lastSeenAt || null,
+          id: s.id, status: s.status === 'closed' ? 'closed' : 'open', openedAt: s.openedAt || null, openPrice: num(s.openPrice) ? s.openPrice : null, lastSeenAt: s.lastSeenAt || null,
           cgId: s.cgId, timeframe: s.timeframe, entryZone: s.entryZone || null, entryRef: num(s.entryRef) ? s.entryRef : null,
           supSlope: num(s.supSlope) ? s.supSlope : null, supIntercept: num(s.supIntercept) ? s.supIntercept : null, supportNow: num(s.supportNow) ? s.supportNow : null,
           anchorIds: Array.isArray(s.anchorIds) ? s.anchorIds.slice() : [],
@@ -117,7 +118,7 @@
       if (byId[id]) return; // same-day re-run after a same-day open+close: idempotent, never reopen
       var ee = r.fit.entryEconomics || {};
       var rec = makeRecord({
-        id: id, status: 'open', openedAt: today, lastSeenAt: today, cgId: r.cgId, timeframe: tf,
+        id: id, status: 'open', openedAt: today, openPrice: num(r.price) ? r.price : null, lastSeenAt: today, cgId: r.cgId, timeframe: tf,
         entryZone: Array.isArray(ee.entryZone) ? ee.entryZone.slice() : null, entryRef: num(ee.entryRef) ? ee.entryRef : null,
         supSlope: num(r.fit.supSlope) ? r.fit.supSlope : null, supIntercept: num(r.fit.supIntercept) ? r.fit.supIntercept : null,
         supportNow: num(r.fit.supportNow) ? r.fit.supportNow : null,
