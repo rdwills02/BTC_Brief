@@ -890,6 +890,8 @@ function researchStructureHTML(rr) {
     var ra = computeRailAgeResearch(rr.candles, rr.pivotHighs, rr.timeframe, null);   // ruling a: same day convention as support
     parts.push('R last touched ' + (ra.days == null ? '?' : ra.days) + 'd ago (' + rr.pivotHighs.length + ' touches)' + (rr.timeframe === '4d-grid' ? ' (~4d)' : ''));
   } else parts.push('R: parallel (no independent touches)');
+  var shade = ['grey = bars before the fit window'].concat(br && br.length ? ['red = break runs'] : []).concat(Array.isArray(rr.wickClips) && rr.wickClips.length ? ['pink dots = clipped wicks'] : []);   // 14-A (G9): name the shading in words
+  parts.push('shading: ' + shade.join(', '));
   return '<div class="research-structure-line" style="margin-top:2px;font-size:11px;color:var(--muted,#9aa3b2)">' + researchAttr('Structure: ' + parts.join(' · ')) + '</div>';
 }
 // G7: dormant partial-bar marker (lastBarComplete is a ROW field; E1 filters open bars, so this cannot fire on today's
@@ -902,6 +904,58 @@ function researchPartialBarMark(r, candles) {
 // G4 + G5 overlays: a 1px line at fitStartTime with a translucent shade over the bars before it (ruling b), and one red
 // shade per breakRuns[] span from startTime to endTime + one bar. Positions come from chart.timeScale().timeToCoordinate;
 // a null coordinate (time off the visible scale) skips that element, never throws. Returns the element specs it drew.
+// Step 14-A (detail-panel transparency, G9/G10/G11). Research mode only; flag-off DOM and chart calls unchanged.
+var detailPriceSeries = null;   // 14-A: the candlestick series of the open chart (research branch only) for priceToCoordinate
+var RESEARCH_LEGEND_ID = 'detail-chart-legend-research';
+function researchDateLabel(t) { return formatShortDate(new Date(t * 1000).toISOString()); }
+// G10: the research fit's own rails over the chart's candles. The page research fit is computed on merged.candles, the
+// same array the chart draws, so index i in r.candles is the fit's own index (rr.lastIdx == r.candles.length-1; the suite
+// asserts it). Resistance follows the independent line when B1 fitted one, else the parallel projection.
+function researchRailData(rr, candles) {
+  if (!rr || !candles || !candles.length || typeof rr.supSlope !== 'number') return null;
+  var sup = candles.map(function (c, i) { return { time: c.time, value: railAt(rr.supSlope, rr.supIntercept, i) }; });
+  var res = candles.map(function (c, i) { return { time: c.time, value: (rr.resistanceFit === 'independent' && typeof rr.resSlope === 'number') ? railAt(rr.resSlope, rr.resIntercept, i) : railAt(rr.supSlope, rr.supIntercept, i) + rr.channelH }; });
+  var inv = [{ time: candles[0].time, value: rr.invalidation }, { time: candles[candles.length - 1].time, value: rr.invalidation }];
+  return { sup: sup, res: res, inv: inv };
+}
+// G9: legend under the chart, research mode only (element created by buildChart's research branch).
+function researchLegendHTML(rr) {
+  var sw = function (color, style) { return '<span style="display:inline-block;width:14px;border-top:2px ' + style + ' ' + color + ';vertical-align:middle;margin-right:4px"></span>'; };
+  var box = function (color) { return '<span style="display:inline-block;width:10px;height:10px;background:' + color + ';vertical-align:middle;margin-right:4px"></span>'; };
+  var dot = function (color) { return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';vertical-align:middle;margin-right:4px"></span>'; };
+  var n = (rr && typeof rr.lookback === 'number') ? rr.lookback : '?';
+  return [
+    '<span title="Research support rail (dashed): the research fit\u2019s own support line">' + sw('#7fe8c8', 'dashed') + 'Research support</span>',
+    '<span title="Research resistance (dashed): independent line when B1 fitted one, else the parallel projection">' + sw('#f0a07a', 'dashed') + 'Research resistance</span>',
+    '<span title="Research invalidation (dashed): closes below this count as a break">' + sw('#ff5c8a', 'dashed') + 'Research invalidation</span>',
+    '<span title="Entry zone: support to support + 0.5\u00d7ATR14 (H6)">' + box('rgba(0,200,150,.25)') + 'Entry zone</span>',
+    '<span title="Before the ' + n + '-bar fit window \u2014 not used to fit the rails">' + box('rgba(107,114,128,.35)') + 'Before fit window</span>',
+    '<span title="Break run: consecutive closes below the support rail (shaded per run)">' + box('rgba(160,82,45,.5)') + 'Break run</span>',
+    '<span title="Wick clipped: raw high/low \u2192 clipped value (k\u00d7ATR14), F3 outlier handling">' + dot('#ff5c8a') + 'Wick clipped</span>',
+    '<span title="Main (flag-off) rails are dimmed to 50% while the research rails are shown">' + sw('rgba(0,200,150,.5)', 'solid') + 'Main rails (dimmed)</span>'
+  ].join(' \u00b7 ');
+}
+// G10: entry-zone band and stop/target ticks, priced through the candlestick series' priceToCoordinate. Returns specs drawn.
+function renderResearchPriceOverlays(series, rr, el, widthPx) {
+  if (!el || !series || !rr || !rr.entryEconomics || typeof series.priceToCoordinate !== 'function') return [];
+  var ee = rr.entryEconomics, out = [], w = (typeof widthPx === 'number' && widthPx > 0) ? widthPx : 0, d = pricePrecision(rr.price);
+  function add(spec) {
+    var el2 = document.createElement('div');
+    el2.className = spec.cls; el2.setAttribute('data-kind', spec.kind); el2.setAttribute('data-price', String(spec.price)); el2.setAttribute('title', spec.title);
+    el2.style.cssText = 'position:absolute;' + spec.style; el2.textContent = spec.text || '';
+    el.appendChild(el2); out.push(spec);
+  }
+  if (Array.isArray(ee.entryZone)) {
+    var yHi = series.priceToCoordinate(ee.entryZone[1]), yLo = series.priceToCoordinate(ee.entryZone[0]);
+    if (yHi != null && yLo != null) add({ kind: 'entry-zone', cls: 'research-entry-zone', price: ee.entryZone[0], title: 'Entry zone ' + fmt(ee.entryZone[0], d) + ' \u2013 ' + fmt(ee.entryZone[1], d), style: 'left:0;right:0;top:' + Math.min(yHi, yLo) + 'px;height:' + Math.max(1, Math.abs(yLo - yHi)) + 'px;background:rgba(0,200,150,.12)' });
+  }
+  [['stop', ee.stop, '#e8754a'], ['target', ee.target, '#00c896']].forEach(function (t) {
+    if (typeof t[1] !== 'number') return;
+    var y = series.priceToCoordinate(t[1]); if (y == null) return;
+    add({ kind: t[0], cls: 'research-' + t[0] + '-tick', price: t[1], title: (t[0] === 'stop' ? 'Stop ' : 'Target ') + fmt(t[1], d), text: (t[0] === 'stop' ? 'S ' : 'T ') + fmt(t[1], d), style: 'right:0;top:' + (y - 1) + 'px;height:2px;width:' + (w ? Math.min(60, Math.max(24, Math.round(w * 0.06))) : 36) + 'px;background:' + t[2] + ';font-size:9px;line-height:0;color:' + t[2] + ';text-align:right;padding-bottom:12px' });
+  });
+  return out;
+}
 function renderResearchOverlays(chart, rr, el, widthPx) {
   if (!el) return [];
   el.innerHTML = '';
@@ -913,12 +967,13 @@ function renderResearchOverlays(chart, rr, el, widthPx) {
     if (spec.time != null) d.setAttribute('data-time', String(spec.time));
     if (spec.start != null) { d.setAttribute('data-start', String(spec.start)); d.setAttribute('data-end', String(spec.end)); }
     d.style.cssText = 'position:absolute;top:0;bottom:0;left:' + spec.left + 'px;width:' + spec.width + 'px;' + spec.style;
+    if (spec.title) d.setAttribute('title', spec.title);   // 14-A (G9)
     el.appendChild(d); out.push(spec);
   }
   if (typeof rr.fitStartTime === 'number') {
     var x0 = ts.timeToCoordinate(rr.fitStartTime);
     if (x0 != null) {
-      if (x0 > 0) add({ kind: 'fit-shade', cls: 'research-fit-shade', time: rr.fitStartTime, left: 0, width: x0, style: 'background:rgba(107,114,128,.10)' });
+      if (x0 > 0) add({ kind: 'fit-shade', cls: 'research-fit-shade', time: rr.fitStartTime, left: 0, width: x0, style: 'background:rgba(107,114,128,.10)', title: 'Before the ' + (typeof rr.lookback === 'number' ? rr.lookback : '?') + '-bar fit window — not used to fit the rails' });
       add({ kind: 'fit-start', cls: 'research-fit-start', time: rr.fitStartTime, left: x0, width: 1, style: 'background:rgba(154,163,178,.55)' });
     }
   }
@@ -926,8 +981,10 @@ function renderResearchOverlays(chart, rr, el, widthPx) {
     var xl = ts.timeToCoordinate(run.startTime), xr = ts.timeToCoordinate(run.endTime + barSec);
     if (xl == null) return;
     if (xr == null) { var xe = ts.timeToCoordinate(run.endTime); if (xe == null) return; xr = (typeof widthPx === 'number' && widthPx > xe) ? widthPx : xe + 1; }
-    add({ kind: 'break-run', cls: 'research-break-run', start: run.startTime, end: run.endTime, left: Math.min(xl, xr), width: Math.max(1, Math.abs(xr - xl)), style: 'background:rgba(232,117,74,.15)' });
+    add({ kind: 'break-run', cls: 'research-break-run', start: run.startTime, end: run.endTime, left: Math.min(xl, xr), width: Math.max(1, Math.abs(xr - xl)), style: 'background:rgba(232,117,74,.15)', title: 'Break run: ' + run.len + ' consecutive close' + (run.len === 1 ? '' : 's') + ' below the support rail, ' + researchDateLabel(run.startTime) + '–' + researchDateLabel(run.endTime) });
   });
+  // 14-A (G10): entry zone band + stop/target ticks, re-placed with the time overlays
+  if (detailPriceSeries) renderResearchPriceOverlays(detailPriceSeries, rr, el, widthPx).forEach(function (sp) { out.push(sp); });
   return out;
 }
 function researchConfluenceHTML(rr) {
@@ -2273,6 +2330,9 @@ function renderTable() {
     // colspan/header this table already has). Toggle-gated; researchRow absent (row too short,
     // or the research computation threw - see mergeCandidateRow) shows nothing extra.
     var researchBadge = '';
+    if (RESEARCH_MODE_UI && !r.researchRow) {   // Step 14-A (G11): no research fit on this series
+      researchBadge = ' <span class="vbadge cat-tip" data-tip="Research: no fit on this series (no rail pair passed the research gates on these candles)" style="opacity:.55;font-size:9px;padding:2px 5px;color:var(--muted,#9aa3b2)">R:— no fit</span>';
+    }
     if (RESEARCH_MODE_UI && r.researchRow && typeof buildAction==='function') {
       var raction = buildAction(r.researchRow, {research:true});
       var rvcls = raction.verdict==='ACT' ? 'va-act' : (raction.verdict==='WATCH' ? 'va-watch' : 'va-wait');
@@ -2358,6 +2418,9 @@ function openDetail(r) {
       badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
       badgeHtml += researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(r.researchRow, SETUPS_LEDGER);   // Step 11-E (H12) + C-2 (H5): display only
       actionTextEl.textContent = action.text + '  |  Research (Step 6): ' + raction.text + ' (' + RESEARCH_SCORE_LABEL + ')';
+    } else if (RESEARCH_MODE_UI) {   // Step 14-A (G11)
+      badgeHtml += ' <span class="vbadge" style="opacity:.55;font-size:10px;color:var(--muted,#9aa3b2)">R:— no fit</span>';
+      actionTextEl.textContent = action.text + '  |  Research: no fit on this series';
     } else {
       actionTextEl.textContent = action.text;
     }
@@ -2631,9 +2694,9 @@ function buildChart(r) {
   // this brings the live detail chart in line with it. Support/Resistance values stay
   // visible in the ch-prices legend above the chart (dp-sup/dp-res) and in the detail panel
   // text, so nothing is lost, only the redundant on-chart label.
-  chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}).setData(supData);
-  chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}).setData(resData);
-  chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}).setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
+  var mainSup=chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}); mainSup.setData(supData);
+  var mainRes=chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}); mainRes.setData(resData);
+  var mainInv=chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}); mainInv.setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
   var markers=r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
   if(markers.length) cs.setMarkers(markers);
   // Indicator Upgrades Group 1, item 6 (2026-09-20): EMA 21/50 lines, added once here (hidden)
@@ -2673,6 +2736,22 @@ function buildChart(r) {
     // Step 9 Diff B: F3 wick-clip markers (side-aware), the base set setResearchMarks merges under pattern marks.
     detailClipMarks = researchClipMarks(r.researchRow, r.candles).concat(researchPartialBarMark(r, r.candles));   // Step 12-B (G7): dormant partial-bar marker rides with the clip marks
     if (detailClipMarks.length) detailResearchSeries.setMarkers(detailClipMarks);
+    // Step 14-A (G10): the research fit's own rails, dashed, with legend titles; the main rails dimmed to 50% so both fits read.
+    detailPriceSeries = cs;
+    var rails = researchRailData(r.researchRow, r.candles);
+    if (rails) {
+      chart.addLineSeries({color:'#7fe8c8',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Research support'}).setData(rails.sup);
+      chart.addLineSeries({color:'#f0a07a',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Research resistance'}).setData(rails.res);
+      chart.addLineSeries({color:'#ff5c8a',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,title:'Research invalidation'}).setData(rails.inv);
+      mainSup.applyOptions({color:'rgba(0,200,150,0.5)'}); mainRes.applyOptions({color:'rgba(232,117,74,0.5)'}); mainInv.applyOptions({color:'rgba(232,117,74,0.2)'});
+    }
+    // Step 14-A (G9): legend under the chart (created only here; removed when leaving research mode below)
+    var legendEl = document.getElementById(RESEARCH_LEGEND_ID);
+    if (!legendEl && container.parentNode) { legendEl = document.createElement('div'); legendEl.id = RESEARCH_LEGEND_ID; legendEl.style.cssText = 'font-size:10px;color:var(--muted,#9aa3b2);margin-top:4px;line-height:1.6'; container.parentNode.appendChild(legendEl); }
+    if (legendEl) legendEl.innerHTML = researchLegendHTML(r.researchRow);
+  } else {
+    detailPriceSeries = null;
+    var legendOld = document.getElementById(RESEARCH_LEGEND_ID); if (legendOld && legendOld.parentNode) legendOld.parentNode.removeChild(legendOld);
   }
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
