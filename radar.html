@@ -1042,6 +1042,104 @@ function attachResearchTooltip(chart, series, r, tipEl, wrapEl) {
     tipEl.style.left = (maxLeft ? Math.min(param.point.x + 12, maxLeft) : param.point.x + 12) + 'px'; tipEl.style.top = (param.point.y + 14) + 'px'; tipEl.style.display = 'block';
   });
 }
+// Step 14-D (main-page chart parity). Display only; no detection input. The flag-off chart now draws the main rails RAIL_EXT bars past the last candle
+// (mainRailFuture: the same bar count and step the research rails use), tags them in that margin (mainRailTags: 'Sup' / 'Res' / 'Inv', staggered
+// against the research tags when both are drawn) and answers the crosshair (attachMainTooltip). Legend swatches = the Levels table's (LEVEL_KEY.main).
+var MAIN_TAG_MIN_GAP = 3;     // preferred minimum distance (bars) between two same-side tags; best effort, distinct bars are guaranteed
+var CHART_LEGEND_ORIG = null; // the static legend markup as served, restored whenever research mode draws the chart
+function mainRailFuture(cs) {
+  var n = cs ? cs.length : 0; if (n < 2 || !(cs[n - 1].time > cs[n - 2].time)) return null;
+  var ext = railExtBars(n), step = cs[n - 1].time - cs[n - 2].time, t0 = cs[n - 1].time, future = [];
+  for (var k = 1; k <= ext; k++) future.push(t0 + k * step);
+  return { ext: ext, step: step, t0: t0, future: future };
+}
+function mainRailTags(ext, step, t0, reserved) {
+  var defs = [
+    { id: 'sup', text: 'Sup', pos: 'belowBar', frac: 0.25, color: '#00c896' },
+    { id: 'res', text: 'Res', pos: 'aboveBar', frac: 0.55, color: '#e8754a' },
+    { id: 'inv', text: 'Inv', pos: 'belowBar', frac: 0.85, color: 'rgba(232,117,74,0.7)' }
+  ];
+  var used = (reserved || []).map(function (t) { return { slot: t.slot, pos: t.position }; }), out = [];
+  defs.forEach(function (df) {
+    var pref = Math.min(ext, Math.max(1, Math.round(df.frac * ext))), best = null;
+    [df.pos, df.pos === 'belowBar' ? 'aboveBar' : 'belowBar'].forEach(function (side, si) {
+      for (var s = 1; s <= ext; s++) {
+        if (used.some(function (u) { return u.slot === s; })) continue;
+        var gap = Math.min.apply(null, used.filter(function (u) { return u.pos === side; }).map(function (u) { return Math.abs(u.slot - s); }).concat([MAIN_TAG_MIN_GAP]));
+        var better = !best || gap > best.gap || (gap === best.gap && (Math.abs(s - pref) < best.dist || (Math.abs(s - pref) === best.dist && si < best.si)));
+        if (better) best = { gap: gap, dist: Math.abs(s - pref), si: si, slot: s, pos: side };
+      }
+    });
+    if (!best) return;
+    used.push({ slot: best.slot, pos: best.pos });
+    out.push({ id: df.id, text: df.text, position: best.pos, color: df.color, slot: best.slot, time: t0 + best.slot * step });
+  });
+  return out;
+}
+function mainTipCtx(r) {
+  var cs = r.candles, n = cs.length, fu = mainRailFuture(cs), timeIdx = {};
+  cs.forEach(function (c, i) { timeIdx[c.time] = i; });
+  return { r: r, rr: r.researchRow || null, cs: cs, n: n, d: pricePrecision(r.price), step: fu ? fu.step : 0, t0: cs[n - 1].time, ext: fu ? fu.ext : 0, startCI: r.lastIdx - (n - 1), timeIdx: timeIdx, tags: [],
+    atrS: (typeof atr14Series === 'function') ? atr14Series(cs) : null };
+}
+// The hovered candle, flag-off: date, O/H/L/C and both wicks in xATR14 (from the close, ATR14 as of the PRIOR bar). The main rails use the RAW candles, so nothing is "clipped" here: only when
+// research mode's F3 clips a wick on this bar (a record in the row's research reading, i.e. the wick exceeds the F3 multiple) is one extra line added saying so. No research reading -> multiples only.
+function mainCandleLines(ctx, i) {
+  var c = ctx.cs[i], f = function (v) { return fmt(v, ctx.d); }, a = (ctx.atrS && i >= 1) ? ctx.atrS[i - 1] : null, out = [];
+  out.push(researchTimeLabel(c.time) + '  O ' + f(c.open) + '  H ' + f(c.high) + '  L ' + f(c.low) + '  C ' + f(c.close));
+  if (a == null) { out.push('Wicks: no ATR14 at the prior bar'); return out; }
+  var uw = (c.high - c.close) / a, lw = (c.close - c.low) / a;
+  out.push('Upper wick ' + uw.toFixed(1) + '\u00d7ATR14, lower wick ' + lw.toFixed(1) + '\u00d7ATR14 (from the close; ATR14 at the prior bar)');
+  var clips = (ctx.rr && Array.isArray(ctx.rr.wickClips)) ? ctx.rr.wickClips.filter(function (w) { return w.time === c.time; }) : [];
+  [['high', 'Upper', uw, 'high'], ['low', 'Lower', lw, 'low']].forEach(function (s) {
+    var w = clips.filter(function (x) { return x.side === s[0]; })[0];
+    if (w) out.push(s[1] + ' wick ' + s[2].toFixed(1) + '\u00d7ATR14 \u2014 main rails use the raw ' + s[3] + '; research mode clips it to ' + researchNum(w.clippedTo));
+  });
+  return out;
+}
+function mainHoverLines(ctx, time, x, y, yOf) {
+  var r = ctx.r, cs = ctx.cs, n = ctx.n, f = function (v) { return fmt(v, ctx.d); }, best = null;
+  var ci = ctx.timeIdx[time], idx = (ci != null) ? ci : ((time > ctx.t0 && ctx.step > 0) ? n - 1 + Math.round((time - ctx.t0) / ctx.step) : null);
+  var cand = function (dist, prio, lines) { if (best == null || dist < best.dist || (dist === best.dist && prio < best.prio)) best = { dist: dist, prio: prio, lines: lines }; };
+  if (ci != null) (r.pivotLows || []).forEach(function (p) {   // S touch dots (belowBar markers)
+    if (p.time !== time) return;
+    var low = (typeof p.price === 'number') ? p.price : cs[ci].low, yl = yOf(low); if (yl == null) return;
+    var dist = Math.abs(y - (yl + TIP_DOT_OFFSET)); if (dist > TIP_DOT_OFFSET) return;
+    var rail = railAt(r.supSlope, r.supIntercept, ctx.startCI + ci), pct = rail ? (low - rail) / Math.abs(rail) * 100 : null;
+    cand(dist, 1, ['S touch ' + researchDateLabel(time) + ' — low ' + f(low) + (pct != null ? ', ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% from the support rail (' + f(rail) + ')' : '')]);
+  });
+  if (idx != null && idx <= n - 1 + ctx.ext) {   // the three main rails, value at the hovered bar (projected past the last candle)
+    var mi = ctx.startCI + idx, N = r.lastIdx - r.firstIdx + 1, dl = researchDateLabel(time) + (time > ctx.t0 ? ' (projected)' : ''), sl = (typeof r.slope === 'number') ? r.slope : railSlopePct(r.supSlope, r.supIntercept, mi), sup = railAt(r.supSlope, r.supIntercept, mi);
+    [['Support', sup, sl != null ? tipSlope(sl) : 'n/a'], ['Resistance', sup + r.channelH, sl != null ? tipSlope(sl) : 'n/a'], ['Invalidation', r.invalidation, '0%/bar (flat)']].forEach(function (o) {
+      var yl = yOf(o[1]); if (yl == null) return; var dist = Math.abs(y - yl);
+      if (dist <= TIP_NEAR_PX) cand(dist, 2, [o[0] + ' ' + f(o[1]) + ' · ' + dl + ' · slope ' + o[2] + ' — fitted on ' + N + ' bars']);
+    });
+  }
+  var out = best ? best.lines.slice() : [];
+  if (ci != null) mainCandleLines(ctx, ci).forEach(function (l) { out.push(l); });
+  return out;
+}
+// Flag-off (and only flag-off): the handler reads the crosshair and writes only the tooltip div's text/position/display.
+function attachMainTooltip(chart, series, r, tipEl, wrapEl) {
+  var ctx = mainTipCtx(r);
+  var yOf = function (p) { return series.priceToCoordinate(p); };
+  chart.subscribeCrosshairMove(function (param) {
+    var lines = [];
+    try { if (param && param.time != null && param.point) lines = mainHoverLines(ctx, param.time, param.point.x, param.point.y, yOf); } catch (e) { lines = []; }
+    if (!lines.length) { tipEl.style.display = 'none'; return; }
+    tipEl.textContent = lines.join('\n');
+    var maxLeft = Math.max(0, (wrapEl.clientWidth || 0) - 250);
+    tipEl.style.left = (maxLeft ? Math.min(param.point.x + 12, maxLeft) : param.point.x + 12) + 'px'; tipEl.style.top = (param.point.y + 14) + 'px'; tipEl.style.display = 'block';
+  });
+}
+// Legend under Step 14-D: flag-off swaps the three colour dots for the Levels-table swatches (same three entries, same labels); research mode restores the served markup.
+function setMainChartLegend(container, flagOff) {
+  var wrap = container.parentNode, lg = wrap ? wrap.querySelector('.chart-legend') : null; if (!lg) return;
+  if (CHART_LEGEND_ORIG === null) CHART_LEGEND_ORIG = lg.innerHTML;
+  var K = LEVEL_KEY, item = function (lvl, label) { return '<div class="legend-item">' + swatchHTML(K[lvl].main) + '<span>' + label + '</span></div>'; };
+  var html = flagOff ? [item('Floor', 'Support'), item('Ceiling', 'Resistance'), item('Invalidation', 'Invalidation')].join('\n          ') : CHART_LEGEND_ORIG;
+  if (lg.innerHTML !== html) lg.innerHTML = html;
+}
 function addShadeSeries(chart, data, color) {
   var s = chart.addAreaSeries({ priceScaleId: 'r-shade', lineColor: 'rgba(0,0,0,0)', topColor: color, bottomColor: color, lineWidth: 1, lineType: 1 /* WithSteps */, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: function () { return { priceRange: { minValue: 0, maxValue: 1 } }; } });
   s.setData(data); return s;
@@ -1092,6 +1190,9 @@ function addResearchChartSeries(chart, r, main) {
   main.sup.setData(main.supData.concat(rails.future.map(function (t, k) { return { time: t, value: railAt(r.supSlope, r.supIntercept, startCI + n + k) }; })));
   main.res.setData(main.resData.concat(rails.future.map(function (t, k) { return { time: t, value: railAt(r.supSlope, r.supIntercept, startCI + n + k) + r.channelH }; })));
   main.inv.setData([{ time: candles[0].time, value: r.invalidation }].concat([candles[n - 1].time].concat(rails.future).map(function (t) { return { time: t, value: r.invalidation }; })));
+  // Step 14-D: the main rails' own tags, staggered around the research tags (same margin, distinct bars, same-side tags spread apart)
+  st.mainTags = mainRailTags(rails.ext, rails.step, rails.t0, st.tags);
+  st.mainTags.forEach(function (t) { main[t.id].setMarkers([{ time: t.time, position: t.position, color: t.color, shape: 'circle', text: t.text, size: 1 }]); });
   return st;
 }
 var detailResearchDraw = null;   // 14-B: state of the last research series draw (null flag-off / no fit)
@@ -2889,11 +2990,20 @@ function buildChart(r) {
   // this brings the live detail chart in line with it. Support/Resistance values stay
   // visible in the ch-prices legend above the chart (dp-sup/dp-res) and in the detail panel
   // text, so nothing is lost, only the redundant on-chart label.
-  var mainSup=chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}); mainSup.setData(supData);
-  var mainRes=chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}); mainRes.setData(resData);
-  var mainInv=chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}); mainInv.setData([{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}]);
+  // Step 14-D (flag-off only): the main rails run RAIL_EXT bars past the last candle along their own slope (same mechanism as the research rails: future time points), tags sit in that margin.
+  var mext = RESEARCH_MODE_UI ? null : mainRailFuture(r.candles);
+  var supOut = supData, resOut = resData, invOut = [{time:r.candles[0].time,value:r.invalidation},{time:r.candles[n-1].time,value:r.invalidation}];
+  if (mext) {
+    supOut = supData.concat(mext.future.map(function(t,k){return {time:t,value:railAt(r.supSlope,r.supIntercept,startCI+n+k)};}));
+    resOut = resData.concat(mext.future.map(function(t,k){return {time:t,value:railAt(r.supSlope,r.supIntercept,startCI+n+k)+r.channelH};}));
+    invOut = invOut.concat(mext.future.map(function(t){return {time:t,value:r.invalidation};}));
+  }
+  var mainSup=chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}); mainSup.setData(supOut);
+  var mainRes=chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}); mainRes.setData(resOut);
+  var mainInv=chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}); mainInv.setData(invOut);
   var markers=r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
   if(markers.length) cs.setMarkers(markers);
+  if (mext) { mainRailTags(mext.ext, mext.step, mext.t0, []).forEach(function(t){ ({sup:mainSup,res:mainRes,inv:mainInv})[t.id].setMarkers([{time:t.time,position:t.position,color:t.color,shape:'circle',text:t.text,size:1}]); }); }
   // Indicator Upgrades Group 1, item 6 (2026-09-20): EMA 21/50 lines, added once here (hidden)
   // per the batch spec - toggled via applyOptions({visible}) in toggleOverlay above, never
   // removed/re-added on click. detailOverlay/detailCS/etc. are module-level (single live chart
@@ -2943,9 +3053,15 @@ function buildChart(r) {
     if (tipEl) { tipEl.style.display = 'none'; attachResearchTooltip(chart, cs, r, tipEl, wrapEl); }
   } else {
     detailResearchDraw = null;
-    var tipOld = document.getElementById(RESEARCH_TIP_ID); if (tipOld && tipOld.parentNode) tipOld.parentNode.removeChild(tipOld);
+    var tipOld = document.getElementById(RESEARCH_TIP_ID);
+    if (mext) {   // Step 14-D: flag-off hover picker (main rails, S touch dots, every candle); no research element
+      var wrapM = container.parentNode;
+      if (!tipOld && wrapM) { tipOld = document.createElement('div'); tipOld.id = RESEARCH_TIP_ID; tipOld.style.cssText = 'position:absolute;z-index:20;display:none;pointer-events:none;white-space:pre-line;max-width:240px;padding:4px 8px;font-size:11px;line-height:1.4;color:var(--text,#e6e8f0);background:rgba(20,22,38,.94);border:1px solid var(--border,#1e2035);border-radius:4px'; wrapM.appendChild(tipOld); }
+      if (tipOld) { tipOld.style.display = 'none'; attachMainTooltip(chart, cs, r, tipOld, wrapM); }
+    } else if (tipOld && tipOld.parentNode) tipOld.parentNode.removeChild(tipOld);
     var legendOld = document.getElementById(RESEARCH_LEGEND_ID); if (legendOld && legendOld.parentNode) legendOld.parentNode.removeChild(legendOld);
   }
+  setMainChartLegend(container, !RESEARCH_MODE_UI);   // Step 14-D: flag-off legend carries the Levels-table swatches; research mode keeps the original markup
   detailOverlay = {}; // chart opens clean - no overlay active by default
   chart.timeScale().fitContent();
   // Indicator Upgrades Group 4, item 4 (2026-09-21), confirmed live by Ryan: applyOptions
