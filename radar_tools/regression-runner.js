@@ -326,6 +326,8 @@ function run() {
   runStep11CAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep11DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep12AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
+  runStep13Validation(current, stable, grids, caches, loadDailyCachesWithVolume());
+  runStep13ForwardScore(current, loadDailyCachesWithVolume());
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1605,4 +1607,204 @@ function runStep12AAcceptance(current, grids, gridCaches, dailyCaches) {
   if (bugs) { console.log('Step 12-A acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
-run();
+// ============================================================================================================
+// Step 13 (Validation; spec "Validation and rollout" 815-900; step 13 plan + rulings a-g). Harness only: no constant,
+// gate, core, capture or page change. Everything below reads fresh main + fixtures/: the OLD verdict chain is the page's
+// own flag-off buildAction, brace-extracted from ../radar.html at run time and hash-asserted (ruling a); the NEW verdict
+// is researchVerdict; signals are frozen through setups-core.js (H5); scoring is the same rule for every arm.
+// ============================================================================================================
+const STEP13_PAGE_CHAIN_FNS = ['buildAction', 'structureLabelFor', 'railNoteFor', 'railAgeApprox', 'fmt', 'pricePrecision', 'fmtVol', 'computeRailAge'];
+const STEP13_PAGE_CHAIN_SHA1 = 'e8565c556e9c0ac03fb60c4a2ff60e8015bf6805';   // sha1 of the extracted text from radar.html 6c506ef2 (flag-off chain baseline); drift = BUG
+const STEP13_AUDITED = ['tron', 'aster-2', 'sun-token', 'sky', 'ripple', 'crypto-com-chain', 'stellar', 'jito-governance-token', 'pi-network', 'bittensor', 'dogecoin'];   // TRX ASTER SUN SKY XRP CC XLM JTO PI TAO DOGE - excluded from ex-audited stats, included in scoring
+const STEP13_HORIZONS = [5, 10, 20];
+const STEP13_MIN_N = 30;                 // ruling d: below this a cell prints "Unvalidated (n=...)"
+const STEP13_COST_PCT = 0.003;           // H6 round trip, charged on both legs (same as netRR)
+const STEP13_BASE_LOW_BARS = 20;         // HARNESS-ONLY baseline (ruling c): flat support = min low of the last 20 bars
+const STEP13_BASE_HIGH_BARS = 60;        //   target = max high of the last 60 bars
+const STEP13_BASE_ATR_MULT = 0.5;        //   entry: close within 0.5*ATR14 above the low; stop = low - 0.5*ATR14
+const STEP13_BOOT_REPS = 1000, STEP13_BOOT_SEED = 20260924;
+const STEP13_ABLATE = ['C1.trend', 'C2.entry-zone', 'C7.floor', 'H6.rr', 'C5.btc-regime'];   // ruling e: EXPLORATORY arms
+
+function mulberry32(seed) { let a = seed >>> 0; return function () { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function extractPageFn(src, name) {
+  const i = src.indexOf('function ' + name + '(');
+  if (i < 0) throw new Error('page function not found: ' + name);
+  let j = src.indexOf('{', src.indexOf(')', i)), depth = 0, k = j;
+  for (; k < src.length; k++) {
+    const ch = src[k], nx = src[k + 1];
+    if (ch === '/' && nx === '/') { k = src.indexOf('\n', k); continue; }
+    if (ch === '/' && nx === '*') { k = src.indexOf('*/', k) + 1; continue; }
+    if (ch === '/' && nx !== '/' && nx !== '*' && /[(,=:\[!&|?{};]/.test(src.slice(Math.max(0, k - 12), k).replace(/\s+$/, '').slice(-1) || ';')) { k++; while (src[k] !== '/') { if (src[k] === '\\') k++; k++; } continue; }
+    if (ch === "'" || ch === '"') { const q = ch; k++; while (src[k] !== q) { if (src[k] === '\\') k++; k++; } continue; }
+    if (ch === '{') depth++; else if (ch === '}') { depth--; if (depth === 0) break; }
+  }
+  return src.slice(i, k + 1);
+}
+// The page's flag-off verdict chain, verbatim from ../radar.html, run in a bare sandbox (RECLAIM_BARS from current; the
+// research branch is never entered because opts is omitted). Returns { buildAction, computeRailAge, sha1, text }.
+function loadPageFlagOffChain(current) {
+  const vm = require('vm');
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'radar.html'), 'utf8');
+  const text = 'var RAIL_AGE_FRESH_MAX = 14; var RAIL_AGE_AGING_MAX = 28;\n' + STEP13_PAGE_CHAIN_FNS.map(n => extractPageFn(src, n)).join('\n');
+  const sha1 = crypto.createHash('sha1').update(text).digest('hex');
+  const sb = { Math, isFinite, RECLAIM_BARS: current.RECLAIM_BARS, ACT_SCORE_FLOOR_1D: current.ACT_SCORE_FLOOR_1D, ACT_SCORE_FLOOR_GRID: current.ACT_SCORE_FLOOR_GRID, researchVerdict: current.researchVerdict, BTC_REGIME: null, Number, String };
+  vm.createContext(sb); vm.runInContext(text + '\nthis.__ba = buildAction; this.__ra = computeRailAge;', sb);
+  return { buildAction: sb.__ba, computeRailAge: sb.__ra, sha1, text };
+}
+// One signal scored forward from the bar after `issueIdx` on the FULL daily series (ruling b: entry = the fit's close at
+// issue unless told otherwise). Stop if low <= stop, target if high >= target, both in one bar -> stop (conservative),
+// else mark-to-close at the horizon (ruling g). R nets the round-trip cost on both legs exactly as H6's netRR does.
+function scoreSignal(series, issueIdx, entry, stop, target, horizonBars, costPct) {
+  const risk = entry - stop; if (!(risk > 0) || !(target > entry)) return null;
+  const cost = (costPct == null ? STEP13_COST_PCT : costPct) * entry;
+  let maxHigh = -Infinity, minLow = Infinity, exit = null, outcome = 'open', bars = 0;
+  for (let i = issueIdx + 1; i <= Math.min(series.length - 1, issueIdx + horizonBars); i++) {
+    const c = series[i]; bars = i - issueIdx;
+    if (c.high > maxHigh) maxHigh = c.high; if (c.low < minLow) minLow = c.low;
+    const hitStop = c.low <= stop, hitTarget = c.high >= target;
+    if (hitStop && hitTarget) { exit = stop; outcome = 'conflict-stop'; break; }
+    if (hitStop) { exit = stop; outcome = 'stop'; break; }
+    if (hitTarget) { exit = target; outcome = 'target'; break; }
+    if (i === issueIdx + horizonBars) { exit = c.close; outcome = 'open'; }
+  }
+  if (exit == null) return null;   // series does not reach the horizon
+  return { R: (exit - entry - cost) / (risk + cost), mfeR: (maxHigh - entry) / risk, maeR: (entry - minLow) / risk, bars, outcome, stillOpen: outcome === 'open' };
+}
+// HARNESS-ONLY horizontal-support baseline (ruling c): flat support at the 20-bar min low, entry only when the close sits
+// within 0.5*ATR14 above it, stop = low - 0.5*ATR14, target = 60-bar max high, no R:R gate.
+function baselineSignal(current, slice) {
+  const n = slice.length; if (n < STEP13_BASE_HIGH_BARS + 1) return null;
+  const atr = current.atr14(slice); if (!(atr > 0)) return null;
+  let low = Infinity; for (let i = n - STEP13_BASE_LOW_BARS; i < n; i++) low = Math.min(low, slice[i].low);
+  let high = -Infinity; for (let i = n - STEP13_BASE_HIGH_BARS; i < n; i++) high = Math.max(high, slice[i].high);
+  const close = slice[n - 1].close;
+  if (!(close >= low && close - low <= STEP13_BASE_ATR_MULT * atr)) return null;
+  const stop = low - STEP13_BASE_ATR_MULT * atr; if (!(high > close)) return null;
+  return { entry: close, stop, target: high };
+}
+function step13Stats(list) {
+  const n = list.length; if (!n) return null;
+  const s = k => list.reduce((a, x) => a + x[k], 0) / n;
+  return { n, winRate: list.filter(x => x.R > 0).length / n, expR: s('R'), mfe: s('mfeR'), mae: s('maeR'), bars: s('bars'), conflicts: list.filter(x => x.outcome === 'conflict-stop').length, open: list.filter(x => x.stillOpen).length };
+}
+function step13Cell(list) { const st = step13Stats(list); if (!st) return 'n=0 Unvalidated (n=0)'; const core = 'n=' + st.n + ' win ' + (st.winRate * 100).toFixed(0) + '% expR ' + st.expR.toFixed(2) + ' MFE ' + st.mfe.toFixed(2) + ' MAE ' + st.mae.toFixed(2) + ' bars ' + st.bars.toFixed(1) + ' conflict ' + st.conflicts + ' still-open ' + st.open; return st.n < STEP13_MIN_N ? core + ' -> Unvalidated (n=' + st.n + ')' : core; }
+function step13Bootstrap(byDate) {
+  const dates = Object.keys(byDate).filter(d => byDate[d].length); if (!dates.length) return null;
+  const rnd = mulberry32(STEP13_BOOT_SEED), reps = [];
+  for (let r = 0; r < STEP13_BOOT_REPS; r++) { let sum = 0, cnt = 0; for (let k = 0; k < dates.length; k++) { const d = dates[Math.floor(rnd() * dates.length)]; byDate[d].forEach(x => { sum += x.R; cnt++; }); } reps.push(cnt ? sum / cnt : 0); }
+  reps.sort((a, b) => a - b); return { lo: reps[Math.floor(0.05 * reps.length)], hi: reps[Math.floor(0.95 * reps.length) - 1] };
+}
+function runStep13Validation(current, stable, grids, gridCaches, dailyCaches) {
+  console.log('\n=== Step 13 validation (regression guard vs the page flag-off chain on channel-core.stable.js; walk-forward replay of research signals; report numbers) — ' + grids.length + ' capture dates, 1d ===');
+  let bugs = 0;
+  let page; try { page = loadPageFlagOffChain(current); } catch (e) { console.log('  BUG: cannot load the page flag-off chain: ' + e.message); process.exitCode = 1; return; }
+  console.log('OLD chain: ' + STEP13_PAGE_CHAIN_FNS.join(', ') + ' extracted from ../radar.html, sha1 ' + page.sha1 + ' -> ' + (page.sha1 === STEP13_PAGE_CHAIN_SHA1 ? 'MATCH (flag-off baseline ' + STEP13_PAGE_CHAIN_SHA1.slice(0, 8) + ')' : 'DRIFT vs recorded ' + STEP13_PAGE_CHAIN_SHA1.slice(0, 8)));
+  if (page.sha1 !== STEP13_PAGE_CHAIN_SHA1) { bugs++; console.log('  BUG: page flag-off chain drifted from the recorded baseline (ruling a) - re-record only after an analysis-thread OK'); }
+  const S = require(path.join(REPO_ROOT, 'setups-core.js'));
+  const meta = loadGridRowMeta(); const btcSeries = dailyCaches['bitcoin'] || null;
+  const isAud = id => STEP13_AUDITED.indexOf(id) !== -1;
+  // arms: name -> { all: [scored...], byDate: {date: [scored]} } per horizon
+  const arms = {}; const armList = ['research ACT', 'OLD ACT (page chain on stable)', 'baseline (horizontal support)'].concat(STEP13_ABLATE.map(g => 'EXPLORATORY ACT-except-' + g));
+  armList.forEach(a => { arms[a] = {}; STEP13_HORIZONS.forEach(h => { arms[a][h] = { all: [], ex: [], byDate: {}, byDateEx: {}, unreach: 0, noEcon: 0, issued: 0 }; }); });
+  const entryRefArm = {}; STEP13_HORIZONS.forEach(h => entryRefArm[h] = []);
+  const guard = { dates: [], tot: { oldAct: 0, scoreable: 0, hit: 0, hitRejected: 0, hitStillAct: 0, noHitRejected: 0, noHitAct: 0, hitWatch: 0 }, ex: { oldAct: 0, scoreable: 0, hit: 0, hitRejected: 0, hitStillAct: 0, noHitRejected: 0, noHitAct: 0, hitWatch: 0 }, rev: { act: 0, actHit: 0, watch: 0, watchHit: 0, actScoreable: 0, watchScoreable: 0 } };
+  let ledger = S.emptyLedger(); const blindRows = []; let rowsTotal = 0, horizonDates = {}; STEP13_HORIZONS.forEach(h => horizonDates[h] = []);
+  const OLD_FLOOR_TEXT = /var ACT_SCORE_FLOOR = (\d+);/.exec(page.text); console.log('OLD chain floor literal: ' + (OLD_FLOOR_TEXT ? OLD_FLOOR_TEXT[1] : '?') + ' | research floors ' + current.ACT_SCORE_FLOOR_1D + '/' + current.ACT_SCORE_FLOOR_GRID + ' | horizons ' + STEP13_HORIZONS.join('/') + ' bars | cost ' + STEP13_COST_PCT + ' both legs | min-n ' + STEP13_MIN_N);
+  grids.forEach(function (g) {
+    const btc = btcSeries ? current.btcRegimeFromCandles(sliceToDate(btcSeries, g.date) || []) : null;
+    const gd = { date: g.date, oldAct: 0, scoreable: 0, hit: 0, hitRejected: 0, hitStillAct: 0, noHitRejected: 0, researchAct: 0 };
+    const ledgerRows = [];
+    g.coins.forEach(function (cgId) {
+      const full = dailyCaches[cgId]; if (!full) return; const idx = full.findIndex(c => c.date === g.date); if (idx < 0) return;
+      const slice = full.slice(0, idx + 1); if (slice.length < 60) return; rowsTotal++;
+      const fwd = full.length - 1 - idx; const close = slice[idx].close, aud = isAud(cgId);
+      // OLD: stable fit + the page chain
+      let oldFit = null, oldAct = false;
+      try { oldFit = stable.detectChannel(slice); } catch (e) { oldFit = null; }
+      if (oldFit) { const ra = page.computeRailAge(oldFit.candles, oldFit.pivotLows); const row = Object.assign({}, oldFit, { price: close, supportRailAgeDays: ra.days, supportRailAgeBand: ra.band, gridBroken: false, source: 'daily' }); try { oldAct = page.buildAction(row).verdict === 'ACT'; } catch (e) { bugs++; console.log('  BUG: page buildAction threw on ' + cgId + ' ' + g.date + ': ' + e.message); } }
+      // NEW: research fit + verdict
+      const fit = current.detectChannel(slice, null, { coinId: cgId, timeframe: '1d', source: 'fixture', research: true, _noH3: true });
+      const rowMeta = (meta[g.date] && meta[g.date][cgId]) || {};
+      const res = current.researchVerdict(fit, { price: fit ? fit.detectionPrice : close, volume24h: rowMeta.volume24h != null ? rowMeta.volume24h : null, btc: btc, quote: null, floor: current.ACT_SCORE_FLOOR_1D });
+      const gates = res.details.gates, failing = gates.filter(x => x.pass !== true).map(x => x.id);
+      ledgerRows.push({ cgId, timeframe: '1d', verdict: res.verdict, lifecycleState: fit ? fit.lifecycleState : null, price: fit ? fit.detectionPrice : null, fit: fit ? { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, entryEconomics: fit.entryEconomics || null } : null });
+      // regression guard
+      if (oldAct) {
+        gd.oldAct++; guard.tot.oldAct++; if (!aud) guard.ex.oldAct++;
+        if (fwd >= 10) {
+          gd.scoreable++; guard.tot.scoreable++; if (!aud) guard.ex.scoreable++;
+          let hit = false; for (let i = idx + 1; i <= idx + 10; i++) if (full[i].close < oldFit.invalidation) { hit = true; break; }
+          const rej = res.verdict !== 'ACT';
+          if (hit) { gd.hit++; guard.tot.hit++; if (!aud) guard.ex.hit++; if (rej) { gd.hitRejected++; guard.tot.hitRejected++; if (!aud) guard.ex.hitRejected++; if (res.verdict === 'WATCH') { guard.tot.hitWatch++; if (!aud) guard.ex.hitWatch++; } } else { gd.hitStillAct++; guard.tot.hitStillAct++; if (!aud) guard.ex.hitStillAct++; } }
+          else { if (rej) { gd.noHitRejected++; guard.tot.noHitRejected++; if (!aud) guard.ex.noHitRejected++; } else { guard.tot.noHitAct++; if (!aud) guard.ex.noHitAct++; } }
+        }
+      }
+      if (!oldAct && fit && (res.verdict === 'ACT' || res.verdict === 'WATCH')) {
+        const k = res.verdict === 'ACT' ? 'act' : 'watch'; guard.rev[k]++;
+        if (fwd >= 10) { guard.rev[k + 'Scoreable']++; let hit = false; for (let i = idx + 1; i <= idx + 10; i++) if (full[i].close < fit.invalidation) { hit = true; break; } if (hit) guard.rev[k + 'Hit']++; }
+      }
+      if (res.verdict === 'ACT') gd.researchAct++;
+      // signals per arm
+      const ee = fit && fit.entryEconomics;
+      const issue = (arm, entry, stop, target) => { STEP13_HORIZONS.forEach(h => { const A = arms[arm][h]; A.issued++; if (stop == null || target == null) { A.noEcon++; return; } if (fwd < h) { A.unreach++; return; } const sc = scoreSignal(full, idx, entry, stop, target, h); if (!sc) { A.noEcon++; return; } sc.cgId = cgId; sc.date = g.date; A.all.push(sc); (A.byDate[g.date] = A.byDate[g.date] || []).push(sc); if (!aud) { A.ex.push(sc); (A.byDateEx[g.date] = A.byDateEx[g.date] || []).push(sc); } }); };
+      if (res.verdict === 'ACT') { issue('research ACT', close, ee.stop, ee.target); STEP13_HORIZONS.forEach(h => { if (fwd >= h) { const sc = scoreSignal(full, idx, ee.entryRef, ee.stop, ee.target, h); if (sc) entryRefArm[h].push(sc); } }); }
+      if (oldAct) issue('OLD ACT (page chain on stable)', close, oldFit.invalidation, oldFit.resistNow > close ? oldFit.resistNow : null);
+      const bs = baselineSignal(current, slice); if (bs) issue('baseline (horizontal support)', bs.entry, bs.stop, bs.target);
+      if (fit) STEP13_ABLATE.forEach(gname => { if (failing.length === 1 && failing[0] === gname) issue('EXPLORATORY ACT-except-' + gname, close, ee ? ee.stop : null, ee ? ee.target : null); });
+      // blind-sample pool
+      if (fit) { const atr = fit.atr14 / fit.detectionPrice, age = fit.lastIdx - fit.firstIdx; blindRows.push({ cgId, symbol: rowMeta.symbol || cgId, date: g.date, timeframe: '1d', verdict: res.verdict, gate: res.gate, vol: atr, age, regime: (btc && btc.aboveEma50 && btc.ema50Slope >= 0) ? 'above-rising' : 'other' }); }
+      else blindRows.push({ cgId, symbol: rowMeta.symbol || cgId, date: g.date, timeframe: '1d', verdict: 'rejected', gate: 'data.fit', vol: null, age: null, regime: (btc && btc.aboveEma50 && btc.ema50Slope >= 0) ? 'above-rising' : 'other' });
+    });
+    ledger = S.updateSetupLedger(ledger, g.date, ledgerRows, { detectorVersion: current.DETECTOR_VERSION, configHash: 'walk-forward' });
+    STEP13_HORIZONS.forEach(h => { const anyCoin = g.coins.some(c => dailyCaches[c] && dailyCaches[c].length - 1 - dailyCaches[c].findIndex(x => x.date === g.date) >= h && dailyCaches[c].findIndex(x => x.date === g.date) >= 0); if (anyCoin) horizonDates[h].push(g.date); });
+    guard.dates.push(gd);
+  });
+  // ---- regression guard print
+  console.log('\n--- 13-1 regression guard (OLD ACT = page flag-off chain on stable fits; hit = any close < OLD invalidation within 10 daily bars) ---');
+  guard.dates.forEach(d => console.log('  ' + d.date + ' oldACT=' + d.oldAct + ' scoreable=' + d.scoreable + ' hit=' + d.hit + ' hit&rejected=' + d.hitRejected + ' hit&stillACT=' + d.hitStillAct + ' noHit&rejected=' + d.noHitRejected + ' researchACT=' + d.researchAct));
+  const gline = (t, o) => console.log(t + ': OLD ACT ' + o.oldAct + ' | scoreable(+10d) ' + o.scoreable + ' | hit ' + o.hit + ' | HEADLINE hit & rejected by research ' + o.hitRejected + ' (of which WATCH ' + o.hitWatch + ') | hit & still ACT ' + o.hitStillAct + ' | no hit & rejected (lost winners) ' + o.noHitRejected + ' | no hit & still ACT ' + o.noHitAct);
+  gline('ALL', guard.tot); gline('EX-AUDITED', guard.ex);
+  console.log('reverse: research ACT not OLD ACT ' + guard.rev.act + ' (scoreable ' + guard.rev.actScoreable + ', hit ' + guard.rev.actHit + ') | research WATCH not OLD ACT ' + guard.rev.watch + ' (scoreable ' + guard.rev.watchScoreable + ', hit ' + guard.rev.watchHit + ')');
+  // ---- walk-forward + report
+  console.log('\n--- 13-2/13-3 walk-forward replay (rows ' + rowsTotal + '; ledger through setups-core: setups ' + ledger.setups.length + ', open ' + ledger.setups.filter(x => x.status === 'open').length + ') and report numbers; fill = fit close at issue (ruling b); exits at the horizon mark-to-close (ruling g) ---');
+  STEP13_HORIZONS.forEach(h => console.log('horizon +' + h + 'd scoreable on ' + horizonDates[h].length + '/' + grids.length + ' issue dates (' + (horizonDates[h].length ? horizonDates[h][0] + '..' + horizonDates[h][horizonDates[h].length - 1] : 'none') + ')'));
+  armList.forEach(arm => {
+    console.log('arm: ' + arm);
+    STEP13_HORIZONS.forEach(h => {
+      const A = arms[arm][h]; const bootAll = A.all.length >= STEP13_MIN_N ? step13Bootstrap(A.byDate) : null, bootEx = A.ex.length >= STEP13_MIN_N ? step13Bootstrap(A.byDateEx) : null;
+      console.log('  +' + h + 'd issued ' + A.issued + ' (unreachable ' + A.unreach + ', no economics ' + A.noEcon + ') | ALL ' + step13Cell(A.all) + (bootAll ? ' boot90 [' + bootAll.lo.toFixed(2) + ', ' + bootAll.hi.toFixed(2) + ']' : '') + ' | EX-AUDITED ' + step13Cell(A.ex) + (bootEx ? ' boot90 [' + bootEx.lo.toFixed(2) + ', ' + bootEx.hi.toFixed(2) + ']' : ''));
+      if (arm === 'research ACT' && A.all.length) console.log('    signals: ' + A.all.map(x => x.cgId + '@' + x.date + ' R ' + x.R.toFixed(2) + ' ' + x.outcome).join('; '));
+    });
+    if (arm === 'research ACT') STEP13_HORIZONS.forEach(h => console.log('  +' + h + 'd secondary (display only): R vs research entryRef ' + step13Cell(entryRefArm[h])));
+  });
+  // ---- blind sample (local files, never pushed)
+  const terc = (vals) => { const s = vals.filter(v => v != null).sort((a, b) => a - b); return v => v == null ? 'na' : v <= s[Math.floor(s.length / 3)] ? 'low' : v <= s[Math.floor(2 * s.length / 3)] ? 'mid' : 'high'; };
+  const volT = terc(blindRows.map(r => r.vol)), ageT = terc(blindRows.map(r => r.age));
+  const cells = {}; const pick = []; const key = [];
+  blindRows.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : a.cgId < b.cgId ? -1 : 1).forEach(r => { const c = r.verdict + '|' + volT(r.vol) + '|' + ageT(r.age) + '|' + r.regime; cells[c] = cells[c] || 0; if (cells[c] < 2) { cells[c]++; pick.push(r); key.push({ cgId: r.cgId, date: r.date, timeframe: r.timeframe, verdict: r.verdict, gate: r.gate, strata: c }); } });
+  const csv = 'cgId,symbol,date,timeframe\n' + pick.map(r => [r.cgId, r.symbol, r.date, r.timeframe].join(',')).join('\n') + '\n';
+  fs.writeFileSync(path.join(__dirname, 'step13-blind-sample.csv'), csv);
+  fs.writeFileSync(path.join(__dirname, 'step13-blind-key.json'), JSON.stringify({ generated: 'step13', cells: Object.keys(cells).length, rows: key }, null, 1));
+  console.log('\n--- 13-4 blind-review sample: ' + pick.length + ' rows over ' + Object.keys(cells).length + ' non-empty strata (verdict x volatility tercile x age tercile x regime; <=2 per cell, newest dates first) -> radar_tools/step13-blind-sample.csv (4 columns, no verdict/score) + step13-blind-key.json (sealed key, local) ---');
+  console.log('Prior-section deltas: none - harness only; no core, constant, gate, capture or page change (local step13 suite).');
+  console.log('VERDICT: research ACT arm n=' + arms['research ACT'][5].all.length + '/' + arms['research ACT'][10].all.length + '/' + arms['research ACT'][20].all.length + ' at +5/+10/+20 -> ' + (arms['research ACT'][5].all.length < STEP13_MIN_N ? 'Unvalidated (n below ' + STEP13_MIN_N + '); forward-observation window (13-5) is the path to a verdict' : 'see cells above'));
+  if (bugs) { console.log('Step 13 validation: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
+}
+// 13-5: forward scoring of the LIVE ledger (data/setups.json on main) against the daily caches. Reports "no matured setups"
+// until a setup has >= horizon daily bars after openedAt in the fixture caches; scoring rule identical to runStep13Validation.
+function runStep13ForwardScore(current, dailyCaches) {
+  console.log('\n=== Step 13-5 forward score of the live H5 ledger (data/setups.json) ===');
+  const p = path.join(REPO_ROOT, 'data', 'setups.json');
+  if (!fs.existsSync(p)) { console.log('no data/setups.json on main - nothing to score'); return; }
+  let L; try { L = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { console.log('  BUG: setups.json unreadable: ' + e.message); process.exitCode = 1; return; }
+  const setups = Array.isArray(L.setups) ? L.setups : [];
+  STEP13_HORIZONS.forEach(h => {
+    const scored = [], notMatured = [];
+    setups.forEach(s => { const series = dailyCaches[s.cgId]; const idx = series ? series.findIndex(c => c.date === s.openedAt) : -1; if (idx < 0 || series.length - 1 - idx < h) { notMatured.push(s.id); return; } const entry = typeof s.openPrice === 'number' ? s.openPrice : s.entryRef; const sc = scoreSignal(series, idx, entry, s.stop, s.target, h); if (sc) scored.push(sc); else notMatured.push(s.id); });
+    console.log('  +' + h + 'd: ledger setups ' + setups.length + ' | matured & scored ' + scored.length + ' | not matured / unscorable ' + notMatured.length + ' | ' + (scored.length ? step13Cell(scored) : 'no matured setups (n=0 of ' + setups.length + ')'));
+  });
+}
+
+// Step 13: run when executed; export the pure harness helpers for the local suite when required.
+if (require.main === module) run();
+else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS };
