@@ -84,6 +84,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .radar-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
 .radar-table .rs-why{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
 .radar-table .rs-legacy{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.radar-table td:first-child{position:relative}
+/* Step 16-A (P1 pinned coins): the pin control overlays the Coin cell's left padding and the note/no-channel badge clip to the column, so table width is unchanged. */
+.pin-btn{position:absolute;left:1px;top:50%;transform:translateY(-50%);width:11px;font-size:12px;line-height:1;cursor:pointer;color:var(--muted,#6b7280);user-select:none;opacity:.55}
+.pin-btn:hover{opacity:1}
+.pin-btn.on{color:#f5c542;opacity:1}
+#dp-pin.pin-btn{position:static;transform:none;display:inline-block;width:auto;margin-left:10px;font-size:16px;vertical-align:middle}
+tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
+.pin-note{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--muted,#9aa3b2)}
+.vbadge.pin-nofit{display:block;width:0;min-width:100%;box-sizing:border-box;white-space:normal;text-align:center;opacity:.55;color:var(--muted,#9aa3b2);letter-spacing:0;text-transform:none;font-size:9px}
+.pin-chip{font-size:11px;color:#f5c542;border:1px solid rgba(245,197,66,.35);border-radius:10px;padding:2px 8px;margin-left:10px}
+.pin-export{font-size:11px;color:var(--muted,#9aa3b2);display:inline-flex;align-items:center;gap:4px;cursor:pointer}
 .radar-table tr{cursor:pointer;transition:background .1s}
 .radar-table tr:hover td{background:var(--surface2)}
 .radar-table tr.selected td{background:var(--surface3);border-left:2px solid var(--accent)}
@@ -219,6 +230,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <span class="last-update" id="last-update"></span>
     <button class="btn btn-accent" id="diag-btn">Scan Details</button>
     <button class="btn btn-publish" id="publish-btn" style="display:none">Publish Report</button>
+    <label class="pin-export" id="pin-export-wrap" style="display:none" title="Adds your pinned coins as a block at the top of the published report"><input type="checkbox" id="pin-export"> include pinned</label>
     <button class="btn btn-ghost" id="refresh-btn">Refresh</button>
   </div>
 </header>
@@ -255,6 +267,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <option value="containment">Sort: Containment</option>
     <option value="supportRailAgeDays">Sort: Rail Age (freshest first)</option>
   </select>
+  <span class="pin-chip" id="pin-chip" style="display:none"></span>
   <span class="scan-count" id="scan-count"></span>
 </div>
 
@@ -336,6 +349,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="detail-coin">
         <div class="coin-icon" id="dp-icon"></div>
         <div><div class="detail-symbol" id="dp-symbol"></div><div class="detail-price" id="dp-price"></div></div>
+        <span class="pin-btn" id="dp-pin" style="display:none"></span>
       </div>
       <button class="close-btn" id="close-btn">x</button>
     </div>
@@ -2178,7 +2192,7 @@ function researchEntryHTML(rr) {
   var d = pricePrecision(rr.price);
   var tgt = (ee.target != null) ? fmt(ee.target, d) + ' (' + (ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') + ')' : 'none above entry';
   var rr2 = (ee.netRR != null) ? ee.netRR.toFixed(2) + ' net (' + ee.grossRR.toFixed(2) + ' gross, ' + (ee.costPct * 100).toFixed(1) + '% round trip)' : 'Unknown';
-  return '<div class="research-entry-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">Entry (research, H6): zone ' + fmt(ee.entryZone[0], d) + ' - ' + fmt(ee.entryZone[1], d) +
+  return '<div class="research-entry-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">Entry (research): zone ' + fmt(ee.entryZone[0], d) + ' - ' + fmt(ee.entryZone[1], d) +
     ' · stop ' + fmt(ee.stop, d) + ' (' + ee.stopBasis + ', defended low ' + fmt(ee.defendedLow, d) + ')' +
     ' · target ' + tgt + ' · R:R ' + rr2 + '</div>';
 }
@@ -2319,8 +2333,9 @@ var RESEARCH_STATE_PREFIX = { ACT: 'Act:', NEAR: 'Near:', DEVELOPING: 'Developin
 function researchStateText(rs) {
   if (!rs.action) return '';
   var prefix = RESEARCH_STATE_PREFIX[rs.state];
-  if (!prefix) return rs.action.text;
-  return rs.action.text.replace(/^(Act zone \(research\)|Watch|Wait):/, prefix);
+  var txt = rs.action.text.replace(/\bthe H6 entry zone\b/g, 'the entry zone');   // Step 16-A: plain words for the internal code (display text only)
+  if (!prefix) return txt;
+  return txt.replace(/^(Act zone \(research\)|Watch|Wait):/, prefix);
 }
 // Primary badge (state) + the failing check(s) in plain words + the legacy verdict as a small muted tag.
 function researchStateCellHTML(rs, legacyAction, size) {
@@ -2637,6 +2652,84 @@ function renderDiag() {
   }
 }
 
+// Step 16-A (P1, pinned coins): display-only. PINS lives in this browser's localStorage keyed by cgId (per device);
+// it never touches a verdict, state, score or count tile. Pinned rows bypass the status/threshold filters, form a top
+// block in the current sort order, and a pinned coin with no candidate row gets a stub row built from data/latest.json.
+var PIN_KEY = 'radar_pins_v1';
+var PINS = {};           // cgId -> {s: symbol, n: name}
+var PIN_UNIVERSE = {};   // cgId -> capture coin (latest.json, filled from latest-daily.json), used only for stub rows
+var PIN_HIDDEN = {};     // cgId -> true when a pinned row would have been hidden by the current filters
+var detailPinRow = null;
+function pinLoad() { try { var o = JSON.parse(localStorage.getItem(PIN_KEY) || '{}'); PINS = (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; } catch (e) { PINS = {}; } }
+function pinSave() { try { localStorage.setItem(PIN_KEY, JSON.stringify(PINS)); } catch (e) {} }
+function isPinned(r) { return !!(r && r.cgId && Object.prototype.hasOwnProperty.call(PINS, r.cgId)); }
+function pinCount() { return Object.keys(PINS).length; }
+function pinButtonHTML(cgId, on) {
+  if (!cgId) return '';
+  return '<span class="pin-btn' + (on ? ' on' : '') + '" data-cgid="' + String(cgId).replace(/"/g, '&quot;') + '" title="' + (on ? 'Unpin this coin' : 'Pin this coin to the top') + '">' + (on ? '★' : '☆') + '</span>';
+}
+function pinUniverseFrom(gridCoins, dailyCoins) {
+  var u = {};
+  (dailyCoins || []).forEach(function (c) { if (c && c.cgId) u[c.cgId] = c; });
+  (gridCoins || []).forEach(function (c) { if (c && c.cgId) u[c.cgId] = c; });
+  return u;
+}
+function pinChipSync() {
+  var el = document.getElementById('pin-chip'); if (!el) return;
+  var n = pinCount();
+  el.textContent = n + ' pinned'; el.style.display = n ? '' : 'none';
+}
+function pinSyncDetail(r) {
+  detailPinRow = r || null;
+  var el = document.getElementById('dp-pin'); if (!el) return;
+  if (!r || !r.cgId) { el.style.display = 'none'; return; }
+  var on = isPinned(r);
+  el.style.display = ''; el.className = 'pin-btn' + (on ? ' on' : ''); el.setAttribute('data-cgid', r.cgId);
+  el.title = on ? 'Unpin this coin' : 'Pin this coin to the top'; el.textContent = on ? '★' : '☆';
+}
+function pinToggle(cgId) {
+  if (!cgId) return;
+  if (Object.prototype.hasOwnProperty.call(PINS, cgId)) delete PINS[cgId];
+  else {
+    var row = allResults.find(function (x) { return x.cgId === cgId; }), u = PIN_UNIVERSE[cgId];
+    PINS[cgId] = row ? { s: row.symbol, n: row.name } : { s: (u && u.symbol) ? String(u.symbol).toUpperCase() : cgId, n: (u && u.name) || cgId };
+  }
+  pinSave();
+  applyFilters();
+  if (detailPinRow) pinSyncDetail(detailPinRow);
+}
+// Pinned coins with no candidate row: a display-only stub from the capture (symbol, name, rank, price, 24h volume); no channel data.
+function pinStubRows() {
+  var have = {};
+  allResults.forEach(function (r) { if (r.cgId) have[r.cgId] = 1; });
+  return Object.keys(PINS).filter(function (id) { return !have[id]; }).map(function (id) {
+    var m = PINS[id] || {}, u = PIN_UNIVERSE[id] || {};
+    return { cgId: id, symbol: String(u.symbol || m.s || id).toUpperCase(), name: u.name || m.n || id,
+      rank: u.rank != null ? u.rank : null, price: u.price != null ? u.price : null,
+      volume24h: u.volume24h != null ? u.volume24h : null, change24h: u.change24h != null ? u.change24h : null };
+  }).sort(function (a, b) { return (a.rank == null ? 1e9 : a.rank) - (b.rank == null ? 1e9 : b.rank); });
+}
+function pinStubHTML(u) {
+  var tv = tvLink(u.symbol);
+  var tvUrl = 'https://www.tradingview.com/chart/?symbol=' + (tv.exchange || 'KRAKEN') + ':' + (tv.pair || u.symbol + 'USD') + '&interval=D';
+  var sub = u.name + (u.rank != null ? ' · #' + u.rank : '');
+  var dash = '<td style="color:var(--muted)">--</td>';
+  var cc = u.change24h == null ? '' : (u.change24h >= 0 ? 'up' : 'dn');
+  return '<tr class="pin-row pin-stub" data-pin-stub="' + String(u.cgId).replace(/"/g, '&quot;') + '">' +
+    '<td>' + pinButtonHTML(u.cgId, true) + '<div class="coin-cell"><div class="coin-icon">' + u.symbol.substring(0, 3) + '</div><div><div class="coin-name">' + u.symbol + '</div>' +
+      '<div class="coin-sub" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + sub.replace(/"/g, '&quot;') + '">' + sub + '</div>' +
+      '<div class="pin-note" title="pinned · outside current filters">pinned · outside current filters</div></div></div></td>' +
+    '<td><span class="vbadge pin-nofit" title="No channel found for this coin in the current capture">no channel found</span></td>' +
+    dash + dash +
+    '<td style="color:var(--text2);font-variant-numeric:tabular-nums">' + (u.volume24h != null ? fmtVol(u.volume24h) : '--') + '</td>' +
+    dash + dash + dash + dash +
+    '<td style="color:var(--text2);font-variant-numeric:tabular-nums">' + (u.price != null ? fmt(u.price, pricePrecision(u.price)) : '--') + '</td>' +
+    dash +
+    '<td class="' + cc + '">' + (u.change24h != null ? fmtP(u.change24h) : '--') + '</td>' +
+    '<td><a class="tv-link" href="' + tvUrl + '" target="_blank" onclick="event.stopPropagation()">TV</a></td></tr>';
+}
+pinLoad();
+
 function getThresh() {
   var dailySel = document.getElementById('t-score-daily');
   var railSel = document.getElementById('t-railage');
@@ -2680,7 +2773,8 @@ function applyFilters() {
   // shared t.minScore control - t.minScore does not vary CONFIRMED's population (every
   // 'both' row clears it), so gating on it here was gating on nothing.
   var t = getThresh();
-  filtered = allResults.filter(function(r) {
+  PIN_HIDDEN = {};
+  var passes = function(r) {
     // Backlog #3: rail age is a separate axis from score/confirmation - "only fresh-rail
     // setups" should mean that, even for a CONFIRMED row, so this runs unconditionally,
     // ahead of the confirmedAndQualified bypass below rather than being folded into it.
@@ -2714,13 +2808,22 @@ function applyFilters() {
     if(activeFilter==='emerging' && (r.score<60||r.score>=75)) return false;
     if(activeFilter==='watch' && (r.score<40||r.score>=60)) return false;
     return true;
+  };
+  // Step 16-A: pinned rows bypass every filter above (they are flagged when the filters would have hidden them); the count below is still the rows that pass the filters.
+  var nPass = 0;
+  filtered = allResults.filter(function(r) {
+    var ok = passes(r);
+    if(ok) nPass++;
+    if(isPinned(r)) { if(!ok) PIN_HIDDEN[r.cgId] = true; return true; }
+    return ok;
   });
   sortFiltered();
   renderTable();
-  document.getElementById('scan-count').textContent = filtered.length+' of '+allResults.length;
+  document.getElementById('scan-count').textContent = nPass+' of '+allResults.length;
+  pinChipSync();
 }
 
-function sortFiltered() {
+function sortFilteredCore() {
   // Backlog #14: 'default' is the Recommended ordering (verdict > 24h volume > score) -
   // see sortRowsByVerdict above. Every other sortCol keeps its prior column-sort behavior
   // untouched below.
@@ -2743,11 +2846,21 @@ function sortFiltered() {
   });
 }
 
+// Step 16-A: pinned rows form a top block in the current sort order; unpinned rows keep their order below.
+function sortFiltered() {
+  sortFilteredCore();
+  if(!pinCount()) return;
+  var top = [], rest = [];
+  filtered.forEach(function(r) { (isPinned(r) ? top : rest).push(r); });
+  filtered = top.concat(rest);
+}
+
 function renderTable() {
   var tbody = document.getElementById('table-body');
   var th24 = document.getElementById('th-24h');
   if(th24) th24.textContent = captureMode ? '24h Price*' : '24h Price';
-  if(!filtered.length) {
+  var pinStubs = pinStubRows();   // Step 16-A: pinned coins with no candidate row
+  if(!filtered.length && !pinStubs.length) {
     tbody.innerHTML = '<tr><td colspan="13"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>';
     return;
   }
@@ -2782,8 +2895,9 @@ function renderTable() {
     // or the research computation threw - see mergeCandidateRow) shows nothing extra.
     var actionCell = '<span class="vbadge '+vcls+'">'+action.verdict+'</span>';
     if (RESEARCH_MODE_UI) actionCell = researchStateCellHTML(researchStateFor(r), action);   // Step 15-A: research state primary, failing check in words, legacy verdict as a muted tag
-    return '<tr data-key="'+r.symbol+'">'+
-      '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div></div></div></td>'+
+    var pinned = isPinned(r);
+    return '<tr data-key="'+r.symbol+'"'+(pinned?' class="pin-row"':'')+'>'+
+      '<td>'+pinButtonHTML(r.cgId, pinned)+'<div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div>'+(pinned && PIN_HIDDEN[r.cgId] ? '<div class="pin-note" title="pinned \u00b7 outside current filters">pinned \u00b7 outside current filters</div>' : '')+'</div></div></td>'+
       '<td>'+actionCell+'</td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
       '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
@@ -2797,7 +2911,7 @@ function renderTable() {
       '<td class="'+cc+'">'+fmtP(r.change24h)+'</td>'+
       '<td><a class="tv-link" href="'+tvUrl+'" target="_blank" onclick="event.stopPropagation()">TV</a></td>'+
     '</tr>';
-  }).join('');
+  }).join('') + pinStubs.map(pinStubHTML).join('');
 }
 
 function openDetail(r) {
@@ -2805,6 +2919,7 @@ function openDetail(r) {
   document.getElementById('layout').classList.add('open');
   document.getElementById('dp-icon').textContent=r.symbol.substring(0,3);
   document.getElementById('dp-symbol').textContent=r.symbol;
+  pinSyncDetail(r);   // Step 16-A
   // Backlog #17f (2026-09-20): cached mode already marks this price as of-capture; the
   // resting/restore fallback (captureMode false, same as a genuine live scan) could be just
   // as stale and had no marker at all - restingMode (set in loadCachedOrResting's restore
@@ -3244,6 +3359,10 @@ function buildReportHTML(data) {
   // sorted at all. Same shared comparator the live table's default sort uses (see
   // sortRowsByVerdict above), so the report can no longer diverge from the table's ordering.
   var cands = sortRowsByVerdict(data.candidates, RESEARCH_MODE_UI);   // Step 15-B: report ranks by the same research states as the page (legacy export keeps the legacy rank)
+  if(data.pinnedIds && data.pinnedIds.length) {   // Step 16-A: opt-in "include pinned" - pinned rows first (same order), the rest unchanged below
+    var pinSet = {}; data.pinnedIds.forEach(function(id){ pinSet[id] = 1; });
+    cands = cands.filter(function(c){ return pinSet[c.cgId]; }).concat(cands.filter(function(c){ return !pinSet[c.cgId]; }));
+  }
   var fmt2 = function(n,d){d=d||2;return n==null?'--':'$'+n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});};
   var fmtP2 = function(n){return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%';};
   // G1 (Remediation spec, 2026-09-22): this file's own copy of pricePrecision() - buildReportHTML
@@ -3601,6 +3720,8 @@ async function publishReport() {
       dailyDate: lastDailyDate,
       dailyStale: lastDailyStale
     };
+    var pinExp = document.getElementById('pin-export');   // Step 16-A: off by default -> the report is unchanged
+    if(pinExp && pinExp.checked) reportData.pinnedIds = allResults.filter(isPinned).map(function(r){return r.cgId;});
     // Embed lightweight chart geometry per candidate so the static report can draw charts
     // (report has no API access — data must be baked in at publish). ~90 candles/coin.
     var chartData = {};
@@ -3665,6 +3786,14 @@ window.addEventListener('load', function() {
   document.getElementById('refresh-btn').addEventListener('click', runScan);
   document.getElementById('publish-btn').addEventListener('click', publishReport);
   document.getElementById('close-btn').addEventListener('click', closePanel);
+  // Step 16-A: detail-header pin, and the "include pinned" export checkbox that follows Publish Report's visibility.
+  document.getElementById('dp-pin').addEventListener('click', function() { if(detailPinRow) pinToggle(detailPinRow.cgId); });
+  (function() {
+    var pb = document.getElementById('publish-btn'), wrap = document.getElementById('pin-export-wrap');
+    var sync = function() { wrap.style.display = (pb.style.display === 'none') ? 'none' : ''; };
+    sync();
+    try { new MutationObserver(sync).observe(pb, { attributes: true, attributeFilter: ['style'] }); } catch (e) {}
+  })();
   // Indicator Upgrades Group 1, item 6 (2026-09-20): delegated on the stable dp-confluence
   // container (its innerHTML is replaced every openDetail() call, but the element itself
   // persists, so attaching once here - not inside openDetail() - avoids piling up duplicate
@@ -3810,6 +3939,8 @@ window.addEventListener('load', function() {
     if(chip && chip.dataset.symbol) jumpToAddedCoin(chip.dataset.symbol);
   });
   document.getElementById('table-body').addEventListener('click', function(e) {
+    var pb = e.target.closest('.pin-btn');   // Step 16-A: the pin control never opens the panel
+    if(pb) { e.stopPropagation(); pinToggle(pb.getAttribute('data-cgid')); return; }
     var tr = e.target.closest('tr');
     if(!tr || !tr.dataset.key) return;
     var key = tr.dataset.key;
@@ -4180,6 +4311,7 @@ async function loadCachedOrResting() {
 
         if(adapted.length) {
           allResults = adapted;
+          PIN_UNIVERSE = pinUniverseFrom(cap.coins, dailyCap && dailyCap.coins);   // Step 16-A: stub rows for pinned coins with no candidate row
           dailyDataAvailable = Object.keys(dailyMap).length > 0;
           // Confirmed filter button and the daily-only threshold control only make sense
           // once there's actually daily data loaded — hidden otherwise (degradation:
