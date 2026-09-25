@@ -115,6 +115,7 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .p3-verdict{padding:5px 13px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:10.5px;line-height:1.3}
 .p3-v1{color:var(--text2)}
 .p3-v2 .research-entry-line{font-size:10.5px!important;margin-top:1px!important;line-height:1.3}
+.p3-analysis{padding:5px 13px 6px;font-size:10.5px;line-height:1.35;color:var(--text2);border-top:1px dashed var(--border)}
 .p3-v3{margin-top:1px;font-weight:600;color:var(--text)}
 .p3-sec{border-bottom:1px solid var(--border)}
 .p3-sec-h{display:flex;align-items:center;gap:6px;padding:5px 18px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none}
@@ -183,10 +184,10 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .detail-body{flex:1;overflow-y:scroll;scrollbar-gutter:stable}
 /* Step 17-D: the pane's own scrollbar is always present and visibly distinct from the page/table scrollbars (wide track, accent thumb); Firefox via scrollbar-color/width. */
 .detail-body::-webkit-scrollbar{width:10px}
-.detail-body::-webkit-scrollbar-track{background:var(--surface2);border-left:1px solid var(--border2)}
-.detail-body::-webkit-scrollbar-thumb{background:var(--accent);border-radius:5px;border:2px solid var(--surface2)}
+.detail-body::-webkit-scrollbar-track{background:var(--bg);border-left:1px solid var(--border2)}
+.detail-body::-webkit-scrollbar-thumb{background:var(--accent);border-radius:5px;border:2px solid var(--bg)}
 .detail-body::-webkit-scrollbar-thumb:hover{background:#9b93f7}
-@supports (-moz-appearance:none){.detail-body{scrollbar-width:auto;scrollbar-color:var(--accent) var(--surface2)}}
+@supports (-moz-appearance:none){.detail-body{scrollbar-width:auto;scrollbar-color:var(--accent) var(--bg)}}
 /* Step 17-D: the Expand/Collapse button rides in a zero-height sticky row at the top of the scroll container, so it stays on screen while the pane scrolls (the close X sits in the fixed header). */
 .pane-sticky{position:sticky;top:0;height:0;z-index:12}
 .chart-wrap{height:260px;position:relative;background:var(--bg);border-bottom:1px solid var(--border);transition:height .15s ease}
@@ -423,7 +424,6 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
       <div class="ds">
         <div class="ds-title">Confluence Signals (from daily OHLC)</div>
         <div id="dp-confluence"></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Proprietary TradingView indicators (ERI, TSI, RSI Pro, Buy Blocks, Order Blocks, Dynamic ATR) are not computable from public OHLC — confirm those in TradingView.</div>
       </div>
       <div class="ds">
         <div class="ds-title">Channel Score</div>
@@ -441,7 +441,7 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
       </div>
       <div class="ds"><div class="ds-title">Analysis</div><div class="expl" id="dp-expl"></div></div>
       <div class="ds">
-        <div class="ds-title cat-tip" data-tip="A rules-derived read, not a trade instruction: Act/Watch/Wait, plus zone, invalidation, and first target, all conditional on rail freshness. Always validate in TradingView before acting.">Recommended View</div>
+        <div class="ds-title cat-tip" data-tip="A rules-derived read, not a trade instruction: Act/Watch/Wait, plus zone, invalidation, and first target, all conditional on rail freshness.">Recommended View</div>
         <div style="margin-bottom:8px" id="dp-action-badge"></div>
         <div class="expl" id="dp-action-text"></div>
       </div>
@@ -797,6 +797,8 @@ function confluenceHTML(r) {
 function researchAttr(s) {
   return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// Step 17-E: the pattern rules come from channel-core.js with their spec wording ('(research)', '>='); shown in plain form.
+function researchRuleText(s) { return String(s).replace(/ \(research\)/g, '').replace(/>=/g, '\u2265').replace(/<=/g, '\u2264'); }
 function researchRecordFor(rr, pattern) {
   var recs = rr && rr.patternRecords;
   if (!recs) return null;
@@ -806,7 +808,7 @@ function researchRecordFor(rr, pattern) {
 function researchPill(rr, pattern, t, c, bg) {
   var rec = researchRecordFor(rr, pattern);
   return {t:t, c:c, bg:bg, pattern:pattern, rec:rec,
-    tip: rec ? rec.rule : 'Research-mode fit (no pattern record on this row).'};
+    tip: rec ? researchRuleText(rec.rule) : 'Research-mode fit (no pattern record on this row).'};
 }
 function researchConfluenceList(rr) {
   var b = [];
@@ -837,7 +839,7 @@ function researchPopoverHTML(rec) {
   return '<div class="research-pop-body" data-pattern="' + researchAttr(rec.pattern) + '" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--border,#2a2f3a);border-radius:6px;font-size:11px;line-height:1.4">' +
     '<div><b>' + researchAttr(rec.pattern) + '</b> &middot; venue ' + researchAttr(rec.venue) + ' &middot; timeframe ' + researchAttr(rec.timeframe) +
     ' &middot; interval ' + researchAttr(rec.interval) + ' &middot; ' + (rec.closed ? 'closed' : 'provisional') + '</div>' +
-    '<div style="margin-top:4px">' + researchAttr(rec.rule) + '</div>' +
+    '<div style="margin-top:4px">' + researchAttr(researchRuleText(rec.rule)) + '</div>' +
     '<table><tr><th style="text-align:left">candle</th><th>open</th><th>high</th><th>low</th><th>close</th></tr>' + rows + '</table>' +
     conflict + '</div>';
 }
@@ -1080,8 +1082,8 @@ function researchTagLines(ctx, t) {
   if (t.id === 'sup') return ['R sup ' + f(rr.supportNow) + ' — research support rail at the last closed bar (the research fit’s own support line)'];
   if (t.id === 'res') return ['R res ' + f(rr.resistNow) + ' — research resistance at the last closed bar (' + (rr.resistanceFit === 'independent' ? 'independent line, B1' : 'parallel projection of the support rail') + ')'];
   if (t.id === 'inv') return ['R inv ' + f(rr.invalidation) + ' — research invalidation: closes below this count as a break'];
-  if (t.id === 'stop') return ['S ' + f(ee.stop) + ' — research stop (H6, basis ' + ee.stopBasis + ')'];
-  return ['T ' + f(ee.target) + ' — research target (H6, ' + (ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') + ')'];
+  if (t.id === 'stop') return ['S ' + f(ee.stop) + ' — research stop (' + (ee.stopBasis === 'cap' ? 'risk cap' : (ee.stopBasis === 'min-risk' ? 'minimum risk' : 'defended low')) + ')'];
+  return ['T ' + f(ee.target) + ' — research target (' + (ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') + ')'];
 }
 // The hovered candle: date, O/H/L/C, both wicks in x ATR14 (measured from the close, ATR14 as of the PRIOR bar - exactly what F3 judges), and F3's verdict.
 function researchCandleLines(ctx, i) {
@@ -1394,12 +1396,12 @@ function researchLegendHTML(rr) {
     ent(K['Floor'].res, 'Research support', 'Research support rail (dashed): the research fit’s own support line'),
     ent(K['Ceiling'].res, 'Research resistance', 'Research resistance (dashed): independent line when B1 fitted one, else the parallel projection'),
     ent(K['Invalidation'].res, 'Research invalidation', 'Research invalidation (dashed): closes below this count as a break'),
-    ent(K['Entry zone'].res, 'Entry zone', 'Entry zone: support to support + 0.5×ATR14 (H6)'),
-    ent(K['Stop'].res, 'Stop', 'Stop: research stop (H6), tick at the right edge'),
-    ent(K['Target'].res, 'Target', 'Target: research target (H6), tick at the right edge'),
+    ent(K['Entry zone'].res, 'Entry zone', 'Entry zone: support to support + 0.5×ATR14'),
+    ent(K['Stop'].res, 'Stop', 'Stop: research stop, tick at the right edge'),
+    ent(K['Target'].res, 'Target', 'Target: research target, tick at the right edge'),
     '<span title="Before the ' + n + '-bar fit window — not used to fit the rails">' + box('rgba(107,114,128,.35)') + 'Before fit window</span>',
     '<span title="Break run: consecutive closes below the support rail (shaded per run)">' + box('rgba(160,82,45,.5)') + 'Break run</span>',
-    '<span title="Wick clipped: raw high/low → clipped value (k×ATR14), F3 outlier handling">' + dot('#ff5c8a') + 'Wick clipped</span>',
+    '<span title="Wick clipped: raw high/low → clipped value (k×ATR14), outlier handling">' + dot('#ff5c8a') + 'Wick clipped</span>',
     ent(K['Floor'].main, 'Main support', 'Main (flag-off) support rail, dimmed to 50% while the research rails are shown'),
     ent(K['Ceiling'].main, 'Main resistance', 'Main (flag-off) resistance rail, dimmed to 50% while the research rails are shown'),
     ent(K['Invalidation'].main, 'Main invalidation', 'Main (flag-off) invalidation line, dimmed while the research rails are shown')
@@ -2015,7 +2017,7 @@ function buildExpl(r, name) {
   // This mention of "near support" carries its own rail-age qualifier inline, same as
   // posSentence above, so it also satisfies FIX 2.
   var closing = (r.position<=0.33 && structureLabel==='ascending' && r.supportRailAgeBand==='fresh')
-    ? 'Near support with a fresh rail ('+railNote+') in an ascending channel may offer favorable risk/reward. Validate in TradingView.'
+    ? 'Near support with a fresh rail ('+railNote+') in an ascending channel may offer favorable risk/reward.'
     : 'Consider waiting for a pullback toward support before entry.';
 
   return name+' shows '+structureArticle+' '+structureLabel+' channel on the daily timeframe with '+r.supportTouches+' support touches and '+r.resTouches+' resistance touches ('+TOUCH_TOL*100+'% tolerance). Containment '+r.containment+'%. '+resSentence+' '+posSentence+' '+closing;
@@ -2220,15 +2222,14 @@ function researchCtxFor(r) {
 // not a gate - Diff A review). One implementation for the table badge,
 // the detail panel and the published report.
 function researchVerdictText(res, r) {
+  // Step 17-E: state + reason only. The numeric tail (support / invalidation / resistance) is gone - those live in the entry line and Levels. Plain words only: no gate ids, no spec ids.
   var d = pricePrecision(r.price);
-  var supStr = fmt(r.supportNow, d), resStr = fmt(r.resistNow, d), invStr = fmt(r.invalidation, d);
-  var railNote = railNoteFor(r);
   var g = null;
   if (res.details && res.details.gates) { for (var i = 0; i < res.details.gates.length; i++) if (res.details.gates[i].id === res.gate) { g = res.details.gates[i]; break; } }
-  var tail = ' Support near '+supStr+' ('+railNote+'), invalidated below '+invStr+', channel resistance '+resStr+'.';
   var pctOf = function(v) { return (v*100).toFixed(1)+'%'; };
+  var lim = function(t) { var m = String(t == null ? '' : t).match(/[0-9]+(?:\.[0-9]+)?/); return m ? m[0] : '?'; };   // ">= 2" -> "2"
   switch (res.reason) {
-    case 'all-gates': return 'Act zone (research): every gate of the entry model passed on this snapshot.'+tail;
+    case 'all-gates': return 'Act: every entry check passed on this snapshot.';
     case 'data-unavailable': return 'Data unavailable: no research fit for this row - no levels shown.';
     case 'price-unknown': return 'Data unavailable: no current price for this row.';
     case 'rail-broken': {
@@ -2237,28 +2238,30 @@ function researchVerdictText(res, r) {
       return 'Wait: rail broken - '+(r.maxBreakRun||0)+' consecutive close(s) through invalidation, '+reclaimNote+' ('+sinceStr+').';
     }
     case 'awaiting-retest': return 'Watch: rail reclaimed '+r.barsSinceBreak+' bars ago after a break, but has not been retested since - awaiting a fresh support touch before this counts as active support again.';
-    case 'wick-probed': return 'Watch: the rail has been wick-probed (a touch inside the tolerance band is not evidence support held) - a closed bar back above the rail after the probe is needed before this counts as active support.'+tail;
-    case 'lifecycle-unknown': return 'Watch: rail lifecycle state unknown for this fit.'+tail;
-    case 'quote-breach': return 'Wait: the current quote '+fmt(r.price, d)+' is below invalidation '+invStr+' - rail breached on the live quote, not yet on a closed bar.';
-    case 'below-support': return 'Wait: price is below the support rail near '+supStr+' - rail broken, not lower-third positioning. Invalidated below '+invStr+'.';
+    case 'wick-probed': return 'Watch: the rail has been wick-probed (a touch inside the tolerance band is not evidence support held) - a closed bar back above the rail after the probe is needed before this counts as active support.';
+    case 'lifecycle-unknown': return 'Watch: rail lifecycle state unknown for this fit.';
+    case 'quote-breach': return 'Wait: the current quote is below the invalidation level - rail breached on the live quote, not yet on a closed bar.';
+    case 'below-support': return 'Wait: price is below the support rail - rail broken, not lower-third positioning.';
     case 'base-forming': {
       var v = g && g.value;
-      return 'Watch: base forming - price trend is not up yet ('+(v ? 'close '+fmt(v.close, d)+' vs EMA50 '+fmt(v.ema50, d)+', EMA50 slope '+pctOf(v.ema50Slope) : 'trend inputs unknown')+'); ACT needs close above a non-falling EMA50.'+tail;
+      return 'Watch: base forming - price trend is not up yet ('+(v ? 'close '+fmt(v.close, d)+' vs EMA50 '+fmt(v.ema50, d)+', EMA50 slope '+pctOf(v.ema50Slope) : 'trend inputs unknown')+'); an entry needs a close above a non-falling EMA50.';
     }
-    case 'unconfirmed': return 'Watch: unconfirmed level - '+(res.gate === 'C3.fresh-touch' ? 'last support touch was '+(g ? g.value : '?')+' bars ago (gate '+(g ? g.threshold : '?')+')' : 'a break run sits inside the freshness window ('+(g ? g.value : '?')+' bars since break, gate '+(g ? g.threshold : '?')+')')+' - wait for a fresh test before treating '+supStr+' as active support.'+tail;
-    case 'below-floor': return 'Watch: would be an act zone, but the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+') - watch for a bounce off support near '+supStr+'.'+tail;
-    case 'too-wide': return 'Watch: would be an act zone, but the channel is unusually wide ('+(g ? (g.value*100).toFixed(0) : '?')+'%, over the '+(g ? (g.threshold*100) : '?')+'% cap) - treat as a range boundary, not a price target.'+tail;
-    case 'not-at-support': return 'Watch: price '+(g && g.value ? fmt(g.value.price, d) : '--')+' is outside the H6 entry zone '+(g && g.value ? fmt(g.value.entryLow, d)+' - '+fmt(g.value.entryHigh, d) : '')+' - wait for a pullback into the zone.'+tail;
-    case 'extended': return 'Watch: extended - the last 3 bars gained '+(g ? fmt(g.value, d) : '?')+', more than 4x ATR14 ('+(g ? fmt(g.threshold, d) : '?')+'); wait for the move to settle.'+tail;
-    case 'rr-unknown': return 'Watch: reward-to-risk is Unknown - no resistance or swing high sits above the entry zone, so there is no target to size against.'+tail;
-    case 'rr-too-low': return 'Watch: net reward-to-risk '+(g ? g.value.toFixed(2) : '?')+' is below the '+(g ? g.threshold : '?')+' minimum to nearest resistance.'+tail;
-    case 'low-volume': return 'Watch: liquidity - 24h volume '+fmtVol(r.volume24h)+' is below the '+fmtVol(g ? g.threshold : null)+' floor for ACT.'+tail;
-    case 'volume-unknown': return 'Watch: liquidity unknown - no 24h volume on this row, so the volume gate fails as Unknown.'+tail;
-    case 'dead-volume': return 'Watch: the last support test came on dead volume ('+(g ? g.value.toFixed(2) : '?')+'x the 20-bar average, gate '+(g ? g.threshold : '?')+'x).'+tail;
-    case 'touch-volume-unknown': return 'Watch: touch-bar volume unknown ('+(r.timeframe === '4d-grid' ? 'grid candles carry no volume' : 'fewer than 20 prior bars with volume')+'), so the volume-on-touch gate fails as Unknown.'+tail;
-    case 'btc-regime': return 'Watch: BTC regime - BTC is '+(g && g.value && g.value.aboveEma50 ? 'above' : 'below')+' its EMA50 with slope '+(g && g.value ? pctOf(g.value.ema50Slope) : '?')+'; no alt is ACT while BTC is below a falling EMA50.'+tail;
-    case 'btc-regime-unknown': return 'Watch: BTC regime unknown (no btcRegime in the daily capture yet), so the market gate fails as Unknown.'+tail;
-    default: return 'Watch: '+res.reason+'.'+tail;
+    case 'unconfirmed': return 'Watch: unconfirmed level - '+(res.gate === 'C3.fresh-touch' ? 'the last support touch was '+(g ? g.value : '?')+' bars ago (freshness limit '+lim(g && g.threshold)+')' : 'a break run sits inside the recency window ('+(g ? g.value : '?')+' bars since break; needs '+lim(g && g.threshold)+' or more)')+' - wait for a fresh test before treating the support level as active support.';
+    case 'below-floor': return 'Watch: would be an act zone, but the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+') - watch for a bounce off support.';
+    case 'too-wide': return 'Watch: would be an act zone, but the channel is unusually wide ('+(g ? (g.value*100).toFixed(0) : '?')+'%, over the '+(g ? (g.threshold*100) : '?')+'% cap) - treat as a range boundary, not a price target.';
+    case 'not-at-support': return 'Watch: price '+(g && g.value ? fmt(g.value.price, d) : '--')+' is outside the entry zone '+(g && g.value ? fmt(g.value.entryLow, d)+' – '+fmt(g.value.entryHigh, d) : '')+' - wait for a pullback into the zone.';
+    case 'extended': return 'Watch: extended - the last 3 bars gained '+(g ? fmt(g.value, d) : '?')+', more than 4x ATR14 ('+(g ? fmt(g.threshold, d) : '?')+'); wait for the move to settle.';
+    case 'rr-unknown': return 'Watch: reward-to-risk is Unknown - no resistance or swing high sits above the entry zone, so there is no target to size against.';
+    case 'rr-too-low': return 'Watch: net reward-to-risk '+(g ? g.value.toFixed(2) : '?')+' is below the '+lim(g && g.threshold)+':1 minimum to nearest resistance.';
+    case 'low-volume': return 'Watch: liquidity - 24h volume '+fmtVol(r.volume24h)+' is below the '+fmtVol(g ? Number(lim(g.threshold)) : null)+' floor for an entry.';
+    case 'volume-unknown': return 'Watch: liquidity unknown - no 24h volume on this row, so the volume check fails as Unknown.';
+    case 'dead-volume': return 'Watch: the last support test came on dead volume ('+(g ? g.value.toFixed(2) : '?')+'x the 20-bar average; needs '+lim(g && g.threshold)+'x or more).';
+    case 'touch-volume-unknown': return 'Watch: touch-bar volume unknown ('+(r.timeframe === '4d-grid' ? 'grid candles carry no volume' : 'fewer than 20 prior bars with volume')+'), so the volume-on-touch check fails as Unknown.';
+    case 'btc-regime': return 'Watch: BTC regime - BTC is '+(g && g.value && g.value.aboveEma50 ? 'above' : 'below')+' its EMA50 with slope '+(g && g.value ? pctOf(g.value.ema50Slope) : '?')+'; no alt qualifies while BTC is below a falling EMA50.';
+    case 'btc-regime-unknown': return 'Watch: BTC regime unknown (no btcRegime in the daily capture yet), so the market check fails as Unknown.';
+    default:
+      try { console.error('Radar BUG: research verdict with unmapped reason ' + res.reason); } catch (e) {}
+      return 'Verdict unavailable (unmapped reason).';
   }
 }
 // Step 11-B (H6 / G6): entry zone, stop, target and R:R beside the research verdict. Every value is read off
@@ -2270,8 +2273,9 @@ function researchEntryHTML(rr) {
   var d = pricePrecision(rr.price);
   var tgt = (ee.target != null) ? fmt(ee.target, d) + ' (' + (ee.targetSource === 'independent' ? 'independent resistance' : 'nearest swing high') + ')' : 'none above entry';
   var rr2 = (ee.netRR != null) ? ee.netRR.toFixed(2) + ' net (' + ee.grossRR.toFixed(2) + ' gross, ' + (ee.costPct * 100).toFixed(1) + '% round trip)' : 'Unknown';
-  return '<div class="research-entry-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">Entry (research): zone ' + fmt(ee.entryZone[0], d) + ' - ' + fmt(ee.entryZone[1], d) +
-    ' · stop ' + fmt(ee.stop, d) + ' (' + ee.stopBasis + ', defended low ' + fmt(ee.defendedLow, d) + ')' +
+  var sbw = []; if (ee.stopBasis === 'cap') sbw.push('risk cap'); else if (ee.stopBasis === 'min-risk') sbw.push('minimum risk'); sbw.push('defended low ' + fmt(ee.defendedLow, d));   // Step 17-E: plain words, no spec ids
+  return '<div class="research-entry-line" style="font-size:10px;color:var(--muted,#9aa3b2);margin-top:3px">Entry: zone ' + fmt(ee.entryZone[0], d) + ' \u2013 ' + fmt(ee.entryZone[1], d) +
+    ' · stop ' + fmt(ee.stop, d) + ' (' + sbw.join(', ') + ')' +
     ' · target ' + tgt + ' · R:R ' + rr2 + '</div>';
 }
 // Step 11-E (Remediation spec H12, correlated signals) + C-2 (H5 frozen-signal display). Research mode only; every
@@ -2413,7 +2417,8 @@ function researchStateText(rs) {
   var prefix = RESEARCH_STATE_PREFIX[rs.state];
   var txt = rs.action.text.replace(/\bthe H6 entry zone\b/g, 'the entry zone');   // Step 16-A: plain words for the internal code (display text only)
   if (!prefix) return txt;
-  return txt.replace(/^(Act zone \(research\)|Watch|Wait):/, prefix);
+  if (rs.state === 'WAIT' && rs.action.reason === 'all-gates') return 'Wait: the nearest target sits below the current price.';   // Step 17-E: the page-level target-below-price rule (every engine gate passed, the page says wait)
+  return txt.replace(/^(Act zone \(research\)|Act|Watch|Wait):/, prefix);
 }
 // Primary badge (state) + the failing check(s) in plain words + the legacy verdict as a small muted tag.
 function researchStateCellHTML(rs, legacyAction, size) {
@@ -2811,7 +2816,47 @@ pinLoad();
 // Step 17-A (P3): research-view detail panel. The panel's existing nodes are MOVED into the new order (never re-created), so every
 // id/listener the page already uses keeps working; ?legacy=1 never builds this layout and keeps the original DOM. Display only.
 var P3 = null;
-var P3_SEC_DEFAULT = { levels: true, checks: true, rdetail: false, legacy: false };
+// Step 17-E: analysis paragraph. EVERY input comes from the research fit (rr = r.researchRow) and res.details.gates - nothing from the legacy fit r.
+// No Levels numbers (support / resistance / invalidation / entry zone / stop / target / R:R) are repeated here.
+var P3_FAIL_WORDS = {
+  'struct.lifecycle': 'the support rail is broken', 'struct.quote-breach': 'the live quote is below invalidation', 'struct.below-rail': 'price is below the support rail',
+  'C1.trend': 'the trend is not up', 'C2.width': 'the channel is too wide', 'C4.volume24h': '24h volume is below the floor',
+  'C7.floor': 'the research score is below the floor', 'C3.no-recent-break': 'a recent break is still inside the window', 'C4.touch-volume': 'the last support test came on weak volume',
+  'C3.fresh-touch': 'the last support touch is not fresh', 'C2.entry-zone': 'price is outside the entry zone', 'C6.spike': 'price is already extended',
+  'H6.rr': 'reward:risk is below the minimum', 'C5.btc-regime': 'the BTC regime is not supportive'
+};
+var P3_NO_NUMBERS = { 'C2.entry-zone': 1, 'H6.rr': 1, 'struct.quote-breach': 1, 'struct.lifecycle': 1 };
+function researchAnalysisText(res, r) {
+  var rr = r ? r.researchRow : null;
+  if (!rr || !res) return '';
+  var rs = researchStateFor(r), st = rs.state;
+  if (st === 'NOFIT' || st === 'BUG' || !rs.action) return '';
+  var gates = (res.details && res.details.gates) || [], byId = {}, d = pricePrecision(rr.price);
+  gates.forEach(function (g) { byId[g.id] = g; });
+  var failed = function (id) { var x = byId[id]; return !x || x.pass !== true; };
+  var gFalse = function (id) { return !!byId[id] && byId[id].pass === false; }, broken = gFalse('struct.lifecycle') || gFalse('struct.below-rail') || gFalse('struct.quote-breach');
+  var label = structureLabelFor(rr), tf = rr.timeframe === '1d' ? 'daily' : (rr.timeframe === '4d-grid' ? '4-day' : String(rr.timeframe || ''));
+  var tolPct = (typeof rr.tol === 'number' && isFinite(rr.tol)) ? researchNum(Number((rr.tol * 100).toFixed(2))) : '?';
+  var pos = rr.position, posPhrase = (typeof pos !== 'number') ? 'position unknown' : (pos < 0 ? 'below the support rail' : (pos < 0.33 ? 'in the lower third of the channel' : (pos <= 0.67 ? 'in the middle of the channel' : 'in the upper third of the channel')));
+  var note = railNoteFor(rr).replace(/ \(([^)]*)\)/, ', $1'), rail = (rr.supportRailAgeDays == null) ? note : ((rr.supportRailAgeBand === 'fresh' ? 'a fresh support rail' : 'a non-fresh support rail') + ' (' + note + ')');
+  var s = (rr.name || rr.symbol || 'This coin') + ' ' + (broken ? 'held' : 'holds') + ' ' + structureArticleFor(label) + ' ' + label + ' ' + tf + ' channel: ' + rr.supportTouches + ' support / ' + rr.resTouches + ' resistance touches at ' + tolPct + '% tolerance, containment ' + rr.containment + '%, price ' + posPhrase + (rr.supportRailAgeDays == null ? ', ' : ' with ') + rail + '.';
+  var list = st === 'NEAR' ? RESEARCH_NEAR_GATES : (st === 'DEVELOPING' ? RESEARCH_DEV_GATES : (st === 'WAIT' ? RESEARCH_WAIT_GATES : []));
+  var fails = list.filter(failed);
+  var say = function (id) {
+    var g = byId[id], w = P3_FAIL_WORDS[id] || id;
+    if (!g) return w + ' (not evaluated)';
+    if (P3_NO_NUMBERS[id]) return w + (id === 'struct.lifecycle' ? ' (needs intact or re-qualified)' : '');
+    var fv = p3GateValue(g, d);
+    return w + ' (' + fv.val + (fv.thr ? ', needs ' + fv.thr : '') + ')';
+  };
+  var pageLevel = st === 'WAIT' ? 'the nearest target sits below the current price' : (st === 'DEVELOPING' ? 'price is well above the entry zone' : '');
+  if (st === 'ACT') return s + ' Every entry check passed.';
+  if (st === 'NEAR') return s + (fails.length === 1 ? ' One check short of Act \u2014 ' + say(fails[0]) + '.' : ' ' + fails.length + ' checks short of Act \u2014 ' + fails.map(say).join('; ') + '.');
+  if (st === 'DEVELOPING') return s + ' Not yet actionable: ' + (fails.length ? say(fails[0]) : pageLevel) + '.';
+  return s + ' Standing aside: ' + (fails.length ? say(fails[0]) : pageLevel) + '.';
+}
+
+var P3_SEC_DEFAULT = { verdict: true, levels: true, checks: true, rdetail: false, legacy: false };
 var P3_GATE_WORDS = {
   'data.fit': 'research fit found', 'data.price': 'current price known', 'struct.lifecycle': 'rail intact (not broken)', 'struct.quote-breach': 'live quote above invalidation',
   'struct.below-rail': 'price above the support rail', 'C1.trend': 'trend up (close above a non-falling EMA50)', 'C3.fresh-touch': 'fresh support touch',
@@ -2844,7 +2889,7 @@ function p3Build(panel) {
     scoreDs: $('dp-score').closest('.ds'), posDs: $('dp-pos-label').closest('.ds'), anaDs: $('dp-expl').closest('.ds'), recDs: $('dp-action-badge').closest('.ds'),
     invDs: $('dp-inv').closest('.ds'), btnDs: $('dp-tv').closest('.ds'), header: panel.querySelector('.detail-header'), coin: panel.querySelector('.detail-coin'),
     sym: $('dp-symbol'), pin: $('dp-pin') };
-  o.confNote = o.confDs.lastElementChild; o.confTitle = o.confDs.firstElementChild; o.recTitle = o.recDs.querySelector('.ds-title'); o.recTitleHTML = o.recTitle.innerHTML; o.recTitleTip = o.recTitle.getAttribute('data-tip');
+  o.confNote = null; o.confTitle = o.confDs.firstElementChild; o.recTitle = o.recDs.querySelector('.ds-title'); o.recTitleHTML = o.recTitle.innerHTML; o.recTitleTip = o.recTitle.getAttribute('data-tip');
   panel.classList.add('p3');
   // header: state row, and the star right after the ticker
   o.state = document.createElement('div'); o.state.id = 'dp-hdr-state'; o.state.className = 'p3-state'; o.header.appendChild(o.state);
@@ -2859,7 +2904,9 @@ function p3Build(panel) {
   o.strip.title = (o.confTitle ? o.confTitle.textContent : '') + (o.confNote ? '. ' + o.confNote.textContent : '');
   o.strip.appendChild(conf);
   o.chip = document.createElement('span'); o.chip.id = 'dp-fitchip'; o.chip.className = 'p3-chip'; o.strip.appendChild(o.chip);
-  o.verdict = document.createElement('div'); o.verdict.id = 'dp-verdict'; o.verdict.className = 'p3-verdict';   // Step 17-B: full-width, always open
+  o.verdict = document.createElement('div'); o.verdict.id = 'dp-verdict'; o.verdict.className = 'p3-verdict';   // verdict / entry / score block (id kept from 17-B)
+  o.analysis = document.createElement('div'); o.analysis.id = 'dp-analysis'; o.analysis.className = 'p3-analysis';   // Step 17-E
+  o.sVd = p3Sec('verdict', 'Verdict and Analysis'); o.sVd.b.appendChild(o.verdict); o.sVd.b.appendChild(o.analysis);
   o.slot = document.createElement('span'); o.slot.id = 'dp-recent-slot'; o.slot.className = 'p3-slot'; o.slot.setAttribute('data-p2', 'pending'); o.slot.hidden = true; o.strip.appendChild(o.slot);
   // sections
   o.sLv = p3Sec('levels', 'Levels'); o.sLv.b.appendChild(o.levels);
@@ -2869,7 +2916,7 @@ function p3Build(panel) {
   o.recTitle.textContent = 'Legacy verdict'; o.recTitle.removeAttribute('data-tip'); o.recTitle.classList.remove('cat-tip');
   [o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs].forEach(function (d) { o.sLg.b.appendChild(d); });
   body.removeChild(o.confDs);
-  [o.strip, o.verdict, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { body.appendChild(e); });
+  [o.strip, o.sVd.sec, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { body.appendChild(e); });
   o.btnDs.classList.add('p3-btns'); panel.appendChild(o.btnDs);
   P3 = o;
 }
@@ -2883,7 +2930,7 @@ function p3Restore(panel) {
   o.recTitle.innerHTML = o.recTitleHTML; if (o.recTitleTip != null) { o.recTitle.setAttribute('data-tip', o.recTitleTip); o.recTitle.classList.add('cat-tip'); }
   o.btnDs.classList.remove('p3-btns');
   [o.fw, o.levels, o.confDs, o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs, o.btnDs].forEach(function (e) { o.body.appendChild(e); });
-  [o.strip, o.verdict, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
+  [o.strip, o.sVd.sec, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
 }
 function p3PlaceLegend() {
   if (!P3) return;
@@ -2919,7 +2966,14 @@ function p3GateValue(g, d) {
   if (t == null) thr = '';
   else if (id === 'C2.width' && num(t)) thr = '≤ ' + (t * 100).toFixed(0) + '%';
   else if (num(t)) thr = (cmp ? cmp + ' ' : '') + ((id === 'struct.quote-breach' || id === 'C6.spike') ? money(t) : researchNum(t));
-  else thr = String(t);
+  else thr = String(t).replace(/>=/g, '\u2265').replace(/<=/g, '\u2264');
+  // Step 17-E: plain words for the engine's threshold expressions (no code-like text on screen).
+  if (id === 'C1.trend') thr = 'close above a non-falling EMA50';
+  else if (id === 'C5.btc-regime') thr = 'BTC above a non-falling EMA50';
+  else if (id === 'C3.no-recent-break') thr = 'at least ' + (String(t).match(/[0-9]+/) || ['?'])[0] + ' bars since a break (or never)';
+  else if (id === 'C3.fresh-touch') thr = 'at most ' + (String(t).match(/[0-9]+/) || ['?'])[0] + ' bars';
+  else if (id === 'struct.lifecycle') thr = 'intact or re-qualified';
+  else if (id === 'data.fit') { thr = ''; if (v === 'fit') val = 'found'; }
   return { val: val, thr: thr };
 }
 function p3ChecksHTML(rs, r) {
@@ -2931,13 +2985,14 @@ function p3ChecksHTML(rs, r) {
   return items.map(function (x) {
     var g = x.g, cls = g.pass === true ? 'ok' : (g.pass === false ? 'bad' : 'unk'), fv = p3GateValue(g, d);
     var name = P3_GATE_WORDS[g.id] || g.id;
-    return '<div class="p3-check ' + cls + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '" title="' + researchAttr(g.id + ' — ' + name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
+    return '<div class="p3-check ' + cls + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '" title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
       '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span><span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span></div>';
   }).join('');
 }
 // Step 17-B: Verdict bar - line 1 the state-prefixed research sentence, line 2 the entry line, line 3 the research score against its floor. Display only.
 function p3VerdictHTML(r, rs) {
-  var rr = r.researchRow, h = '<div class="p3-v1">' + researchAttr(rs.action ? researchStateText(rs) : 'Research: no fit on this series') + '</div>';
+  var rr = r.researchRow, h = '<div class="p3-v1">' + researchAttr(rs.action ? researchStateText(rs) : 'No research fit for this row.') + '</div>';
+  if (rs.state === 'NOFIT') return h;   // Step 17-E: no fit / data unavailable = the verdict line only
   var entry = rr ? researchEntryHTML(rr) : '';
   if (entry) h += '<div class="p3-v2">' + entry + '</div>';
   if (rr && typeof rr.score === 'number') {
@@ -2952,6 +3007,7 @@ function p3RenderPanel(r, rs, action) {
   var o = P3; if (!o) return;
   o.state.innerHTML = researchHeaderStateHTML(rs, action);
   o.verdict.innerHTML = p3VerdictHTML(r, rs);
+  var at = researchAnalysisText(rs.action, r); o.analysis.textContent = at; o.analysis.style.display = at ? '' : 'none';   // Step 17-E
   o.checks.innerHTML = p3ChecksHTML(rs, r);
   var gates = (rs.action && rs.action.details && rs.action.details.gates) || [], nf = gates.filter(function (g) { return g.pass !== true; }).length;
   o.sCk.n.textContent = gates.length ? nf + ' of ' + gates.length + ' not passing' : '';
