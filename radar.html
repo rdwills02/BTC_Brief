@@ -86,13 +86,51 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .radar-table .rs-legacy{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .radar-table td:first-child{position:relative}
 /* Step 16-A (P1 pinned coins): the pin control overlays the Coin cell's left padding and the note/no-channel badge clip to the column, so table width is unchanged. */
-.radar-table td:first-child{padding-left:0}
-.radar-table td:first-child .coin-cell{margin-left:21px}
-.pin-btn{position:absolute;left:0;top:0;bottom:0;width:21px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;color:var(--muted,#6b7280);user-select:none;opacity:.55}
+.radar-table td:first-child{padding-left:6px}
+.radar-table .coin-cell{gap:0}
+.radar-table .coin-cell>div:last-child{margin-left:8px}
+/* Step 17-A: the row star sits between the avatar and the ticker (19 px glyph, 21 x 50 px hit area via padding/negative margin, so row height is unchanged). */
+.pin-btn{flex:none;box-sizing:content-box;width:21px;height:26px;padding:12px 0;margin:-12px 0;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;cursor:pointer;color:var(--muted,#6b7280);user-select:none;opacity:.55}
 .pin-btn:hover{opacity:1}
 .pin-btn.on{color:#f5c542;opacity:1}
-#dp-pin.pin-btn{position:static;display:inline-flex;width:auto;padding:10px;margin-left:4px;font-size:16px;vertical-align:middle}
+#dp-pin.pin-btn{display:inline-flex;width:auto;height:auto;padding:10px;margin:-10px 0 -10px 0;font-size:19px;vertical-align:middle}
 tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
+/* Step 17-A (P3): research-view detail panel - header state row, signal strip, collapsible sections, pinned buttons. Legacy view never gets the .p3 class. */
+.p3 .chart-legend,.p3 #dp-fitwindow{display:none}
+.p3 .detail-header{flex-wrap:wrap;row-gap:6px;padding:10px 18px}
+.p3 .p3-state{flex:0 0 100%;order:3;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:11px}
+.p3 .p3-symrow{display:flex;align-items:center;gap:0}
+.p3-why{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted,#9aa3b2)}
+.p3-leg,.p3-lab{font-size:9px;color:var(--muted,#9aa3b2)}
+.chart-key{position:absolute;top:8px;left:10px;z-index:11;font-size:10px;font-weight:600;color:var(--muted);background:rgba(30,32,53,.85);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:help;outline:none}
+.chart-key-pop{display:none;position:absolute;top:100%;left:0;margin-top:4px;width:min(520px,80vw);font-weight:400;line-height:1.6;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text2)}
+.chart-key:hover .chart-key-pop,.chart-key:focus .chart-key-pop{display:block}
+.p3 .chart-key-pop #detail-chart-legend-research{display:block!important;padding:4px 0 0!important;margin:0!important;font-size:10px}
+.p3-strip{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 18px;border-bottom:1px solid var(--border)}
+.p3-strip #dp-confluence{display:contents}
+.p3-strip .research-pop-body{flex:0 0 100%}
+.p3-strip .cat-tip{margin-bottom:0!important;margin-right:0!important}
+.p3-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;background:var(--surface2);color:var(--text2);cursor:help;white-space:nowrap}
+.p3-sec{border-bottom:1px solid var(--border)}
+.p3-sec-h{display:flex;align-items:center;gap:6px;padding:7px 18px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none}
+.p3-sec-h::before{content:"\25BE";font-size:10px}
+.p3-sec.collapsed .p3-sec-h::before{content:"\25B8"}
+.p3-sec.collapsed .p3-sec-b{display:none}
+.p3-sec-n{margin-left:auto;font-weight:600;letter-spacing:0;text-transform:none}
+.p3 #dp-levels{padding-top:0}
+.p3 #dp-levels .ds-title{display:none}
+.p3 .levels-table th,.p3 .levels-table td{padding:2px 6px}
+.p3 .levels-table .lv-keys{display:inline;margin:0 0 0 6px}
+.p3 .levels-table .lv-sub{display:inline;margin-left:6px}
+.p3-checks{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;padding:0 18px 12px}
+.p3-check{display:flex;gap:6px;align-items:baseline;font-size:11px;line-height:1.35;min-width:0}
+.p3-ck-i{flex:none;width:12px;font-weight:700}
+.p3-check.ok .p3-ck-i{color:var(--bull)}.p3-check.bad .p3-ck-i{color:var(--bear)}.p3-check.unk .p3-ck-i{color:var(--neut)}
+.p3-ck-v{display:block;font-size:10px;color:var(--muted);overflow-wrap:anywhere}
+.p3-rd{padding:0 18px 12px}
+.p3-sec-b>.ds{border-bottom:1px solid var(--border)}
+.p3-btns{display:flex;gap:8px;flex:none;border-top:1px solid var(--border);border-bottom:none;padding:6px 18px}
+.p3-btns .tv-btn-lg{margin-top:0!important;padding:6px;font-size:12px}
 .pin-note{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--muted,#9aa3b2)}
 .vbadge.pin-nofit{display:block;width:0;min-width:100%;box-sizing:border-box;white-space:normal;text-align:center;opacity:.55;color:var(--muted,#9aa3b2);letter-spacing:0;text-transform:none;font-size:9px}
 .pin-chip{font-size:11px;color:#f5c542;border:1px solid rgba(245,197,66,.35);border-radius:10px;padding:2px 8px;margin-left:10px}
@@ -1297,8 +1335,16 @@ function levelsTableHTML(r) {
   return '<div class="ds-title">Levels</div><table class="levels-table">' + head + body + '</table>';
 }
 function renderLevelsAndFitWindow(r) {
-  var fw = document.getElementById('dp-fitwindow'), lv = document.getElementById('dp-levels');
-  if (fw) fw.innerHTML = fitWindowLines(r).map(function (x) { return '<div>' + x.label + ': ' + x.body + '</div>'; }).join('');
+  var fw = document.getElementById('dp-fitwindow'), lv = document.getElementById('dp-levels'), chip = document.getElementById('dp-fitchip');
+  var fwLines = fitWindowLines(r);
+  if (fw) fw.innerHTML = (RESEARCH_MODE_UI && chip) ? '' : fwLines.map(function (x) { return '<div>' + x.label + ': ' + x.body + '</div>'; }).join('');
+  if (chip) {   // Step 17-A (P3): the fit window appears once, as a chip in the signal strip (full lines in the tooltip)
+    var rrw = RESEARCH_MODE_UI ? r.researchRow : null, m = r.candles ? r.candles.length : null;
+    var nFit = (rrw && typeof rrw.firstIdx === 'number' && typeof rrw.lastIdx === 'number') ? rrw.lastIdx - rrw.firstIdx + 1 : ((typeof r.firstIdx === 'number' && typeof r.lastIdx === 'number') ? r.lastIdx - r.firstIdx + 1 : null);
+    chip.style.display = (nFit == null) ? 'none' : '';
+    chip.textContent = (nFit == null) ? '' : 'fit ' + nFit + (m != null ? '/' + m : '') + ' bars';
+    chip.title = fwLines.map(function (x) { return x.label + ': ' + x.body; }).join(' \u00b7 ');
+  }
   if (lv) lv.innerHTML = levelsTableHTML(r);
 }
 // G9: legend under the chart, research mode only (element created by buildChart's research branch).
@@ -1344,6 +1390,21 @@ function researchLegendHTML(rr) {
     ent(K['Ceiling'].main, 'Main resistance', 'Main (flag-off) resistance rail, dimmed to 50% while the research rails are shown'),
     ent(K['Invalidation'].main, 'Main invalidation', 'Main (flag-off) invalidation line, dimmed while the research rails are shown')
   ].join(' · ');
+}
+// Step 17-A (P3): the pill row (research pills + conflict tag + popovers) on its own, for the signal strip.
+function researchPillsHTML(rr) {
+  var b = researchConfluenceList(rr);
+  var pills = b.map(function(x){
+    var base = 'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:'+x.bg+';color:'+x.c+';margin-right:6px;display:inline-block;margin-bottom:4px;';
+    if (x.rec) {
+      return '<span class="cat-tip research-pill" data-pattern="'+researchAttr(x.pattern)+'" data-color="'+x.c+'" data-candle-ids="'+researchAttr(JSON.stringify(x.rec.candleIds))+'" data-tip="'+researchAttr(x.tip)+'" style="'+base+'cursor:pointer">'+x.t+'</span>';
+    }
+    return '<span class="cat-tip" data-tip="'+researchAttr(x.tip)+'" style="'+base+'cursor:help">'+x.t+'</span>';
+  }).join('');
+  var conflictTag = rr.conflictingSignals
+    ? '<span class="cat-tip" data-tip="'+researchAttr(researchConflictTip(rr))+'" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:rgba(255,176,32,.15);color:#ffb020;margin-right:6px;display:inline-block;margin-bottom:4px;cursor:help">Conflicting signals</span>' : '';
+  var pops = b.filter(function(x){ return x.rec; }).map(function(x){ return researchPopoverHTML(x.rec); }).join('');
+  return pills + conflictTag + pops;
 }
 function researchConfluenceHTML(rr) {
   var b = researchConfluenceList(rr);
@@ -1394,6 +1455,7 @@ function filteredConfluenceHTML(r) {
 // expression the panel runs, not a re-derivation of it.
 function dpConfluenceHTML(r) {
   if (RESEARCH_MODE_UI && r.researchRow) {
+    if (P3) return filteredConfluenceHTML(r) + researchPillsHTML(r.researchRow);   // Step 17-A: pills only - score/execution/structure/wick lines live in "Research detail"
     return filteredConfluenceHTML(r) + researchConfluenceHTML(r.researchRow);
   }
   return confluenceHTML(r);
@@ -2718,7 +2780,7 @@ function pinStubHTML(u) {
   var dash = '<td style="color:var(--muted)">--</td>';
   var cc = u.change24h == null ? '' : (u.change24h >= 0 ? 'up' : 'dn');
   return '<tr class="pin-row pin-stub" data-pin-stub="' + String(u.cgId).replace(/"/g, '&quot;') + '">' +
-    '<td>' + pinButtonHTML(u.cgId, true) + '<div class="coin-cell"><div class="coin-icon">' + u.symbol.substring(0, 3) + '</div><div><div class="coin-name">' + u.symbol + '</div>' +
+    '<td><div class="coin-cell"><div class="coin-icon">' + u.symbol.substring(0, 3) + '</div>' + pinButtonHTML(u.cgId, true) + '<div><div class="coin-name">' + u.symbol + '</div>' +
       '<div class="coin-sub" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + sub.replace(/"/g, '&quot;') + '">' + sub + '</div>' +
       '<div class="pin-note" title="pinned · outside current filters">pinned · outside current filters</div></div></div></td>' +
     '<td><span class="vbadge pin-nofit" title="No channel found for this coin in the current capture">no channel found</span></td>' +
@@ -2731,6 +2793,144 @@ function pinStubHTML(u) {
     '<td><a class="tv-link" href="' + tvUrl + '" target="_blank" onclick="event.stopPropagation()">TV</a></td></tr>';
 }
 pinLoad();
+
+// Step 17-A (P3): research-view detail panel. The panel's existing nodes are MOVED into the new order (never re-created), so every
+// id/listener the page already uses keeps working; ?legacy=1 never builds this layout and keeps the original DOM. Display only.
+var P3 = null;
+var P3_SEC_DEFAULT = { levels: true, checks: true, rdetail: false, legacy: false };
+var P3_GATE_WORDS = {
+  'data.fit': 'research fit found', 'data.price': 'current price known', 'struct.lifecycle': 'rail intact (not broken)', 'struct.quote-breach': 'live quote above invalidation',
+  'struct.below-rail': 'price above the support rail', 'C1.trend': 'trend up (close above a non-falling EMA50)', 'C3.fresh-touch': 'fresh support touch',
+  'C3.no-recent-break': 'no recent break', 'C7.floor': 'research score above the floor', 'C2.width': 'channel not too wide', 'C2.entry-zone': 'price in the entry zone',
+  'C6.spike': 'price not already extended', 'H6.rr': 'reward:risk high enough', 'C4.volume24h': '24h volume above the floor', 'C4.touch-volume': 'support tested on real volume',
+  'C5.btc-regime': 'BTC regime supportive'
+};
+var P3_CMP = { 'C7.floor': '≥', 'struct.quote-breach': '>', 'C6.spike': '≤' };
+function p3SecOpen(name) { try { var v = localStorage.getItem('radar_p3_sec_' + name); if (v === '1') return true; if (v === '0') return false; } catch (e) {} return P3_SEC_DEFAULT[name]; }
+function p3SecSave(name, open) { try { localStorage.setItem('radar_p3_sec_' + name, open ? '1' : '0'); } catch (e) {} }
+function p3Sec(name, title) {
+  var sec = document.createElement('div'); sec.className = 'p3-sec' + (p3SecOpen(name) ? '' : ' collapsed'); sec.setAttribute('data-sec', name);
+  var h = document.createElement('div'); h.className = 'p3-sec-h'; h.setAttribute('role', 'button'); h.setAttribute('tabindex', '0');
+  h.innerHTML = '<span class="p3-sec-t">' + title + '</span><span class="p3-sec-n"></span>';
+  var b = document.createElement('div'); b.className = 'p3-sec-b';
+  var toggle = function () { var c = sec.classList.toggle('collapsed'); p3SecSave(name, !c); };
+  h.addEventListener('click', toggle);
+  h.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  sec.appendChild(h); sec.appendChild(b);
+  return { sec: sec, h: h, b: b, n: h.querySelector('.p3-sec-n') };
+}
+function panelLayout(research) {
+  var panel = document.getElementById('detail-panel'); if (!panel) return;
+  if (research && !P3) p3Build(panel); else if (!research && P3) p3Restore(panel);
+}
+function p3Build(panel) {
+  var $ = function (id) { return document.getElementById(id); };
+  var body = panel.querySelector('.detail-body'), chartWrap = $('chart-wrap'), conf = $('dp-confluence');
+  var o = { body: body, chartWrap: chartWrap, fw: $('dp-fitwindow'), levels: $('dp-levels'), conf: conf, confDs: conf.parentNode,
+    scoreDs: $('dp-score').closest('.ds'), posDs: $('dp-pos-label').closest('.ds'), anaDs: $('dp-expl').closest('.ds'), recDs: $('dp-action-badge').closest('.ds'),
+    invDs: $('dp-inv').closest('.ds'), btnDs: $('dp-tv').closest('.ds'), header: panel.querySelector('.detail-header'), coin: panel.querySelector('.detail-coin'),
+    sym: $('dp-symbol'), pin: $('dp-pin') };
+  o.confNote = o.confDs.lastElementChild; o.confTitle = o.confDs.firstElementChild; o.recTitle = o.recDs.querySelector('.ds-title'); o.recTitleHTML = o.recTitle.innerHTML; o.recTitleTip = o.recTitle.getAttribute('data-tip');
+  panel.classList.add('p3');
+  // header: state row, and the star right after the ticker
+  o.state = document.createElement('div'); o.state.id = 'dp-hdr-state'; o.state.className = 'p3-state'; o.header.appendChild(o.state);
+  o.symrow = document.createElement('div'); o.symrow.className = 'p3-symrow'; o.sym.parentNode.insertBefore(o.symrow, o.sym); o.symrow.appendChild(o.sym); o.symrow.appendChild(o.pin);
+  // chart: the legend becomes a hover "key" icon at the chart corner
+  o.key = document.createElement('div'); o.key.className = 'chart-key'; o.key.id = 'dp-key'; o.key.setAttribute('tabindex', '0'); o.key.appendChild(document.createTextNode('key'));
+  o.pop = document.createElement('div'); o.pop.className = 'chart-key-pop'; o.pop.id = 'dp-key-pop';
+  var lg0 = chartWrap.querySelector('.chart-legend'); if (lg0) { var lgc = document.createElement('div'); lgc.className = 'chart-legend-copy'; lgc.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap'; lgc.innerHTML = lg0.innerHTML; o.pop.appendChild(lgc); }
+  o.key.appendChild(o.pop); chartWrap.appendChild(o.key);
+  // signal strip: confluence pills, fit-window chip, placeholder for the P2 recent-move pill
+  o.strip = document.createElement('div'); o.strip.id = 'dp-strip'; o.strip.className = 'p3-strip';
+  o.strip.title = (o.confTitle ? o.confTitle.textContent : '') + (o.confNote ? '. ' + o.confNote.textContent : '');
+  o.strip.appendChild(conf);
+  o.chip = document.createElement('span'); o.chip.id = 'dp-fitchip'; o.chip.className = 'p3-chip'; o.strip.appendChild(o.chip);
+  o.slot = document.createElement('span'); o.slot.id = 'dp-recent-slot'; o.slot.className = 'p3-slot'; o.slot.setAttribute('data-p2', 'pending'); o.slot.hidden = true; o.strip.appendChild(o.slot);
+  // sections
+  o.sLv = p3Sec('levels', 'Levels'); o.sLv.b.appendChild(o.levels);
+  o.sCk = p3Sec('checks', 'Checks'); o.checks = document.createElement('div'); o.checks.id = 'dp-checks'; o.checks.className = 'p3-checks'; o.sCk.b.appendChild(o.checks);
+  o.sRd = p3Sec('rdetail', 'Research detail'); o.rd = document.createElement('div'); o.rd.id = 'dp-rdetail'; o.rd.className = 'p3-rd'; o.sRd.b.appendChild(o.rd);
+  o.sLg = p3Sec('legacy', 'Legacy');
+  o.recTitle.textContent = 'Legacy verdict'; o.recTitle.removeAttribute('data-tip'); o.recTitle.classList.remove('cat-tip');
+  [o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs].forEach(function (d) { o.sLg.b.appendChild(d); });
+  body.removeChild(o.confDs);
+  [o.strip, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { body.appendChild(e); });
+  o.btnDs.classList.add('p3-btns'); panel.appendChild(o.btnDs);
+  P3 = o;
+}
+function p3Restore(panel) {
+  var o = P3; P3 = null;
+  panel.classList.remove('p3');
+  if (o.state.parentNode) o.state.parentNode.removeChild(o.state);
+  o.symrow.parentNode.insertBefore(o.sym, o.symrow); o.symrow.parentNode.removeChild(o.symrow); o.coin.appendChild(o.pin);
+  if (o.key.parentNode) o.key.parentNode.removeChild(o.key);   // takes the research legend with it; buildChart recreates it when needed
+  o.confDs.insertBefore(o.conf, o.confNote);
+  o.recTitle.innerHTML = o.recTitleHTML; if (o.recTitleTip != null) { o.recTitle.setAttribute('data-tip', o.recTitleTip); o.recTitle.classList.add('cat-tip'); }
+  o.btnDs.classList.remove('p3-btns');
+  [o.fw, o.levels, o.confDs, o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs, o.btnDs].forEach(function (e) { o.body.appendChild(e); });
+  [o.strip, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
+}
+function p3PlaceLegend() {
+  if (!P3) return;
+  var lg = document.getElementById(RESEARCH_LEGEND_ID);
+  if (lg && lg.parentNode !== P3.pop) P3.pop.appendChild(lg);
+}
+// Header state row: the same badge (label + tooltip) and plain-words reason the table row shows, plus the legacy verdict as a small tag.
+function researchHeaderStateHTML(rs, legacyAction) {
+  var cls = { ACT: 'va-act', NEAR: 'va-near', DEVELOPING: 'va-dev', WAIT: 'va-wait', NOFIT: '', BUG: 'va-wait' }[rs.state];
+  var label = rs.state === 'NOFIT' ? '— no fit' : rs.state;
+  var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : 'Research: no fit on this series (no rail pair passed the research gates on these candles)';
+  var style = 'font-size:10px;' + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
+  var why = rs.why || '';
+  return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '" style="' + style + '">' + label + '</span>' +
+    (why ? '<span class="p3-why" title="' + why.replace(/"/g, '&quot;') + '">' + why + '</span>' : '') +
+    '<span class="p3-leg" title="legacy: ' + legacyAction.verdict + (rs.action ? ' \u00b7 ' + RESEARCH_SCORE_LABEL : '') + '">legacy: ' + legacyAction.verdict + '</span>';   // the score-status label rides in the tooltips (badge + tag), not on the row
+}
+// Checks: researchVerdict's details.gates as a compact list, failing (and unknown) first, the engine's own order otherwise.
+function p3GateValue(g, d) {
+  var num = function (v) { return typeof v === 'number' && isFinite(v); };
+  var money = function (v) { return num(v) ? fmt(v, d) : String(v); };
+  var v = g.value, t = g.threshold, id = g.id, cmp = P3_CMP[id] || '';
+  var val, thr;
+  if (v == null) val = 'unknown';
+  else if (id === 'C1.trend' && typeof v === 'object') val = 'close ' + money(v.close) + ' vs EMA50 ' + money(v.ema50) + ', EMA50 slope ' + (num(v.ema50Slope) ? (v.ema50Slope * 100).toFixed(1) + '%' : '?');
+  else if (id === 'C2.entry-zone' && typeof v === 'object') val = 'price ' + money(v.price) + ', zone ' + money(v.entryLow) + ' – ' + money(v.entryHigh);
+  else if (id === 'C5.btc-regime' && typeof v === 'object') val = 'BTC ' + (v.aboveEma50 ? 'above' : 'below') + ' EMA50, slope ' + (num(v.ema50Slope) ? (v.ema50Slope * 100).toFixed(1) + '%' : '?');
+  else if (id === 'C2.width' && num(v)) val = (v * 100).toFixed(0) + '%';
+  else if (id === 'C4.volume24h' && num(v)) val = fmtVol(v);
+  else if ((id === 'struct.quote-breach' || id === 'C6.spike' || id === 'data.price') && num(v)) val = money(v);
+  else if (num(v)) val = (id === 'H6.rr' || id === 'C4.touch-volume') ? v.toFixed(2) : researchNum(v);
+  else if (typeof v === 'object') val = JSON.stringify(v); else val = String(v);
+  if (t == null) thr = '';
+  else if (id === 'C2.width' && num(t)) thr = '≤ ' + (t * 100).toFixed(0) + '%';
+  else if (num(t)) thr = (cmp ? cmp + ' ' : '') + ((id === 'struct.quote-breach' || id === 'C6.spike') ? money(t) : researchNum(t));
+  else thr = String(t);
+  return { val: val, thr: thr };
+}
+function p3ChecksHTML(rs, r) {
+  var gates = (rs && rs.action && rs.action.details && rs.action.details.gates) || [];
+  if (!gates.length) return '<div class="p3-check unk" style="grid-column:1/-1"><span class="p3-ck-i">?</span><span>No research fit on this series — no checks to run</span></div>';
+  var d = pricePrecision(r.price);
+  var items = gates.map(function (g, i) { return { g: g, i: i, bad: g.pass !== true ? 1 : 0 }; });
+  items.sort(function (a, b) { return (b.bad - a.bad) || (a.i - b.i); });
+  return items.map(function (x) {
+    var g = x.g, cls = g.pass === true ? 'ok' : (g.pass === false ? 'bad' : 'unk'), fv = p3GateValue(g, d);
+    var name = P3_GATE_WORDS[g.id] || g.id;
+    return '<div class="p3-check ' + cls + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '" title="' + researchAttr(g.id + ' — ' + name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
+      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span><span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span></div>';
+  }).join('');
+}
+function p3RenderPanel(r, rs, action) {
+  var o = P3; if (!o) return;
+  o.state.innerHTML = researchHeaderStateHTML(rs, action);
+  o.checks.innerHTML = p3ChecksHTML(rs, r);
+  var gates = (rs.action && rs.action.details && rs.action.details.gates) || [], nf = gates.filter(function (g) { return g.pass !== true; }).length;
+  o.sCk.n.textContent = gates.length ? nf + ' of ' + gates.length + ' not passing' : '';
+  var rr = r.researchRow, h = '';
+  if (rr) h = researchScoreHTML(rr) + researchExecutionHTML(rr) + researchStructureHTML(rr) + researchWickReadoutHTML(rr) + researchEntryHTML(rr) +
+    researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(rr, SETUPS_LEDGER);   // display only; same renderers the panel already used
+  o.rd.innerHTML = h || '<span style="font-size:11px;color:var(--muted,#9aa3b2)">No research fit on this series</span>';
+}
 
 function getThresh() {
   var dailySel = document.getElementById('t-score-daily');
@@ -2899,7 +3099,7 @@ function renderTable() {
     if (RESEARCH_MODE_UI) actionCell = researchStateCellHTML(researchStateFor(r), action);   // Step 15-A: research state primary, failing check in words, legacy verdict as a muted tag
     var pinned = isPinned(r);
     return '<tr data-key="'+r.symbol+'"'+(pinned?' class="pin-row"':'')+'>'+
-      '<td>'+pinButtonHTML(r.cgId, pinned)+'<div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div><div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div>'+(pinned && PIN_HIDDEN[r.cgId] ? '<div class="pin-note" title="pinned \u00b7 outside current filters">pinned \u00b7 outside current filters</div>' : '')+'</div></div></td>'+
+      '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div>'+pinButtonHTML(r.cgId, pinned)+'<div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div>'+(pinned && PIN_HIDDEN[r.cgId] ? '<div class="pin-note" title="pinned \u00b7 outside current filters">pinned \u00b7 outside current filters</div>' : '')+'</div></div></td>'+
       '<td>'+actionCell+'</td>'+
       '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
       '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
@@ -2917,6 +3117,7 @@ function renderTable() {
 }
 
 function openDetail(r) {
+  panelLayout(RESEARCH_MODE_UI);   // Step 17-A (P3): research view builds the reorganised panel; legacy keeps the original DOM
   document.getElementById('detail-panel').style.display='flex';
   document.getElementById('layout').classList.add('open');
   document.getElementById('dp-icon').textContent=r.symbol.substring(0,3);
@@ -2937,7 +3138,7 @@ function openDetail(r) {
     '<div class="score-item"><div class="si-label">Resistance touches</div><div class="si-value">'+r.resTouches+'</div></div>'+
     '<div class="score-item"><div class="si-label">Containment</div><div class="si-value" style="color:'+(r.containment>75?'var(--bull)':'var(--neut)')+'">'+r.containment+'%</div></div>'+
     '<div class="score-item"><div class="si-label">Slope/bar</div><div class="si-value" style="color:'+(r.slope>=0?'var(--bull)':'var(--bear)')+'">'+( r.slope>=0?'+':'')+r.slope.toFixed(3)+'%</div></div>'+
-    '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+fitWindowTilesHTML(r)+
+    '<div class="score-item"><div class="si-label">Channel age</div><div class="si-value">'+(r.lastIdx-r.firstIdx)+' bars</div></div>'+(RESEARCH_MODE_UI ? '' : fitWindowTilesHTML(r))+
     '<div class="score-item"><div class="si-label">Price vs EMA</div><div class="si-value" style="color:'+(r.emaState==='above_both'?'var(--bull)':r.emaState==='above_50'?'var(--neut)':'var(--bear)')+'">'+(r.emaState==='above_both'?'Above 21 & 50':r.emaState==='above_50'?'Above 50':'Below 50')+'</div></div>'+
     '<div class="score-item"><div class="si-label">Score</div><div class="si-value" style="color:'+sc+'">'+r.score+'/100</div></div>';
   try { renderLevelsAndFitWindow(r); } catch (e) {}   // Step 14-B (G12/G13): Levels table + fit-window line; fault-isolated, display only
@@ -2969,7 +3170,10 @@ function openDetail(r) {
     var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
     var badgeHtml = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
     // Step 15-A: default (research) view - the research state is the primary badge with the failing check in words, the legacy verdict a small muted tag; legacy view keeps the line above untouched.
-    if (RESEARCH_MODE_UI) {
+    if (RESEARCH_MODE_UI && P3) {
+      p3RenderPanel(r, researchStateFor(r), action);   // Step 17-A: header state + Checks + Research detail; the legacy verdict badge/text stay in the Legacy section
+      actionTextEl.textContent = action.text;
+    } else if (RESEARCH_MODE_UI) {
       var rs = researchStateFor(r);
       badgeHtml = researchStateCellHTML(rs, action, 'detail');
       if (r.researchRow) {
@@ -2998,6 +3202,7 @@ function openDetail(r) {
   if (RESEARCH_MODE_UI && r.researchRow) { try { researchQuoteRefresh(r); } catch (e) {} }
   if(r.candles) {
     buildChart(r);
+    p3PlaceLegend();   // Step 17-A: the research legend lives in the hover key popover
   } else {
     // Cached candidate - chart-only geometry (candles/pivotLows/supSlope/supIntercept)
     // isn't retained in the localStorage cache to keep it small. Re-run a scan this
@@ -3924,6 +4129,7 @@ window.addEventListener('load', function() {
   renderVerdictNote();
   document.getElementById('research-mode').addEventListener('change', function() {
     LEGACY_UI = this.checked; RESEARCH_MODE_UI = !LEGACY_UI;
+    panelLayout(RESEARCH_MODE_UI);   // Step 17-A
     try { var u = new URL(location.href); if (LEGACY_UI) u.searchParams.set('legacy', '1'); else u.searchParams.delete('legacy'); u.searchParams.delete('research'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
     renderVerdictNote();
     if (RESEARCH_MODE_UI && !SETUPS_LEDGER) loadResearchSetups();
