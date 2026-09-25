@@ -2222,29 +2222,81 @@ var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
 var RESEARCH_STATE_BY_GATE = { 'C3.fresh-touch': 'NEAR', 'C2.entry-zone': 'NEAR', 'C6.spike': 'NEAR', 'H6.rr': 'NEAR', 'C5.btc-regime': 'NEAR',
   'C7.floor': 'DEVELOPING', 'C3.no-recent-break': 'DEVELOPING', 'C4.touch-volume': 'DEVELOPING',
   'struct.lifecycle': 'WAIT', 'struct.quote-breach': 'WAIT', 'struct.below-rail': 'WAIT', 'C1.trend': 'WAIT', 'C2.width': 'WAIT', 'C4.volume24h': 'WAIT' };
+// Step 15-C: the ordered gate lists the class check runs over (worst class first for the reason line). Same 14 non-data
+// gate ids as RESEARCH_STATE_BY_GATE, grouped instead of keyed - first-fail order doesn't apply any more (see below).
+var RESEARCH_WAIT_GATES = ['struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C1.trend', 'C2.width', 'C4.volume24h'];
+var RESEARCH_DEV_GATES = ['C7.floor', 'C3.no-recent-break', 'C4.touch-volume'];
+var RESEARCH_NEAR_GATES = ['C3.fresh-touch', 'C2.entry-zone', 'C6.spike', 'H6.rr', 'C5.btc-regime'];
+// Step 15-C item 3: NEAR additionally requires price within NEAR_ZONE_ATR x ATR14 of the entry zone's top edge, else
+// DEVELOPING ("price far above the entry zone"). PROVISIONAL - not a channel-core.js gate, not in configHash.
+var NEAR_ZONE_ATR = 1;
 var RESEARCH_NOFIT_GATES = { 'data.fit': 1, 'data.price': 1 };
 var RESEARCH_STATE_RANK = { BUG: -1, ACT: 0, NEAR: 1, DEVELOPING: 2, WAIT: 3, NOFIT: 4 };
 var RESEARCH_GATE_WORDS = { 'C3.fresh-touch': 'no fresh support touch', 'C2.entry-zone': 'price not in the entry zone', 'C6.spike': 'price already extended', 'H6.rr': 'reward:risk too low', 'C5.btc-regime': 'BTC regime',
   'C7.floor': 'below the score floor', 'C3.no-recent-break': 'recent rail break', 'C4.touch-volume': 'weak volume on the touch',
-  'struct.lifecycle': 'channel not intact', 'struct.quote-breach': 'price below invalidation', 'struct.below-rail': 'price below the rail', 'C1.trend': 'trend (EMA50)', 'C2.width': 'channel too wide', 'C4.volume24h': '24h volume too low' };
+  'struct.lifecycle': 'channel not intact', 'struct.quote-breach': 'price below invalidation', 'struct.below-rail': 'price below the rail', 'C1.trend': 'trend (EMA50)', 'C2.width': 'channel too wide', 'C4.volume24h': '24h volume too low',
+  'page.target-below-price': 'target below price', 'page.far-from-zone': 'price far above the entry zone' };
+// Step 15-C: worst-class-first order for the comma-separated reason line (WAIT gates, then the page WAIT condition, then
+// DEVELOPING gates, then the page NEAR-demotion condition, then NEAR gates).
+var RESEARCH_REASON_ORDER = RESEARCH_WAIT_GATES.concat(['page.target-below-price'], RESEARCH_DEV_GATES, ['page.far-from-zone'], RESEARCH_NEAR_GATES);
+// Step 15-C bug fix: 15-A mapped state off the gate chain's FIRST failure only, so a row failing a NEAR-class gate
+// (evaluated early in the Data->Structure->Evidence->Entry->Context sequence) read NEAR even when a later WAIT-class
+// gate also failed - 7 of 10 live NEAR rows were actually WAIT rows. details.gates carries every gate's own pass/fail
+// (channel-core.js evaluates all 16, non-short-circuit - see researchVerdict's comment), so state is now the worst
+// class with ANY failing gate: WAIT > DEVELOPING > NEAR > ACT. Two page-only conditions ride beside the gate list:
+// entryEconomics.target at/below price is a WAIT (item 2), and NEAR additionally requires the ATR-band proximity
+// check above (item 3) - neither is a channel-core.js gate, so buildAction/researchVerdict/researchVerdictText are
+// untouched (byte-identical) and the flag-off/legacy path (which never calls this) is unaffected.
 function researchStateFor(r) {
   var rr = r ? r.researchRow : null;
-  if (!rr) return { state: 'NOFIT', gate: null, verdict: null, action: null };
-  var a = buildAction(rr, { research: true }), g = a.gate, st;
-  if (a.verdict === 'ACT') st = 'ACT';
-  else if (a.verdict === 'NONE') st = RESEARCH_NOFIT_GATES.hasOwnProperty(g) ? 'NOFIT' : 'BUG';
-  else st = RESEARCH_STATE_BY_GATE.hasOwnProperty(g) ? RESEARCH_STATE_BY_GATE[g] : 'BUG';
-  if (st === 'BUG') { try { console.error('Radar BUG: research verdict ' + a.verdict + ' with unmapped gate ' + g); } catch (e) {} }
-  return { state: st, gate: g, verdict: a.verdict, action: a };
+  if (!rr) return { state: 'NOFIT', gate: null, verdict: null, action: null, why: '' };
+  var a = buildAction(rr, { research: true }), g = a.gate;
+  if (a.verdict === 'NONE') {
+    var stN = RESEARCH_NOFIT_GATES.hasOwnProperty(g) ? 'NOFIT' : 'BUG';
+    if (stN === 'BUG') { try { console.error('Radar BUG: research verdict NONE with unmapped gate ' + g); } catch (e) {} }
+    return { state: stN, gate: g, verdict: a.verdict, action: a, why: stN === 'BUG' ? 'unmapped gate ' + g : '' };
+  }
+  var gates = (a.details && a.details.gates) || [], byId = {};
+  for (var i = 0; i < gates.length; i++) byId[gates[i].id] = gates[i];
+  var unmapped = [];
+  for (var i2 = 0; i2 < gates.length; i2++) { var gg = gates[i2]; if (gg.pass !== true && !RESEARCH_STATE_BY_GATE.hasOwnProperty(gg.id) && !RESEARCH_NOFIT_GATES.hasOwnProperty(gg.id)) unmapped.push(gg.id); }
+  if (unmapped.length) { try { console.error('Radar BUG: research verdict with unmapped gate ' + unmapped[0]); } catch (e) {} return { state: 'BUG', gate: unmapped[0], verdict: a.verdict, action: a, why: 'unmapped gate ' + unmapped[0] }; }
+  function failed(id) { var x = byId[id]; return !x || x.pass !== true; }
+  var fails = {};
+  RESEARCH_WAIT_GATES.concat(RESEARCH_DEV_GATES, RESEARCH_NEAR_GATES).forEach(function (id) { if (failed(id)) fails[id] = true; });
+  var ee = rr.entryEconomics;
+  if (ee && typeof ee.target === 'number' && isFinite(ee.target) && typeof r.price === 'number' && ee.target <= r.price) fails['page.target-below-price'] = true;
+  var waitFail = RESEARCH_WAIT_GATES.concat(['page.target-below-price']).some(function (id) { return fails[id]; });
+  var devFail = RESEARCH_DEV_GATES.some(function (id) { return fails[id]; });
+  var nearFail = RESEARCH_NEAR_GATES.some(function (id) { return fails[id]; });
+  var state;
+  if (waitFail) state = 'WAIT';
+  else if (devFail) state = 'DEVELOPING';
+  else if (nearFail) {
+    var zoneHi = ee && ee.entryZone ? ee.entryZone[1] : null, atr = rr.atr14;
+    if (typeof zoneHi === 'number' && isFinite(zoneHi) && typeof atr === 'number' && isFinite(atr) && typeof r.price === 'number' && r.price > zoneHi + NEAR_ZONE_ATR * atr) { state = 'DEVELOPING'; fails['page.far-from-zone'] = true; }
+    else state = 'NEAR';
+  } else state = 'ACT';
+  var why = RESEARCH_REASON_ORDER.filter(function (id) { return fails[id]; }).map(function (id) { return RESEARCH_GATE_WORDS[id]; }).join(', ');
+  return { state: state, gate: g, verdict: a.verdict, action: a, why: why };
 }
 function researchStateRank(r) { return RESEARCH_STATE_RANK[researchStateFor(r).state]; }
-// Primary badge (state) + the failing check in plain words + the legacy verdict as a small muted tag.
+var RESEARCH_STATE_PREFIX = { ACT: 'Act:', NEAR: 'Near:', DEVELOPING: 'Developing:', WAIT: 'Wait:' };
+// Step 15-C item 4: the panel/tooltip sentence prefix follows the page state - a text remap of researchVerdictText's
+// own leading marker ("Act zone (research):" / "Watch:" / "Wait:"), not a change to that function. NOFIT/BUG unchanged.
+function researchStateText(rs) {
+  if (!rs.action) return '';
+  var prefix = RESEARCH_STATE_PREFIX[rs.state];
+  if (!prefix) return rs.action.text;
+  return rs.action.text.replace(/^(Act zone \(research\)|Watch|Wait):/, prefix);
+}
+// Primary badge (state) + the failing check(s) in plain words + the legacy verdict as a small muted tag.
 function researchStateCellHTML(rs, legacyAction, size) {
   var cls = { ACT: 'va-act', NEAR: 'va-near', DEVELOPING: 'va-dev', WAIT: 'va-wait', NOFIT: '', BUG: 'va-wait' }[rs.state];
   var label = rs.state === 'NOFIT' ? '— no fit' : rs.state;
-  var tip = rs.action ? 'Research: ' + rs.action.text + ' [' + RESEARCH_SCORE_LABEL + ']' : 'Research: no fit on this series (no rail pair passed the research gates on these candles)';
+  var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : 'Research: no fit on this series (no rail pair passed the research gates on these candles)';
   var style = (size === 'detail' ? 'font-size:10px;' : '') + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
-  var why = rs.state === 'BUG' ? 'unmapped gate ' + rs.gate : (rs.state === 'NEAR' || rs.state === 'DEVELOPING' || rs.state === 'WAIT') ? RESEARCH_GATE_WORDS[rs.gate] : '';
+  var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '"' + (style ? ' style="' + style + '"' : '') + '>' + label + '</span>' +
     (why ? '<span class="rs-why" style="font-size:10px;color:var(--muted,#9aa3b2);margin-left:5px">' + why + '</span>' : '') +
     '<span class="rs-legacy" style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:5px">legacy: ' + legacyAction.verdict + '</span>';
@@ -2775,7 +2827,7 @@ function openDetail(r) {
         badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
         badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
         badgeHtml += researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(r.researchRow, SETUPS_LEDGER);   // Step 11-E (H12) + C-2 (H5): display only
-        actionTextEl.textContent = (rs.action ? rs.action.text : 'Research: no fit on this series') + ' (' + RESEARCH_SCORE_LABEL + ')  |  Legacy: ' + action.text;
+        actionTextEl.textContent = (rs.action ? researchStateText(rs) : 'Research: no fit on this series') + ' (' + RESEARCH_SCORE_LABEL + ')  |  Legacy: ' + action.text;
       } else {
         actionTextEl.textContent = 'Research: no fit on this series  |  Legacy: ' + action.text;
       }
@@ -3197,7 +3249,7 @@ function buildReportHTML(data) {
         actionHTML = '<div style="margin-bottom:12px">'+
           '<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Recommended View</div>'+
           '<div style="margin-bottom:8px">'+researchStateCellHTML(rs, action, '')+'</div>'+
-          '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6">'+(rs.action ? rs.action.text : 'No fit on this series (no rail pair passed the research gates on these candles).')+'</div>'+
+          '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;border-left:3px solid #7b6ef6">'+(rs.action ? researchStateText(rs) : 'No fit on this series (no rail pair passed the research gates on these candles).')+'</div>'+
         '</div>';
       } else
       actionHTML = '<div style="margin-bottom:12px">'+
