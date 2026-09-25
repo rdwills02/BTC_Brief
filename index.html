@@ -1,1 +1,217 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Finance Agent V4 — Dashboard</title>
+<style>
+:root{--bg:#0b0c14;--surface:#13141f;--border:#1e2035;--text:#e2e4ef;--muted:#6b7280;--bull:#00c896;--bear:#e8754a;--neutral:#f5a623;--accent:#7b6ef6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;padding:24px}
+.wrap{max-width:1180px;margin:0 auto}
+header{position:relative;padding:18px 20px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:18px}
+header h1{font-size:19px;letter-spacing:.2px}
+header .sub{color:var(--muted);font-size:12px;margin-top:4px}
+.full-brief-link{position:absolute;top:18px;right:20px;color:var(--accent);text-decoration:none;font-size:12px;font-weight:600;border:1px solid var(--border);padding:6px 11px;border-radius:6px;background:var(--bg)}
+.full-brief-link:hover{border-color:var(--accent)}
+h2{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+.composite{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--bull);border-radius:10px;padding:18px 20px;margin-bottom:16px}
+.composite.bah{border-left-color:var(--neutral)}
+.composite .updated{font-size:12px;color:var(--muted);margin-bottom:8px}
+.composite .big{font-size:26px;font-weight:700;letter-spacing:-.4px}
+.composite .row{display:flex;flex-wrap:wrap;gap:22px;margin-top:10px;font-size:13px}
+.composite .row div span{color:var(--muted);display:block;font-size:11px;text-transform:uppercase;letter-spacing:.8px}
+.badge{display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:.5px;vertical-align:middle}
+.b-neutral{background:rgba(245,166,35,.14);color:var(--neutral)}
+.b-bull{background:rgba(0,200,150,.14);color:var(--bull)}
+.b-bear{background:rgba(232,117,74,.14);color:var(--bear)}
+.b-2x{background:rgba(123,110,246,.16);color:var(--accent)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px 16px}
+.card .label{font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin-bottom:6px}
+.card .val{font-size:19px;font-weight:650}
+.card .note{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.45}
+.bull{color:var(--bull)}.bear{color:var(--bear)}.neu{color:var(--neutral)}.acc{color:var(--accent)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px 18px}
+.panel ul{list-style:none}
+.panel li{padding:5px 0;font-size:13px;border-bottom:1px solid rgba(30,32,53,.6)}
+.panel li:last-child{border-bottom:none}
+.lens{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.lens:last-child{border-bottom:none}
+.dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px;margin-top:6px}
+.lens .name{font-weight:650;font-size:13.5px}
+.lens .find{color:var(--muted);font-size:12.5px;margin-top:3px}
+.chartbox{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:12px;margin-bottom:12px}
+.chartbox .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.chartbox .hd span{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.tgl{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer}
+.tv{height:380px;transition:height .2s}
+.tv.exp{height:720px}
+.crit{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--bull);border-radius:9px;padding:14px 16px;margin-bottom:10px}
+.crit.bearish{border-left-color:var(--bear)}
+.crit.caution{border-left-color:var(--neutral)}
+.crit .t{font-weight:700;font-size:13px;margin-bottom:5px}
+.crit .d{font-size:12.5px;color:var(--muted)}
+footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+footer a{color:var(--accent);text-decoration:none;margin-left:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Finance Agent V4 — Daily Dashboard</h1>
+  <div class="sub">Last updated: Friday, September 25, 2026 at 06:20 AM CT</div>
+  <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank" style="right:140px;">Calculator ↗</a>
+  <a class="full-brief-link" href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief →</a>
+</header>
+
+<!-- BTC COMPOSITE -->
+<div class="composite" style="border-left-color:var(--bull)">
+  <div class="updated">BITCOIN · Last updated Friday, September 25, 2026 at 06:20 AM CT</div>
+  <div class="big">~$85,143 <span class="badge b-bull">🟢 BULLISH</span> <span class="badge b-bear">CONFIDENCE: LOW</span></div>
+  <div class="row">
+    <div><span>Alignment</span>🟢 4/8 · 🟡 1/8 · 🔴 3/8</div>
+    <div><span>Fresh lenses</span>6 / 8 — both 2× lenses fresh, still in opposition</div>
+    <div><span>24 hour</span><span class="bull">+2.01%</span> (CoinDesk) / +1.3% (CoinGecko)</div>
+    <div><span>7 day</span><span class="bull">+8.6%</span> (CoinGecko)</div>
+    <div><span>vs prior brief</span><span class="bull">+1.27%</span> · 🟡 NEUTRAL/LOW → 🟢 BULLISH/LOW · weighted 4.0 → 4.5 bull, 3.5 bear unchanged</div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">24h range · 200-day MA <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val bull">~$82,941 – $85,143</div><div class="note">Recovering off Thursday's flush; $86–87K shelf not yet retested. 🟢 Still 10–20% ABOVE the 200-day (≈$70.9K Mayer-derived vs $77.7K LookIntoBitcoin — conflict carried, unresolved 6 sessions). Vol $35.9B (CoinGecko).</div></div>
+  <div class="card"><div class="label">Fear &amp; Greed <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val bull">71 — Greed</div><div class="note">Unchanged for a 2nd session through both the flush and today's bounce. Last week 50, last month 74.</div></div>
+  <div class="card"><div class="label">ETF Flows <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val bull">+$190.7M</div><div class="note">Sep 24 — sixth straight inflow day, but decelerating: $999M → $715M → $347M → $191M. 5-session total +$2.68B.</div></div>
+  <div class="card"><div class="label">DXY <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val bear">101.26</div><div class="note">Thursday close, carried — elevated. 10-yr Treasury 5.11% (highest since 2007). Oct hike odds disputed: 54.2% vs an implied &gt;75%, unresolved.</div></div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">Realized Price <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val bull">$53,463</div><div class="note">BTC 59% above. CVDD floor $50,520. MVRV Z 1.03 — still early-cycle valuation. Fresh Newhedge snapshots.</div></div>
+  <div class="card"><div class="label">LTH SOPR <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val neu">1.442 ⚡</div><div class="note">New print (from 1.463), still above 1.3 — LTHs realizing ~44% gains. Hard rule fires on fresh prints.</div></div>
+  <div class="card"><div class="label">HODL Waves — LTH supply <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a></div><div class="val bear">16.59M BTC · ~82.5%</div><div class="note">Down from 16.60M — third straight daily decline (16.63→16.60→16.59M). Fresh, hard-rule gate met.</div></div>
+  <div class="card"><div class="label">Miner production cost vs spot</div><div class="val bull">~$78,000 vs $85,143</div><div class="note">Spot ~9.2% above JPMorgan's estimate — wider cushion than Thursday. Puell 1.06 (+10.3%). Hashrate 937 EH/s (+10.1%). Revenue $37.8M/day.</div></div>
+</div>
+
+<div class="chartbox">
+  <div class="hd"><span>Live Chart — BTCUSD</span><button class="tgl" onclick="tg('btcC',this)">⛶ Expand</button></div>
+  <div id="btcC" class="tv"><div class="tradingview-widget-container" style="height:100%"><div id="tv_btc" style="height:100%"></div></div></div>
+</div>
+
+<h2>BTC Key Levels</h2>
+<div class="two">
+  <div class="panel"><ul>
+    <li><strong class="bear">Resistance</strong></li>
+    <li>$86,000–$87,000 — must reclaim; the shelf that rejected two pushes Sep 23, not yet retested</li>
+    <li>$88,000–$90,000 — supply cluster; CryptoQuant cohort cost bases ~$88K (18m–2y) and ~$90K (6–12m), carried</li>
+    <li>$95,000 → $100,000 beyond</li>
+    <li>$126,198 — all-time high (10/06/2025)</li>
+  </ul></div>
+  <div class="panel"><ul>
+    <li><strong class="bull">Support</strong></li>
+    <li>$84,000 — today's low zone; $83,508 Sep 23 low still the reference floor</li>
+    <li>$80,000–$82,000 — main breakout support + rising trendline from $75K. The line.</li>
+    <li>$75,000–$78,000 — deeper demand, carried</li>
+    <li>$70,000 — Villaverde's pullback target</li>
+  </ul></div>
+</div>
+
+<h2>Cycle Timing &amp; Macro</h2>
+<div class="two">
+  <div class="panel"><ul>
+    <li><strong>Villaverde</strong> — 09/18: ~15% pullback to ~$70K into mid/late Oct. Exactly 7 days old today — last day in window. 09/24 alert is a general model call, not BTC-specific. 🔴</li>
+    <li><strong>Brandt investable low</strong> — Sep–Oct 2026, window open; may undercut ~$60–63K ⏸️ stale, no dated statement</li>
+    <li><strong>Woo</strong> — 09/16 "90% bottomed" call now 9 days old, out of window; lens scored on on-chain prints only</li>
+  </ul></div>
+  <div class="panel"><ul>
+    <li><strong>Fed funds</strong> 3.75%–4.00% after the Sep 16 hike (12–0)</li>
+    <li><strong>Next FOMC</strong> Oct 27–28 — hike odds disputed: 54.2% (CME FedWatch) vs an implied &gt;75% (CNBC/Barr), both dated 09/23, unresolved</li>
+    <li><strong>Yields</strong> 10y 5.11% close (Thursday, carried) — highest since 2007</li>
+    <li><strong>Bitcoin Dominance</strong> <a class="acc" style="text-decoration:none" href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">→ Glossary</a> 58.7% (−0.5 pt) — mild give-back of Thursday's defensive rotation</li>
+  </ul></div>
+</div>
+
+<h2>BTC Lens Scorecard</h2>
+<div class="panel">
+  <div class="lens"><div class="dot" style="background:var(--bull)"></div><div><div class="name">1. Halving / Cycle <span class="badge b-bull">📈 🟡 → 🟢</span></div><div class="find">Miners bounced back: hashrate, Puell, and miner revenue all +10% off Thursday's dip. Spot now ~9.2% above the carried ~$78K production cost, a wider cushion than yesterday. Difficulty unchanged; retarget ~Oct 2–3.</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--bear)"></div><div><div class="name">2. Macro / Liquidity <span class="badge b-2x">2× WEIGHT</span></div><div class="find">DXY 101.26 and 10-yr 5.11% both carried from Thursday's close, still elevated. Oct hike-odds figure now disputed (54.2% vs an implied &gt;75%, same day, unresolved) — used the lower, more conservative figure, but the anchors (real yields, dollar) haven't reversed either way. ➡️</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--bull)"></div><div><div class="name">3. Adoption / Reserve <span class="badge b-neutral">⏸️ STALE ½×</span></div><div class="find">No fresh dated catalyst located this run — the Sep 17 ARMA/SEC items are now 8 days old. Held 🟢 on continuity; weight halved per the signal gate. 📉</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--bull)"></div><div><div class="name">4. Wright</div><div class="find">Fear &amp; Greed held at 71 through both the flush and today's bounce — no panic, no euphoria, a market that's absorbed the leverage reset. Futures leverage reportedly rebuilding, worth watching. ➡️</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--neutral)"></div><div><div class="name">5. Fogle Technical</div><div class="find">Recovering, not confirmed: back above $84–85K but the $86–87K shelf that rejected two pushes Sep 23 hasn't been retested. Support structure untouched. Dominance 58.7%, easing off Thursday's defensive high.</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--bear)"></div><div><div class="name">6. Villaverde Cycles</div><div class="find">Sep 18 BTC-specific pullback call is exactly 7 days old today — last day inside the window. Sep 24 "load up" alert reads as a general model call, not a BTC revision, consistent with prior scoring.</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--bull)"></div><div><div class="name">7. Woo On-Chain <span class="badge b-2x">2× WEIGHT</span> <span class="badge b-bull">✅ HARD RULE FIRED</span> <span class="badge b-bear">⚠️ LTH SUPPLY, 3RD DAY DOWN</span></div><div class="find">MVRV Z 1.03, realized $53,463 (59% above), CVDD $50,520 — fresh. LTH SOPR fresh print 1.442, still &gt;1.3. LTH supply fell a third straight day (16.63→16.60→16.59M). Gates met, lens scores 🟢 at 2× by rule; the distribution trend is now three days running and carries real weight in the confidence call.</div></div></div>
+  <div class="lens"><div class="dot" style="background:var(--bear)"></div><div><div class="name">8. Brandt Classical <span class="badge b-bear">BEAR LENS ⏸️ STALE ½×</span></div><div class="find">No dated statement in window. Investable low Sep–Oct 2026, may undercut $60–63K; $300–500K by 2029 if the four-year cycle holds. ➡️</div></div></div>
+</div>
+
+<!-- BAH -->
+<div class="composite bah" style="margin-top:26px">
+  <div class="updated">BOOZ ALLEN · NYSE:BAH · Prior close — Thursday, September 24, 2026</div>
+  <div class="big">$73.82 <span class="badge b-neutral">🟡 GETTING THERE</span> <span class="badge b-neutral">CONFIDENCE: MEDIUM</span></div>
+  <div class="row">
+    <div><span>1 day</span><span class="bear">−2.42%</span></div>
+    <div><span>5 day</span>❓ not sourced</div>
+    <div><span>52-week</span>28.9th percentile</div>
+    <div><span>Status</span>Tracking only — no shares until June 2027</div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">52-week range · percentile</div><div class="val bull">$59.50 – $109.10 · 28.9th</div><div class="note">Lower third — fourth straight session drifting lower on the percentile.</div></div>
+  <div class="card"><div class="label">vs all-time high</div><div class="val bear">−59.8%</div><div class="note">ATH $183.51 (Oct 28, 2024). vs pre-disclosure $102.28: −27.8%.</div></div>
+  <div class="card"><div class="label">% of drawdown recovered</div><div class="val bull">33.5%</div><div class="note">(73.82 − 59.50) ÷ (102.28 − 59.50). Down from 37.8% → 39.2% earlier this week. Framework's "done" threshold is 80%.</div></div>
+  <div class="card"><div class="label">vs 200-day MA</div><div class="val bear">🔴 below $78.53</div><div class="note">~6.0% below. Essentially at the 50-day ($73.67, +0.2%). ⚠️ MA figures one-day-stale, immaterial.</div></div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">Consensus target · upside</div><div class="val bull">$85.15 · +15.3%</div><div class="note">15 analysts, Hold (StockAnalysis). MarketBeat $83.69 / +13.4%, "Reduce". Upside widened past the framework's 15% line on the primary read.</div></div>
+  <div class="card"><div class="label">Forward P/E vs own 3-yr avg</div><div class="val bull">12.11x vs ~20.6x</div><div class="note">~59% of its own historical multiple. ⚠️ Carried figure, one day stale. 3-yr average carried, date unverified.</div></div>
+  <div class="card"><div class="label">Discount to peers</div><div class="val neu">Not re-sourced (Friday)</div><div class="note">Monday's peer set carried: LDOS 10.19x, SAIC 10.84x, CACI 21.43x, KBR 9.37x, ACN 12.81x.</div></div>
+  <div class="card"><div class="label">Next vest</div><div class="val">June 2027 · ~248 days</div><div class="note">Shares ❓ (dollar-denominated grant) · value at spot ❓ · est. tax ❓</div></div>
+</div>
+
+<div class="chartbox">
+  <div class="hd"><span>Live Chart — NYSE:BAH</span><button class="tgl" onclick="tg('bahC',this)">⛶ Expand</button></div>
+  <div id="bahC" class="tv"><div class="tradingview-widget-container" style="height:100%"><div id="tv_bah" style="height:100%"></div></div></div>
+</div>
+
+<h2>BAH Lens Scorecard <span style="color:var(--muted);text-transform:none;letter-spacing:0;font-size:12px">(compact block — full 5-lens resumes Monday)</span></h2>
+<div class="panel">
+  <div class="lens"><div class="dot" style="background:var(--bull)"></div><div><div class="name">Compact read</div><div class="find">Price Zone, Upside Left, and drawdown recovery all point the same direction for a fourth straight session — away from the sell zone. No dated catalyst found for today's 2.42% decline. Label held at 🟡 on band width and one-day-stale MA/P/E figures; the honest read is closer to 🟢 TOO EARLY than it has been all week.</div></div></div>
+</div>
+
+<h2>Watch List</h2>
+<div class="panel"><ul>
+  <li>⚡ <strong>LTH supply</strong> — a fourth consecutive decline with SOPR still &gt;1.3 would make the distribution case hard to dismiss as noise.</li>
+  <li>⚡ <strong>$86,000–$87,000</strong> — the shelf that rejected two pushes Sep 23, still untested since.</li>
+  <li>⚡ <strong>$80,000–$82,000</strong> — still the line between "pullback" and "breakout failure."</li>
+  <li>⚡ <strong>Villaverde's Sep 18 call ages out tomorrow</strong> — watch for a fresh BTC-specific statement.</li>
+  <li>📊 <strong>BAH Q2 FY27 earnings, Oct 23</strong> — consensus EPS $1.44 (−3.4% y/y). Monday's full 5-lens should weigh the four-session drift toward "too early" directly.</li>
+</ul></div>
+
+<h2>Bottom Line</h2>
+<div class="two">
+  <div class="panel"><div style="font-weight:700;margin-bottom:7px">₿ Bitcoin — 🟢 BULLISH, confidence LOW</div><div style="font-size:12.8px;color:var(--muted)">BTC clawed back 1.3% to ~$85,143 after Thursday's flush, and the composite flips back to BULLISH — but low-conviction. Macro and Woo, the two heaviest lenses, remain in exact opposition and cancel in the weighted math; the bullish tilt comes entirely from smaller lenses, one of which (Adoption/Reserve) just lost its freshness and another of which (Villaverde) is bearish and about to age out of its own window. Inside Woo itself, valuation is constructive (MVRV Z 1.03) but the hard rule is now firing on a third straight day of LTH distribution with SOPR still above 1.3. None of it changes direction; all of it argues for staying at LOW rather than reaching for MEDIUM. Advisory only. $86–87K above resolves toward a real breakout retest; a fourth straight LTH supply decline or a close below $83K resolves the other way.</div></div>
+  <div class="panel"><div style="font-weight:700;margin-bottom:7px">📊 Booz Allen — 🟡 GETTING THERE, confidence MEDIUM</div><div style="font-size:12.8px;color:var(--muted)">BAH fell another 2.4% to $73.82 with no dated catalyst found, and every compact-block number moved the same direction for a fourth straight session: 33.5% of the drawdown recovered, a 28.9th percentile, consensus upside above 15%. None of that is a sell signal — it's the opposite. The label stays 🟡 only because this is a compact Friday block and the framework's bands are wide; Monday's full 5-lens pass should weigh the four-session drift toward "too early" directly rather than defaulting back to 🟡 out of inertia. Nothing here is actionable — no shares until June 2027, ~248 days out — and tax at vest is owed regardless of the sell decision. October 23 earnings is the next real input.</div></div>
+</div>
+
+<footer>
+  <div>Finance Agent V4 · Last updated: Friday, September 25, 2026 at 06:20 AM CT</div>
+  <div>
+    <a href="https://rdwills02.github.io/BTC_Brief/" >Dashboard</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/brief.html" target="_blank">Full Brief</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">Glossary</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/calculator.html" target="_blank">Calculator</a>
+  </div>
+</footer>
+
+</div>
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+function mk(id,sym){new TradingView.widget({autosize:true,symbol:sym,interval:"D",timezone:"America/Chicago",theme:"dark",style:"1",locale:"en",toolbar_bg:"#0b0c14",enable_publishing:false,hide_side_toolbar:false,allow_symbol_change:false,backgroundColor:"#0b0c14",gridColor:"#1e2035",studies:["MASimple@tv-basicstudies"],container_id:id});}
+try{mk("tv_btc","BITSTAMP:BTCUSD");mk("tv_bah","NYSE:BAH");}catch(e){}
+function tg(id,btn){var el=document.getElementById(id);el.classList.toggle("exp");btn.textContent=el.classList.contains("exp")?"⛶ Collapse":"⛶ Expand";}
+</script>
+</body>
+</html>
