@@ -133,9 +133,12 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .p3 .levels-table .lv-sub{display:inline;margin-left:6px}
 .p3-checks{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;padding:0 18px 12px}
 .p3-check{display:flex;gap:6px;align-items:baseline;font-size:11px;line-height:1.35;min-width:0}
-.p3-check.has-explain{cursor:pointer;position:relative}
+.p3-check.has-explain{cursor:pointer}
 .p3-check.open{background:var(--surface2);border-radius:3px}
-.p3-ck-chev{position:absolute;right:2px;top:0;width:8px;text-align:right;line-height:1.35;font-size:9px;color:var(--muted)}   /* far right of the row; out of flow so the row's text wrapping (and the Checks height) is unchanged */
+.p3-ck-chev{margin-left:4px;font-size:9px;line-height:1;color:var(--muted)}   /* Step 17-F part 3: inline, right after the label (4px gap) */
+.p3-check.has-explain .p3-ck-n{color:var(--text2)}
+.p3-check.has-explain:hover .p3-ck-n{color:var(--text)}
+.p3-check.has-explain:hover .p3-ck-chev{color:var(--text2)}
 .p3-explain{grid-column:1/-1;display:none;font-size:11px;line-height:1.4;color:var(--text2);background:var(--surface2);border-left:3px solid var(--muted);padding:6px 10px}
 .p3-check.open + .p3-explain{display:block}
 .p3-explain.ok{border-left-color:var(--bull)}.p3-explain.bad{border-left-color:var(--bear)}.p3-explain.unk{border-left-color:var(--neut)}
@@ -2877,12 +2880,12 @@ function researchAnalysisText(res, r) {
 }
 
 var P3_SEC_DEFAULT = { verdict: true, levels: true, checks: true, rdetail: false, legacy: false };
-var P3_GATE_WORDS = {
-  'data.fit': 'research fit found', 'data.price': 'current price known', 'struct.lifecycle': 'rail intact (not broken)', 'struct.quote-breach': 'live quote above invalidation',
-  'struct.below-rail': 'price above the support rail', 'C1.trend': 'trend up (close above a non-falling EMA50)', 'C3.fresh-touch': 'fresh support touch',
-  'C3.no-recent-break': 'no recent break', 'C7.floor': 'research score above the floor', 'C2.width': 'channel not too wide', 'C2.entry-zone': 'price in the entry zone',
-  'C6.spike': 'price not already extended', 'H6.rr': 'reward:risk high enough', 'C4.volume24h': '24h volume above the floor', 'C4.touch-volume': 'support tested on real volume',
-  'C5.btc-regime': 'BTC regime supportive'
+var P3_GATE_WORDS = {   // Step 17-F part 3: nouns; the glyph carries pass/fail. Display only (RESEARCH_GATE_WORDS, verdict and analysis text are separate).
+  'data.fit': 'Channel fit', 'data.price': 'Live price', 'struct.lifecycle': 'Support rail status', 'struct.quote-breach': 'Price vs invalidation',
+  'struct.below-rail': 'Position in channel', 'C1.trend': 'Trend (50-day EMA)', 'C3.fresh-touch': 'Last support touch',
+  'C3.no-recent-break': 'Last break below support', 'C7.floor': 'Research score', 'C2.width': 'Channel width', 'C2.entry-zone': 'Price vs entry zone',
+  'C6.spike': 'Recent move (3-bar, in ATR)', 'H6.rr': 'Reward-to-risk (net)', 'C4.volume24h': '24h volume', 'C4.touch-volume': 'Volume on last touch',
+  'C5.btc-regime': 'Bitcoin regime'
 };
 // Step 17-F part 2: one plain-language explanation per Checks gate (contract "Radar 17-F Check Explanations"). Each entry is (g, r, ee, d) -> string:
 // the definition, then the live sentence with this row's values, then the threshold. Unknown values say "Unknown" in words. Exported as window.P3_GATE_EXPLAIN.
@@ -3107,7 +3110,7 @@ function p3ChecksHTML(rs, r) {
     var name = P3_GATE_WORDS[g.id] || g.id;
     var ex = p3xText(g, r);   // Step 17-F part 2: '' (name only, no chevron) when a gate has no explanation
     return '<div class="p3-check ' + cls + (ex ? ' has-explain' : '') + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '"' + (ex ? ' role="button" tabindex="0" aria-expanded="false"' : '') + ' title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
-      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span><span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '</div>' +
+      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '<span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span></div>' +
       (ex ? '<div class="p3-explain ' + cls + '" data-gate-explain="' + g.id + '">' + researchAttr(ex) + '</div>' : '');
   }).join('');
 }
