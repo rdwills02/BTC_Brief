@@ -327,7 +327,7 @@ function run() {
   runStep11DAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep12AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep13Validation(current, stable, grids, caches, loadDailyCachesWithVolume());
-  runStep13ForwardScore(current, loadDailyCachesWithVolume());
+  runStep13ForwardScore(current);
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1470,6 +1470,17 @@ function runStep11BAcceptance(current, grids, gridCaches, dailyCaches) {
   if (bugs) { console.log('Step 11-B acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
 
+// Forward pipeline repair (2026-09-25): the replays feed setups-core.js the fixture daily bars as of each capture date (closed candles dated BEFORE the
+// grid date: as in capture.js, the capture-day candle is still forming; it arrives at the next date as the entry-day bar), so the ledger's bar-based close rule runs in replay exactly as in capture.js.
+function replayBarsByCoin(dailyCaches, coinIds, date) {
+  const out = {};
+  coinIds.forEach(function (id) {
+    const c = dailyCaches[id]; if (!c) return;
+    const bars = []; for (let i = 0; i < c.length && c[i].date < date; i++) bars.push({ id: c[i].time, date: c[i].date, open: c[i].open, high: c[i].high, low: c[i].low, close: c[i].close, venue: 'fixture', pair: id, isClosed: true });
+    if (bars.length) out[id] = bars;
+  });
+  return out;
+}
 // Step 11-C (Remediation spec H5, option (i); step 11 plan 11-C): replay the 24 dated fixtures through setups-core.js's
 // pure updateSetupLedger() as if each were a capture (1d rows only, the timeframe capture.js writes research for; ctx as in
 // 11-A/B: price = the fit's own close, volume24h from the dated fixture row, btc per date, ACT_SCORE_FLOOR_1D). Prints
@@ -1492,7 +1503,7 @@ function runStep11CAcceptance(current, grids, gridCaches, dailyCaches) {
       return { cgId: cgId, timeframe: '1d', verdict: res.verdict, lifecycleState: fit ? fit.lifecycleState : null, price: fit ? fit.detectionPrice : null,
         fit: fit ? { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, entryEconomics: fit.entryEconomics || null } : null };
     });
-    const before = ledger, m = { detectorVersion: current.DETECTOR_VERSION, configHash: 'fixture-replay' };
+    const before = ledger, m = { detectorVersion: current.DETECTOR_VERSION, configHash: 'fixture-replay', barsByCoin: replayBarsByCoin(dailyCaches, g.coins, g.date) };
     ledger = S.updateSetupLedger(before, g.date, rows, m);
     const again = S.updateSetupLedger(ledger, g.date, rows, m);
     if (JSON.stringify(again) !== JSON.stringify(ledger)) idem++;
@@ -1505,17 +1516,18 @@ function runStep11CAcceptance(current, grids, gridCaches, dailyCaches) {
       if (!n) { bugs++; console.log('  BUG: record deleted ' + b.id); return; }
       if (n.invalidation < b.invalidation) { bugs++; console.log('  BUG: invalidation lowered ' + b.id); }
       if (n.invalidation > b.invalidation) { raises++; maxRaisePct = Math.max(maxRaisePct, (n.invalidation - b.invalidation) / b.invalidation * 100); }
-      if (n.breachHistory.length < b.breachHistory.length || b.breachHistory.some((d, i) => n.breachHistory[i] !== d)) { bugs++; console.log('  BUG: breachHistory shrank/changed ' + b.id); }
+      if (n.breachBarIds.length < b.breachBarIds.length || b.breachBarIds.some((d, i) => n.breachBarIds[i] !== d)) { bugs++; console.log('  BUG: breachBarIds shrank/changed ' + b.id); }
+      if (n.bars.length < b.bars.length || b.bars.some((x, i) => JSON.stringify(n.bars[i]) !== JSON.stringify(x))) { bugs++; console.log('  BUG: bars shrank/changed ' + b.id); }
       if (b.status === 'closed' && n.status !== 'closed') { bugs++; console.log('  BUG: closed setup reopened ' + b.id); }
     });
-    breaches = ledger.setups.reduce((a, x) => a + x.breachHistory.length, 0);
+    breaches = ledger.setups.reduce((a, x) => a + x.breachBarIds.length, 0);
     perDate.push(g.date + ' rows=' + rows.length + ' ACT=' + rows.filter(r => r.verdict === 'ACT').length + ' opened=' + opened + ' closed=' + closed + ' open=' + open + (opened ? ' [' + ledger.setups.slice(-opened).map(x => x.id).join(', ') + ']' : ''));
     snapshots[g.date] = JSON.stringify(ledger);
   });
   console.log('per date (opens/closes/open-at-end):'); perDate.forEach(l => console.log('  ' + l));
   console.log('SETUP_BREAK_CLOSES=' + S.SETUP_BREAK_CLOSES + ' (PROVISIONAL) | raises suppressed (anchor mismatch) ' + ledger.setups.reduce((a, x) => a + x.raisesSuppressed, 0) + ' | live-broken-but-open setups at end ' + ledger.setups.filter(x => x.status === 'open' && x.liveLifecycleState === 'broken').length);
-  const openIds = ledger.setups.filter(x => x.status === 'open').map(x => x.id + ' inv ' + x.invalidation + (x.invalidationRaises ? ' (+' + x.invalidationRaises + ' raises)' : '') + (x.raisesSuppressed ? ' (' + x.raisesSuppressed + ' suppressed)' : '') + ' breaches ' + x.breachHistory.length + ' consecutive ' + x.consecutiveBreaches + ' live ' + x.liveLifecycleState);
-  console.log('end of replay: setups ' + ledger.setups.length + ' | open ' + ledger.setups.filter(x => x.status === 'open').length + ' | closed ' + ledger.setups.filter(x => x.status === 'closed').length + ' (' + JSON.stringify(ledger.setups.filter(x => x.status === 'closed').reduce((a, x) => { a[x.closeReason] = (a[x.closeReason] || 0) + 1; return a; }, {})) + ') | ACT rows across dates ' + actRows + ' | invalidation raises ' + raises + ', max raise ' + maxRaisePct.toFixed(2) + '% | breach entries ' + breaches + ' | same-day re-run identical on ' + (grids.length - idem) + '/' + grids.length + ' dates');
+  const openIds = ledger.setups.filter(x => x.status === 'open').map(x => x.id + ' inv ' + x.invalidation + (x.invalidationRaises ? ' (+' + x.invalidationRaises + ' raises)' : '') + (x.raisesSuppressed ? ' (' + x.raisesSuppressed + ' suppressed)' : '') + ' breach bars ' + x.breachBarIds.length + ' consecutive ' + S.consecutiveBreachBars(x) + ' bars ' + x.bars.length + ' live ' + x.liveLifecycleState);
+  console.log('end of replay: setups ' + ledger.setups.length + ' | open ' + ledger.setups.filter(x => x.status === 'open').length + ' | closed ' + ledger.setups.filter(x => x.status === 'closed').length + ' (' + JSON.stringify(ledger.setups.filter(x => x.status === 'closed').reduce((a, x) => { a[x.closeReason] = (a[x.closeReason] || 0) + 1; return a; }, {})) + ') | ACT rows across dates ' + actRows + ' | invalidation raises ' + raises + ', max raise ' + maxRaisePct.toFixed(2) + '% | breach bars ' + breaches + ' | same-day re-run identical on ' + (grids.length - idem) + '/' + grids.length + ' dates');
   openIds.forEach(l => console.log('  open: ' + l));
   console.log('ledger key order (first record): ' + (ledger.setups.length ? Object.keys(ledger.setups[0]).join(',') : '(no setups)'));
   if (idem) { bugs++; console.log('  BUG: ledger not idempotent on ' + idem + ' date(s)'); }
@@ -1531,12 +1543,12 @@ function runStep11CAcceptance(current, grids, gridCaches, dailyCaches) {
       return { cgId: cgId, timeframe: '1d', verdict: elig ? 'ACT' : (fit ? 'WATCH' : 'NONE'), lifecycleState: fit ? fit.lifecycleState : null, price: fit ? fit.detectionPrice : null,
         fit: fit ? { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, entryEconomics: fit.entryEconomics || null } : null };
     });
-    const before = L2; L2 = S.updateSetupLedger(before, g.date, rows, { detectorVersion: current.DETECTOR_VERSION, configHash: 'synthetic' });
-    before.setups.forEach(function (b) { const n = L2.setups.find(x => x.id === b.id); if (!n) { bugs2++; return; } if (n.invalidation < b.invalidation) bugs2++; if (n.invalidation > b.invalidation) { raises2++; maxRaise2 = Math.max(maxRaise2, (n.invalidation - b.invalidation) / b.invalidation * 100); } if (b.status === 'closed' && n.status !== 'closed') reopened++; if (n.breachHistory.length < b.breachHistory.length) bugs2++; });
+    const before = L2; L2 = S.updateSetupLedger(before, g.date, rows, { detectorVersion: current.DETECTOR_VERSION, configHash: 'synthetic', barsByCoin: replayBarsByCoin(dailyCaches, g.coins, g.date) });
+    before.setups.forEach(function (b) { const n = L2.setups.find(x => x.id === b.id); if (!n) { bugs2++; return; } if (n.invalidation < b.invalidation) bugs2++; if (n.invalidation > b.invalidation) { raises2++; maxRaise2 = Math.max(maxRaise2, (n.invalidation - b.invalidation) / b.invalidation * 100); } if (b.status === 'closed' && n.status !== 'closed') reopened++; if (n.breachBarIds.length < b.breachBarIds.length || n.bars.length < b.bars.length) bugs2++; });
   });
   L2.setups.filter(x => x.status === 'closed').forEach(x => { closeReasons[x.closeReason] = (closeReasons[x.closeReason] || 0) + 1; });
   const coinsWithMulti = {}; L2.setups.forEach(x => { coinsWithMulti[x.cgId] = (coinsWithMulti[x.cgId] || 0) + 1; });
-  console.log('SYNTHETIC mechanics replay (ACT := eligible fit; NOT the research verdict): setups ' + L2.setups.length + ' | open at end ' + L2.setups.filter(x => x.status === 'open').length + ' | closed ' + JSON.stringify(closeReasons) + ' | coins with >1 setup id (new id after close) ' + Object.keys(coinsWithMulti).filter(k => coinsWithMulti[k] > 1).length + ' | invalidation raises ' + raises2 + ' (max ' + maxRaise2.toFixed(2) + '%), suppressed by anchor mismatch ' + L2.setups.reduce((a, x) => a + x.raisesSuppressed, 0) + ' | open setups whose live lifecycle is broken ' + L2.setups.filter(x => x.status === 'open' && x.liveLifecycleState === 'broken').length + ' | breach entries ' + L2.setups.reduce((a, x) => a + x.breachHistory.length, 0) + ' | closed ids reopened ' + reopened + ' | invariant violations ' + bugs2);
+  console.log('SYNTHETIC mechanics replay (ACT := eligible fit; NOT the research verdict): setups ' + L2.setups.length + ' | open at end ' + L2.setups.filter(x => x.status === 'open').length + ' | closed ' + JSON.stringify(closeReasons) + ' | coins with >1 setup id (new id after close) ' + Object.keys(coinsWithMulti).filter(k => coinsWithMulti[k] > 1).length + ' | invalidation raises ' + raises2 + ' (max ' + maxRaise2.toFixed(2) + '%), suppressed by anchor mismatch ' + L2.setups.reduce((a, x) => a + x.raisesSuppressed, 0) + ' | open setups whose live lifecycle is broken ' + L2.setups.filter(x => x.status === 'open' && x.liveLifecycleState === 'broken').length + ' | breach bars ' + L2.setups.reduce((a, x) => a + x.breachBarIds.length, 0) + ' | closed ids reopened ' + reopened + ' | invariant violations ' + bugs2);
   if (bugs2 || reopened) { bugs++; console.log('  BUG: synthetic replay violated a ledger invariant'); }
   console.log('Prior-section deltas: none - channel-core.js is untouched by 11-C (setups-core.js is a new file; capture.js adds a research block + ledger I/O), so every section above prints the same numbers.');
   if (bugs) { console.log('Step 11-C acceptance: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
@@ -1695,7 +1707,7 @@ function step13Bootstrap(byDate) {
   reps.sort((a, b) => a - b); return { lo: reps[Math.floor(0.05 * reps.length)], hi: reps[Math.floor(0.95 * reps.length) - 1] };
 }
 function runStep13Validation(current, stable, grids, gridCaches, dailyCaches) {
-  console.log('\n=== Step 13 validation (regression guard vs the page flag-off chain on channel-core.stable.js; walk-forward replay of research signals; report numbers) — ' + grids.length + ' capture dates, 1d ===');
+  console.log('\n=== Historical replay (fixture-dated, not forward evidence) — Step 13 validation (regression guard vs the page flag-off chain on channel-core.stable.js; walk-forward replay of research signals; report numbers) — ' + grids.length + ' capture dates, 1d ===');
   let bugs = 0;
   let page; try { page = loadPageFlagOffChain(current); } catch (e) { console.log('  BUG: cannot load the page flag-off chain: ' + e.message); process.exitCode = 1; return; }
   console.log('OLD chain: ' + STEP13_PAGE_CHAIN_FNS.join(', ') + ' extracted from ../radar.html, sha1 ' + page.sha1 + ' -> ' + (page.sha1 === STEP13_PAGE_CHAIN_SHA1 ? 'MATCH (flag-off baseline ' + STEP13_PAGE_CHAIN_SHA1.slice(0, 8) + ')' : 'DRIFT vs recorded ' + STEP13_PAGE_CHAIN_SHA1.slice(0, 8)));
@@ -1755,7 +1767,7 @@ function runStep13Validation(current, stable, grids, gridCaches, dailyCaches) {
       if (fit) { const atr = fit.atr14 / fit.detectionPrice, age = fit.lastIdx - fit.firstIdx; blindRows.push({ cgId, symbol: rowMeta.symbol || cgId, date: g.date, timeframe: '1d', verdict: res.verdict, gate: res.gate, vol: atr, age, regime: (btc && btc.aboveEma50 && btc.ema50Slope >= 0) ? 'above-rising' : 'other' }); }
       else blindRows.push({ cgId, symbol: rowMeta.symbol || cgId, date: g.date, timeframe: '1d', verdict: 'rejected', gate: 'data.fit', vol: null, age: null, regime: (btc && btc.aboveEma50 && btc.ema50Slope >= 0) ? 'above-rising' : 'other' });
     });
-    ledger = S.updateSetupLedger(ledger, g.date, ledgerRows, { detectorVersion: current.DETECTOR_VERSION, configHash: 'walk-forward' });
+    ledger = S.updateSetupLedger(ledger, g.date, ledgerRows, { detectorVersion: current.DETECTOR_VERSION, configHash: 'walk-forward', barsByCoin: replayBarsByCoin(dailyCaches, g.coins, g.date) });
     STEP13_HORIZONS.forEach(h => { const anyCoin = g.coins.some(c => dailyCaches[c] && dailyCaches[c].length - 1 - dailyCaches[c].findIndex(x => x.date === g.date) >= h && dailyCaches[c].findIndex(x => x.date === g.date) >= 0); if (anyCoin) horizonDates[h].push(g.date); });
     guard.dates.push(gd);
   });
@@ -1790,21 +1802,47 @@ function runStep13Validation(current, stable, grids, gridCaches, dailyCaches) {
   console.log('VERDICT: research ACT arm n=' + arms['research ACT'][5].all.length + '/' + arms['research ACT'][10].all.length + '/' + arms['research ACT'][20].all.length + ' at +5/+10/+20 -> ' + (arms['research ACT'][5].all.length < STEP13_MIN_N ? 'Unvalidated (n below ' + STEP13_MIN_N + '); forward-observation window (13-5) is the path to a verdict' : 'see cells above'));
   if (bugs) { console.log('Step 13 validation: ' + bugs + ' BUG line(s) above'); process.exitCode = 1; }
 }
-// 13-5: forward scoring of the LIVE ledger (data/setups.json on main) against the daily caches. Reports "no matured setups"
-// until a setup has >= horizon daily bars after openedAt in the fixture caches; scoring rule identical to runStep13Validation.
-function runStep13ForwardScore(current, dailyCaches) {
-  console.log('\n=== Step 13-5 forward score of the live H5 ledger (data/setups.json) ===');
-  const p = path.join(REPO_ROOT, 'data', 'setups.json');
-  if (!fs.existsSync(p)) { console.log('no data/setups.json on main - nothing to score'); return; }
+// Forward ledger (spec "Radar Forward Pipeline Repair Spec - 2026-09-25"): scores data/setups.json from record.bars ALONE - no fixture, no cache
+// lookup. series = [openBar, ...bars], issueIdx 0, entry = openPrice (the capture quote the ACT zone gate passed on; Ruling a), frozen stop/target,
+// STEP13_COST_PCT, exits at the horizon mark-to-close (scoreSignal). A record matures at horizon h when bars.length >= h. FORWARD EVIDENCE = data/setups.json bars only.
+const STEP13_FWD_PROMO = { minMatured: 100, minBlocks: 30, horizon: 10 };   // Ruling c (2026-09-25): Astra's floor kept as the criterion; interim review at STEP13_MIN_N matured
+function step13Median(a) { if (!a.length) return null; const t = a.slice().sort((x, y) => x - y), m = t.length >> 1; return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; }
+function step13ForwardSeries(s) { const p = s.openPrice; return [{ time: s.openBarId, date: s.openedAt, open: p, high: p, low: p, close: p }].concat(s.bars); }
+function step13ForwardBlock(s) { return s.cgId + '|' + String(s.openedAt).slice(0, 7); }   // block = (cgId, calendar month of openedAt)
+function forwardLedgerHorizon(setups, h) {
+  const scored = [], notMatured = [], unscorable = [], byBlock = {};
+  setups.forEach(function (s) {
+    if (!s || s.unscorable || !Array.isArray(s.bars) || typeof s.openPrice !== 'number' || typeof s.stop !== 'number' || typeof s.target !== 'number') { unscorable.push(s && s.id); return; }
+    if (s.bars.length < h) { notMatured.push(s.id); return; }
+    const sc = scoreSignal(step13ForwardSeries(s), 0, s.openPrice, s.stop, s.target, h, STEP13_COST_PCT);
+    if (!sc) { unscorable.push(s.id); return; }
+    scored.push(sc); const k = step13ForwardBlock(s); (byBlock[k] = byBlock[k] || []).push(sc);
+  });
+  const Rs = scored.map(x => x.R), n = scored.length;
+  return { h: h, total: setups.length, n: n, notMatured: notMatured.length, unscorable: unscorable.length,
+    target: scored.filter(x => x.outcome === 'target').length, stop: scored.filter(x => x.outcome === 'stop' || x.outcome === 'conflict-stop').length, conflicts: scored.filter(x => x.outcome === 'conflict-stop').length, open: scored.filter(x => x.stillOpen).length,
+    meanR: n ? Rs.reduce((a, x) => a + x, 0) / n : null, medianR: step13Median(Rs), blocks: Object.keys(byBlock).length, ci: n ? step13Bootstrap(byBlock) : null };
+}
+function runStep13ForwardScore(current, ledgerPath) {
+  console.log('\n=== Forward ledger (live, self-contained bars) — data/setups.json ===');
+  console.log('PROMOTION CRITERION (Ruling c, 2026-09-25): >=' + STEP13_FWD_PROMO.minMatured + ' matured setups across >=' + STEP13_FWD_PROMO.minBlocks + ' blocks AND 90% block-bootstrap CI lower bound on mean net R > 0 at the ' + STEP13_FWD_PROMO.horizon + '-bar horizon; applied per gate configuration once the NEAR extension exists - not expected to be met by ACT alone.');
+  console.log('Interim review at ' + STEP13_MIN_N + ' matured (a review trigger, not a promotion threshold). block = (cgId, calendar month of openedAt); one bootstrap draw per block. Fill: entry = openPrice, frozen stop/target, cost ' + (STEP13_COST_PCT * 100).toFixed(1) + '% round trip; a record matures at horizon h when bars.length >= h. Forward evidence = data/setups.json bars only.');
+  const p = ledgerPath || path.join(REPO_ROOT, 'data', 'setups.json');
+  if (!fs.existsSync(p)) { console.log('no data/setups.json - nothing to score'); return; }
   let L; try { L = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { console.log('  BUG: setups.json unreadable: ' + e.message); process.exitCode = 1; return; }
   const setups = Array.isArray(L.setups) ? L.setups : [];
-  STEP13_HORIZONS.forEach(h => {
-    const scored = [], notMatured = [];
-    setups.forEach(s => { const series = dailyCaches[s.cgId]; const idx = series ? series.findIndex(c => c.date === s.openedAt) : -1; if (idx < 0 || series.length - 1 - idx < h) { notMatured.push(s.id); return; } const entry = typeof s.openPrice === 'number' ? s.openPrice : s.entryRef; const sc = scoreSignal(series, idx, entry, s.stop, s.target, h); if (sc) scored.push(sc); else notMatured.push(s.id); });
-    console.log('  +' + h + 'd: ledger setups ' + setups.length + ' | matured & scored ' + scored.length + ' | not matured / unscorable ' + notMatured.length + ' | ' + (scored.length ? step13Cell(scored) : 'no matured setups (n=0 of ' + setups.length + ')'));
+  console.log('ledger schemaVersion ' + L.schemaVersion + ' | setups ' + setups.length + ' | open ' + setups.filter(x => x && x.status === 'open').length + ' | closed ' + setups.filter(x => x && x.status === 'closed').length + ' | bars in ledger ' + setups.reduce((a, x) => a + (x && Array.isArray(x.bars) ? x.bars.length : 0), 0));
+  const f = v => v == null ? 'n/a' : v.toFixed(2);
+  let at10 = null;
+  STEP13_HORIZONS.forEach(function (h) {
+    const r = forwardLedgerHorizon(setups, h); if (h === STEP13_FWD_PROMO.horizon) at10 = r;
+    const body = r.n ? 'n=' + r.n + ' matured | target ' + r.target + ' / stop ' + r.stop + ' (conflict ' + r.conflicts + ') / open ' + r.open + ' | mean R ' + f(r.meanR) + ' median R ' + f(r.medianR) + ' | blocks ' + r.blocks + ' | 90% CI [' + f(r.ci.lo) + ', ' + f(r.ci.hi) + ']' + (r.n < STEP13_MIN_N ? ' -> Unvalidated (n=' + r.n + ')' : '') : 'no matured setups (n=0 of ' + r.total + ')';
+    console.log('  +' + h + 'd: ' + body + ' | not matured ' + r.notMatured + ' | unscorable ' + r.unscorable);
   });
+  const met = at10.n >= STEP13_FWD_PROMO.minMatured && at10.blocks >= STEP13_FWD_PROMO.minBlocks && at10.ci && at10.ci.lo > 0;
+  console.log('promotion status at +' + STEP13_FWD_PROMO.horizon + 'd: ' + (met ? 'MET' : 'NOT MET') + ' (matured ' + at10.n + '/' + STEP13_FWD_PROMO.minMatured + ', blocks ' + at10.blocks + '/' + STEP13_FWD_PROMO.minBlocks + ', CI lower bound ' + (at10.ci ? f(at10.ci.lo) : 'n/a') + ' vs > 0)');
 }
 
 // Step 13: run when executed; export the pure harness helpers for the local suite when required.
 if (require.main === module) run();
-else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS };
+else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_FWD_PROMO, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS };
