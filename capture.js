@@ -161,6 +161,32 @@ function stampCandleContract(candle, opts) {
   candle.schemaVersion = CANDLE_SCHEMA_VERSION;
   return candle;
 }
+// --- Forward pipeline repair (spec 2026-09-25): the setup ledger carries its own post-issue daily bars ---------------------
+// barsByCoin = { cgId: [{id, date, open, high, low, close, venue, pair, isClosed}] } built from each pull's freshly MERGED cache
+// (p.cache.ohlcDaily - the same object saved to data/cache/<cgId>.json), closed candles only, oldest first. A coin whose daily stream
+// is not a successful exchange stream this run ('<exchange>-failed', '-collision', the coingecko fallback) contributes NOTHING: no bars
+// this run, no mark; the next successful run appends the gap by candle id (setups-core.js append rule). No detection logic here.
+function buildBarsByCoin(pulls) {
+  const out = {};
+  (pulls || []).forEach(p => {
+    const src = p && p.dailySource;
+    if (!src || /-failed$|-collision$/.test(src) || /^coingecko/.test(src)) return;
+    const arr = p.cache && p.cache.ohlcDaily; if (!arr || !arr.length) return;
+    const bars = [];
+    arr.forEach(c => { if (c && c.isClosed === true) bars.push({ id: c.time, date: c.date, open: c.open, high: c.high, low: c.low, close: c.close, venue: c.venue === undefined ? null : c.venue, pair: c.pair === undefined ? null : c.pair, isClosed: true }); });
+    if (bars.length) out[p.coin.id] = bars;
+  });
+  return out;
+}
+// Silent-disconnect guard: >= 1 coin has a successful daily stream this run (barsByCoin non-empty) yet NONE of the open setups received any bars.
+// Returns a reason string (the caller then skips the LEDGER write only - never the capture) or null.
+function ledgerSilentDisconnect(priorLedger, barsByCoin) {
+  if (!barsByCoin || !Object.keys(barsByCoin).length) return null;          // no successful stream anywhere: a plain outage, not a disconnect
+  const open = S.normalizeLedger(priorLedger).setups.filter(x => x.status === 'open');
+  if (!open.length) return null;
+  const fed = open.filter(x => barsByCoin[x.cgId] && barsByCoin[x.cgId].length).length;
+  return fed === 0 ? 'no open setup (' + open.length + ') received any bars while ' + Object.keys(barsByCoin).length + ' coin(s) have a successful daily stream' : null;
+}
 // FIX (analysis-thread review, 2026-09-22, BLOCKS finding): stamping used to mutate the SAME
 // candle objects that also flow into detectChannel and end up on the returned fit's `candles`
 // field (channel-core.js's `candles.slice(-150)` — a SHALLOW slice, same object references,
@@ -1359,14 +1385,23 @@ async function main() {
       if (researchRows) {
         const setupsPath = path.join(DATA_DIR, 'setups.json');
         const prior = fs.existsSync(setupsPath) ? JSON.parse(fs.readFileSync(setupsPath, 'utf8')) : null;
-        const before = S.normalizeLedger(prior);
-        const next = S.updateSetupLedger(prior, ymd(Date.now()), researchRows, { detectorVersion: C.DETECTOR_VERSION, configHash: configHash });
-        const openBefore = before.setups.filter(x => x.status === 'open').length, openAfter = next.setups.filter(x => x.status === 'open').length;
-        setupsSummary = { opened: next.setups.length - before.setups.length,
-          closed: next.setups.filter(x => x.status === 'closed').length - before.setups.filter(x => x.status === 'closed').length,
-          open: openAfter, openBefore: openBefore, total: next.setups.length };
-        fs.writeFileSync(setupsPath, JSON.stringify(next, null, 1));
-        console.log('wrote data/setups.json: opened', setupsSummary.opened, 'closed', setupsSummary.closed, 'open', openAfter, 'total', next.setups.length);
+        const barsByCoin = buildBarsByCoin(pulls);   // forward pipeline repair: closed bars from the freshly merged caches
+        const disconnect = ledgerSilentDisconnect(prior, barsByCoin);
+        if (disconnect) {
+          // Guard: the ledger write (only) is aborted; the capture files above are already written and stay.
+          setupsSummary = { aborted: 'silent-disconnect' };
+          console.warn('LEDGER WRITE ABORTED (silent-disconnect guard): ' + disconnect + '. data/setups.json left unchanged; capture files are unaffected.');
+        } else {
+          const before = S.normalizeLedger(prior, barsByCoin);
+          const next = S.updateSetupLedger(prior, ymd(Date.now()), researchRows, { detectorVersion: C.DETECTOR_VERSION, configHash: configHash, barsByCoin: barsByCoin });
+          const openBefore = before.setups.filter(x => x.status === 'open').length, openAfter = next.setups.filter(x => x.status === 'open').length;
+          const barsAdded = next.setups.reduce((a, x) => a + x.bars.length, 0) - before.setups.reduce((a, x) => a + x.bars.length, 0);
+          setupsSummary = { opened: next.setups.length - before.setups.length,
+            closed: next.setups.filter(x => x.status === 'closed').length - before.setups.filter(x => x.status === 'closed').length,
+            open: openAfter, openBefore: openBefore, total: next.setups.length, barsAdded: barsAdded };
+          fs.writeFileSync(setupsPath, JSON.stringify(next, null, 1));
+          console.log('wrote data/setups.json: opened', setupsSummary.opened, 'closed', setupsSummary.closed, 'open', openAfter, 'total', next.setups.length, 'bars appended', barsAdded);
+        }
       }
     } catch (e) {
       console.warn('setup ledger update failed (capture files above are unaffected):', e.message);

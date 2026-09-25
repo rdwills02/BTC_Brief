@@ -1,9 +1,10 @@
-/* setups-core.js — Step 11-C (Remediation spec H5, frozen signals; step 11 plan 11-C; analysis-thread decision
- * "Step 11 Diff C — decision", option (i)). Pure ledger logic for data/setups.json: no fs, no Date, no globals.
- * capture.js does the I/O around updateSetupLedger(); the runner replays the dated fixtures through it.
+/* setups-core.js — Step 11-C (Remediation spec H5, frozen signals), schemaVersion 2 (Forward pipeline repair, 2026-09-25: the ledger
+ * carries its own post-issue daily bars). Pure ledger logic for data/setups.json: no fs, no Date, no globals.
+ * capture.js does the I/O around updateSetupLedger(); the runner replays the dated fixtures through it and scores the live ledger from
+ * record.bars alone. FORWARD EVIDENCE = data/setups.json bars only.
  *
  * Ledger shape (stable key order, setups sorted by id, so diffs stay readable):
- *   { schemaVersion: 1, setups: [ record, ... ] }
+ *   { schemaVersion: 2, setups: [ record, ... ] }
  * Record (key order fixed by makeRecord):
  *   id            "<cgId>:<timeframe>:<first ACT capture date>"
  *   status        "open" | "closed"
@@ -18,22 +19,38 @@
  *   invalidationRaises / raisesSuppressed  counts of raises applied / refused for anchor mismatch
  *   liveInvalidation, liveFitId, liveLifecycleState  the last live fit's values, for display only (H5: the live fit evolves separately)
  *   stop, target, netRR, fitId, detectorVersion, configHash                — frozen at open
- *   breachHistory [YYYY-MM-DD, ...]  dates the capture quote closed below the FROZEN invalidation; append-only
- *   consecutiveBreaches  captures in a row with a breach (reset to 0 on a non-breach capture)
+ *   state         'ACT' (the only value this build writes; 'NEAR' is reserved for a later extension)
+ *   failedGates   [] for ACT; reserved for the NEAR extension
+ *   openBarId     id (unix open time) of the last CLOSED daily candle strictly before openedAt - the bar the ACT fit was judged on; null if unknown
+ *   unscorable    null, or 'no-open-bar' when openBarId is unknown (v1 migration without a cache bar, or none at open); the runner skips these
+ *   bars          [{id, date, open, high, low, close[, entryDay: true]}] closed daily candles from openedAt on, candle order, APPEND-ONLY (never modified/removed);
+ *                 the candle dated openedAt carries entryDay: true (Amendment 1: it holds the entry and the ~19h after it)
+ *   lastBarId     id of the last appended bar (null until the first)
+ *   barSource     {venue, pair} of the first appended bar (null until then); a later bar from another venue/pair is refused
+ *   barSourceMismatches  count of distinct bars refused for a venue/pair mismatch; lastMismatchBarId = highest such id (keeps the count idempotent)
+ *   breachBarIds  [id,...] bars whose close was below the invalidation in force when the bar was appended; consecutiveBreachBars(record)
+ *                 is computed from the tail of bars (not stored)
  *   closedAt, closeReason ("broken" | "left-universe") — null while open
- * Rules (H5, C-1 review ruling): open on the first research ACT for a (cgId, timeframe) with no open setup; close 'broken'
- * when consecutiveBreaches reaches SETUP_BREAK_CLOSES (judged against the FROZEN rail - the live lifecycle never closes a
- * setup by itself), or 'left-universe' when the coin is absent from the capture; a closed id never reopens; a later ACT
- * after a close opens a NEW id (dated that capture); records are never deleted; same-day re-run is idempotent.
+ * Append rule (per open OR recently closed record): a bar is appended only if isClosed === true, id > lastBarId, date >= openedAt, all OHLC
+ * finite, and venue/pair match barSource. (date >= openedAt, Amendment 1.) After a close, bars stop at close + SETUP_POST_CLOSE_BARS bars (dated after closedAt).
+ * Rules (H5, C-1 review ruling): open on the first research ACT for a (cgId, timeframe) with no open setup; close 'broken' when
+ * SETUP_BREAK_CLOSES consecutive daily closes sit below the invalidation (closedAt = the date of the bar that completes the run), or
+ * 'left-universe' when the coin is absent from the capture; a closed id never reopens; a later ACT after a close opens a NEW id (dated
+ * that capture); records are never deleted; same-day re-run is idempotent (bars, counters unchanged).
+ * v1 -> v2: normalizeLedger back-fills bars: [], state 'ACT', failedGates [], and openBarId from barsByCoin when the candle exists.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory();
   else root.SetupsCore = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  var SETUPS_SCHEMA_VERSION = 1;
-  var SETUP_BREAK_CLOSES = 3;   // PROVISIONAL (C-1 review ruling 2): consecutive capture quotes below the frozen invalidation that close a setup (A1's rule on the frozen rail). In capture.js's configHash.
+  var SETUPS_SCHEMA_VERSION = 2;
+  var SETUP_BREAK_CLOSES = 3;   // PROVISIONAL (Ruling b, 2026-09-25; A1): consecutive DAILY CLOSES (bars, not capture quotes) below the invalidation that close a setup. In capture.js's configHash.
+  var SETUP_POST_CLOSE_BARS = 20;   // bars keep appending after a close up to close + 20 (the longest scoring horizon); open records have no cap
 
   function num(v) { return typeof v === 'number' && isFinite(v); }
+  var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function cleanBar(b) { var o = { id: b.id, date: b.date, open: b.open, high: b.high, low: b.low, close: b.close }; if (b.entryDay === true) o.entryDay = true; return o; }
+  function validBar(b) { return b && num(b.id) && typeof b.date === 'string' && DATE_RE.test(b.date) && num(b.open) && num(b.high) && num(b.low) && num(b.close); }
   function makeRecord(r) {
     // fixed key order
     return {
@@ -42,16 +59,33 @@
       anchorIds: r.anchorIds.slice(), invalidation: r.invalidation, invalidationRaises: r.invalidationRaises, raisesSuppressed: r.raisesSuppressed,
       liveInvalidation: r.liveInvalidation, liveFitId: r.liveFitId, liveLifecycleState: r.liveLifecycleState,
       stop: r.stop, target: r.target, netRR: r.netRR, fitId: r.fitId, detectorVersion: r.detectorVersion, configHash: r.configHash,
-      breachHistory: r.breachHistory.slice(), consecutiveBreaches: r.consecutiveBreaches, closedAt: r.closedAt, closeReason: r.closeReason
+      state: r.state || 'ACT', failedGates: Array.isArray(r.failedGates) ? r.failedGates.slice() : [],
+      openBarId: num(r.openBarId) ? r.openBarId : null, unscorable: r.unscorable || null,
+      bars: (r.bars || []).map(cleanBar), lastBarId: num(r.lastBarId) ? r.lastBarId : null,
+      barSource: r.barSource ? { venue: r.barSource.venue, pair: r.barSource.pair } : null,
+      barSourceMismatches: num(r.barSourceMismatches) ? r.barSourceMismatches : 0, lastMismatchBarId: num(r.lastMismatchBarId) ? r.lastMismatchBarId : null,
+      breachBarIds: (r.breachBarIds || []).slice(), closedAt: r.closedAt, closeReason: r.closeReason
     };
   }
   function emptyLedger() { return { schemaVersion: SETUPS_SCHEMA_VERSION, setups: [] }; }
-  function normalizeLedger(ledger) {
+  // The last CLOSED candle strictly before the open date (the bar the ACT fit was judged on). barList: [{id, date, isClosed, ...}].
+  function openBarIdFrom(barList, openedAt) {
+    var best = null;
+    (barList || []).forEach(function (b) { if (b && b.isClosed === true && num(b.id) && typeof b.date === 'string' && b.date < openedAt && (best === null || b.id > best)) best = b.id; });
+    return best;
+  }
+  // barsByCoin (optional): only used to back-fill openBarId on records that lack it (v1 migration / open-time gap).
+  function normalizeLedger(ledger, barsByCoin) {
     var out = emptyLedger();
     if (ledger && Array.isArray(ledger.setups)) {
       for (var i = 0; i < ledger.setups.length; i++) {
         var s = ledger.setups[i];
         if (!s || typeof s.id !== 'string') continue;
+        var openBarId = num(s.openBarId) ? s.openBarId : null, unscorable = s.unscorable || null;
+        if (openBarId === null && s.openedAt) {
+          var back = openBarIdFrom(barsByCoin && barsByCoin[s.cgId], s.openedAt);
+          if (back !== null) { openBarId = back; unscorable = null; } else unscorable = 'no-open-bar';
+        }
         out.setups.push(makeRecord({
           id: s.id, status: s.status === 'closed' ? 'closed' : 'open', openedAt: s.openedAt || null, openPrice: num(s.openPrice) ? s.openPrice : null, lastSeenAt: s.lastSeenAt || null,
           cgId: s.cgId, timeframe: s.timeframe, entryZone: s.entryZone || null, entryRef: num(s.entryRef) ? s.entryRef : null,
@@ -62,7 +96,12 @@
           liveInvalidation: num(s.liveInvalidation) ? s.liveInvalidation : null, liveFitId: s.liveFitId || null, liveLifecycleState: s.liveLifecycleState || null,
           stop: num(s.stop) ? s.stop : null, target: num(s.target) ? s.target : null, netRR: num(s.netRR) ? s.netRR : null,
           fitId: s.fitId || null, detectorVersion: s.detectorVersion || null, configHash: s.configHash || null,
-          breachHistory: Array.isArray(s.breachHistory) ? s.breachHistory.slice() : [], consecutiveBreaches: num(s.consecutiveBreaches) ? s.consecutiveBreaches : 0,
+          state: s.state === 'NEAR' ? 'NEAR' : 'ACT', failedGates: Array.isArray(s.failedGates) ? s.failedGates : [],
+          openBarId: openBarId, unscorable: unscorable,
+          bars: Array.isArray(s.bars) ? s.bars.filter(validBar) : [], lastBarId: num(s.lastBarId) ? s.lastBarId : null,
+          barSource: s.barSource && typeof s.barSource === 'object' ? s.barSource : null,
+          barSourceMismatches: num(s.barSourceMismatches) ? s.barSourceMismatches : 0, lastMismatchBarId: num(s.lastMismatchBarId) ? s.lastMismatchBarId : null,
+          breachBarIds: Array.isArray(s.breachBarIds) ? s.breachBarIds.filter(num) : [],
           closedAt: s.closedAt || null, closeReason: s.closeReason || null
         }));
       }
@@ -71,25 +110,58 @@
     return out;
   }
 
+  // Trailing run of bars whose id is in breachBarIds (computed, not stored).
+  function consecutiveBreachBars(rec) {
+    var set = {}; (rec.breachBarIds || []).forEach(function (id) { set[id] = true; });
+    var n = 0;
+    for (var i = rec.bars.length - 1; i >= 0 && set[rec.bars[i].id]; i--) n++;
+    return n;
+  }
+  // Append this coin's new closed bars to one record (mutates rec - a private copy from normalizeLedger). Never touches an existing bar.
+  function appendBars(rec, coinBars) {
+    if (!Array.isArray(coinBars) || !coinBars.length) return;
+    var list = coinBars.filter(function (b) { return b && num(b.id); }).sort(function (a, b) { return a.id - b.id; });
+    list.forEach(function (b) {
+      if (b.isClosed !== true || !validBar(b)) return;
+      if (rec.lastBarId !== null && b.id <= rec.lastBarId) return;      // duplicate / older / out of order
+      if (b.date < rec.openedAt) return;                                // before the open date (a bar dated openedAt is the entry-day bar: stored, flagged entryDay)
+      if (rec.status === 'closed' && rec.closedAt) {                    // post-close cap: close + SETUP_POST_CLOSE_BARS bars
+        var after = 0; rec.bars.forEach(function (x) { if (x.date > rec.closedAt) after++; });
+        if (after >= SETUP_POST_CLOSE_BARS) return;
+      }
+      var src = { venue: b.venue === undefined ? null : b.venue, pair: b.pair === undefined ? null : b.pair };
+      if (rec.barSource && (rec.barSource.venue !== src.venue || rec.barSource.pair !== src.pair)) {
+        if (rec.lastMismatchBarId === null || b.id > rec.lastMismatchBarId) { rec.barSourceMismatches++; rec.lastMismatchBarId = b.id; }
+        return;
+      }
+      if (!rec.barSource) rec.barSource = src;
+      rec.bars.push(cleanBar(Object.assign({}, b, { entryDay: b.date === rec.openedAt }))); rec.lastBarId = b.id;
+      if (rec.status === 'open' && num(rec.invalidation)) {
+        if (b.close < rec.invalidation) rec.breachBarIds.push(b.id);
+        if (consecutiveBreachBars(rec) >= SETUP_BREAK_CLOSES) { rec.status = 'closed'; rec.closedAt = b.date; rec.closeReason = 'broken'; }
+      }
+    });
+  }
+
   // rows: one per coin in TODAY's universe (whether or not it has a research fit):
   //   { cgId, timeframe, verdict ('ACT'|'WATCH'|'WAIT'|'NONE'|null), lifecycleState|null, price|null,
   //     fit: { fitId, pivotIds, supSlope, supIntercept, supportNow, invalidation, entryEconomics:{entryZone, entryRef, stop, target, netRR} } | null }
-  // meta: { detectorVersion, configHash }. Returns a NEW normalized ledger; the input is not mutated.
+  // meta: { detectorVersion, configHash, barsByCoin: { cgId: [{id, date, open, high, low, close, venue, pair, isClosed}] } }.
+  // Returns a NEW normalized ledger; the input is not mutated.
   function updateSetupLedger(ledger, today, rows, meta) {
-    var L = normalizeLedger(ledger);
     meta = meta || {};
+    var barsByCoin = meta.barsByCoin || {};
+    var L = normalizeLedger(ledger, barsByCoin);
     var byId = {}; L.setups.forEach(function (s) { byId[s.id] = s; });
     var present = {}; (rows || []).forEach(function (r) { if (r && r.cgId) present[r.cgId + ':' + (r.timeframe || '1d')] = r; });
     function openFor(key) { for (var i = 0; i < L.setups.length; i++) { var s = L.setups[i]; if (s.status === 'open' && s.cgId + ':' + s.timeframe === key) return s; } return null; }
 
-    // 1. existing open setups: same-rail raise, breach against the FROZEN invalidation, close on SETUP_BREAK_CLOSES
-    //    consecutive breaches or on leaving the universe. The live lifecycle is recorded, never acted on.
+    // 1. every record: same-rail raise (open only), append this coin's new closed bars, then close 'broken' on SETUP_BREAK_CLOSES consecutive
+    //    daily closes below the invalidation (inside appendBars), or 'left-universe' when the coin is absent. The live lifecycle is recorded, never acted on.
     L.setups.forEach(function (s) {
-      if (s.status !== 'open') return;
       var key = s.cgId + ':' + s.timeframe, r = present[key];
-      if (!r) { s.status = 'closed'; s.closedAt = today; s.closeReason = 'left-universe'; return; }
-      var fit = r.fit;
-      if (fit) {
+      if (s.status === 'open' && r && r.fit) {
+        var fit = r.fit;
         var firstPassToday = s.lastSeenAt !== today;   // same-day re-run: counters must not move twice (idempotence)
         s.lastSeenAt = today;
         s.liveFitId = fit.fitId || null;
@@ -102,11 +174,8 @@
           else if (fit.invalidation > s.invalidation) { if (sameRail) { s.invalidation = fit.invalidation; s.invalidationRaises++; } else if (firstPassToday) s.raisesSuppressed++; }
         }
       }
-      var breach = num(r.price) && num(s.invalidation) && r.price < s.invalidation;
-      if (breach) {
-        if (s.breachHistory.indexOf(today) === -1) { s.breachHistory.push(today); s.consecutiveBreaches++; }
-      } else if (s.breachHistory.indexOf(today) === -1) s.consecutiveBreaches = 0;
-      if (s.consecutiveBreaches >= SETUP_BREAK_CLOSES) { s.status = 'closed'; s.closedAt = today; s.closeReason = 'broken'; }
+      appendBars(s, barsByCoin[s.cgId]);
+      if (s.status === 'open' && !r) { s.status = 'closed'; s.closedAt = today; s.closeReason = 'left-universe'; }
     });
 
     // 2. new ACTs open a setup when none is open for (cgId, timeframe); a closed id never reopens
@@ -117,6 +186,7 @@
       var id = key + ':' + today;
       if (byId[id]) return; // same-day re-run after a same-day open+close: idempotent, never reopen
       var ee = r.fit.entryEconomics || {};
+      var obid = openBarIdFrom(barsByCoin[r.cgId], today);
       var rec = makeRecord({
         id: id, status: 'open', openedAt: today, openPrice: num(r.price) ? r.price : null, lastSeenAt: today, cgId: r.cgId, timeframe: tf,
         entryZone: Array.isArray(ee.entryZone) ? ee.entryZone.slice() : null, entryRef: num(ee.entryRef) ? ee.entryRef : null,
@@ -127,9 +197,9 @@
         liveInvalidation: num(r.fit.invalidation) ? r.fit.invalidation : null, liveFitId: r.fit.fitId || null, liveLifecycleState: r.lifecycleState || null,
         stop: num(ee.stop) ? ee.stop : null, target: num(ee.target) ? ee.target : null, netRR: num(ee.netRR) ? ee.netRR : null,
         fitId: r.fit.fitId || null, detectorVersion: meta.detectorVersion || null, configHash: meta.configHash || null,
-        breachHistory: [], consecutiveBreaches: 0, closedAt: null, closeReason: null
+        state: 'ACT', failedGates: [], openBarId: obid, unscorable: obid === null ? 'no-open-bar' : null,
+        bars: [], lastBarId: null, barSource: null, barSourceMismatches: 0, lastMismatchBarId: null, breachBarIds: [], closedAt: null, closeReason: null
       });
-      if (num(r.price) && num(rec.invalidation) && r.price < rec.invalidation) { rec.breachHistory.push(today); rec.consecutiveBreaches = 1; }
       L.setups.push(rec); byId[id] = rec;
     });
     L.setups.sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
@@ -149,5 +219,5 @@
     };
   }
 
-  return { SETUPS_SCHEMA_VERSION: SETUPS_SCHEMA_VERSION, SETUP_BREAK_CLOSES: SETUP_BREAK_CLOSES, emptyLedger: emptyLedger, normalizeLedger: normalizeLedger, updateSetupLedger: updateSetupLedger, researchSummary: researchSummary, makeRecord: makeRecord };
+  return { SETUPS_SCHEMA_VERSION: SETUPS_SCHEMA_VERSION, SETUP_BREAK_CLOSES: SETUP_BREAK_CLOSES, SETUP_POST_CLOSE_BARS: SETUP_POST_CLOSE_BARS, consecutiveBreachBars: consecutiveBreachBars, openBarIdFrom: openBarIdFrom, emptyLedger: emptyLedger, normalizeLedger: normalizeLedger, updateSetupLedger: updateSetupLedger, researchSummary: researchSummary, makeRecord: makeRecord };
 });
