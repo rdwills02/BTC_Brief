@@ -133,6 +133,13 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .p3 .levels-table .lv-sub{display:inline;margin-left:6px}
 .p3-checks{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;padding:0 18px 12px}
 .p3-check{display:flex;gap:6px;align-items:baseline;font-size:11px;line-height:1.35;min-width:0}
+.p3-check.has-explain{cursor:pointer;position:relative}
+.p3-check.open{background:var(--surface2);border-radius:3px}
+.p3-ck-chev{position:absolute;right:2px;top:0;width:8px;text-align:right;line-height:1.35;font-size:9px;color:var(--muted)}   /* far right of the row; out of flow so the row's text wrapping (and the Checks height) is unchanged */
+.p3-explain{grid-column:1/-1;display:none;font-size:11px;line-height:1.4;color:var(--text2);background:var(--surface2);border-left:3px solid var(--muted);padding:6px 10px}
+.p3-check.open + .p3-explain{display:block}
+.p3-explain.ok{border-left-color:var(--bull)}.p3-explain.bad{border-left-color:var(--bear)}.p3-explain.unk{border-left-color:var(--neut)}
+.p3-ck-all{margin-left:10px;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--accent);cursor:pointer}
 .p3-ck-i{flex:none;width:12px;font-weight:700}
 .p3-check.ok .p3-ck-i{color:var(--bull)}.p3-check.bad .p3-ck-i{color:var(--bear)}.p3-check.unk .p3-ck-i{color:var(--neut)}
 .p3-ck-v{display:block;font-size:10px;color:var(--muted);overflow-wrap:anywhere}
@@ -2877,6 +2884,101 @@ var P3_GATE_WORDS = {
   'C6.spike': 'price not already extended', 'H6.rr': 'reward:risk high enough', 'C4.volume24h': '24h volume above the floor', 'C4.touch-volume': 'support tested on real volume',
   'C5.btc-regime': 'BTC regime supportive'
 };
+// Step 17-F part 2: one plain-language explanation per Checks gate (contract "Radar 17-F Check Explanations"). Each entry is (g, r, ee, d) -> string:
+// the definition, then the live sentence with this row's values, then the threshold. Unknown values say "Unknown" in words. Exported as window.P3_GATE_EXPLAIN.
+var P3_U = 'Unknown';
+function p3xNum(v, dec) { return (typeof v === 'number' && isFinite(v)) ? researchNum(dec == null ? v : Number(v.toFixed(dec))) : P3_U; }
+function p3xPx(v, d) { return (typeof v === 'number' && isFinite(v)) ? fmt(v, d) : P3_U; }
+function p3xPct(frac, dec) { return (typeof frac === 'number' && isFinite(frac)) ? researchNum(Number((frac * 100).toFixed(dec == null ? 1 : dec))) + '%' : P3_U; }
+function p3xLim(t, fallback) { var m = String(t == null ? '' : t).match(/[0-9]+(?:\.[0-9]+)?/); return m ? m[0] : fallback; }
+var P3_GATE_EXPLAIN = {
+  'data.fit': function (g, r, ee, d) {
+    return "A research fit is a support rail, invalidation level and ATR the engine could compute from this coin's candles. Without one there is nothing to check, so every other row is skipped. This row fails only when the series is too short or the fit did not converge.";
+  },
+  'data.price': function (g, r, ee, d) {
+    var px = (g && typeof g.value === 'number') ? g.value : (r && r.price), src = r && r.dailySource ? String(r.dailySource).replace(/-failed$/, '') : '';
+    return 'Every entry check is measured against a live quote. This row fails when the capture had no usable price for the coin, in which case the panel shows the fit but no verdict. Price ' + p3xPx(px, d) + (src && typeof px === 'number' ? ' from ' + src : '') + '.';
+  },
+  'struct.lifecycle': function (g, r, ee, d) {
+    var rr = r && r.researchRow, ls = (rr && rr.lifecycleState) || (g && typeof g.value === 'string' ? g.value : null), bsb = rr && typeof rr.barsSinceBreak === 'number' ? rr.barsSinceBreak : null;
+    return "The support rail is intact when no run of three or more daily closes has fallen below it since the fit's anchors. A broken rail is not a channel any more; a rail that was broken and later reclaimed needs a fresh qualified touch before it counts again. Current state " + (ls || P3_U) + (bsb != null ? ', last break ' + bsb + ' bars ago' : '') + '.';
+  },
+  'struct.quote-breach': function (g, r, ee, d) {
+    return 'Invalidation is the price under the support rail at which the channel thesis is wrong. If the live quote is already below it the setup is invalid now, whatever the daily candles show. Quote ' + p3xPx(g && g.value, d) + ' against invalidation ' + p3xPx(g && g.threshold, d) + '.';
+  },
+  'struct.below-rail': function (g, r, ee, d) {
+    return 'Position is where the last close sits inside the channel, 0 at the support rail and 1 at resistance. Below 0 means price has slipped under the rail on this close; the setup waits until it is back inside. Position ' + p3xNum(g && g.value, 2) + '.';
+  },
+  'C1.trend': function (g, r, ee, d) {
+    var v = g && g.value && typeof g.value === 'object' ? g.value : null;
+    return 'A channel is only worth buying at support when the larger trend is not falling. This check asks that the last close is above the 50-day EMA and that the EMA itself has not declined over the last 10 bars. Close ' + p3xPx(v && v.close, d) + ' vs EMA50 ' + p3xPx(v && v.ema50, d) + ', slope ' + (v && typeof v.ema50Slope === 'number' && isFinite(v.ema50Slope) ? p3xNum(v.ema50Slope * 100, 2) + '%' : P3_U) + '.';
+  },
+  'C3.fresh-touch': function (g, r, ee, d) {
+    var fb = p3xLim(g && g.threshold, P3_U);
+    return 'A touch is a bar whose low came within tolerance of the support rail and closed back above it. The most recent one must be within ' + fb + ' bars, because a rail nobody has tested lately is a line on a chart, not evidence buyers are there. Last touch ' + (g && typeof g.value === 'number' ? g.value : P3_U) + ' bars ago; needs ≤ ' + fb + '.';
+  },
+  'C3.no-recent-break': function (g, r, ee, d) {
+    var fb = p3xLim(g && g.threshold, P3_U);
+    return 'A break is a close below the support rail. Even a single one inside the last ' + fb + ' bars means the rail was not respected recently, and the setup waits until that memory has aged out. Last break ' + (g && typeof g.value === 'number' ? g.value + ' bars ago (or never)' : 'never') + '; needs ≥ ' + fb + '.';
+  },
+  'C7.floor': function (g, r, ee, d) {
+    return 'The research score (0–100) grades the channel itself: touches on both rails, containment, touch spacing, rail age and volume on touches, less a penalty for each break run. The floor is the minimum grade that can be acted on; below it the channel is real but not strong enough. Score ' + p3xNum(g && g.value, 1) + '; floor ' + p3xNum(g && g.threshold, 1) + '.';
+  },
+  'C2.width': function (g, r, ee, d) {
+    var mx = (g && typeof g.threshold === 'string' || g && typeof g.threshold === 'number') ? p3xPct(Number(p3xLim(g.threshold, '0.4')), 0) : '40%';
+    return 'Width is the channel height divided by price. Above ' + mx + ' a "channel" is really a trading range so large that support and resistance carry no timing information. Width ' + p3xPct(g && g.value, 1) + '; maximum ' + mx + '.';
+  },
+  'C2.entry-zone': function (g, r, ee, d) {
+    var v = g && g.value && typeof g.value === 'object' ? g.value : null;
+    return 'The entry zone runs from the support rail up to half an ATR above it: close enough to support that the stop is tight and the reward is most of the channel. Above the zone the same trade risks more for less; below it price is under support. Price ' + p3xPx(v && v.price, d) + '; zone ' + p3xPx(v && v.entryLow, d) + '–' + p3xPx(v && v.entryHigh, d) + '.';
+  },
+  'C6.spike': function (g, r, ee, d) {
+    var rr = r && r.researchRow, atr = rr && typeof rr.atr14 === 'number' && rr.atr14 > 0 ? rr.atr14 : null, gain = (g && typeof g.value === 'number' && atr) ? p3xNum(g.value / atr, 2) : P3_U;
+    return 'If price has risen more than four ATRs over the last three bars it has already made the move the setup is meant to catch. Buying then means buying the spike, not the support. Three-bar gain ' + gain + ' ATR; maximum 4.';
+  },
+  'H6.rr': function (g, r, ee, d) {
+    var known = ee && typeof ee.entryRef === 'number' && typeof ee.target === 'number' && typeof ee.stop === 'number' && typeof ee.grossRR === 'number' && typeof ee.netRR === 'number';
+    var cost = (ee && typeof ee.costPct === 'number') ? researchNum(Number((ee.costPct * 100).toFixed(2))) : '0.3', need = p3xLim(g && g.threshold, '2');
+    var live = known ? 'Reward ' + fmt(ee.target - ee.entryRef, d) + ' / risk ' + fmt(ee.entryRef - ee.stop, d) + ' = ' + ee.grossRR.toFixed(2) + ' gross, ' + ee.netRR.toFixed(2) + ' net' : 'Reward ' + P3_U + ' / risk ' + P3_U + ' = ' + P3_U + ' gross, ' + P3_U + ' net';
+    return 'Reward is the distance from the reference entry (the middle of the entry zone) up to the nearest independent resistance; risk is the distance down to the stop under the defended low. After an assumed ' + cost + '% round-trip cost the ratio must be at least ' + need + ':1, otherwise a clean bounce pays less than it risks. ' + live + '; needs ≥ ' + Number(need).toFixed(1) + '.';
+  },
+  'C4.volume24h': function (g, r, ee, d) {
+    return 'Below $25M of daily volume, fills slip and a single participant can move the rail. The floor keeps the list to coins where the levels mean something. 24h volume ' + (g && typeof g.value === 'number' ? fmtVol(g.value) : P3_U) + '.';
+  },
+  'C4.touch-volume': function (g, r, ee, d) {
+    var need = p3xLim(g && g.threshold, '0.8');
+    return 'A support touch made on volume shows buyers stepping in, not just a quiet drift back to the line. The touch bar\'s volume must be at least ' + need + '× the average of the 20 bars before it. Ratio ' + (g && typeof g.value === 'number' ? g.value.toFixed(2) : P3_U) + '; needs ≥ ' + need + '. Unknown only when the daily fetch failed for this capture.';
+  },
+  'C5.btc-regime': function (g, r, ee, d) {
+    var b = (typeof BTC_REGIME !== 'undefined' && BTC_REGIME) ? BTC_REGIME : null, gv = g && g.value && typeof g.value === 'object' ? g.value : null;
+    var slope = b && typeof b.ema50Slope === 'number' ? b.ema50Slope : (gv && typeof gv.ema50Slope === 'number' ? gv.ema50Slope : null);
+    return 'Altcoin channels hold much better when Bitcoin is itself above a rising 50-day EMA; when BTC is falling, alt support rails break regardless of their own quality. BTC ' + p3xPx(b && b.close, d) + ' vs EMA50 ' + p3xPx(b && b.ema50, d) + ', slope ' + (slope != null && isFinite(slope) ? p3xNum(slope * 100, 2) + '%' : P3_U) + '. Unknown when the BTC series was not captured.';
+  }
+};
+window.P3_GATE_EXPLAIN = P3_GATE_EXPLAIN;   // the guide retake generates its check table from this map
+function p3xText(g, r) {
+  var fn = P3_GATE_EXPLAIN[g.id];
+  if (typeof fn !== 'function') { try { console.error('Radar: no explanation for gate ' + g.id); } catch (e) {} return ''; }
+  var rr = r && r.researchRow, ee = rr && rr.entryEconomics, d = pricePrecision(r && r.price);
+  try { return fn(g, r, ee, d); } catch (e) { try { console.error('Radar: explanation failed for gate ' + g.id + ': ' + e.message); } catch (e2) {} return ''; }
+}
+var P3_OPEN_KEY = 'radar_p3_checks_open';
+function p3OpenLoad() { try { var o = JSON.parse(localStorage.getItem(P3_OPEN_KEY) || '{}'); return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; } catch (e) { return {}; } }
+function p3OpenSave(o) { try { localStorage.setItem(P3_OPEN_KEY, JSON.stringify(o)); } catch (e) {} }
+function p3ChecksSync() {   // chevrons, open highlight, and the explain-all button label follow the stored open set
+  var o = P3; if (!o) return;
+  var open = p3OpenLoad(), rows = o.checks.querySelectorAll('.p3-check.has-explain'), all = rows.length > 0;
+  rows.forEach(function (row) { var on = !!open[row.getAttribute('data-gate')]; row.classList.toggle('open', on); row.setAttribute('aria-expanded', on ? 'true' : 'false'); var c = row.querySelector('.p3-ck-chev'); if (c) c.textContent = on ? '▾' : '▸'; if (!on) all = false; });
+  if (o.ckAll) { o.ckAll.textContent = all ? 'collapse all' : 'explain all'; o.ckAll.style.display = rows.length ? '' : 'none'; }
+}
+function p3ChecksToggle(id) { var open = p3OpenLoad(); if (open[id]) delete open[id]; else open[id] = 1; p3OpenSave(open); p3ChecksSync(); }
+function p3ChecksToggleAll() {
+  var o = P3; if (!o) return;
+  var rows = o.checks.querySelectorAll('.p3-check.has-explain'), open = p3OpenLoad(), all = rows.length > 0;
+  rows.forEach(function (row) { if (!open[row.getAttribute('data-gate')]) all = false; });
+  rows.forEach(function (row) { var id = row.getAttribute('data-gate'); if (all) delete open[id]; else open[id] = 1; });
+  p3OpenSave(open); p3ChecksSync();
+}
 var P3_CMP = { 'C7.floor': '≥', 'struct.quote-breach': '>', 'C6.spike': '≤' };
 function p3SecOpen(name) { try { var v = localStorage.getItem('radar_p3_sec_' + name); if (v === '1') return true; if (v === '0') return false; } catch (e) {} return P3_SEC_DEFAULT[name]; }
 function p3SecSave(name, open) { try { localStorage.setItem('radar_p3_sec_' + name, open ? '1' : '0'); } catch (e) {} }
@@ -2924,6 +3026,11 @@ function p3Build(panel) {
   // sections
   o.sLv = p3Sec('levels', 'Levels'); o.sLv.b.appendChild(o.levels);
   o.sCk = p3Sec('checks', 'Checks'); o.checks = document.createElement('div'); o.checks.id = 'dp-checks'; o.checks.className = 'p3-checks'; o.sCk.b.appendChild(o.checks);
+  o.ckAll = document.createElement('span'); o.ckAll.className = 'p3-ck-all'; o.ckAll.setAttribute('role', 'button'); o.ckAll.setAttribute('tabindex', '0'); o.ckAll.textContent = 'explain all'; o.sCk.h.appendChild(o.ckAll);   // Step 17-F part 2
+  o.ckAll.addEventListener('click', function (e) { e.stopPropagation(); p3ChecksToggleAll(); });
+  o.ckAll.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); p3ChecksToggleAll(); } });
+  o.checks.addEventListener('click', function (e) { var row = e.target.closest ? e.target.closest('.p3-check.has-explain') : null; if (row && o.checks.contains(row)) p3ChecksToggle(row.getAttribute('data-gate')); });
+  o.checks.addEventListener('keydown', function (e) { if (e.key !== 'Enter' && e.key !== ' ') return; var row = e.target.closest ? e.target.closest('.p3-check.has-explain') : null; if (row && o.checks.contains(row)) { e.preventDefault(); p3ChecksToggle(row.getAttribute('data-gate')); } });
   o.sRd = p3Sec('rdetail', 'Research detail'); o.rd = document.createElement('div'); o.rd.id = 'dp-rdetail'; o.rd.className = 'p3-rd'; o.sRd.b.appendChild(o.rd);
   o.sLg = p3Sec('legacy', 'Legacy');
   o.recTitle.textContent = 'Legacy verdict'; o.recTitle.removeAttribute('data-tip'); o.recTitle.classList.remove('cat-tip');
@@ -2998,8 +3105,10 @@ function p3ChecksHTML(rs, r) {
   return items.map(function (x) {
     var g = x.g, cls = g.pass === true ? 'ok' : (g.pass === false ? 'bad' : 'unk'), fv = p3GateValue(g, d);
     var name = P3_GATE_WORDS[g.id] || g.id;
-    return '<div class="p3-check ' + cls + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '" title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
-      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span><span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span></div>';
+    var ex = p3xText(g, r);   // Step 17-F part 2: '' (name only, no chevron) when a gate has no explanation
+    return '<div class="p3-check ' + cls + (ex ? ' has-explain' : '') + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '"' + (ex ? ' role="button" tabindex="0" aria-expanded="false"' : '') + ' title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
+      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span><span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '</div>' +
+      (ex ? '<div class="p3-explain ' + cls + '" data-gate-explain="' + g.id + '">' + researchAttr(ex) + '</div>' : '');
   }).join('');
 }
 // Step 17-B: Verdict bar - line 1 the state-prefixed research sentence, line 2 the entry line, line 3 the research score against its floor. Display only.
@@ -3026,6 +3135,7 @@ function p3RenderPanel(r, rs, action) {
   var at = researchAnalysisText(rs.action, r); o.analysis.textContent = at; o.analysis.style.display = at ? '' : 'none';   // Step 17-E
   o.checks.innerHTML = p3ChecksHTML(rs, r);
   var gates = (rs.action && rs.action.details && rs.action.details.gates) || [], nf = gates.filter(function (g) { return g.pass !== true; }).length;
+  p3ChecksSync();   // Step 17-F part 2: restore chevrons / open rows / the explain-all label from the stored open set
   o.sCk.n.textContent = gates.length ? nf + ' of ' + gates.length + ' not passing' : '';
   var rr = r.researchRow, h = '';
   if (rr) h = researchScoreHTML(rr) + researchExecutionHTML(rr) + researchStructureHTML(rr) + researchWickReadoutHTML(rr) +   // the entry line moved up to the Verdict bar (17-B)
