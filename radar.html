@@ -506,6 +506,7 @@ var dailyDataAvailable = false;   // Milestone #2a: true once data/latest-daily.
 // field is actually loaded - an older capture that predates Backlog #13 leaves cachedFunnel
 // null, and renderDiag() omits those cards rather than showing a fabricated zero).
 var cachedFunnel = null;
+var cachedDropped = null;   // universe rule (2026-09-25): capture's meta.dropped [{id,symbol,reason}]; null when the capture predates the field
 var cachedUniverseCount = null;
 var cachedFunnelDate = '';
 var filtered = [];
@@ -2687,6 +2688,15 @@ function renderDiag() {
     return '<span style="color:'+i.c+';font-weight:600">'+i.value+' '+i.label+'</span>';
   }).join(' -> ');
 
+  // Universe rule (2026-09-25): one line naming the coins capture rejected (no Kraken/Coinbase listing, or a ticker collision).
+  // Same data as data/latest.json meta.dropped, so it cannot disagree with the file; absent when the capture predates the field.
+  var droppedHTML = '';
+  if (captureMode && Array.isArray(cachedDropped)) {
+    var dReason = { 'no-exchange-listing': 'no Kraken or Coinbase listing', 'ticker-collision': 'ticker collision (the exchange ticker is a different asset)' };
+    var dTitle = cachedDropped.map(function (d) { return d.symbol + ': ' + (dReason[d.reason] || d.reason); }).join('; ');
+    droppedHTML = '<div id="diag-dropped" style="margin-top:4px;color:var(--text2)" title="' + researchAttr(dTitle) + '">Not on Kraken/Coinbase: ' + cachedDropped.length +
+      (cachedDropped.length ? ' (' + cachedDropped.map(function (d) { return researchAttr(d.symbol); }).join(', ') + ')' : '') + '</div>';
+  }
   // Group 5 item 5 (2026-09-21): Act/Watch/Wait breakdown strip, appended AFTER the Candidates
   // endpoint in both #diag-grid and #diag-funnel - deliberately NOT interleaved into `items`
   // itself (that array/chain is the funnel's own gate sequence; Act/Watch/Wait is an exact
@@ -2710,6 +2720,7 @@ function renderDiag() {
   document.getElementById('diag-funnel').innerHTML +=
     ' &nbsp;|&nbsp; <span class="vbadge va-act">'+vaCounts.ACT+' Act</span> <span class="vbadge va-watch">'+vaCounts.WATCH+' Watch</span> <span class="vbadge va-wait">'+vaCounts.WAIT+' Wait</span>';
   }
+  if (droppedHTML) document.getElementById('diag-funnel').innerHTML += droppedHTML;   // universe rule: line directly after the funnel chain / verdict strip
 
   // Step 8 E2 (Remediation spec, 2026-09-21/22): market-breadth header stat, research mode
   // only - additive, appended after the Act/Watch/Wait strip above rather than interleaved
@@ -4685,6 +4696,7 @@ async function loadCachedOrResting() {
           // run; older captures leave cachedFunnel null and renderDiag() renders those 7 cards
           // as not-rendered rather than fabricating zeros.
           cachedFunnel = cap.funnel || null;
+          cachedDropped = (cap.meta && Array.isArray(cap.meta.dropped)) ? cap.meta.dropped : null;   // read, never re-derived
           cachedUniverseCount = (cap.universe_count != null) ? cap.universe_count : null;
           cachedFunnelDate = capDate;
           // Indicator Upgrades Group 5, item 3 (2026-09-21), CONFIRMED: the paired fix the

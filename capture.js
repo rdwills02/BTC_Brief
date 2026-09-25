@@ -637,7 +637,7 @@ function resolveDailyCollisions(pulls) {
     );
   }
 
-  const rejectedCoins = [], flaggedCoins = [];
+  const rejectedCoins = [], flaggedCoins = [], rejectedPulls = new Set();
   for (const p of pulls) {
     if (!p.pendingDaily) { K.saveCache(CACHE_DIR, p.cache); continue; }   // no mapping, or fetch failed — nothing to resolve
     const { mapping, dailyCandles, cacheDailyCandles, check } = p.pendingDaily;
@@ -654,9 +654,10 @@ function resolveDailyCollisions(pulls) {
       const tag = check.robust != null ? 'LAYER-2 REJECT' : 'LAYER-1 REJECT';
       console.warn(tag, '- exchange daily REJECTED for', p.coin.id, '(' + mapping.exchange + ' ticker ' + mapping.ticker + '):',
         statLabel + (check.robust != null ? (' (reject > ' + RATIO_ROBUST_REJECT + ')') : ''),
-        '— looks like a different asset on a colliding ticker, not real volatility. Falling back to CoinGecko-4d for this coin.');
+        '— looks like a different asset on a colliding ticker, not real volatility. DROPPING this coin from the universe (universe rule: a Kraken/Coinbase stream that is a different asset is not a tradeable listing).');
       rejectedCoins.push({ id: p.coin.id, tag, stat: check.robust });
       p.dailySource = mapping.exchange + '-collision';   // rejected by the collision guard, not a fetch failure
+      rejectedPulls.add(p);   // universe rule: removed from `pulls` below (never tagged and kept)
       // p.dailyCandles already holds whatever was cached before this run — nothing merged.
     } else {
       if (check.collision && failOpen) {
@@ -688,6 +689,12 @@ function resolveDailyCollisions(pulls) {
     withMapping.length, 'exchange-mapped coins.',
     layer2Rejects.length ? 'Layer-2 rejects: ' + layer2Rejects.map(c => c.id + ' (' + c.stat.toFixed(3) + ')').join(', ') : ''
   );
+  // Universe rule: collision-rejected coins leave the universe (they are not the asset the exchange ticker trades).
+  const droppedCollisions = [];
+  for (let i = pulls.length - 1; i >= 0; i--) {
+    if (rejectedPulls.has(pulls[i])) { droppedCollisions.unshift(droppedEntry(pulls[i].coin, DROP_COLLISION)); pulls.splice(i, 1); }
+  }
+  return droppedCollisions;
 }
 
 // Build one coin's row for the candle at index `idx` (from already-pulled series).
@@ -925,6 +932,39 @@ function migrateAllLegacyDayFiles(dataDir) {
   if (legacyDates.length) console.log('F2 migration pre-pass: processed', legacyDates.length, 'legacy grid file(s).');
 }
 
+// Universe rule (Ryan ruling 2026-09-25, contract "Radar Capture Universe Filter"): a coin stays in the universe only if it has a
+// Kraken or Coinbase daily stream. Everything else is dropped HERE, before pullCoin, so it never reaches data/latest*.json, the page,
+// the setup ledger or the forward pipeline. The rejection is recorded (meta.dropped / meta.universeRule in the day files) and logged.
+const UNIVERSE_RULE = 'kraken-or-coinbase';
+const DROP_NO_LISTING = 'no-exchange-listing';
+const DROP_COLLISION = 'ticker-collision';
+function droppedEntry(coin, reason) { return { id: coin.id, symbol: String(coin.symbol || '').toUpperCase(), reason: reason }; }
+function applyExchangeUniverseRule(universe, exMap) {
+  const kept = [], dropped = [];
+  for (const c of universe) {
+    if (exMap && exMap[c.id]) kept.push(c);
+    else dropped.push(droppedEntry(c, DROP_NO_LISTING));
+  }
+  return { kept: kept, dropped: dropped };
+}
+// Builds the exchange map and applies the rule. If the map build throws, the run ABORTS without writing anything: under this rule a
+// silent CoinGecko-4d fallback would produce an empty capture, and the previous data files must survive instead.
+async function buildExchangeUniverse(universe) {
+  let exMap;
+  try {
+    exMap = await X.buildExchangeMap(universe.map(c => ({ id: c.id, symbol: c.symbol })));
+  } catch (e) {
+    console.error('FATAL: exchange-map build failed - aborting, not writing (previous data files stay as they are):', e && e.message ? e.message : e);
+    process.exit(1);
+    return null;
+  }
+  console.log('exchange map:', Object.keys(exMap).length, 'of', universe.length, 'coins mapped to Kraken/Coinbase');
+  const r = applyExchangeUniverseRule(universe, exMap);
+  console.log('dropped (no Kraken/Coinbase listing):', r.dropped.length, r.dropped.length ? '- ' + r.dropped.map(d => d.symbol).join(', ') : '');
+  if (!r.kept.length) { console.error('no coin has a Kraken/Coinbase listing - aborting, not writing'); process.exit(1); return null; }
+  return { universe: r.kept, exMap: exMap, dropped: r.dropped };
+}
+
 async function main() {
   // F2 migration pre-pass (2026-09-22 review): resolve every existing legacy grid file BEFORE
   // any network call or per-date decision — see migrateAllLegacyDayFiles' header comment. Pure
@@ -950,7 +990,9 @@ async function main() {
   let researchRows = null;   // Step 11-C (H5): per-coin research verdict rows for the setup ledger (built in the daily pass below)
   let setupsSummary = null;  // Step 11-C: {opened, closed, open} for the manifest
 
-  const { list: universe, counts: universeCounts } = await buildUniverse();
+  const builtUniverse = await buildUniverse();
+  let universe = builtUniverse.list;
+  const universeCounts = builtUniverse.counts;
   console.log('universe:', universe.length, 'coins');
   if (!universe.length) { console.error('empty universe — aborting, not writing'); process.exit(1); }
 
@@ -958,16 +1000,12 @@ async function main() {
   const catLabels = await fetchCategoryLabels();
   console.log('category labels for', Object.keys(catLabels).length, 'coins');
 
-  // Exchange ticker map (upgrade #2, 2026-09-17) — 2 calls, rebuilt fresh every run since the
-  // universe rotates. Best-effort: a failure here does NOT abort the run — every coin just
-  // falls back to CoinGecko-4d for the daily stream (see pullCoin/rowForDaily).
-  let exMap = {};
-  try {
-    exMap = await X.buildExchangeMap(universe.map(c => ({ id: c.id, symbol: c.symbol })));
-    console.log('exchange map:', Object.keys(exMap).length, 'of', universe.length, 'coins mapped to Kraken/Coinbase');
-  } catch (e) {
-    console.warn('exchange-map build failed — every coin falls back to CoinGecko-4d for the daily stream:', e.message);
-  }
+  // Exchange ticker map (upgrade #2, 2026-09-17) - 2 calls, rebuilt fresh every run since the universe rotates. Universe rule
+  // (2026-09-25): a failure here now ABORTS the run (nothing written), and coins with no Kraken/Coinbase listing are dropped.
+  const exu = await buildExchangeUniverse(universe);
+  const exMap = exu.exMap;
+  universe = exu.universe;
+  const droppedNoListing = exu.dropped;
 
   // F6 (Remediation spec): capture BTC's own daily series for the future market-regime gate
   // (C5, a later remediation step — this step only captures the data, C5 reads it). Fetched
@@ -1022,7 +1060,14 @@ async function main() {
   // R3b: resolve every coin's exchange-daily accept/reject decision now that the whole universe
   // has been pulled and the aggregate collision rate is known — see resolveDailyCollisions().
   // Must run before anything below reads p.dailySource/p.dailyCandles (rowForDaily, further down).
-  resolveDailyCollisions(pulls);
+  const droppedCollisions = resolveDailyCollisions(pulls);
+  if (droppedCollisions.length) console.warn('dropped (ticker collision):', droppedCollisions.length, '-', droppedCollisions.map(d => d.symbol).join(', '));
+  const droppedAll = droppedNoListing.concat(droppedCollisions);   // written as meta.dropped
+  console.log('dropped (not tradeable on Kraken/Coinbase):', droppedAll.length, droppedAll.length ? '- ' + droppedAll.map(d => d.symbol).join(', ') : '');
+  {   // invariant: every remaining coin has an exchange mapping (no CoinGecko-4d fallback rows can exist any more)
+    const unmapped = pulls.filter(p => !exMap[p.coin.id]);
+    if (unmapped.length) { console.error('BUG: coins without an exchange mapping survived the universe rule:', unmapped.map(p => p.coin.id).join(', '), '- aborting, not writing'); process.exit(1); }
+  }
 
   // The OHLC grid is every ~4 days. Use a reference coin (most candles) to get the set of
   // recent GRID DATES, then write a file per grid date (newest BACKFILL_CANDLES) if missing.
@@ -1073,6 +1118,8 @@ async function main() {
       grid_interval_days: 4,
       backfilled: D !== newestGrid,   // only the newest closed candle is "live"; older = backfilled
       universe_count: pulls.length,
+      // Universe rule (2026-09-25): what was rejected and why, per capture. reason in {no-exchange-listing, ticker-collision}.
+      meta: { universeRule: UNIVERSE_RULE, dropped: droppedAll },
       // Backlog #13: the funnel the live Scan's Details panel already computes client-side
       // (radar.html's diag object), now computed here too so CACHED mode (the default view -
       // capture.js drives it, not a live Scan) has real numbers instead of nothing. Deliberately
@@ -1207,9 +1254,8 @@ async function main() {
     fs.writeFileSync(dailyDayPath, JSON.stringify(dailyPayload, null, 0));
     fs.writeFileSync(path.join(DATA_DIR, 'latest-daily.json'), JSON.stringify(dailyPayload, null, 0));
     const dailyFlagged = dailyCoins.filter(c => c.detectionDaily).length;
-    const fallbackOnly = dailyCoins.filter(c => c.dailySource === 'coingecko-4d-fallback').length;
     console.log('wrote', dailyDayPath, 'and data/latest-daily.json ->', todayDate,
-      '(' + dailyFlagged + ' daily candidates, ' + fallbackOnly + ' coins on CoinGecko-4d fallback)');
+      '(' + dailyFlagged + ' daily candidates)');
     dailyPassOk = true;
     dailyUpdatedThisRun = true;
     dailyLastClosedCandle = lastBarTimeSec !== null ? new Date(lastBarTimeSec * 1000).toISOString().slice(0, 10) : null;
