@@ -107,12 +107,12 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .chart-key-pop{display:none;position:absolute;top:100%;left:0;margin-top:4px;width:min(520px,80vw);font-weight:400;line-height:1.6;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text2)}
 .chart-key:hover .chart-key-pop,.chart-key:focus .chart-key-pop{display:block}
 .p3 .chart-key-pop #detail-chart-legend-research{display:block!important;padding:4px 0 0!important;margin:0!important;font-size:10px}
-.p3-strip{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;padding:5px 18px;border-bottom:1px solid var(--border)}
+.p3-strip{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;padding:5px 13px;border-bottom:1px solid var(--border)}
 .p3-strip #dp-confluence{display:contents}
 .p3-strip .research-pop-body{flex:0 0 100%}
 .p3-strip .cat-tip{margin-bottom:0!important;margin-right:0!important;font-size:9.5px!important;padding:2px 6px!important}
 .p3-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;background:var(--surface2);color:var(--text2);cursor:help;white-space:nowrap}
-.p3-verdict{padding:5px 18px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:10.5px;line-height:1.3}
+.p3-verdict{padding:5px 13px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:10.5px;line-height:1.3}
 .p3-v1{color:var(--text2)}
 .p3-v2 .research-entry-line{font-size:10.5px!important;margin-top:1px!important;line-height:1.3}
 .p3-v3{margin-top:1px;font-weight:600;color:var(--text)}
@@ -122,7 +122,7 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .p3-sec.collapsed .p3-sec-h::before{content:"\25B8"}
 .p3-sec.collapsed .p3-sec-b{display:none}
 .p3-sec-n{margin-left:auto;font-weight:600;letter-spacing:0;text-transform:none}
-.p3 #dp-levels{padding-top:0}
+.p3 #dp-levels{padding:0 10px}   /* gives back the width the always-on scrollbar takes (17-D) */
 .p3 #dp-levels .ds-title{display:none}
 .p3 .levels-table{font-size:10.5px}
 .p3 .levels-table th,.p3 .levels-table td{padding:1px 6px;line-height:1.25}
@@ -180,7 +180,15 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .detail-price{font-size:12px;color:var(--text2);margin-top:2px}
 .close-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:4px}
 .close-btn:hover{color:var(--text)}
-.detail-body{flex:1;overflow-y:auto}
+.detail-body{flex:1;overflow-y:scroll;scrollbar-gutter:stable}
+/* Step 17-D: the pane's own scrollbar is always present and visibly distinct from the page/table scrollbars (wide track, accent thumb); Firefox via scrollbar-color/width. */
+.detail-body::-webkit-scrollbar{width:10px}
+.detail-body::-webkit-scrollbar-track{background:var(--surface2);border-left:1px solid var(--border2)}
+.detail-body::-webkit-scrollbar-thumb{background:var(--accent);border-radius:5px;border:2px solid var(--surface2)}
+.detail-body::-webkit-scrollbar-thumb:hover{background:#9b93f7}
+@supports (-moz-appearance:none){.detail-body{scrollbar-width:auto;scrollbar-color:var(--accent) var(--surface2)}}
+/* Step 17-D: the Expand/Collapse button rides in a zero-height sticky row at the top of the scroll container, so it stays on screen while the pane scrolls (the close X sits in the fixed header). */
+.pane-sticky{position:sticky;top:0;height:0;z-index:12}
 .chart-wrap{height:260px;position:relative;background:var(--bg);border-bottom:1px solid var(--border);transition:height .15s ease}
 .chart-wrap.expanded{height:560px}
 .chart-expand-btn{position:absolute;top:8px;right:8px;z-index:5;background:rgba(30,32,53,.85);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}
@@ -400,8 +408,8 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
       <button class="close-btn" id="close-btn">x</button>
     </div>
     <div class="detail-body">
+      <div class="pane-sticky"><button class="chart-expand-btn" id="chart-expand-btn" type="button">Expand</button></div>
       <div class="chart-wrap" id="chart-wrap">
-        <button class="chart-expand-btn" id="chart-expand-btn" type="button">Expand</button>
         <div class="chart-legend">
           <div class="legend-item"><div class="legend-dot" style="background:var(--bull)"></div><span>Support</span></div>
           <div class="legend-item"><div class="legend-dot" style="background:var(--bear)"></div><span>Resistance</span></div>
