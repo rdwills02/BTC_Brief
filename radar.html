@@ -82,6 +82,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .radar-table th{position:sticky;top:0;background:var(--surface);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
 .radar-table th:hover{color:var(--text2)}
 .radar-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.radar-table .rs-why{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
+.radar-table .rs-legacy{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .radar-table tr{cursor:pointer;transition:background .1s}
 .radar-table tr:hover td{background:var(--surface2)}
 .radar-table tr.selected td{background:var(--surface3);border-left:2px solid var(--accent)}
@@ -574,6 +576,30 @@ function pricePrecision(n) {
   return Math.max(2, Math.ceil(-Math.log10(n)) + 3);
 }
 function fmtP(n) { return n==null?'--':(n>=0?'+':'')+n.toFixed(2)+'%'; }
+// Step 15-D: trailing mean volume over `win` bars STRICTLY BEFORE each candle (exclusive of the candle
+// itself - same exclusive window channel-core.js's D-scoring volTouch and 11-D's executionContextOf both
+// use), null wherever fewer than `win` prior bars exist or any of them has non-finite/non-positive volume.
+// Index-aligned with `candles` (out[i] pairs with candles[i]). No detection input; display only.
+function trailingVolumeMean(candles, win) {
+  var out = [];
+  for (var i = 0; i < candles.length; i++) {
+    if (i < win) { out.push(null); continue; }
+    var sum = 0, ok = true;
+    for (var k = i - win; k < i; k++) { var v = candles[k].volume; if (typeof v !== 'number' || !isFinite(v) || v <= 0) { ok = false; break; } sum += v; }
+    out.push(ok ? sum / win : null);
+  }
+  return out;
+}
+// Step 15-D: the volume/baseline tooltip line shared by the candle tooltip, the S-dot tooltip and the
+// volume bar itself (one unified tooltip per time column - see attachResearchTooltip/attachMainTooltip).
+function volumeLineFor(ctx, i) {
+  var c = ctx.cs[i];
+  if (typeof c.volume !== 'number' || !isFinite(c.volume)) return null;
+  var base = (ctx.volS && ctx.volS[i] != null) ? ctx.volS[i] : null;
+  var txt = 'Volume ' + fmtVol(c.volume) + (base != null ? ' \u00b7 ' + (c.volume / base).toFixed(2) + '\u00d7 20-bar baseline' : ' \u00b7 20-bar baseline unavailable');
+  if ((ctx.r.pivotLows || []).some(function (pl) { return pl.time === c.time; })) txt += ' \u00b7 support touch';
+  return txt;
+}
 function fmtVol(n) {
   if(n==null) return '--';
   if(n>=1e12) return '$'+(n/1e12).toFixed(2)+'T';
@@ -977,7 +1003,7 @@ function tipCtx(r) {
   var rr = r.researchRow, cs = r.candles, n = cs.length, rails = researchRailData(rr, cs), timeIdx = {};
   cs.forEach(function (c, i) { timeIdx[c.time] = i; });
   return { r: r, rr: rr, cs: cs, n: n, d: pricePrecision(r.price), step: barStepSec(cs, rr), t0: cs[n - 1].time, ext: rails ? rails.ext : 0, startCI: r.lastIdx - (n - 1), timeIdx: timeIdx,
-    tags: rails ? researchRailTags(rr, rails) : [], atrS: (typeof atr14Series === 'function') ? atr14Series(cs) : null };
+    tags: rails ? researchRailTags(rr, rails) : [], atrS: (typeof atr14Series === 'function') ? atr14Series(cs) : null, volS: trailingVolumeMean(cs, H10_BASELINE_BARS) };   // Step 15-D
 }
 function tipSlope(p) { return (p >= 0 ? '+' : '') + p.toFixed(3) + '%/bar'; }
 function researchTagPrice(ctx, id) { var rr = ctx.rr, ee = rr.entryEconomics || {}; return id === 'sup' ? rr.supportNow : id === 'res' ? rr.resistNow : id === 'inv' ? rr.invalidation : id === 'stop' ? ee.stop : ee.target; }
@@ -993,12 +1019,13 @@ function researchTagLines(ctx, t) {
 function researchCandleLines(ctx, i) {
   var c = ctx.cs[i], rr = ctx.rr, f = function (v) { return fmt(v, ctx.d); }, a = (ctx.atrS && i >= 1) ? ctx.atrS[i - 1] : null, out = [];
   out.push(researchTimeLabel(c.time) + '  O ' + f(c.open) + '  H ' + f(c.high) + '  L ' + f(c.low) + '  C ' + f(c.close));
-  if (a == null) { out.push('Wicks: no ATR14 at the prior bar (F3 does not judge the first 15 bars)'); return out; }
+  if (a == null) { var vl0 = volumeLineFor(ctx, i); if (vl0) out.push(vl0); out.push('Wicks: no ATR14 at the prior bar (F3 does not judge the first 15 bars)'); return out; }
   out.push('Upper wick ' + ((c.high - c.close) / a).toFixed(1) + '×ATR14, lower wick ' + ((c.close - c.low) / a).toFixed(1) + '×ATR14 (from the close; ATR14 at the prior bar)');
   var lb = (typeof rr.lookback === 'number') ? rr.lookback : ctx.n;
-  if (i < Math.max(ctx.n - lb, 1)) { out.push('F3: not examined (before the ' + lb + '-bar window)'); return out; }
+  if (i < Math.max(ctx.n - lb, 1)) { var vl1 = volumeLineFor(ctx, i); if (vl1) out.push(vl1); out.push('F3: not examined (before the ' + lb + '-bar window)'); return out; }
   var mult = (typeof F3_WICK_ATR_MULT === 'number') ? F3_WICK_ATR_MULT : '?', clips = (rr.wickClips || []).filter(function (w) { return w.time === c.time; });
   out.push('F3: ' + [['upper', 'high'], ['lower', 'low']].map(function (s) { var w = clips.filter(function (x) { return x.side === s[1]; })[0]; return w ? s[0] + ' clipped → ' + researchNum(w.clippedTo) : s[0] + ' kept (below ' + mult + '× threshold)'; }).join(', '));
+  var vl2 = volumeLineFor(ctx, i); if (vl2) out.push(vl2);
   return out;
 }
 function researchHoverLines(ctx, time, x, y, price, yOf, xOf) {
@@ -1014,7 +1041,9 @@ function researchHoverLines(ctx, time, x, y, price, yOf, xOf) {
     var low = (typeof p.price === 'number') ? p.price : cs[ci].low, yl = yOf(low); if (yl == null) return;
     var dist = Math.abs(y - (yl + TIP_DOT_OFFSET)); if (dist > TIP_DOT_OFFSET) return;
     var rail = railAt(r.supSlope, r.supIntercept, ctx.startCI + ci), pct = rail ? (low - rail) / Math.abs(rail) * 100 : null;
-    cand(dist, 1, ['S touch ' + researchDateLabel(time) + ' — low ' + f(low) + (pct != null ? ', ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% from the main support rail (' + f(rail) + ')' : '')]);
+    var sdLines = ['S touch ' + researchDateLabel(time) + ' — low ' + f(low) + (pct != null ? ', ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% from the main support rail (' + f(rail) + ')' : '')];
+    var sdVol = volumeLineFor(ctx, ci); if (sdVol) sdLines.push(sdVol);   // Step 15-D
+    cand(dist, 1, sdLines);
   });
   if (idx != null && idx <= n - 1 + ctx.ext) {   // rails: research (dashed, from rr.firstIdx) and the dimmed main rails, value at the hovered bar
     var dl = researchDateLabel(time) + (time > ctx.t0 ? ' (projected)' : ''), indep = rr.resistanceFit === 'independent' && typeof rr.resSlope === 'number';
@@ -1086,14 +1115,14 @@ function mainTipCtx(r) {
   var cs = r.candles, n = cs.length, fu = mainRailFuture(cs), timeIdx = {};
   cs.forEach(function (c, i) { timeIdx[c.time] = i; });
   return { r: r, rr: r.researchRow || null, cs: cs, n: n, d: pricePrecision(r.price), step: fu ? fu.step : 0, t0: cs[n - 1].time, ext: fu ? fu.ext : 0, startCI: r.lastIdx - (n - 1), timeIdx: timeIdx, tags: [],
-    atrS: (typeof atr14Series === 'function') ? atr14Series(cs) : null };
+    atrS: (typeof atr14Series === 'function') ? atr14Series(cs) : null, volS: trailingVolumeMean(cs, H10_BASELINE_BARS) };   // Step 15-D
 }
 // The hovered candle, flag-off: date, O/H/L/C and both wicks in xATR14 (from the close, ATR14 as of the PRIOR bar). The main rails use the RAW candles, so nothing is "clipped" here: only when
 // research mode's F3 clips a wick on this bar (a record in the row's research reading, i.e. the wick exceeds the F3 multiple) is one extra line added saying so. No research reading -> multiples only.
 function mainCandleLines(ctx, i) {
   var c = ctx.cs[i], f = function (v) { return fmt(v, ctx.d); }, a = (ctx.atrS && i >= 1) ? ctx.atrS[i - 1] : null, out = [];
   out.push(researchTimeLabel(c.time) + '  O ' + f(c.open) + '  H ' + f(c.high) + '  L ' + f(c.low) + '  C ' + f(c.close));
-  if (a == null) { out.push('Wicks: no ATR14 at the prior bar'); return out; }
+  if (a == null) { var vlm0 = volumeLineFor(ctx, i); if (vlm0) out.push(vlm0); out.push('Wicks: no ATR14 at the prior bar'); return out; }
   var uw = (c.high - c.close) / a, lw = (c.close - c.low) / a;
   out.push('Upper wick ' + uw.toFixed(1) + '\u00d7ATR14, lower wick ' + lw.toFixed(1) + '\u00d7ATR14 (from the close; ATR14 at the prior bar)');
   var clips = (ctx.rr && Array.isArray(ctx.rr.wickClips)) ? ctx.rr.wickClips.filter(function (w) { return w.time === c.time; }) : [];
@@ -1101,6 +1130,7 @@ function mainCandleLines(ctx, i) {
     var w = clips.filter(function (x) { return x.side === s[0]; })[0];
     if (w) out.push(s[1] + ' wick ' + s[2].toFixed(1) + '\u00d7ATR14 \u2014 main rails use the raw ' + s[3] + '; research mode clips it to ' + researchNum(w.clippedTo));
   });
+  var vlm1 = volumeLineFor(ctx, i); if (vlm1) out.push(vlm1);
   return out;
 }
 function mainHoverLines(ctx, time, x, y, yOf) {
@@ -1112,7 +1142,9 @@ function mainHoverLines(ctx, time, x, y, yOf) {
     var low = (typeof p.price === 'number') ? p.price : cs[ci].low, yl = yOf(low); if (yl == null) return;
     var dist = Math.abs(y - (yl + TIP_DOT_OFFSET)); if (dist > TIP_DOT_OFFSET) return;
     var rail = railAt(r.supSlope, r.supIntercept, ctx.startCI + ci), pct = rail ? (low - rail) / Math.abs(rail) * 100 : null;
-    cand(dist, 1, ['S touch ' + researchDateLabel(time) + ' — low ' + f(low) + (pct != null ? ', ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% from the support rail (' + f(rail) + ')' : '')]);
+    var sdLines2 = ['S touch ' + researchDateLabel(time) + ' — low ' + f(low) + (pct != null ? ', ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '% from the support rail (' + f(rail) + ')' : '')];
+    var sdVol2 = volumeLineFor(ctx, ci); if (sdVol2) sdLines2.push(sdVol2);   // Step 15-D
+    cand(dist, 1, sdLines2);
   });
   if (idx != null && idx <= n - 1 + ctx.ext) {   // the three main rails, value at the hovered bar (projected past the last candle)
     var mi = ctx.startCI + idx, N = r.lastIdx - r.firstIdx + 1, dl = researchDateLabel(time) + (time > ctx.t0 ? ' (projected)' : ''), sl = (typeof r.slope === 'number') ? r.slope : railSlopePct(r.supSlope, r.supIntercept, mi), sup = railAt(r.supSlope, r.supIntercept, mi);
@@ -2298,8 +2330,8 @@ function researchStateCellHTML(rs, legacyAction, size) {
   var style = (size === 'detail' ? 'font-size:10px;' : '') + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
   var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '"' + (style ? ' style="' + style + '"' : '') + '>' + label + '</span>' +
-    (why ? '<span class="rs-why" style="font-size:10px;color:var(--muted,#9aa3b2);margin-left:5px">' + why + '</span>' : '') +
-    '<span class="rs-legacy" style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:5px">legacy: ' + legacyAction.verdict + '</span>';
+    (why ? '<span class="rs-why" title="' + why.replace(/"/g, '&quot;') + '" style="font-size:10px;color:var(--muted,#9aa3b2)">' + why + '</span>' : '') +
+    '<span class="rs-legacy" title="legacy: ' + legacyAction.verdict + '" style="font-size:9px;color:var(--muted,#9aa3b2)">legacy: ' + legacyAction.verdict + '</span>';
 }
 function researchStateCounts(rows) {
   var c = { ACT: 0, NEAR: 0, DEVELOPING: 0, WAIT: 0, NOFIT: 0, BUG: 0 };
@@ -3085,6 +3117,22 @@ function buildChart(r) {
   var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a',
     priceFormat:{type:'price',precision:pp1,minMove:Math.pow(10,-pp1)}});
   cs.setData(r.candles);
+  // Step 15-D: volume pane - histogram on its own price scale in the bottom ~20% of the pane (scaleMargins),
+  // one bar per drawn candle, green/red by candle.volume; thin line over it = trailingVolumeMean's H10_BASELINE_BARS
+  // (20-bar) trailing mean, same window C4.touch-volume's gate reads; S-touch bars get a marker. Both modes (flag-off
+  // and research) draw it - it sits before the mode branch below, so neither path skips it.
+  var hasVolume = r.candles.some(function(c){return typeof c.volume==='number'&&isFinite(c.volume)&&c.volume>0;});
+  if (hasVolume) {   // 4d-grid-only rows carry no volume at all (channel-core.js: "grid candles carry no volume") - an all-zero pane would misread as real zero volume, so skip the pane entirely rather than draw one.
+    var volSeries = chart.addHistogramSeries({priceScaleId:'vol', priceFormat:{type:'volume'}, priceLineVisible:false, lastValueVisible:false});
+    chart.priceScale('vol').applyOptions({scaleMargins:{top:0.8,bottom:0}});
+    volSeries.setData(r.candles.map(function(c){return {time:c.time, value:(typeof c.volume==='number'&&isFinite(c.volume))?c.volume:0, color:(c.close>=c.open)?'rgba(0,200,150,0.35)':'rgba(232,117,74,0.35)'};}));
+    var volMeans = trailingVolumeMean(r.candles, H10_BASELINE_BARS);
+    var volBaseData = []; r.candles.forEach(function(c,i){ if(volMeans[i]!=null) volBaseData.push({time:c.time, value:volMeans[i]}); });
+    var volBaseline = chart.addLineSeries({priceScaleId:'vol', color:'rgba(157,163,180,0.55)', lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false});
+    volBaseline.setData(volBaseData);
+    var volTouchMarkers = r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'inBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
+    if(volTouchMarkers.length) volSeries.setMarkers(volTouchMarkers);
+  }
   var n=r.candles.length, startCI=r.lastIdx-(n-1);
   var supData=r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)};});
   var resData=r.candles.map(function(c,i){return {time:c.time,value:railAt(r.supSlope,r.supIntercept,startCI+i)+r.channelH};});
