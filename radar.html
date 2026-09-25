@@ -98,28 +98,34 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 /* Step 17-A (P3): research-view detail panel - header state row, signal strip, collapsible sections, pinned buttons. Legacy view never gets the .p3 class. */
 .p3 .chart-legend,.p3 #dp-fitwindow{display:none}
 .p3 .detail-header{flex-wrap:wrap;row-gap:6px;padding:10px 18px}
-.p3 .p3-state{flex:0 0 100%;order:3;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:11px}
+.p3 .p3-state{flex:0 0 100%;order:3;display:flex;flex-wrap:nowrap;align-items:center;gap:8px;font-size:11px;min-width:0}
+.p3-state .vbadge,.p3-state .p3-leg{flex:none}
 .p3 .p3-symrow{display:flex;align-items:center;gap:0}
-.p3-why{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted,#9aa3b2)}
+.p3-why{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted,#9aa3b2)}
 .p3-leg,.p3-lab{font-size:9px;color:var(--muted,#9aa3b2)}
 .chart-key{position:absolute;top:8px;left:10px;z-index:11;font-size:10px;font-weight:600;color:var(--muted);background:rgba(30,32,53,.85);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:help;outline:none}
 .chart-key-pop{display:none;position:absolute;top:100%;left:0;margin-top:4px;width:min(520px,80vw);font-weight:400;line-height:1.6;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text2)}
 .chart-key:hover .chart-key-pop,.chart-key:focus .chart-key-pop{display:block}
 .p3 .chart-key-pop #detail-chart-legend-research{display:block!important;padding:4px 0 0!important;margin:0!important;font-size:10px}
-.p3-strip{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 18px;border-bottom:1px solid var(--border)}
+.p3-strip{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;padding:5px 18px;border-bottom:1px solid var(--border)}
 .p3-strip #dp-confluence{display:contents}
 .p3-strip .research-pop-body{flex:0 0 100%}
-.p3-strip .cat-tip{margin-bottom:0!important;margin-right:0!important}
+.p3-strip .cat-tip{margin-bottom:0!important;margin-right:0!important;font-size:9.5px!important;padding:2px 6px!important}
 .p3-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;background:var(--surface2);color:var(--text2);cursor:help;white-space:nowrap}
+.p3-verdict{padding:5px 18px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:10.5px;line-height:1.3}
+.p3-v1{color:var(--text2)}
+.p3-v2 .research-entry-line{font-size:10.5px!important;margin-top:1px!important;line-height:1.3}
+.p3-v3{margin-top:1px;font-weight:600;color:var(--text)}
 .p3-sec{border-bottom:1px solid var(--border)}
-.p3-sec-h{display:flex;align-items:center;gap:6px;padding:7px 18px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none}
+.p3-sec-h{display:flex;align-items:center;gap:6px;padding:5px 18px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none}
 .p3-sec-h::before{content:"\25BE";font-size:10px}
 .p3-sec.collapsed .p3-sec-h::before{content:"\25B8"}
 .p3-sec.collapsed .p3-sec-b{display:none}
 .p3-sec-n{margin-left:auto;font-weight:600;letter-spacing:0;text-transform:none}
 .p3 #dp-levels{padding-top:0}
 .p3 #dp-levels .ds-title{display:none}
-.p3 .levels-table th,.p3 .levels-table td{padding:2px 6px}
+.p3 .levels-table{font-size:10.5px}
+.p3 .levels-table th,.p3 .levels-table td{padding:1px 6px;line-height:1.25}
 .p3 .levels-table .lv-keys{display:inline;margin:0 0 0 6px}
 .p3 .levels-table .lv-sub{display:inline;margin-left:6px}
 .p3-checks{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;padding:0 18px 12px}
@@ -129,8 +135,8 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .p3-ck-v{display:block;font-size:10px;color:var(--muted);overflow-wrap:anywhere}
 .p3-rd{padding:0 18px 12px}
 .p3-sec-b>.ds{border-bottom:1px solid var(--border)}
-.p3-btns{display:flex;gap:8px;flex:none;border-top:1px solid var(--border);border-bottom:none;padding:6px 18px}
-.p3-btns .tv-btn-lg{margin-top:0!important;padding:6px;font-size:12px}
+.p3-btns{display:flex;gap:8px;flex:none;border-top:1px solid var(--border);border-bottom:none;padding:5px 18px}
+.p3-btns .tv-btn-lg{margin-top:0!important;padding:4px;font-size:11px}
 .pin-note{display:block;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--muted,#9aa3b2)}
 .vbadge.pin-nofit{display:block;width:0;min-width:100%;box-sizing:border-box;white-space:normal;text-align:center;opacity:.55;color:var(--muted,#9aa3b2);letter-spacing:0;text-transform:none;font-size:9px}
 .pin-chip{font-size:11px;color:#f5c542;border:1px solid rgba(245,197,66,.35);border-radius:10px;padding:2px 8px;margin-left:10px}
@@ -2443,7 +2449,7 @@ function sortRowsByVerdict(rows, research) {   // Step 15-A: `research` (the tab
   }).sort(function(a,b){
     if(a.vr!==b.vr) return a.vr-b.vr;
     if(a.vol!==b.vol) return b.vol-a.vol;
-    return (b.r.score||0)-(a.r.score||0);
+    return research ? ((researchScoreOf(b.r)||0)-(researchScoreOf(a.r)||0)) : ((b.r.score||0)-(a.r.score||0));   // Step 17-C: research tiebreak uses the research score
   }).map(function(x){ return x.r; });
 }
 
@@ -2845,6 +2851,7 @@ function p3Build(panel) {
   o.strip.title = (o.confTitle ? o.confTitle.textContent : '') + (o.confNote ? '. ' + o.confNote.textContent : '');
   o.strip.appendChild(conf);
   o.chip = document.createElement('span'); o.chip.id = 'dp-fitchip'; o.chip.className = 'p3-chip'; o.strip.appendChild(o.chip);
+  o.verdict = document.createElement('div'); o.verdict.id = 'dp-verdict'; o.verdict.className = 'p3-verdict';   // Step 17-B: full-width, always open
   o.slot = document.createElement('span'); o.slot.id = 'dp-recent-slot'; o.slot.className = 'p3-slot'; o.slot.setAttribute('data-p2', 'pending'); o.slot.hidden = true; o.strip.appendChild(o.slot);
   // sections
   o.sLv = p3Sec('levels', 'Levels'); o.sLv.b.appendChild(o.levels);
@@ -2854,7 +2861,7 @@ function p3Build(panel) {
   o.recTitle.textContent = 'Legacy verdict'; o.recTitle.removeAttribute('data-tip'); o.recTitle.classList.remove('cat-tip');
   [o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs].forEach(function (d) { o.sLg.b.appendChild(d); });
   body.removeChild(o.confDs);
-  [o.strip, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { body.appendChild(e); });
+  [o.strip, o.verdict, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { body.appendChild(e); });
   o.btnDs.classList.add('p3-btns'); panel.appendChild(o.btnDs);
   P3 = o;
 }
@@ -2868,7 +2875,7 @@ function p3Restore(panel) {
   o.recTitle.innerHTML = o.recTitleHTML; if (o.recTitleTip != null) { o.recTitle.setAttribute('data-tip', o.recTitleTip); o.recTitle.classList.add('cat-tip'); }
   o.btnDs.classList.remove('p3-btns');
   [o.fw, o.levels, o.confDs, o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs, o.btnDs].forEach(function (e) { o.body.appendChild(e); });
-  [o.strip, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
+  [o.strip, o.verdict, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
 }
 function p3PlaceLegend() {
   if (!P3) return;
@@ -2920,16 +2927,71 @@ function p3ChecksHTML(rs, r) {
       '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span><span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span></div>';
   }).join('');
 }
+// Step 17-B: Verdict bar - line 1 the state-prefixed research sentence, line 2 the entry line, line 3 the research score against its floor. Display only.
+function p3VerdictHTML(r, rs) {
+  var rr = r.researchRow, h = '<div class="p3-v1">' + researchAttr(rs.action ? researchStateText(rs) : 'Research: no fit on this series') + '</div>';
+  var entry = rr ? researchEntryHTML(rr) : '';
+  if (entry) h += '<div class="p3-v2">' + entry + '</div>';
+  if (rr && typeof rr.score === 'number') {
+    var fl = null, gs = (rs.action && rs.action.details && rs.action.details.gates) || [];
+    for (var i = 0; i < gs.length; i++) if (gs[i].id === 'C7.floor' && typeof gs[i].threshold === 'number') fl = gs[i].threshold;
+    if (fl == null) fl = (rr.timeframe === '4d-grid') ? ACT_SCORE_FLOOR_GRID : ACT_SCORE_FLOOR_1D;
+    h += '<div class="p3-v3">Research score ' + researchPts(rr.score) + ' (floor ' + researchPts(fl) + ')</div>';
+  }
+  return h;
+}
 function p3RenderPanel(r, rs, action) {
   var o = P3; if (!o) return;
   o.state.innerHTML = researchHeaderStateHTML(rs, action);
+  o.verdict.innerHTML = p3VerdictHTML(r, rs);
   o.checks.innerHTML = p3ChecksHTML(rs, r);
   var gates = (rs.action && rs.action.details && rs.action.details.gates) || [], nf = gates.filter(function (g) { return g.pass !== true; }).length;
   o.sCk.n.textContent = gates.length ? nf + ' of ' + gates.length + ' not passing' : '';
   var rr = r.researchRow, h = '';
-  if (rr) h = researchScoreHTML(rr) + researchExecutionHTML(rr) + researchStructureHTML(rr) + researchWickReadoutHTML(rr) + researchEntryHTML(rr) +
+  if (rr) h = researchScoreHTML(rr) + researchExecutionHTML(rr) + researchStructureHTML(rr) + researchWickReadoutHTML(rr) +   // the entry line moved up to the Verdict bar (17-B)
     researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(rr, SETUPS_LEDGER);   // display only; same renderers the panel already used
   o.rd.innerHTML = h || '<span style="font-size:11px;color:var(--muted,#9aa3b2)">No research fit on this series</span>';
+}
+
+// Step 17-C: in the research view the Score column, the status bands, the Min-score filters and the Recommended tiebreak use the RESEARCH score (the state is judged on it).
+// Bands are display-only and provisional: High = the research floor (ACT_SCORE_FLOOR_1D), the rest scaled to the same proportions. The legacy view keeps the legacy score everywhere.
+function researchBands() { return { high: ACT_SCORE_FLOOR_1D, probable: 68, emerging: 55, watch: 40 }; }
+function researchScoreOf(r) { var rr = r ? r.researchRow : null; return (rr && typeof rr.score === 'number' && isFinite(rr.score)) ? rr.score : null; }
+function researchBucket(s) {
+  if (s == null) return null;
+  var b = researchBands();
+  if (s >= b.high) return { label: 'High', cls: 'bh' };
+  if (s >= b.probable) return { label: 'Probable', cls: 'bp' };
+  if (s >= b.emerging) return { label: 'Emerging', cls: 'be' };
+  if (s >= b.watch) return { label: 'Watch', cls: 'bw' };
+  return { label: 'Weak', cls: '' };
+}
+function researchScoreColor(s) {
+  var b = researchBands();
+  if (s == null) return 'var(--muted)';
+  return s >= b.high ? 'var(--high)' : (s >= b.probable ? 'var(--probable)' : (s >= b.emerging ? 'var(--emerging)' : 'var(--watch)'));
+}
+function researchBucketTip(label) {
+  var b = researchBands(), p = ' Display band on the research score (provisional).';
+  if (label === 'High') return 'High: research score ' + b.high + ' or above (the research floor).' + p;
+  if (label === 'Probable') return 'Probable: research score ' + b.probable + '-' + (b.high - 1) + '.' + p;
+  if (label === 'Emerging') return 'Emerging: research score ' + b.emerging + '-' + (b.probable - 1) + '.' + p;
+  if (label === 'Watch') return 'Watch: research score ' + b.watch + '-' + (b.emerging - 1) + '.' + p;
+  return 'Weak: research score below ' + b.watch + '.' + p;
+}
+var RC_ORIG = null;
+// Column headers / status buttons say which score they use; restored verbatim when the legacy view is shown.
+function syncResearchScoreUI() {
+  var ths = document.querySelectorAll('.radar-table thead th'), thS = ths[2], thB = ths[3], ids = ['high', 'probable', 'emerging', 'watch'];
+  if (!thS || !thB) return;
+  if (!RC_ORIG) {
+    if (!RESEARCH_MODE_UI) return;
+    RC_ORIG = { s: thS.getAttribute('data-tip'), b: thB.getAttribute('data-tip'), f: ids.map(function (n) { var e = document.getElementById('fb-' + n); return e ? e.textContent : ''; }) };
+  }
+  var b = researchBands(), nums = [b.high, b.probable, b.emerging, b.watch], names = ['High', 'Probable', 'Emerging', 'Watch'];
+  thS.setAttribute('data-tip', RESEARCH_MODE_UI ? 'Research score 0-100 (the score the Action state is judged on; score rescaled, floor provisional). The legacy score is in each cell\'s tooltip and in the panel\'s Legacy section.' : RC_ORIG.s);
+  thB.setAttribute('data-tip', RESEARCH_MODE_UI ? 'Display band on the research score (provisional): High (' + b.high + '+ = the research floor), Probable (' + b.probable + '+), Emerging (' + b.emerging + '+), Watch (' + b.watch + '+), Weak (below ' + b.watch + ').' : RC_ORIG.b);
+  ids.forEach(function (n, i) { var e = document.getElementById('fb-' + n); if (e) e.textContent = RESEARCH_MODE_UI ? names[i] + ' ' + nums[i] + '+' : RC_ORIG.f[i]; });
 }
 
 function getThresh() {
@@ -2998,17 +3060,16 @@ function applyFilters() {
       // gated on their own, independently adjustable Min score (daily-only) threshold
       // instead of the primary Min score control. Grid-only and sub-threshold 'both' rows
       // keep using the primary threshold, unchanged.
-      if(r.source==='daily') {
-        if(r.score < t.minScoreDaily) return false;
-      } else if(r.score < t.minScore) {
-        return false;
-      }
+      var fsc = RESEARCH_MODE_UI ? researchScoreOf(r) : r.score, fmin = (r.source==='daily') ? t.minScoreDaily : t.minScore;   // Step 17-C: research score in the research view (no fit = no score, fails any threshold above Off)
+      if(fsc == null) { if(fmin > 0) return false; } else if(fsc < fmin) return false;
     }
     if(activeFilter==='confirmed') return false; // Confirmed filter shows only qualified 'both' rows, handled above
-    if(activeFilter==='high' && r.score<89) return false;
-    if(activeFilter==='probable' && (r.score<75||r.score>=89)) return false;
-    if(activeFilter==='emerging' && (r.score<60||r.score>=75)) return false;
-    if(activeFilter==='watch' && (r.score<40||r.score>=60)) return false;
+    var sbn = RESEARCH_MODE_UI ? researchBands() : {high:89,probable:75,emerging:60,watch:40}, ssc = RESEARCH_MODE_UI ? researchScoreOf(r) : r.score;   // Step 17-C
+    if(activeFilter!=='all' && ssc==null) return false;
+    if(activeFilter==='high' && ssc<sbn.high) return false;
+    if(activeFilter==='probable' && (ssc<sbn.probable||ssc>=sbn.high)) return false;
+    if(activeFilter==='emerging' && (ssc<sbn.emerging||ssc>=sbn.probable)) return false;
+    if(activeFilter==='watch' && (ssc<sbn.watch||ssc>=sbn.emerging)) return false;
     return true;
   };
   // Step 16-A: pinned rows bypass every filter above (they are flagged when the filters would have hidden them); the count below is still the rows that pass the filters.
@@ -3032,6 +3093,7 @@ function sortFilteredCore() {
   if(sortCol==='default') { filtered = sortRowsByVerdict(filtered, RESEARCH_MODE_UI); return; }
   filtered.sort(function(a,b) {
     var av=a[sortCol], bv=b[sortCol];
+    if(sortCol==='score' && RESEARCH_MODE_UI) { av = researchScoreOf(a); bv = researchScoreOf(b); }   // Step 17-C
     if(sortCol==='position') return av-bv;
     // Backlog #3: "unknown" (null) rail ages have no meaningful order - always sort last,
     // regardless of sortDir, rather than coercing null to 0 (which would rank them as the
@@ -3057,7 +3119,19 @@ function sortFiltered() {
   filtered = top.concat(rest);
 }
 
+function researchScoreCellHTML(r, rsc) {
+  var tip = (rsc == null ? 'No research fit on this series' : 'Research score ' + researchPts(rsc)) + ' \u00b7 legacy score ' + r.score;
+  if (rsc == null) return '<td title="' + tip + '"><span style="color:var(--muted)">\u2014</span></td>';
+  var c = researchScoreColor(rsc);
+  return '<td title="' + tip + '"><div class="score-cell"><span style="font-weight:700;color:' + c + ';min-width:26px">' + researchPts(rsc) + '</span><div class="score-bar-wrap"><div class="score-bar" style="width:' + Math.max(0, Math.min(100, rsc)) + '%;background:' + c + '"></div></div></div></td>';
+}
+function researchBucketCellHTML(r, rsc) {
+  var bk = researchBucket(rsc);
+  if (!bk) return '<td><span class="bbadge" style="opacity:.55;color:var(--muted)">\u2014</span>' + srcBadgeHTML(r) + '</td>';
+  return '<td><span class="bbadge cat-tip ' + bk.cls + '" data-tip="' + researchBucketTip(bk.label) + '">' + bk.label + '</span>' + srcBadgeHTML(r) + '</td>';
+}
 function renderTable() {
+  syncResearchScoreUI();   // Step 17-C
   var tbody = document.getElementById('table-body');
   var th24 = document.getElementById('th-24h');
   if(th24) th24.textContent = captureMode ? '24h Price*' : '24h Price';
@@ -3068,6 +3142,7 @@ function renderTable() {
   }
   tbody.innerHTML = filtered.map(function(r) {
     var bk=getBucket(r.score), sc=scoreColor(r.score);
+    var rsc = RESEARCH_MODE_UI ? researchScoreOf(r) : null;   // Step 17-C
     // B4 (Remediation spec, 2026-09-21/22): clamp ONLY here, at the bar's pixel width -
     // r.position itself is unclamped now (channel-core.js), so a bar for a broken-rail row
     // (position<0) or an above-resistance row (position>1) would otherwise render at a
@@ -3101,8 +3176,8 @@ function renderTable() {
     return '<tr data-key="'+r.symbol+'"'+(pinned?' class="pin-row"':'')+'>'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div>'+pinButtonHTML(r.cgId, pinned)+'<div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div>'+(pinned && PIN_HIDDEN[r.cgId] ? '<div class="pin-note" title="pinned \u00b7 outside current filters">pinned \u00b7 outside current filters</div>' : '')+'</div></div></td>'+
       '<td>'+actionCell+'</td>'+
-      '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>'+
-      '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>'+
+      (RESEARCH_MODE_UI ? researchScoreCellHTML(r, rsc) : '<td><div class="score-cell"><span style="font-weight:700;color:'+sc+';min-width:26px">'+r.score+'</span><div class="score-bar-wrap"><div class="score-bar" style="width:'+r.score+'%;background:'+sc+'"></div></div></div></td>')+
+      (RESEARCH_MODE_UI ? researchBucketCellHTML(r, rsc) : '<td><span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+srcBadgeHTML(r)+'</td>')+
       '<td style="color:var(--text2);font-variant-numeric:tabular-nums">'+fmtVol(r.volume24h)+'</td>'+
       '<td style="color:var(--bull)">'+r.supportTouches+'</td>'+
       '<td style="color:var(--text2)">'+r.resTouches+'</td>'+
