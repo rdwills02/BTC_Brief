@@ -120,7 +120,7 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 .p3-analysis{padding:5px 13px 6px;font-size:11px;line-height:1.4;color:var(--text2);border-top:1px dashed var(--border)}
 .p3-v3{margin-top:1px;font-size:11px;font-weight:600;color:var(--text2)}
 .p3-sec{border-bottom:1px solid var(--border)}
-.p3-sec-h{display:flex;align-items:center;gap:6px;padding:5px 18px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none}
+.p3-sec-h{display:flex;align-items:center;gap:6px;padding:5px 88px 5px 18px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none}
 .p3-sec-h::before{content:"\25BE";font-size:10px}
 .p3-sec.collapsed .p3-sec-h::before{content:"\25B8"}
 .p3-sec.collapsed .p3-sec-b{display:none}
@@ -1102,12 +1102,12 @@ function researchTagLines(ctx, t) {
 function researchCandleLines(ctx, i) {
   var c = ctx.cs[i], rr = ctx.rr, f = function (v) { return fmt(v, ctx.d); }, a = (ctx.atrS && i >= 1) ? ctx.atrS[i - 1] : null, out = [];
   out.push(researchTimeLabel(c.time) + '  O ' + f(c.open) + '  H ' + f(c.high) + '  L ' + f(c.low) + '  C ' + f(c.close));
-  if (a == null) { var vl0 = volumeLineFor(ctx, i); if (vl0) out.push(vl0); out.push('Wicks: no ATR14 at the prior bar (F3 does not judge the first 15 bars)'); return out; }
+  if (a == null) { var vl0 = volumeLineFor(ctx, i); if (vl0) out.push(vl0); out.push('Wicks: no ATR14 at the prior bar (the outlier check does not judge the first 15 bars)'); return out; }
   out.push('Upper wick ' + ((c.high - c.close) / a).toFixed(1) + '×ATR14, lower wick ' + ((c.close - c.low) / a).toFixed(1) + '×ATR14 (from the close; ATR14 at the prior bar)');
   var lb = (typeof rr.lookback === 'number') ? rr.lookback : ctx.n;
-  if (i < Math.max(ctx.n - lb, 1)) { var vl1 = volumeLineFor(ctx, i); if (vl1) out.push(vl1); out.push('F3: not examined (before the ' + lb + '-bar window)'); return out; }
+  if (i < Math.max(ctx.n - lb, 1)) { var vl1 = volumeLineFor(ctx, i); if (vl1) out.push(vl1); out.push('Outliers: not examined (before the ' + lb + '-bar window)'); return out; }
   var mult = (typeof F3_WICK_ATR_MULT === 'number') ? F3_WICK_ATR_MULT : '?', clips = (rr.wickClips || []).filter(function (w) { return w.time === c.time; });
-  out.push('F3: ' + [['upper', 'high'], ['lower', 'low']].map(function (s) { var w = clips.filter(function (x) { return x.side === s[1]; })[0]; return w ? s[0] + ' clipped → ' + researchNum(w.clippedTo) : s[0] + ' kept (below ' + mult + '× threshold)'; }).join(', '));
+  out.push('Outliers: ' + [['upper', 'high'], ['lower', 'low']].map(function (s) { var w = clips.filter(function (x) { return x.side === s[1]; })[0]; return w ? s[0] + ' clipped at ' + researchNum(w.clippedTo) : s[0] + ' kept (below ' + mult + '× threshold)'; }).join(', '));
   var vl2 = volumeLineFor(ctx, i); if (vl2) out.push(vl2);
   return out;
 }
@@ -1469,8 +1469,12 @@ function filterOutFourDayPills(list) {
 // duplicated rather than refactored into confluenceHTML so that function's own diff stays
 // zero-touch (same reasoning as researchConfluenceHTML being a sibling, not a mode argument,
 // above).
-function filteredConfluenceHTML(r) {
-  var b = filterOutFourDayPills(confluenceList(r));
+// Step 17-F part 4 (A): a research-view row with no research fit shows no pattern pills at all (neither timeframe); regime/EMA/rail pills stay.
+function filterOutPatternPills(list) {
+  return list.filter(function(x) { var t = x.t.slice(-7); return t !== '(4-Day)' && x.t.slice(-4) !== '(1D)'; });
+}
+function filteredConfluenceHTML(r, noPatterns) {
+  var b = noPatterns ? filterOutPatternPills(confluenceList(r)) : filterOutFourDayPills(confluenceList(r));
   if(!b.length) return '<span style="font-size:11px;color:#6b7280">No additional confluence signals</span>';
   return b.map(function(x){
     var cls = x.key ? 'cat-tip cat-toggle' : 'cat-tip';
@@ -1487,6 +1491,7 @@ function dpConfluenceHTML(r) {
     if (P3) return filteredConfluenceHTML(r) + researchPillsHTML(r.researchRow);   // Step 17-A: pills only - score/execution/structure/wick lines live in "Research detail"
     return filteredConfluenceHTML(r) + researchConfluenceHTML(r.researchRow);
   }
+  if (RESEARCH_MODE_UI) return filteredConfluenceHTML(r, true);   // Step 17-F part 4 (A): default view, no research fit -> no pattern pills (the 4-day pills are legacy-view only)
   return confluenceHTML(r);
 }
 
@@ -3457,9 +3462,15 @@ function openDetail(r) {
     }
     actionEl.innerHTML = badgeHtml;
   }
+  if (RESEARCH_MODE_UI) {   // Step 17-F part 4 (B): the default view shows the RESEARCH invalidation; no fit = "No research fit" (the legacy number is not shown here)
+    var rrInv = r.researchRow, okInv = rrInv && typeof rrInv.invalidation === 'number' && isFinite(rrInv.invalidation) && typeof r.price === 'number' && r.price > 0;
+    document.getElementById('dp-inv').textContent = okInv ? fmt(rrInv.invalidation, pricePrecision(r.price)) : 'No research fit';
+    document.getElementById('dp-inv-pct').textContent = okInv ? ((rrInv.invalidation - r.price) / r.price * 100).toFixed(1) + '% from current' : '';
+  } else {
   var invPct=((r.invalidation-r.price)/r.price*100).toFixed(1);
   document.getElementById('dp-inv').textContent=fmt(r.invalidation,pricePrecision(r.price));
   document.getElementById('dp-inv-pct').textContent=invPct+'% from current';
+  }
   document.getElementById('dp-tv').href='https://www.tradingview.com/chart/?symbol='+(r.tvExchange||'KRAKEN')+':'+(r.tvPair||r.symbol+'USD')+'&interval=D';
   document.getElementById('dp-cg').href='https://www.coingecko.com/en/coins/'+r.cgId;
   // Step 8 E2 (revised 2026-09-23): dpConfluenceHTML(r) - see its own comment above. With
@@ -3697,7 +3708,7 @@ function buildChart(r) {
     // aboveBar/belowBar marker's text label. 3 bars of empty space fixes it without visibly
     // changing anything else (the invalidation line still ends exactly at the last candle's
     // time, just with a small gap before the canvas edge now).
-    timeScale:{borderColor:'#1e2035',timeVisible:true,rightOffset:3}
+    timeScale:{borderColor:'#1e2035',timeVisible:true,rightOffset:RESEARCH_MODE_UI?16:3}
   });
   detailChart=chart;
   // G1 (Remediation spec, 2026-09-22): priceFormat precision keyed off the coin's own price -
@@ -4037,7 +4048,7 @@ function buildReportHTML(data) {
     diffBar+
     '<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid #1e2035">Channel Candidates - Ranked by Score</div>'+
     rows+
-    '<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px 18px;margin-top:20px;font-size:11px;color:#6b7280;line-height:1.6;border-left:3px solid #f5a623">This report is generated by an automated channel detection algorithm. It is a discovery tool only - not a trade recommendation. All candidates require manual validation in TradingView. <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" style="color:#7b6ef6">Learn more about the methodology</a></div>'+
+    '<div style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:14px 18px;margin-top:20px;font-size:11px;color:#6b7280;line-height:1.6;border-left:3px solid #f5a623">This report is generated by an automated channel detection algorithm. It is a discovery tool only - not a trade recommendation. <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" style="color:#7b6ef6">Learn more about the methodology</a></div>'+
     '<div style="margin-top:40px;padding-top:20px;border-top:1px solid #1e2035;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#6b7280">'+
       '<span>Finance Agent V3 - Channel Radar - '+ts+'</span>'+
       '<div style="display:flex;gap:16px"><a href="https://rdwills02.github.io/BTC_Brief/" style="color:#7b6ef6;text-decoration:none">Dashboard</a><a href="https://rdwills02.github.io/BTC_Brief/glossary.html" style="color:#7b6ef6;text-decoration:none">Glossary</a></div>'+
