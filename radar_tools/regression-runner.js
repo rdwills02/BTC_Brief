@@ -190,6 +190,15 @@ function daysBetween(d1, d2) {
 }
 
 function run() {
+  // Step 14 (Forward Experiment Protocol v1.2): the flags select ONE Step 14 section; the default run appends the operational report at its end.
+  const a14 = process.argv.slice(2), opt14 = n => { const i = a14.indexOf(n); return i >= 0 ? a14[i + 1] : undefined; }, over14 = (opt14('--data') || opt14('--repo')) ? Object.assign({}, opt14('--data') ? { dataDir: path.resolve(opt14('--data')) } : {}, opt14('--repo') ? { repoRoot: path.resolve(opt14('--repo')) } : {}) : undefined;
+  if (a14.indexOf('--confirmatory') >= 0) { runStep14Confirmatory(over14, {}); return; }
+  if (a14.indexOf('--feasibility') >= 0 || a14.indexOf('--calibrate') >= 0) {
+    verifyManifestOrAbort();
+    const cur14 = require(path.join(REPO_ROOT, 'channel-core.js')), dc14 = loadDailyCaches(), o14 = { windowDays: opt14('--window') ? +opt14('--window') : undefined, runs: opt14('--runs') ? +opt14('--runs') : undefined, reps: opt14('--reps') ? +opt14('--reps') : undefined };
+    if (a14.indexOf('--calibrate') >= 0) runStep14Calibrate(cur14, dc14, o14); else runStep14Feasibility(cur14, dc14, o14);
+    return;
+  }
   verifyManifestOrAbort();
 
   const stable = require(STABLE_DETECTOR_PATH);
@@ -328,6 +337,7 @@ function run() {
   runStep12AAcceptance(current, grids, caches, loadDailyCachesWithVolume());
   runStep13Validation(current, stable, grids, caches, loadDailyCachesWithVolume());
   runStep13ForwardScore(current);
+  runStep14Operational(over14);
 }
 
 // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §7): research
@@ -1857,6 +1867,371 @@ function runStep13ForwardScore(current, ledgerPath) {
   });
 }
 
+// =====================================================================================================================================
+// STEP 14 (Forward Experiment Protocol v1.2 §7-§8; Episodes + Policy Signals Build Spec v1.2, D4)
+//   default run       -> runStep14Operational: months 3/6/9 content ONLY (completeness, counts, statuses). No performance figure of any kind.
+//   --confirmatory    -> runStep14Confirmatory: reads the LOCKED generation, its cache resolved through the commit that added its checksums.json; §7 exactly.
+//   --feasibility     -> runStep14Feasibility: §8 entry-feasibility funnel on the fixtures (no path to the execution / P&L code).
+//   --calibrate       -> runStep14Calibrate: §8 nulls (i) and (ii); non-zero exit when a false-pass rate exceeds 0.10 + 2 SE.
+//   --data <dir>      -> read the forward state from <dir> instead of <repo>/data (tests, mirrors).
+// =====================================================================================================================================
+const STEP14 = { SEED: 20260925, REPS: 10000, BLOCKS: [10, 20, 40], PRIMARY_B: 20, N: 395, ISSUANCE_CUTOFF_DAY: 365, LAST_RECORD_DAY: 394, DEADLINE_DAY: 409, LOCK_MAX_DAY: 408,
+  START_CENTS: 1500000, MIN_FILLS: 24, MIN_POINT: 0.25, QUANTILE: 0.10, SHARE_SPAN_DAYS: 60 };
+const STEP14_DAY_MS = 86400000;
+const STEP14_BLACKLIST = ['budgetR', 'plannedRiskR', 'meanR', 'expectancy', 'compoundedReturn', 'portfolioReturn', 'c1MinusN0', 'equityCurve', 'lowerBound'];
+
+// ---- PRNG: splitmix32 (murmur3-constant variant) seeds xoshiro128** v1.1 (Protocol §7, exactly as written) ----
+function step14Splitmix32(seed) {
+  let a = seed | 0;
+  return function () { a = (a + 0x9E3779B9) | 0; let t = a ^ (a >>> 15); t = Math.imul(t, 0x85EBCA6B); t ^= t >>> 13; t = Math.imul(t, 0xC2B2AE35); return (t ^ (t >>> 16)) >>> 0; };
+}
+function step14Xoshiro(seed) {
+  const sm = step14Splitmix32(seed), s = [sm() | 0, sm() | 0, sm() | 0, sm() | 0];
+  const rotl = (x, k) => (x << k) | (x >>> (32 - k));
+  return function () {
+    const result = Math.imul(rotl(Math.imul(s[1], 5), 7), 9) >>> 0, t = s[1] << 9;
+    s[2] ^= s[0]; s[3] ^= s[1]; s[1] ^= s[2]; s[0] ^= s[3]; s[2] ^= t; s[3] = rotl(s[3], 11);
+    return result;
+  };
+}
+function step14Draw(next, N) { return Math.floor((next() >>> 0) / 4294967296 * N); }   // integer draw on [0, N-1]
+function step14Golden(seed, N, count) { const a = step14Xoshiro(seed), b = step14Xoshiro(seed), raw = [], idx = []; for (let i = 0; i < count; i++) { raw.push(a()); idx.push(step14Draw(b, N)); } return { seed, N, raw, idx }; }
+// One-sided lower 90% bound: 10th percentile, 0-based ascending sort, k = (n-1) x 0.10, linear interpolation (Protocol §7).
+function step14Bound(values) {
+  const x = Float64Array.from(values).sort(), n = x.length, k = (n - 1) * 0.10, f = Math.floor(k);
+  return x[f] + (k - f) * (x[Math.min(f + 1, n - 1)] - x[f]);
+}
+
+// ---- daily records (Protocol §7): record t = the canonical capture dated day t; a date without one carries E and has r = 0 ----
+function step14DayIndex(date, startDate) { return Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(startDate + 'T00:00:00Z')) / STEP14_DAY_MS); }
+function step14Records(series, trades, startDate, N) {
+  N = N || STEP14.N;
+  const byDay = {}; (series || []).forEach(r => { const d = step14DayIndex(r.date, startDate); if (d >= 0 && d <= N - 1) byDay[d] = r.E; });
+  const E = [], r = [], s = new Array(N).fill(0), n = new Array(N).fill(0); let prev = STEP14.START_CENTS, late = 0, count = 0, noCapture = 0;
+  for (let t = 0; t < N; t++) { let e = byDay[t]; if (e === undefined) { e = prev; noCapture++; } E.push(e); r.push(e / prev - 1); prev = e; }
+  (trades || []).forEach(tr => {
+    const d = step14DayIndex(tr.attributionDate, startDate), idx = Math.min(N - 1, Math.max(0, d));
+    if (d > N - 1) late++;   // late-attributed: the min(394, d) rule applied
+    s[idx] += tr.budgetR; n[idx] += 1; count++;
+  });
+  return { E, r, s, n, lateAttributed: late, tradeCount: count, datesWithoutCapture: noCapture };
+}
+function step14Prefix(a) { const N = a.length, P = new Float64Array(2 * N + 1); for (let i = 0; i < 2 * N; i++) P[i + 1] = P[i] + a[i % N]; return P; }
+// One (analysis, scenario, b) cell: a fresh generator seeded identically; circular moving-block bootstrap (draw start indices uniformly on [0, N-1]; each contributes b
+// consecutive records wrapping modulo N; concatenate until >= N; truncate to N).
+function step14Cell(kind, data, b, reps, seed) {
+  const N = data.N, next = step14Xoshiro(seed === undefined ? STEP14.SEED : seed), values = new Float64Array(reps);
+  let undef = 0, P1, P2, P3, P4;
+  if (kind === 'exp') { P1 = step14Prefix(data.s); P2 = step14Prefix(data.n); } else { P3 = step14Prefix(data.lr1); P4 = step14Prefix(data.lr0); }
+  for (let rep = 0; rep < reps; rep++) {
+    let a = 0, c = 0, remaining = N;
+    while (remaining > 0) {
+      const start = step14Draw(next, N), len = Math.min(b, remaining);
+      if (kind === 'exp') { a += P1[start + len] - P1[start]; c += P2[start + len] - P2[start]; } else { a += P3[start + len] - P3[start]; c += P4[start + len] - P4[start]; }
+      remaining -= len;
+    }
+    if (kind === 'exp') { if (c === 0) { undef++; values[rep] = NaN; } else values[rep] = a / c; }
+    else values[rep] = (Math.exp(a) - 1) - (Math.exp(c) - 1);
+  }
+  let point;
+  if (kind === 'exp') { let sa = 0, sc = 0; for (let t = 0; t < N; t++) { sa += data.s[t]; sc += data.n[t]; } point = sc === 0 ? null : sa / sc; }
+  else { let p1 = 1, p0 = 1; for (let t = 0; t < N; t++) { p1 *= 1 + data.r1[t]; p0 *= 1 + data.r0[t]; } point = p1 - p0; }
+  return { kind, b, reps, undefinedReplications: undef, validated: undef === 0, bound: undef === 0 ? step14Bound(values) : null, point };
+}
+// The status decision (Protocol §7). cells[analysis][scenario][b] = { validated, bound, point }; analysis in exp (condition 1), port (3), adv (6).
+// point = { S1, S2 } expectancy point estimates (condition 2, evaluated once per scenario). fills = FACTUAL fills of the trade-outcome cohort; c1Suspended = FACTUAL suspension in the window.
+function step14Decide(cells, point, fills, c1Suspended) {
+  const B = STEP14.BLOCKS, out = { conditions: {}, reasons: [], status: null };
+  const p2 = point.S2, p1 = point.S1;
+  out.conditions[4] = { pass: fills >= STEP14.MIN_FILLS, fills };
+  out.conditions[5] = { pass: !c1Suspended };
+  out.conditions[2] = { pass: p2 != null && p2 >= STEP14.MIN_POINT, S2: p2, S1: p1 };
+  const cond = { 1: 'exp', 3: 'port', 6: 'adv' };
+  Object.keys(cond).forEach(k => { const c = cells[cond[k]].S2[STEP14.PRIMARY_B]; out.conditions[k] = { pass: c.validated ? c.bound > 0 : null, validated: c.validated, bound: c.bound }; });
+  if (!out.conditions[4].pass || !out.conditions[5].pass) { out.status = 'reject'; out.reasons.push('(i) condition ' + (!out.conditions[4].pass ? '4' : '5') + ' fails'); return out; }
+  const failsS2 = [];
+  if (!out.conditions[2].pass) failsS2.push(2);
+  [1, 3, 6].forEach(k => { if (out.conditions[k].validated && out.conditions[k].pass === false) failsS2.push(Number(k)); });
+  if (failsS2.length) { out.status = 'reject'; out.reasons.push('(ii) condition(s) ' + failsS2.join(',') + ' fail under S2'); return out; }
+  const inc = [];
+  ['exp', 'port', 'adv'].forEach(a => ['S1', 'S2'].forEach(s => B.forEach(b => { if (!cells[a][s][b].validated) inc.push('unvalidated ' + a + '/' + s + '/b' + b); })));
+  [1, 3, 6].forEach(k => {
+    if (out.conditions[k].pass === true) ['S1', 'S2'].forEach(s => B.forEach(b => { if (s === 'S2' && b === STEP14.PRIMARY_B) return; const c = cells[cond[k]][s][b]; if (c.validated && !(c.bound > 0)) inc.push('condition ' + k + ' passes S2/b20 but fails ' + s + '/b' + b); }));
+  });
+  if (out.conditions[2].pass && !(p1 != null && p1 >= STEP14.MIN_POINT)) inc.push('condition 2 passes S2 but fails S1');
+  if (inc.length) { out.status = 'inconclusive'; out.reasons = inc; return out; }
+  out.status = 'promote'; out.reasons.push('(iv) every condition holds under S2 and S1 across b = 10/20/40');
+  return out;
+}
+// Fills spread: the largest share of fills falling in any 60-day span (reported with condition 4).
+function step14MaxShare(fillDays) {
+  if (!fillDays.length) return { maxInSpan: 0, share: 0 };
+  const a = fillDays.slice().sort((x, y) => x - y); let best = 0, j = 0;
+  for (let i = 0; i < a.length; i++) { while (a[i] - a[j] >= STEP14.SHARE_SPAN_DAYS) j++; best = Math.max(best, i - j + 1); }
+  return { maxInSpan: best, share: best / a.length };
+}
+
+// ---- git and generation loader (D4-REQUIRED: the cache of EVERY generation, CURRENT included, resolves through the commit that ADDED its checksums.json; never the working tree) ----
+function step14RealGit(repoRoot) {
+  const cp = require('child_process'), run = a => cp.execFileSync('git', ['-C', repoRoot].concat(a), { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 30 });
+  return {
+    isShallow() { try { return run(['rev-parse', '--is-shallow-repository']).toString().trim() === 'true'; } catch (e) { return false; } },
+    commitAdding(rel) { try { return run(['log', '-n', '1', '--diff-filter=A', '--format=%H', '--', rel]).toString().trim() || null; } catch (e) { return null; } },
+    show(sha, rel) { try { return run(['show', sha + ':' + rel]); } catch (e) { return null; } }
+  };
+}
+function step14Deps(over) {
+  const d = Object.assign({ fs, path, crypto, repoRoot: REPO_ROOT, dataDir: path.join(REPO_ROOT, 'data'), git: null, OC: null }, over || {});
+  if (!d.git) d.git = step14RealGit(d.repoRoot);
+  if (!d.OC) d.OC = require(path.join(d.repoRoot, 'orders-core.js'));
+  return d;
+}
+function step14Sha(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
+function step14ReadJson(d, f) { try { return JSON.parse(d.fs.readFileSync(f, 'utf8')); } catch (e) { return null; } }
+function step14Cohort(d) {
+  const dir = path.join(d.dataDir, 'forward'), cur = step14ReadJson(d, path.join(dir, 'CURRENT')), out = { dir, current: cur, entries: [], pins: {}, startDate: null, problems: [] };
+  if (!cur) { out.problems.push('no CURRENT'); return out; }
+  let txt = ''; try { txt = d.fs.readFileSync(path.join(dir, 'CURRENT.history'), 'utf8'); } catch (e) { out.problems.push('no CURRENT.history'); return out; }
+  txt.split('\n').forEach(l => { if (!l.trim()) return; let h; try { h = JSON.parse(l); } catch (e) { return; } if (h.pin) out.pins[h.generationId] = h.sha; else if (h.generationId) { const ck = step14ReadJson(d, path.join(dir, 'gen-' + h.generationId, 'checksums.json')); if (ck && ck.protocolVersion === cur.protocolVersion) out.entries.push({ generationId: h.generationId, captureId: h.captureId, date: h.date }); } });
+  out.entries.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  if (out.entries.length) out.startDate = out.entries[0].date;
+  return out;
+}
+function step14LoadGeneration(d, cohort, id) {
+  const res = { id, files: {}, problems: [], pinnedSha: null, cacheChecked: 0, verified: false }, gdir = path.join(cohort.dir, 'gen-' + id), ck = step14ReadJson(d, path.join(gdir, 'checksums.json'));
+  if (!ck) { res.problems.push('missing checksums.json'); return res; }
+  ['episodes.json', 'orders.json', 'accounts.json', 'scenarios.json', 'pairs.json'].forEach(f => {
+    let buf; try { buf = d.fs.readFileSync(path.join(gdir, f)); } catch (e) { res.problems.push('missing ' + f); return; }
+    if (step14Sha(buf) !== (ck.files || {})[f]) res.problems.push('checksum mismatch ' + f); else res.files[f] = JSON.parse(buf.toString('utf8'));
+  });
+  if (d.git.isShallow && d.git.isShallow()) res.problems.push('shallow clone: pinned commits cannot be resolved (fetch full history)');
+  const rel = 'data/forward/gen-' + id + '/checksums.json', addSha = d.git.commitAdding(rel), pin = cohort.pins[id] || null;
+  if (pin && addSha && pin !== addSha) res.problems.push('pin mismatch: CURRENT.history ' + pin + ' vs adding commit ' + addSha);
+  res.pinnedSha = addSha || pin;
+  if (!res.pinnedSha) res.problems.push('adding commit of ' + rel + ' not resolvable');
+  else Object.keys(ck.cache || {}).forEach(f => { const b = d.git.show(res.pinnedSha, f); if (b == null) { res.problems.push('cache unresolvable at pinned commit: ' + f); return; } res.cacheChecked++; if (step14Sha(b) !== ck.cache[f]) res.problems.push('cache checksum mismatch at pinned commit: ' + f); });
+  res.verified = res.problems.length === 0;
+  res.checksums = ck;
+  return res;
+}
+function step14CollectKeys(o, acc) { acc = acc || []; if (Array.isArray(o)) o.forEach(x => step14CollectKeys(x, acc)); else if (o && typeof o === 'object') Object.keys(o).forEach(k => { acc.push(k); step14CollectKeys(o[k], acc); }); return acc; }
+
+// ---- operational report (§7 months 3/6/9): data completeness and counts. NO expectancy, NO C1 vs N0 performance. ----
+function step14OperationalReport(d, gen, cohort) {
+  const orders = gen.files['orders.json'].orders, attempts = gen.files['orders.json'].attempts, eps = gen.files['episodes.json'].episodes, accts = gen.files['accounts.json'].accounts;
+  const cur = cohort.current, dayIdx = cur && cohort.startDate ? step14DayIndex(cur.date, cohort.startDate) : null, count = (a, f) => { const m = {}; a.forEach(x => { const k = f(x); m[k] = (m[k] || 0) + 1; }); return m; };
+  let extraFiles = 0; try { extraFiles = d.fs.readdirSync(path.join(d.dataDir, 'daily')).filter(f => /^\d{4}-\d{2}-\d{2}\.\d{8}T\d{9}Z-[0-9a-f]{6}\.json$/.test(f)).length; } catch (e) { /* no daily dir */ }
+  const days = new Set(cohort.entries.map(e => e.date)); let missingDates = 0;
+  if (cohort.entries.length) { const last = step14DayIndex(cohort.entries[cohort.entries.length - 1].date, cohort.startDate); for (let t = 0; t <= last; t++) { const dt = new Date(Date.parse(cohort.startDate + 'T00:00:00Z') + t * STEP14_DAY_MS).toISOString().slice(0, 10); if (!days.has(dt)) missingDates++; } }
+  const rep = { generationId: gen.id, generationDate: cur ? cur.date : null, cohortStartDate: cohort.startDate, cohortDay: dayIdx, protocolVersion: cur ? cur.protocolVersion : null,
+    verification: { verified: gen.verified, cacheFilesChecked: gen.cacheChecked, pinnedCommit: gen.pinnedSha },
+    captures: { canonical: cohort.entries.length, extraCaptureFiles: extraFiles, datesWithoutCanonicalCapture: missingDates },
+    completeness: { episodeGapDays: eps.reduce((a, e) => a + (e.gapDays || 0), 0), episodesFlaggedDataUnavailable: eps.filter(e => e.dataUnavailable).length },
+    episodes: { total: eps.length, byStatus: count(eps, e => e.status), byCloseReason: count(eps.filter(e => e.status === 'closed'), e => e.closeReason || 'none'), byLastMatchState: count(eps.filter(e => e.status === 'open'), e => e.lastMatchState) },
+    orders: {}, attempts: {}, execution: {}, unresolved: {}, fillsPerMonth: {}, accounts: {},
+    note: 'Order status literal "filled" is never persisted (a fill moves an order to "open"); filledOrders counts orders that carry a fill record.' };
+  ['N0', 'C1'].forEach(p => {
+    const os = orders.filter(o => o.policyId === p), at = attempts.filter(a => a.policyId === p), a = accts[p];
+    rep.orders[p] = { total: os.length, byStatus: count(os, o => o.status), filledOrders: os.filter(o => o.fill).length };
+    rep.attempts[p] = count(at, x => x.outcome);
+    const fills = os.filter(o => o.fill);
+    rep.execution[p] = { gapOpenFills: fills.filter(o => o.fill.reason === 'fill-gap-open').length, ambiguousStopExits: os.filter(o => o.exit && o.exit.reason === 'ambiguous-stop').length, gapStopExits: os.filter(o => o.exit && (o.exit.reason === 'gap-stop' || o.exit.reason === 'gap-stop-on-fill')).length,
+      sizeClippedOrders: os.filter(o => o.sizeClipped).length, capturesRiskLimitExceeded: a.series.filter(r => r.riskLimitExceeded).length, capturesWithStaleMark: a.series.filter(r => r.staleMark).length, staleMarkPersistentPositions: os.filter(o => o.stale && o.stale.persistent).length };
+    rep.unresolved[p] = { issued: os.filter(o => o.status === 'issued').length, pendingUnresolved: os.filter(o => o.status === 'pending-unresolved').length, cancelPending: os.filter(o => o.status === 'cancel-pending').length, openPositions: os.filter(o => o.status === 'open').length };
+    const fm = {}; fills.forEach(o => { const m = String(o.fill.date).slice(0, 7); fm[m] = (fm[m] || 0) + 1; }); rep.fillsPerMonth[p] = fm;
+    const dds = a.series.map(r => r.drawdown || 0);
+    rep.accounts[p] = { drawdownNow: dds.length ? dds[dds.length - 1] : 0, drawdownMax: dds.length ? Math.max.apply(null, dds) : 0, suspended: !!a.suspended, suspendedAt: a.suspendedAt || null };
+  });
+  const bad = step14CollectKeys(rep).filter(k => STEP14_BLACKLIST.indexOf(k) >= 0);
+  if (bad.length) throw new Error('operational report contains blacklisted field(s): ' + bad.join(','));
+  return rep;
+}
+function runStep14Operational(depsOver) {
+  console.log('\n=== Step 14 operational report (Protocol §7, months 3/6/9): completeness and counts only - no performance figure ===');
+  let d, cohort;
+  try { d = step14Deps(depsOver); cohort = step14Cohort(d); } catch (e) { console.log('  forward experiment: not available (' + e.message + ')'); return null; }
+  if (!cohort.current) { console.log('  forward experiment: no CURRENT generation (cohort not started)'); return null; }
+  const gen = step14LoadGeneration(d, cohort, cohort.current.generationId);
+  if (!gen.verified) { console.log('  BUG: CURRENT generation ' + gen.id + ' failed verification: ' + gen.problems.join('; ')); process.exitCode = 1; return null; }
+  const rep = step14OperationalReport(d, gen, cohort);
+  console.log('  generation ' + rep.generationId + ' (date ' + rep.generationDate + ', cohort day ' + rep.cohortDay + ', protocol ' + rep.protocolVersion + ') verified: ' + rep.verification.cacheFilesChecked + ' cache files at commit ' + rep.verification.pinnedCommit);
+  console.log('  ' + JSON.stringify({ captures: rep.captures, completeness: rep.completeness, episodes: rep.episodes }));
+  ['N0', 'C1'].forEach(p => console.log('  ' + p + ' ' + JSON.stringify({ orders: rep.orders[p], attempts: rep.attempts[p], execution: rep.execution[p], unresolved: rep.unresolved[p], fillsPerMonth: rep.fillsPerMonth[p], account: rep.accounts[p] })));
+  console.log('  ' + rep.note);
+  return rep;
+}
+
+// ---- confirmatory (§7): the LOCK generation = the generation committed by the last canonical capture dated <= day 408 ----
+function step14LockOf(cohort) {
+  if (!cohort.entries.length) return { problems: ['no cohort generations'] };
+  const withDay = cohort.entries.map(e => Object.assign({ day: step14DayIndex(e.date, cohort.startDate) }, e)), latest = withDay[withDay.length - 1];
+  if (latest.day < STEP14.DEADLINE_DAY) return { problems: ['data-recovery deadline (day ' + STEP14.DEADLINE_DAY + ') not passed: newest canonical capture is day ' + latest.day + ' - the lock generation is not yet determined'] };
+  const lockRow = withDay.filter(e => e.day <= STEP14.LOCK_MAX_DAY).pop();
+  return { lock: lockRow, problems: [] };
+}
+function step14Analyse(d, gen, cohort, opts) {
+  opts = opts || {}; const OC = d.OC, reps = opts.reps || STEP14.REPS, start = cohort.startDate;
+  const book = { orders: gen.files['orders.json'].orders, attempts: gen.files['orders.json'].attempts, seq: gen.files['accounts.json'].seq, accounts: gen.files['accounts.json'].accounts };
+  const deadlineSec = Math.floor(Date.parse(start + 'T00:00:00Z') / 1000) + STEP14.DEADLINE_DAY * 86400;
+  const sc = OC.buildScenarios(JSON.parse(JSON.stringify(book)), { deadlineSec });
+  const cohortOrders = {}; book.orders.forEach(o => { if (step14DayIndex(o.issueDate, start) < STEP14.ISSUANCE_CUTOFF_DAY) cohortOrders[o.id] = o; });
+  const tradesOf = (pathObj) => pathObj.trades.filter(t => cohortOrders[t.orderId]);
+  const recs = {};
+  ['S1', 'S2', 'S1adv', 'S2adv'].forEach(k => ['N0', 'C1'].forEach(p => { recs[k + '/' + p] = step14Records(sc.paths[k][p].series, tradesOf(sc.paths[k][p]), start, STEP14.N); }));
+  const cells = { exp: { S1: {}, S2: {} }, adv: { S1: {}, S2: {} }, port: { S1: {}, S2: {} } }, point = {};
+  ['S1', 'S2'].forEach(S => {
+    const c1 = recs[S + '/C1'], c1a = recs[S + 'adv/C1'], n0 = recs[S + '/N0'];
+    point[S] = (() => { const t = c1.tradeCount; return t ? c1.s.reduce((a, b) => a + b, 0) / c1.n.reduce((a, b) => a + b, 0) : null; })();
+    const port = { N: STEP14.N, lr1: c1.r.map(x => Math.log1p(x)), lr0: n0.r.map(x => Math.log1p(x)), r1: c1.r, r0: n0.r };
+    STEP14.BLOCKS.forEach(b => {
+      cells.exp[S][b] = step14Cell('exp', { N: STEP14.N, s: c1.s, n: c1.n }, b, reps);
+      cells.adv[S][b] = step14Cell('exp', { N: STEP14.N, s: c1a.s, n: c1a.n }, b, reps);
+      cells.port[S][b] = step14Cell('port', port, b, reps);
+    });
+  });
+  const c1book = book.orders.filter(o => o.policyId === 'C1' && cohortOrders[o.id] && o.fill);
+  const fillDays = c1book.map(o => step14DayIndex(o.fill.date, start));
+  const c1acct = book.accounts.C1, susp = !!(c1acct.suspended && c1acct.suspendedAt && step14DayIndex(c1acct.suspendedAt, start) <= STEP14.LAST_RECORD_DAY);
+  const decision = step14Decide(cells, point, c1book.length, susp);
+  return { scenarios: sc, records: recs, cells, point, decision, fills: c1book.length, fillShare: step14MaxShare(fillDays), c1SuspendedInWindow: susp,
+    lateAttributed: { S1: recs['S1/C1'].lateAttributed, S2: recs['S2/C1'].lateAttributed }, unresolved: { N0: sc.unresolved.N0.length, C1: sc.unresolved.C1.length } };
+}
+function runStep14Confirmatory(depsOver, opts) {
+  opts = opts || {};
+  const d = step14Deps(depsOver), cohort = step14Cohort(d);
+  const fail = m => { console.log('STEP 14 CONFIRMATORY: refused - ' + m); process.exitCode = 1; return null; };
+  if (!cohort.current) return fail('no forward state (' + cohort.problems.join('; ') + ')');
+  const L = step14LockOf(cohort); if (L.problems.length) return fail(L.problems.join('; '));
+  const gen = step14LoadGeneration(d, cohort, L.lock.generationId);
+  console.log('\n=== STEP 14 CONFIRMATORY (Protocol §7) - dataset lock id ' + L.lock.generationId + ' (captured ' + L.lock.date + ', day ' + L.lock.day + '; cohort start ' + cohort.startDate + '; deadline day ' + STEP14.DEADLINE_DAY + ') ===');
+  console.log('locked dataset read through pinned commit ' + gen.pinnedSha + ' (' + gen.cacheChecked + ' cache files verified against their recorded sha256)');
+  if (!gen.verified) return fail('the locked generation failed verification: ' + gen.problems.join('; '));
+  const r = step14Analyse(d, gen, cohort, opts), C = r.decision.conditions, f = v => v == null ? 'n/a' : (Math.abs(v) < 1e-12 ? '0' : v.toFixed(4));
+  console.log('membership: portfolio window day 0..' + STEP14.LAST_RECORD_DAY + ' (N = ' + STEP14.N + ' records); trade-outcome cohort = orders issued before day ' + STEP14.ISSUANCE_CUTOFF_DAY + '; late-attributed trades (min(394, d) rule) S2/C1: ' + r.lateAttributed.S2 + ', S1/C1: ' + r.lateAttributed.S1 + '; unresolved at the deadline N0 ' + r.unresolved.N0 + ' / C1 ' + r.unresolved.C1);
+  ['exp', 'adv', 'port'].forEach(a => ['S1', 'S2'].forEach(S => console.log('  ' + ({ exp: 'C1 mean budget-R (base)', adv: 'C1 mean budget-R (adverse path)', port: 'C1 - N0 compounded return' })[a] + ' ' + S + ': ' + STEP14.BLOCKS.map(b => 'b=' + b + ' ' + (r.cells[a][S][b].validated ? 'lower ' + f(r.cells[a][S][b].bound) : 'UNVALIDATED (' + r.cells[a][S][b].undefinedReplications + ' undefined)')).join(' | ') + ' | point ' + f(a === 'port' ? r.cells[a][S][20].point : r.cells[a][S][20].point))));
+  console.log('conditions: 1 ' + (C[1].pass === null ? 'unvalidated' : C[1].pass) + ' (bound ' + f(C[1].bound) + ') | 2 ' + C[2].pass + ' (point S2 ' + f(C[2].S2) + ', S1 ' + f(C[2].S1) + ') | 3 ' + (C[3].pass === null ? 'unvalidated' : C[3].pass) + ' (bound ' + f(C[3].bound) + ') | 4 ' + C[4].pass + ' (' + r.fills + ' factual fills; max ' + r.fillShare.maxInSpan + ' in any ' + STEP14.SHARE_SPAN_DAYS + '-day span = ' + (r.fillShare.share * 100).toFixed(1) + '%) | 5 ' + C[5].pass + ' | 6 ' + (C[6].pass === null ? 'unvalidated' : C[6].pass) + ' (bound ' + f(C[6].bound) + ')');
+  console.log('STATUS: ' + r.decision.status.toUpperCase() + ' - ' + r.decision.reasons.slice(0, 6).join('; ') + '. "reject" = does not meet the advancement requirement, not proof of negative expectancy.');
+  return { lock: L.lock, result: r };
+}
+
+// ---- FEASIBILITY BEGIN (Protocol §8, labelled entry-feasibility model). Stand-alone: takes candles and episode-days, returns funnel counts. It has no access to any execution or account code. ----
+function step14FeasibilityFunnel(days, series, cfg) {
+  // days[i] = { candidates: [{ cgId, episodeId, score, L, S, T }] } for capture day i; series[cgId] = { [dayIdx]: { open, high, low, close } } (candle whose open time is day dayIdx 00:00 UTC)
+  cfg = cfg || {}; const HOLD = cfg.holdBars || 10, MAXSLOTS = 3, f = { eligibleEpisodeDays: 0, predicateHolds: 0, skippedExposure: 0, rejectedLevels: 0, occupancySkipped: 0, issued: 0, skippedMissingInput: 0, rejectedGap: 0, rejectedCrossing: 0, resting: 0, penetratedWithin3: 0, filled: 0, expired: 0, censored: 0 };
+  const held = [], attempted = {}, byCoinBusyUntil = {}, fillsByDay = [];
+  const tickOf = L => Math.pow(10, Math.floor(Math.log10(L)) - 4);   // proxy: five significant digits
+  days.forEach((day, i) => {
+    f.eligibleEpisodeDays += day.eligible || 0;
+    const cands = (day.candidates || []).slice().sort((a, b) => (b.score - a.score) || (a.cgId < b.cgId ? -1 : a.cgId > b.cgId ? 1 : 0));
+    cands.forEach(c => {
+      if (attempted[c.episodeId]) return; attempted[c.episodeId] = true; f.predicateHolds++;
+      if (byCoinBusyUntil[c.cgId] != null && byCoinBusyUntil[c.cgId] > i) { f.skippedExposure++; return; }
+      if (!(c.S > 0 && c.S < c.L && c.L < c.T)) { f.rejectedLevels++; return; }
+      const inUse = held.filter(u => u > i).length;
+      if (inUse >= MAXSLOTS) { f.occupancySkipped++; return; }
+      f.issued++;
+      const px = series[c.cgId] || {}, D = px[i], b1 = px[i + 1];
+      if (!D || !b1) { f.censored++; return; }
+      if (D.close < c.S) { f.rejectedGap++; held.push(i + 1); byCoinBusyUntil[c.cgId] = i + 1; return; }
+      if (b1.open < c.L) { f.rejectedCrossing++; held.push(i + 2); byCoinBusyUntil[c.cgId] = i + 2; return; }
+      f.resting++;
+      let filledOn = null, unknown = false; const tick = tickOf(c.L);
+      for (let k = 1; k <= 3; k++) {
+        const bar = px[i + k]; if (!bar) { unknown = true; break; }
+        if ((k >= 2 && bar.open < c.L) || bar.low <= c.L - tick) { filledOn = i + k; break; }
+      }
+      if (filledOn == null && unknown) { f.censored++; return; }
+      if (filledOn == null) { f.expired++; held.push(i + 4); byCoinBusyUntil[c.cgId] = i + 4; return; }
+      f.penetratedWithin3++; f.filled++; held.push(filledOn + HOLD); byCoinBusyUntil[c.cgId] = filledOn + HOLD; fillsByDay.push(filledOn);
+    });
+  });
+  return { funnel: f, fillDays: fillsByDay };
+}
+// ---- FEASIBILITY END ----
+// Fixture replay: the detector (research mode) is run on the fixtures' daily candles for every capture day of a trailing window, the fits go through episodes-core
+// (updateEpisodes) exactly as capture.js drives it, and the episode-days feed the funnel above. Quote proxy: the open of the capture date's own candle.
+function step14FixtureReplay(current, dailyCaches, opts) {
+  opts = opts || {}; const EC = opts.EC || require(path.join(REPO_ROOT, 'episodes-core.js')), DAYSEC = 86400;
+  const coins = Object.keys(dailyCaches).filter(c => dailyCaches[c].length >= 200).sort();
+  const lastTime = Math.max.apply(null, coins.map(c => dailyCaches[c][dailyCaches[c].length - 1].time));
+  const R = opts.windowDays || 150, lastCapture = lastTime - 4 * DAYSEC + DAYSEC, firstCapture = lastCapture - (R - 1) * DAYSEC;
+  let state = null; const days = [], series = {}, perDate = [];
+  coins.forEach(cg => { series[cg] = {}; dailyCaches[cg].forEach(c => { series[cg][Math.round((c.time - firstCapture) / DAYSEC)] = c; }); });
+  const t0 = Date.now();
+  for (let i = 0; i < R; i++) {
+    const cutoff = firstCapture + i * DAYSEC, date = new Date(cutoff * 1000).toISOString().slice(0, 10), cap = { captureId: 'replay-' + date, issueTimeUtc: date + 'T05:00:00.000Z', inputCutoffUtc: date + 'T00:00:00.000Z', inputCutoffSec: cutoff, date };
+    const rows = {}, bars = {}, universe = [];
+    coins.forEach(cg => {
+      const arr = dailyCaches[cg]; let n = 0; while (n < arr.length && arr[n].time + DAYSEC <= cutoff) n++;
+      if (n < 60 || arr[n - 1].time !== cutoff - DAYSEC) return;
+      const cands = arr.slice(0, n); universe.push(cg);
+      bars[cg] = { pair: cg + 'USD', venueEligible: true, metadataEligible: true, candles: cands.map(c => ({ id: c.time, open: c.open, high: c.high, low: c.low, close: c.close })) };
+      let fit = null; try { fit = current.detectChannel(cands, undefined, { coinId: cg, timeframe: '1d', source: 'fixture', research: true }); } catch (e) { fit = null; }
+      const quote = arr[n] && arr[n].time === cutoff ? arr[n].open : null;
+      if (fit) rows[cg] = { fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, atr14: fit.atr14, channelH: fit.channelH, supportTouches: fit.supportTouches, lifecycleState: fit.lifecycleState }, price: quote, gates: null, score: fit.score, entryEconomics: fit.entryEconomics || null };
+    });
+    const up = EC.updateEpisodes(state, cap, rows, bars, universe, [], {}); state = up.state;
+    const cand = [];
+    up.episodeDays.forEach(ed => {
+      const ee = ed.entryEconomics, ez = ee && ee.entryZone;
+      if (!ed.screen.pass || !ez || !(typeof ed.price === 'number') || ed.price < ez[0] || ed.price > ez[1]) return;   // N0 predicate: screen AND price in [entryLow, entryHigh]
+      cand.push({ cgId: ed.cgId, episodeId: ed.episodeId, score: ed.score == null ? 0 : ed.score, L: (ez[0] + ez[1]) / 2, S: ee.stop, T: ee.target });
+    });
+    days.push({ eligible: up.episodeDays.filter(ed => ed.screen.pass).length, candidates: cand });
+    perDate.push({ date, episodeDays: up.episodeDays.length, candidates: cand.length });
+  }
+  const fun = step14FeasibilityFunnel(days, series, {});
+  const eps = state.episodes, count = (a, fn) => { const m = {}; a.forEach(x => { const k = fn(x); m[k] = (m[k] || 0) + 1; }); return m; };
+  const rowCount = eps.reduce((a, e) => a + e.days.length, 0), stateBytes = JSON.stringify(state).length;   // replay rows carry no gate arrays; capture.js rows carry 16 gates (~1,454 bytes measured on 67 real verdicts)
+  return { window: { firstDate: perDate[0].date, lastDate: perDate[R - 1].date, days: R, coins: coins.length }, episodes: { total: eps.length, byStatus: count(eps, e => e.status), byCloseReason: count(eps.filter(e => e.status === 'closed'), e => e.closeReason), openedPerDay: eps.length / R },
+    funnel: fun.funnel, fillDays: fun.fillDays, daysSeries: days.map(x => x.candidates.length), storage: { episodeDayRows: rowCount, stateBytesWithoutGates: stateBytes }, seconds: (Date.now() - t0) / 1000 };
+}
+function runStep14Feasibility(current, dailyCaches, opts) {
+  const r = step14FixtureReplay(current, dailyCaches, opts), F = r.funnel;
+  console.log('\n=== STEP 14 FEASIBILITY (Protocol §8) - entry-feasibility model, LABELLED: fixed notional, no compounding, no charges, first-come occupancy <= 3; no path is computed after the fill ===');
+  console.log('replay: ' + r.window.coins + ' fixture coins, ' + r.window.days + ' capture days ' + r.window.firstDate + ' .. ' + r.window.lastDate + ' (detector research pass per coin per day, then episodes-core.updateEpisodes); quote proxy = the capture date\'s own candle open; tick proxy = 5 significant digits; occupancy proxy = pending until resolved, filled orders hold a slot 10 bars; ' + r.seconds.toFixed(0) + ' s');
+  console.log('episodes: ' + r.episodes.total + ' opened (' + r.episodes.openedPerDay.toFixed(2) + ' per day) | by status ' + JSON.stringify(r.episodes.byStatus) + ' | by close reason ' + JSON.stringify(r.episodes.byCloseReason));
+  console.log('N0 entry-feasibility funnel: eligible episode-days ' + F.eligibleEpisodeDays + ' -> predicate holds (attempts) ' + F.predicateHolds + ' -> skipped-exposure ' + F.skippedExposure + ', rejected-levels ' + F.rejectedLevels + ', occupancy-skipped ' + F.occupancySkipped + ' -> issued ' + F.issued + ' -> skipped-missing-input ' + F.skippedMissingInput + ' (replay assumes every bar usable), rejected-gap ' + F.rejectedGap + ', rejected-crossing ' + F.rejectedCrossing + ' -> resting ' + F.resting + ' -> penetrated within 3 eligible bars ' + F.penetratedWithin3 + ' -> filled ' + F.filled + ' | expired ' + F.expired + ' | censored (bars beyond the fixtures) ' + F.censored);
+  const GATE_BYTES = 1454, est = r.storage.stateBytesWithoutGates + r.storage.episodeDayRows * GATE_BYTES, est395 = est * STEP14.N / r.window.days;
+  console.log('repo growth estimate (episodes.json is rewritten in full into every canonical generation): after ' + r.window.days + ' replay days ' + r.storage.episodeDayRows + ' episode-day rows = ' + (est / 1048576).toFixed(1) + ' MB with 16-gate rows; linear projection to ' + STEP14.N + ' days ' + (est395 / 1048576).toFixed(1) + ' MB per generation; ' + STEP14.N + ' retained generations ~ ' + (est395 * STEP14.N / 2 / 1073741824).toFixed(1) + ' GB of working-tree files (git delta compression not counted) plus the accounts/orders files and the cache rewrite');
+  const perYear = F.filled * 365 / r.window.days, sh = step14MaxShare(r.fillDays);
+  console.log('fills: ' + F.filled + ' in ' + r.window.days + ' days = ' + perYear.toFixed(1) + ' per 365 days (condition 4 needs >= ' + STEP14.MIN_FILLS + '); max ' + sh.maxInSpan + ' in any ' + STEP14.SHARE_SPAN_DAYS + '-day span. ' + (perYear >= STEP14.MIN_FILLS ? 'Fills would not be too rare for condition 4 under this model.' : 'FILLS WOULD BE TOO RARE for condition 4: a new protocol version is required before the cohort starts.'));
+  return r;
+}
+
+// ---- calibration (§8): null (i) mean budget-R = 0 per trade under the feasibility model's fill-count distribution with common-shock clustering; null (ii) equal C1/N0
+// daily-return paths with independent noise. The implemented decision (bootstrap, b = 20, 10th percentile, strict > 0) runs 1,000 times per null. ----
+function step14Normal(next) { let u = 0; while (u === 0) u = (next() >>> 0) / 4294967296; const v = (next() >>> 0) / 4294967296; return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function step14Calibrate(fillDays, opts) {
+  opts = opts || {}; const runs = opts.runs || 1000, reps = opts.reps || STEP14.REPS, N = STEP14.N, b = STEP14.PRIMARY_B, SC = opts.sigmaCommon == null ? 0.5 : opts.sigmaCommon, SI = opts.sigmaIdio == null ? 1.0 : opts.sigmaIdio;
+  const src = opts.dailyCounts && opts.dailyCounts.length ? opts.dailyCounts : [1];   // the feasibility replay's empirical daily fill counts, tiled
+  const gen = step14Xoshiro((opts.seed || 20260926) >>> 0);
+  let pass1 = 0, pass3 = 0;
+  for (let run = 0; run < runs; run++) {
+    // null (i): trade counts per record = the empirical fill-count series (random phase, tiled to N); every trade's budget-R = shared day shock + own noise, mean exactly 0
+    const phase = step14Draw(gen, src.length), s = new Array(N).fill(0), n = new Array(N).fill(0);
+    for (let t = 0; t < N; t++) { const k = src[(phase + t) % src.length]; if (!k) continue; const z = SC * step14Normal(gen); for (let j = 0; j < k; j++) s[t] += z + SI * step14Normal(gen); n[t] = k; }
+    const seed = (0xC0FFEE + run) >>> 0, c = step14Cell('exp', { N, s, n }, b, reps, seed);
+    if (c.validated && c.bound > 0) pass1++;
+    // null (ii): the C1 and N0 daily-return paths are exchangeable (same mean, independent noise); the statistic is the compounded difference
+    const r1 = new Array(N), r0 = new Array(N); for (let t = 0; t < N; t++) { r1[t] = 0.0005 + 0.02 * step14Normal(gen); r0[t] = 0.0005 + 0.02 * step14Normal(gen); }
+    const p = step14Cell('port', { N, lr1: r1.map(Math.log1p), lr0: r0.map(Math.log1p), r1, r0 }, b, reps, seed);
+    if (p.validated && p.bound > 0) pass3++;
+  }
+  const se = q => Math.sqrt(q * (1 - q) / runs), q1 = pass1 / runs, q3 = pass3 / runs;
+  return { runs, reps, cond1: { rate: q1, se: se(q1), blocks: q1 > 0.10 + 2 * se(q1) }, cond3: { rate: q3, se: se(q3), blocks: q3 > 0.10 + 2 * se(q3) }, params: { sigmaCommon: SC, sigmaIdio: SI } };
+}
+function runStep14Calibrate(current, dailyCaches, opts) {
+  opts = opts || {}; const rep = opts.replay || step14FixtureReplay(current, dailyCaches, opts);
+  const counts = {}; rep.fillDays.forEach(x => { counts[x] = (counts[x] || 0) + 1; }); const series = []; for (let i = 0; i < rep.window.days; i++) series.push(counts[i] || 0);
+  const r = step14Calibrate(rep.fillDays, Object.assign({}, opts, { dailyCounts: series }));
+  console.log('\n=== STEP 14 CALIBRATION (Protocol §8) - ' + r.runs + ' runs per null, ' + r.reps + ' bootstrap replications, b = 20; provisional shock parameters ' + JSON.stringify(r.params) + ' ===');
+  console.log('null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate ' + r.cond1.rate.toFixed(3) + ' (MC SE ' + r.cond1.se.toFixed(4) + '; limit ' + (0.10 + 2 * r.cond1.se).toFixed(3) + ') ' + (r.cond1.blocks ? 'BLOCKS FREEZE' : 'ok'));
+  console.log('null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate ' + r.cond3.rate.toFixed(3) + ' (MC SE ' + r.cond3.se.toFixed(4) + '; limit ' + (0.10 + 2 * r.cond3.se).toFixed(3) + ') ' + (r.cond3.blocks ? 'BLOCKS FREEZE' : 'ok'));
+  if (r.cond1.blocks || r.cond3.blocks) process.exitCode = 1;
+  return r;
+}
+
 // Step 13: run when executed; export the pure harness helpers for the local suite when required.
 if (require.main === module) run();
-else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS };
+else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS, STEP14, STEP14_BLACKLIST, step14Splitmix32, step14Xoshiro, step14Draw, step14Golden, step14Bound, step14DayIndex, step14Records, step14Prefix, step14Cell, step14Decide, step14MaxShare, step14Deps, step14Cohort, step14LoadGeneration, step14LockOf, step14CollectKeys, step14OperationalReport, runStep14Operational, step14Analyse, runStep14Confirmatory, step14FeasibilityFunnel, step14FixtureReplay, runStep14Feasibility, step14Calibrate, runStep14Calibrate };
