@@ -280,6 +280,10 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
   .sincelast-bar{padding:8px 12px}
   .filter-bar{flex-wrap:wrap}
 }
+/* Step 17-F part 5 item I: crosshair OHLC legend (research view only; page display, never read by any verdict) */
+.chart-ohlc{position:absolute;top:6px;left:56px;right:60px;z-index:10;pointer-events:none;font-size:11px;line-height:1.5;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.chart-ohlc .co-r1 b,.chart-ohlc .co-r2 b{font-weight:600}.chart-ohlc .co-k{color:var(--muted)}
+.chart-ohlc .co-sw{display:flex;gap:12px;font-size:10px;color:var(--muted);margin-top:1px}
 </style>
 </head>
 <body>
@@ -363,6 +367,9 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
   </label>
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Shows the previous scanner's verdicts (the pre-audit rules) instead of the research states. Same as ?legacy=1.">
     <input type="checkbox" id="research-mode"> Legacy verdicts
+  </label>
+  <label id="glow-cursor-label" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Replaces the mouse pointer with a white arrow (and hand) that has a soft glow, easier to follow on the dark chart. Display only; off by default. Safari keeps its native pointer.">
+    <input type="checkbox" id="glow-cursor"> Glow cursor
   </label>
 </div>
 
@@ -1146,6 +1153,44 @@ function researchHoverLines(ctx, time, x, y, price, yOf, xOf) {
   researchTooltipLines(rr, cs, time, price, d).forEach(function (l) { out.push(l); });
   if (ci != null) researchCandleLines(ctx, ci).forEach(function (l) { out.push(l); });
   return out;
+}
+// Step 17-F part 5 item I: TradingView-style crosshair OHLC legend, top-left of the detail chart (research view). Page display only: every value is read off the candle array / the series
+// data the chart already holds and the fitted support rail the chart is drawing (railAt on the research fit; the main-page fit when the row has none) - no verdict, state or level reads it.
+// Row 1: COIN . 1D . venue, O H L C coloured by close vs the prior close (the first bar has no prior close: its own open), then the change. Row 2: Vol . COIN volume, Sup rail price . % vs close.
+// Driven by subscribeCrosshairMove and param.seriesData.get(candles); with the crosshair off the chart it shows the last bar. pointer-events:none, so it never intercepts the chart.
+function ohlcCompact(v) { return v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : (v >= 1e3 ? (v / 1e3).toFixed(2) + 'K' : String(Math.round(v)))); }
+function ohlcLegendHTML(r, i, d, railFn, tfLabel, venue) {
+  var c = r.candles, k = c[i], p = pricePrecision(r.price), sg = function (v) { return v > 0 ? '+' : (v < 0 ? '-' : ''); };
+  var o = (d && typeof d.open === 'number') ? d.open : k.open, h = (d && typeof d.high === 'number') ? d.high : k.high, l = (d && typeof d.low === 'number') ? d.low : k.low, cl = (d && typeof d.close === 'number') ? d.close : k.close;
+  var ref = i > 0 ? c[i - 1].close : o, ch = cl - ref, col = ch >= 0 ? '#00c896' : '#e8754a', pct = ref ? ch / ref * 100 : 0;
+  var v = function (x) { return '<span style="color:' + col + '"><span class="co-k">' + x[0] + '</span> ' + fmt(x[1], p) + '</span>'; };
+  var r1 = '<div class="co-r1"><b>' + r.symbol + '</b> · ' + tfLabel + (venue ? ' · ' + venue : '') + ' &nbsp; ' + [['O', o], ['H', h], ['L', l], ['C', cl]].map(v).join(' ') +
+    ' <span style="color:' + col + '">' + sg(ch) + fmt(Math.abs(ch), p) + ' (' + sg(pct) + Math.abs(pct).toFixed(2) + '%)</span></div>';
+  var parts = [];
+  if (typeof k.volume === 'number' && isFinite(k.volume) && k.volume > 0) parts.push('<span class="co-k">Vol · ' + r.symbol + '</span> ' + ohlcCompact(k.volume));
+  var sup = railFn ? railFn(i) : null;
+  if (typeof sup === 'number' && isFinite(sup) && cl) { var sp = (sup - cl) / cl * 100; parts.push('<span class="co-k">Sup</span> ' + fmt(sup, p) + ' · ' + sg(sp) + Math.abs(sp).toFixed(1) + '% vs close'); }
+  return r1 + (parts.length ? '<div class="co-r2">' + parts.join(' &nbsp; ') + '</div>' : '');
+}
+function attachOhlcLegend(chart, cs, r, wrapEl) {
+  if (!wrapEl || !r.candles || !r.candles.length) return;
+  var el = document.getElementById('dp-ohlc');
+  if (!el) { el = document.createElement('div'); el.id = 'dp-ohlc'; el.className = 'chart-ohlc'; wrapEl.appendChild(el); }
+  else if (el.parentNode !== wrapEl) wrapEl.appendChild(el);
+  var c = r.candles, n = c.length, idxOf = {}; c.forEach(function (x, i) { idxOf[x.time] = i; });
+  var rr = detailResearchRow, rails = rr ? researchRailData(rr, c) : null, railFn = null;
+  if (rails) railFn = function (i) { return i >= rails.i0 ? railAt(rr.supSlope, rr.supIntercept, i) : null; };   // the research support rail exactly as drawn (from the fit start on)
+  else if (typeof r.supSlope === 'number') { var sCI = r.lastIdx - (n - 1); railFn = function (i) { return railAt(r.supSlope, r.supIntercept, sCI + i); }; }   // the main-page rail exactly as drawn
+  var step = n > 1 ? c[1].time - c[0].time : 86400, tfLabel = step >= 3 * 86400 ? '4D' : '1D';
+  var venue = r.dailySource === 'kraken' ? 'Kraken' : (r.dailySource === 'coinbase' ? 'Coinbase' : (r.tvExchange ? String(r.tvExchange).charAt(0) + String(r.tvExchange).slice(1).toLowerCase() : ''));
+  var lg = wrapEl.querySelector('.chart-legend'), sw = lg ? '<div class="co-sw">' + lg.innerHTML + '</div>' : '';   // the existing swatches move to a line beneath (the original block stays hidden in this view)
+  var show = function (i, d) { el.innerHTML = ohlcLegendHTML(r, i, d, railFn, tfLabel, venue) + sw; };
+  show(n - 1, null);
+  chart.subscribeCrosshairMove(function (param) {
+    var i = n - 1, d = null;
+    try { if (param && param.time != null) { d = (param.seriesData && param.seriesData.get) ? (param.seriesData.get(cs) || null) : null; var k = idxOf[d && d.time != null ? d.time : param.time]; if (k != null) i = k; else d = null; } } catch (e) { i = n - 1; d = null; }
+    show(i, d);
+  });
 }
 // Research mode only. The handler reads the crosshair and writes only the tooltip div's text/position/display.
 function attachResearchTooltip(chart, series, r, tipEl, wrapEl) {
@@ -2364,6 +2409,7 @@ var ACT_TOOLTIP = 'ACT requires a fresh support rail, price in the lower third o
 var VERDICT_RANK = {ACT:0, WATCH:1, WAIT:2};
 // Step 15-A: four-state research vocabulary, PAGE-SIDE over researchVerdict's gate id (channel-core.js verdict strings ACT/WATCH/WAIT/NONE are unchanged).
 //   ACT = verdict ACT; NEAR = structure + score pass, price/timing only; DEVELOPING = a valid channel not yet earned; WAIT = structure/liquidity/trend fails; "- no fit" = NONE / no research row.
+//   Step 17-G: NEAR = every WAIT-class gate passes, no recent break, target above price, price within NEAR_ZONE_ATR x ATR14 of the zone top, research score >= NEAR_SCORE_FLOOR (70), and at least one ACT requirement (score floor 80, touch-volume, the five entry-timing gates) still failing; DEVELOPING = the rest of the rows that clear the WAIT class.
 // A gate id that is not in this table is a BUG (state 'BUG': logged, shown, ranked first) - never a silent default.
 var RESEARCH_STATE_BY_GATE = { 'C3.fresh-touch': 'NEAR', 'C2.entry-zone': 'NEAR', 'C6.spike': 'NEAR', 'H6.rr': 'NEAR', 'C5.btc-regime': 'NEAR',
   'C7.floor': 'DEVELOPING', 'C3.no-recent-break': 'DEVELOPING', 'C4.touch-volume': 'DEVELOPING',
@@ -2371,7 +2417,11 @@ var RESEARCH_STATE_BY_GATE = { 'C3.fresh-touch': 'NEAR', 'C2.entry-zone': 'NEAR'
 // Step 15-C: the ordered gate lists the class check runs over (worst class first for the reason line). Same 14 non-data
 // gate ids as RESEARCH_STATE_BY_GATE, grouped instead of keyed - first-fail order doesn't apply any more (see below).
 var RESEARCH_WAIT_GATES = ['struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C1.trend', 'C2.width', 'C4.volume24h'];
-var RESEARCH_DEV_GATES = ['C7.floor', 'C3.no-recent-break', 'C4.touch-volume'];
+// Step 17-G (spec "Radar 17-G NEAR Redefinition Spec - 2026-09-26"): C7.floor and C4.touch-volume are ACT-only requirements - a NEAR row may fail them (shown as failed checks and named in the verdict sentence);
+// only a recent break (with WAIT-class failures, target below price, price far from the zone, or score below NEAR_SCORE_FLOOR) keeps a row out of NEAR.
+var RESEARCH_DEV_GATES = ['C3.no-recent-break'];
+var RESEARCH_ACT_ONLY_GATES = ['C7.floor', 'C4.touch-volume'];
+var NEAR_SCORE_FLOOR = 70;   // PROVISIONAL, page-only: research score at or above which a row short of Act (and within the zone band) is NEAR; below it the row is DEVELOPING. ACT_SCORE_FLOOR_1D (80) is unchanged and still gates ACT.
 var RESEARCH_NEAR_GATES = ['C3.fresh-touch', 'C2.entry-zone', 'C6.spike', 'H6.rr', 'C5.btc-regime'];
 // Step 15-C item 3: NEAR additionally requires price within NEAR_ZONE_ATR x ATR14 of the entry zone's top edge, else
 // DEVELOPING ("price far above the entry zone"). PROVISIONAL - not a channel-core.js gate, not in configHash.
@@ -2384,7 +2434,7 @@ var RESEARCH_GATE_WORDS = { 'C3.fresh-touch': 'no fresh support touch', 'C2.entr
   'page.target-below-price': 'target below price', 'page.far-from-zone': 'price far above the entry zone' };
 // Step 15-C: worst-class-first order for the comma-separated reason line (WAIT gates, then the page WAIT condition, then
 // DEVELOPING gates, then the page NEAR-demotion condition, then NEAR gates).
-var RESEARCH_REASON_ORDER = RESEARCH_WAIT_GATES.concat(['page.target-below-price'], RESEARCH_DEV_GATES, ['page.far-from-zone'], RESEARCH_NEAR_GATES);
+var RESEARCH_REASON_ORDER = RESEARCH_WAIT_GATES.concat(['page.target-below-price'], ['C7.floor', 'C3.no-recent-break', 'C4.touch-volume'], ['page.far-from-zone'], RESEARCH_NEAR_GATES);   // 17-G: the display order is unchanged; only the state classes moved
 // Step 15-C bug fix: 15-A mapped state off the gate chain's FIRST failure only, so a row failing a NEAR-class gate
 // (evaluated early in the Data->Structure->Evidence->Entry->Context sequence) read NEAR even when a later WAIT-class
 // gate also failed - 7 of 10 live NEAR rows were actually WAIT rows. details.gates carries every gate's own pass/fail
@@ -2409,22 +2459,43 @@ function researchStateFor(r) {
   if (unmapped.length) { try { console.error('Radar BUG: research verdict with unmapped gate ' + unmapped[0]); } catch (e) {} return { state: 'BUG', gate: unmapped[0], verdict: a.verdict, action: a, why: 'unmapped gate ' + unmapped[0] }; }
   function failed(id) { var x = byId[id]; return !x || x.pass !== true; }
   var fails = {};
-  RESEARCH_WAIT_GATES.concat(RESEARCH_DEV_GATES, RESEARCH_NEAR_GATES).forEach(function (id) { if (failed(id)) fails[id] = true; });
+  RESEARCH_WAIT_GATES.concat(RESEARCH_DEV_GATES, RESEARCH_ACT_ONLY_GATES, RESEARCH_NEAR_GATES).forEach(function (id) { if (failed(id)) fails[id] = true; });
   var ee = rr.entryEconomics;
   if (ee && typeof ee.target === 'number' && isFinite(ee.target) && typeof r.price === 'number' && ee.target <= r.price) fails['page.target-below-price'] = true;
   var waitFail = RESEARCH_WAIT_GATES.concat(['page.target-below-price']).some(function (id) { return fails[id]; });
   var devFail = RESEARCH_DEV_GATES.some(function (id) { return fails[id]; });
-  var nearFail = RESEARCH_NEAR_GATES.some(function (id) { return fails[id]; });
+  var actReqFails = RESEARCH_ACT_ONLY_GATES.concat(RESEARCH_NEAR_GATES).filter(function (id) { return fails[id]; });
   var state;
   if (waitFail) state = 'WAIT';
   else if (devFail) state = 'DEVELOPING';
-  else if (nearFail) {
-    var zoneHi = ee && ee.entryZone ? ee.entryZone[1] : null, atr = rr.atr14;
-    if (typeof zoneHi === 'number' && isFinite(zoneHi) && typeof atr === 'number' && isFinite(atr) && typeof r.price === 'number' && r.price > zoneHi + NEAR_ZONE_ATR * atr) { state = 'DEVELOPING'; fails['page.far-from-zone'] = true; }
+  else if (actReqFails.length) {
+    var zoneHi = ee && ee.entryZone ? ee.entryZone[1] : null, atr = rr.atr14, sc = researchScoreOf(r);
+    if (sc == null || sc < NEAR_SCORE_FLOOR) state = 'DEVELOPING';   // 17-G: below the Near floor is DEVELOPING regardless of proximity (C7.floor is failing here, so the reason line names the score)
+    else if (typeof zoneHi === 'number' && isFinite(zoneHi) && typeof atr === 'number' && isFinite(atr) && typeof r.price === 'number' && r.price > zoneHi + NEAR_ZONE_ATR * atr) { state = 'DEVELOPING'; fails['page.far-from-zone'] = true; }
     else state = 'NEAR';
   } else state = 'ACT';
   var why = RESEARCH_REASON_ORDER.filter(function (id) { return fails[id]; }).map(function (id) { return RESEARCH_GATE_WORDS[id]; }).join(', ');
-  return { state: state, gate: g, verdict: a.verdict, action: a, why: why };
+  var out = { state: state, gate: g, verdict: a.verdict, action: a, why: why };
+  if (state === 'NEAR') out.nearClauses = researchNearClauses(r, byId, actReqFails);   // 17-G: every failed ACT requirement, in words, for the verdict sentence
+  return out;
+}
+// Step 17-G: one clause per failed ACT requirement (17-E lexicon: plain words, no gate ids), every number read off the gate's own value/threshold or the row.
+function researchNearClauses(r, byId, ids) {
+  var rr = r.researchRow, d = pricePrecision(r.price), lim = function (t) { var m = String(t == null ? '' : t).match(/[0-9]+(?:\.[0-9]+)?/); return m ? m[0] : '?'; };
+  var isN = function (v) { return typeof v === 'number' && isFinite(v); };
+  return ids.map(function (id) {
+    var g = byId[id], v = g ? g.value : null, t = g ? g.threshold : null;
+    switch (id) {
+      case 'C7.floor': return 'score ' + researchPts(rr.score) + ' is below the Act floor (' + lim(t) + ')';
+      case 'C4.touch-volume': return isN(v) ? 'volume on the last support test is ' + v.toFixed(2) + 'x its 20-bar average (needs ' + lim(t) + 'x or more)' : 'volume on the last support test is unknown';
+      case 'C3.fresh-touch': return isN(v) ? 'the last support touch was ' + v + ' bars ago (needs within ' + lim(t) + ')' : 'the last support touch is not fresh';
+      case 'C2.entry-zone': return (v && typeof v === 'object') ? 'price ' + fmt(v.price, d) + ' is outside the entry zone ' + fmt(v.entryLow, d) + ' \u2013 ' + fmt(v.entryHigh, d) : 'price is outside the entry zone';
+      case 'C6.spike': return isN(v) ? 'the last 3 bars gained ' + fmt(v, d) + ', more than the ' + (isN(t) ? fmt(t, d) : '?') + ' limit (4x ATR14)' : 'price is already extended';
+      case 'H6.rr': return isN(v) ? 'reward-to-risk ' + v.toFixed(2) + ' is below ' + lim(t) + ':1' : 'reward-to-risk is unknown';
+      case 'C5.btc-regime': return (v && typeof v === 'object') ? 'BTC is ' + (v.aboveEma50 ? 'above' : 'below') + ' its EMA50 with slope ' + (isN(v.ema50Slope) ? (v.ema50Slope * 100).toFixed(1) + '%' : '?') + ', not supportive' : 'the BTC regime is unknown';
+      default: return (RESEARCH_GATE_WORDS[id] || id);
+    }
+  });
 }
 function researchStateRank(r) { return RESEARCH_STATE_RANK[researchStateFor(r).state]; }
 var RESEARCH_STATE_PREFIX = { ACT: 'Act:', NEAR: 'Near:', DEVELOPING: 'Developing:', WAIT: 'Wait:' };
@@ -2435,6 +2506,7 @@ function researchStateText(rs) {
   var prefix = RESEARCH_STATE_PREFIX[rs.state];
   var txt = rs.action.text.replace(/\bthe H6 entry zone\b/g, 'the entry zone');   // Step 16-A: plain words for the internal code (display text only)
   if (!prefix) return txt;
+  if (rs.state === 'NEAR' && rs.nearClauses && rs.nearClauses.length) return 'Near: ' + rs.nearClauses.join('; ') + '.';   // Step 17-G: names every failed ACT requirement
   if (rs.state === 'WAIT' && rs.action.reason === 'all-gates') return 'Wait: the nearest target sits below the current price.';   // Step 17-E: the page-level target-below-price rule (every engine gate passed, the page says wait)
   return txt.replace(/^(Act zone \(research\)|Act|Watch|Wait):/, prefix);
 }
@@ -2766,6 +2838,23 @@ function renderDiag() {
 // Step 16-A (P1, pinned coins): display-only. PINS lives in this browser's localStorage keyed by cgId (per device);
 // it never touches a verdict, state, score or count tile. Pinned rows bypass the status/threshold filters, form a top
 // block in the current sort order, and a pinned coin with no candidate row gets a stub row built from data/latest.json.
+// Step 17-F part 5 item H (glowing cursor): white arrow / hand with a 1px dark outline and a soft white glow (48x48 PNG at 1x, 96x96 at 2x; the arrow silhouette is traced from
+// "Cursor Reference - Astra arrow.png", the hand is drawn to the same recipe). Hotspots sit on the tips: arrow (12,12), hand (19,13) in 1x pixels. The style element exists only while the toggle is on.
+var GLOW_CURSOR_KEY = 'radar_glow_cursor';
+var GLOW_CURSOR_IMG = { a1: 'data:image/png;base64,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', a2: 'data:image/png;base64,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', h1: 'data:image/png;base64,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', h2: 'data:image/png;base64,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' };
+function glowCursorSupported() { var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || ''; return !(/Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Android|FxiOS/.test(ua)); }
+function glowCursorCss() {
+  var I = GLOW_CURSOR_IMG, cur = function (a, b, hx, hy, fb) { return 'cursor:url(' + a + ') ' + hx + ' ' + hy + ',' + fb + ' !important;cursor:-webkit-image-set(url(' + a + ') 1x,url(' + b + ') 2x) ' + hx + ' ' + hy + ',' + fb + ' !important;'; };
+  var arrow = cur(I.a1, I.a2, 12, 12, 'auto'), hand = cur(I.h1, I.h2, 19, 13, 'pointer');
+  var handSel = ['a', 'button', 'summary', '[role=button]', 'label', 'input[type=checkbox]', 'input[type=radio]', '.btn', '.bbtn', '.tsel', '.sort-sel', '.radar-table tr', '.radar-table th', '.pin-btn', '.close-btn', '.chart-expand-btn', '.tv-btn-lg',
+    '.p3-check.has-explain', '.p3-ck-all', '.pin-export', '.p3-sec-h', '.sl-chip', '.jump-card', '.rchart-expand', '[style*="cursor:pointer"]'];
+  return 'html body{' + arrow.replace(/ !important/g, '') + '}\nbody select,body option{' + arrow + '}\nbody ' + handSel.join(',body ') + '{' + hand + '}\n';
+}
+function glowCursorApply(on) {
+  var st = document.getElementById('glow-cursor-css');
+  if (on && glowCursorSupported()) { if (!st) { st = document.createElement('style'); st.id = 'glow-cursor-css'; document.head.appendChild(st); } st.textContent = glowCursorCss(); }
+  else if (st && st.parentNode) st.parentNode.removeChild(st);
+}
 var PIN_KEY = 'radar_pins_v1';
 var PINS = {};           // cgId -> {s: symbol, n: name}
 var PIN_UNIVERSE = {};   // cgId -> capture coin (latest.json, filled from latest-daily.json), used only for stub rows
@@ -2868,7 +2957,7 @@ function researchAnalysisText(res, r) {
   var pos = rr.position, posPhrase = (typeof pos !== 'number') ? 'position unknown' : (pos < 0 ? 'below the support rail' : (pos < 0.33 ? 'in the lower third of the channel' : (pos <= 0.67 ? 'in the middle of the channel' : 'in the upper third of the channel')));
   var note = railNoteFor(rr).replace(/ \(([^)]*)\)/, ', $1'), rail = (rr.supportRailAgeDays == null) ? note : ((rr.supportRailAgeBand === 'fresh' ? 'a fresh support rail' : 'a non-fresh support rail') + ' (' + note + ')');
   var s = (rr.name || rr.symbol || 'This coin') + ' ' + (broken ? 'held' : 'holds') + ' ' + structureArticleFor(label) + ' ' + label + ' ' + tf + ' channel: ' + rr.supportTouches + ' support / ' + rr.resTouches + ' resistance touches at ' + tolPct + '% tolerance, containment ' + rr.containment + '%, price ' + posPhrase + (rr.supportRailAgeDays == null ? ', ' : ' with ') + rail + '.';
-  var list = st === 'NEAR' ? RESEARCH_NEAR_GATES : (st === 'DEVELOPING' ? RESEARCH_DEV_GATES : (st === 'WAIT' ? RESEARCH_WAIT_GATES : []));
+  var list = st === 'NEAR' ? RESEARCH_ACT_ONLY_GATES.concat(RESEARCH_NEAR_GATES) : (st === 'DEVELOPING' ? RESEARCH_DEV_GATES : (st === 'WAIT' ? RESEARCH_WAIT_GATES : []));   // 17-G: a NEAR row names every failed ACT requirement, floor and touch-volume included
   var fails = list.filter(failed);
   var say = function (id) {
     var g = byId[id], w = P3_FAIL_WORDS[id] || id;
@@ -2880,7 +2969,7 @@ function researchAnalysisText(res, r) {
   var pageLevel = st === 'WAIT' ? 'the nearest target sits below the current price' : (st === 'DEVELOPING' ? 'price is well above the entry zone' : '');
   if (st === 'ACT') return s + ' Every entry check passed.';
   if (st === 'NEAR') return s + (fails.length === 1 ? ' One check short of Act \u2014 ' + say(fails[0]) + '.' : ' ' + fails.length + ' checks short of Act \u2014 ' + fails.map(say).join('; ') + '.');
-  if (st === 'DEVELOPING') return s + ' Not yet actionable: ' + (fails.length ? say(fails[0]) : pageLevel) + '.';
+  if (st === 'DEVELOPING') return s + ' Not yet actionable: ' + (fails.length ? say(fails[0]) : (failed('C7.floor') && !(researchScoreOf(r) >= NEAR_SCORE_FLOOR) ? say('C7.floor') : pageLevel)) + '.';   // 17-G: below the Near floor names the score; otherwise the page-level far-from-zone reason
   return s + ' Standing aside: ' + (fails.length ? say(fails[0]) : pageLevel) + '.';
 }
 
@@ -3700,7 +3789,7 @@ function buildChart(r) {
     width:container.clientWidth,height:container.clientHeight,
     layout:{background:{color:'#0b0c14'},textColor:'#6b7280'},
     grid:{vertLines:{color:'#1e2035'},horzLines:{color:'#1e2035'}},
-    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    crosshair:RESEARCH_MODE_UI?{mode:LightweightCharts.CrosshairMode.Normal,horzLine:{labelVisible:true}}:{mode:LightweightCharts.CrosshairMode.Normal},   // 17-F p5 item I: the hover price shows on the axis in the research view
     rightPriceScale:{borderColor:'#1e2035'},
     // Indicator Upgrades Group 4, item 3 (2026-09-21): rightOffset was 0 (the library default),
     // so the most-recent candle - where every pattern trigger marker fires by construction -
@@ -3715,8 +3804,10 @@ function buildChart(r) {
   // see pricePrecision()'s own comment. Without this the axis/tooltip fall back to the library
   // default (2dp, minMove 0.01), which is why every sub-cent coin's axis used to read "0.02".
   var pp1=pricePrecision(r.price);
-  var cs=chart.addCandlestickSeries({upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a',
-    priceFormat:{type:'price',precision:pp1,minMove:Math.pow(10,-pp1)}});
+  var csOpts={upColor:'#00c896',downColor:'#e8754a',borderUpColor:'#00c896',borderDownColor:'#e8754a',wickUpColor:'#00c896',wickDownColor:'#e8754a',
+    priceFormat:{type:'price',precision:pp1,minMove:Math.pow(10,-pp1)}};
+  if(RESEARCH_MODE_UI){csOpts.lastValueVisible=true;csOpts.priceLineVisible=true;}   // 17-F p5 item I: the axis shows the last price
+  var cs=chart.addCandlestickSeries(csOpts);
   cs.setData(r.candles);
   // Step 15-D: volume pane - histogram on its own price scale in the bottom ~20% of the pane (scaleMargins),
   // one bar per drawn candle, green/red by candle.volume; thin line over it = trailingVolumeMean's H10_BASELINE_BARS
@@ -3805,6 +3896,7 @@ function buildChart(r) {
     var tipEl = document.getElementById(RESEARCH_TIP_ID);
     if (!tipEl && wrapEl) { tipEl = document.createElement('div'); tipEl.id = RESEARCH_TIP_ID; tipEl.style.cssText = 'position:absolute;z-index:20;display:none;pointer-events:none;white-space:pre-line;max-width:240px;padding:4px 8px;font-size:11px;line-height:1.4;color:var(--text,#e6e8f0);background:rgba(20,22,38,.94);border:1px solid var(--border,#1e2035);border-radius:4px'; wrapEl.appendChild(tipEl); }
     if (tipEl) { tipEl.style.display = 'none'; attachResearchTooltip(chart, cs, r, tipEl, wrapEl); }
+    attachOhlcLegend(chart, cs, r, wrapEl);   // 17-F p5 item I
   } else {
     detailResearchDraw = null;
     var tipOld = document.getElementById(RESEARCH_TIP_ID);
@@ -3814,6 +3906,8 @@ function buildChart(r) {
       if (tipOld) { tipOld.style.display = 'none'; attachMainTooltip(chart, cs, r, tipOld, wrapM); }
     } else if (tipOld && tipOld.parentNode) tipOld.parentNode.removeChild(tipOld);
     var legendOld = document.getElementById(RESEARCH_LEGEND_ID); if (legendOld && legendOld.parentNode) legendOld.parentNode.removeChild(legendOld);
+    if (RESEARCH_MODE_UI) attachOhlcLegend(chart, cs, r, container.parentNode);   // research view, row without a research fit: the main-page rails are the ones drawn
+    else { var ohlcOld = document.getElementById('dp-ohlc'); if (ohlcOld && ohlcOld.parentNode) ohlcOld.parentNode.removeChild(ohlcOld); }
   }
   setMainChartLegend(container, !RESEARCH_MODE_UI);   // Step 14-D: flag-off legend carries the Levels-table swatches; research mode keeps the original markup
   detailOverlay = {}; // chart opens clean - no overlay active by default
@@ -4404,6 +4498,16 @@ window.addEventListener('load', function() {
   // link-sharing (RESEARCH_MODE_UI itself is set from the same param at page load, above).
   // Step 15-A: the checkbox is now "Legacy verdicts" (checked = the ?legacy=1 view); it reflects and updates the address. The research reading is computed at merge time on every row, so a
   // toggle only re-renders (sort, table, counts, detail) - no re-fetch or re-scan.
+  // Step 17-F part 5 item H: glowing cursor. Display only; off by default; the choice persists in this browser (localStorage). The style element is injected only while the toggle is on,
+  // so the page is untouched when it is off. Safari falls back to the native cursor (its cursor-image handling differs): the checkbox is disabled there.
+  (function () {
+    var box = document.getElementById('glow-cursor'); if (!box) return;
+    var ok = glowCursorSupported(), on = false;
+    try { on = localStorage.getItem(GLOW_CURSOR_KEY) === '1'; } catch (e) {}
+    if (!ok) { box.disabled = true; box.title = 'Not available in Safari (the native pointer is kept)'; on = false; }
+    box.checked = on; glowCursorApply(on);
+    box.addEventListener('change', function () { var v = !!this.checked; try { localStorage.setItem(GLOW_CURSOR_KEY, v ? '1' : '0'); } catch (e) {} glowCursorApply(v); });
+  })();
   document.getElementById('research-mode').checked = LEGACY_UI;
   renderVerdictNote();
   document.getElementById('research-mode').addEventListener('change', function() {
