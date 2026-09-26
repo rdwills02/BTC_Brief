@@ -1805,44 +1805,58 @@ function runStep13Validation(current, stable, grids, gridCaches, dailyCaches) {
 // Forward ledger (spec "Radar Forward Pipeline Repair Spec - 2026-09-25"): scores data/setups.json from record.bars ALONE - no fixture, no cache
 // lookup. series = [openBar, ...bars], issueIdx 0, entry = openPrice (the capture quote the ACT zone gate passed on; Ruling a), frozen stop/target,
 // STEP13_COST_PCT, exits at the horizon mark-to-close (scoreSignal). A record matures at horizon h when bars.length >= h. FORWARD EVIDENCE = data/setups.json bars only.
-const STEP13_FWD_PROMO = { minMatured: 100, minBlocks: 30, horizon: 10 };   // Ruling c (2026-09-25): Astra's floor kept as the criterion; interim review at STEP13_MIN_N matured
+// Time-block bootstrap (spec "Radar Gate Log + Runner Blocks - 2026-09-25", Part B; Astra review 2026-09-25 s3/s6): setups are dependent (same market regime),
+// so blocks are CONTIGUOUS CALENDAR WINDOWS over ALL coins: block = floor((openedAt - earliest openedAt in the ledger) / L days). One bootstrap draw per block
+// (every setup in a block moves together). Dedupe v1: none beyond this - a coin re-opening within L days of a close lands in the same block. Sensitivity at L = 10/20/40.
+const STEP13_BLOCK_DAYS = 20, STEP13_BLOCK_SENS = [10, 20, 40];
 function step13Median(a) { if (!a.length) return null; const t = a.slice().sort((x, y) => x - y), m = t.length >> 1; return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; }
 function step13ForwardSeries(s) { const p = s.openPrice; return [{ time: s.openBarId, date: s.openedAt, open: p, high: p, low: p, close: p }].concat(s.bars); }
-function step13ForwardBlock(s) { return s.cgId + '|' + String(s.openedAt).slice(0, 7); }   // block = (cgId, calendar month of openedAt)
-function forwardLedgerHorizon(setups, h) {
-  const scored = [], notMatured = [], unscorable = [], byBlock = {};
+function step13DayNum(iso) { return Math.floor(Date.parse(String(iso) + 'T00:00:00Z') / 86400000); }
+function step13EpochStart(setups) { let m = null; setups.forEach(function (s) { if (s && typeof s.openedAt === 'string') { const d = step13DayNum(s.openedAt); if (isFinite(d) && (m === null || d < m)) m = d; } }); return m; }
+function step13ForwardBlock(s, epoch, L) { return String(Math.floor((step13DayNum(s.openedAt) - epoch) / L)); }
+function step13BlockStats(items, epoch, L) {   // items: [{s, sc}]
+  const byBlock = {}; items.forEach(function (it) { const k = step13ForwardBlock(it.s, epoch, L); (byBlock[k] = byBlock[k] || []).push(it.sc); });
+  return { L: L, blocks: Object.keys(byBlock).length, ci: items.length ? step13Bootstrap(byBlock) : null };
+}
+function forwardLedgerHorizon(setups, h, L) {
+  L = L || STEP13_BLOCK_DAYS;
+  const items = [], notMatured = [], unscorable = [], epoch = step13EpochStart(setups);
   setups.forEach(function (s) {
     if (!s || s.unscorable || !Array.isArray(s.bars) || typeof s.openPrice !== 'number' || typeof s.stop !== 'number' || typeof s.target !== 'number') { unscorable.push(s && s.id); return; }
     if (s.bars.length < h) { notMatured.push(s.id); return; }
     const sc = scoreSignal(step13ForwardSeries(s), 0, s.openPrice, s.stop, s.target, h, STEP13_COST_PCT);
     if (!sc) { unscorable.push(s.id); return; }
-    scored.push(sc); const k = step13ForwardBlock(s); (byBlock[k] = byBlock[k] || []).push(sc);
+    items.push({ s: s, sc: sc });
   });
-  const Rs = scored.map(x => x.R), n = scored.length;
-  return { h: h, total: setups.length, n: n, notMatured: notMatured.length, unscorable: unscorable.length,
+  const scored = items.map(x => x.sc), Rs = scored.map(x => x.R), n = scored.length, main = step13BlockStats(items, epoch, L), monthly = {};
+  items.forEach(function (it) { const m = String(it.s.openedAt).slice(0, 7); (monthly[m] = monthly[m] || { sumR: 0, n: 0 }); monthly[m].sumR += it.sc.R; monthly[m].n++; });
+  return { h: h, L: L, total: setups.length, n: n, notMatured: notMatured.length, unscorable: unscorable.length,
     target: scored.filter(x => x.outcome === 'target').length, stop: scored.filter(x => x.outcome === 'stop' || x.outcome === 'conflict-stop').length, conflicts: scored.filter(x => x.outcome === 'conflict-stop').length, open: scored.filter(x => x.stillOpen).length,
-    meanR: n ? Rs.reduce((a, x) => a + x, 0) / n : null, medianR: step13Median(Rs), blocks: Object.keys(byBlock).length, ci: n ? step13Bootstrap(byBlock) : null };
+    meanR: n ? Rs.reduce((a, x) => a + x, 0) / n : null, medianR: step13Median(Rs), blocks: main.blocks, ci: main.ci,
+    sens: STEP13_BLOCK_SENS.map(l => step13BlockStats(items, epoch, l)), monthly: monthly, totalR: Rs.reduce((a, x) => a + x, 0) };
 }
 function runStep13ForwardScore(current, ledgerPath) {
   console.log('\n=== Forward ledger (live, self-contained bars) — data/setups.json ===');
-  console.log('PROMOTION CRITERION (Ruling c, 2026-09-25): >=' + STEP13_FWD_PROMO.minMatured + ' matured setups across >=' + STEP13_FWD_PROMO.minBlocks + ' blocks AND 90% block-bootstrap CI lower bound on mean net R > 0 at the ' + STEP13_FWD_PROMO.horizon + '-bar horizon; applied per gate configuration once the NEAR extension exists - not expected to be met by ACT alone.');
-  console.log('Interim review at ' + STEP13_MIN_N + ' matured (a review trigger, not a promotion threshold). block = (cgId, calendar month of openedAt); one bootstrap draw per block. Fill: entry = openPrice, frozen stop/target, cost ' + (STEP13_COST_PCT * 100).toFixed(1) + '% round trip; a record matures at horizon h when bars.length >= h. Forward evidence = data/setups.json bars only.');
+  console.log('DECISION REQUIREMENT (Astra review 2026-09-25): predeclared minimum edge, dependence-aware uncertainty (time-block bootstrap), realistic costs, drawdown and opportunity frequency; assessed at fixed review dates, not on a rolling look. Thresholds are set in the challenger-policy spec, not here.');
+  console.log('Blocks: contiguous ' + STEP13_BLOCK_DAYS + '-day calendar windows over ALL coins (block = floor((openedAt - earliest openedAt) / L days)); one bootstrap draw per block. Dedupe v1: none beyond the block rule (a coin re-opening within L days of a close falls in the same block). Fill: entry = openPrice, frozen stop/target, cost ' + (STEP13_COST_PCT * 100).toFixed(1) + '% round trip; a record matures at horizon h when bars.length >= h. Forward evidence = data/setups.json bars only.');
   const p = ledgerPath || path.join(REPO_ROOT, 'data', 'setups.json');
   if (!fs.existsSync(p)) { console.log('no data/setups.json - nothing to score'); return; }
   let L; try { L = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { console.log('  BUG: setups.json unreadable: ' + e.message); process.exitCode = 1; return; }
   const setups = Array.isArray(L.setups) ? L.setups : [];
   console.log('ledger schemaVersion ' + L.schemaVersion + ' | setups ' + setups.length + ' | open ' + setups.filter(x => x && x.status === 'open').length + ' | closed ' + setups.filter(x => x && x.status === 'closed').length + ' | bars in ledger ' + setups.reduce((a, x) => a + (x && Array.isArray(x.bars) ? x.bars.length : 0), 0));
-  const f = v => v == null ? 'n/a' : v.toFixed(2);
-  let at10 = null;
+  const f = v => v == null ? 'n/a' : v.toFixed(2), sg = v => (v >= 0 ? '+' : '') + v.toFixed(2), cif = c => c ? '[' + f(c.lo) + ', ' + f(c.hi) + ']' : 'n/a';
   STEP13_HORIZONS.forEach(function (h) {
-    const r = forwardLedgerHorizon(setups, h); if (h === STEP13_FWD_PROMO.horizon) at10 = r;
-    const body = r.n ? 'n=' + r.n + ' matured | target ' + r.target + ' / stop ' + r.stop + ' (conflict ' + r.conflicts + ') / open ' + r.open + ' | mean R ' + f(r.meanR) + ' median R ' + f(r.medianR) + ' | blocks ' + r.blocks + ' | 90% CI [' + f(r.ci.lo) + ', ' + f(r.ci.hi) + ']' + (r.n < STEP13_MIN_N ? ' -> Unvalidated (n=' + r.n + ')' : '') : 'no matured setups (n=0 of ' + r.total + ')';
+    const r = forwardLedgerHorizon(setups, h);
+    const body = r.n ? 'n=' + r.n + ' matured | target ' + r.target + ' / stop ' + r.stop + ' (conflict ' + r.conflicts + ') / open ' + r.open + ' | mean R ' + f(r.meanR) + ' median R ' + f(r.medianR) + ' | blocks(L=' + r.L + ') ' + r.blocks + ' | 90% CI ' + cif(r.ci) + (r.n < STEP13_MIN_N ? ' -> Unvalidated (n=' + r.n + ')' : '') : 'no matured setups (n=0 of ' + r.total + ')';
     console.log('  +' + h + 'd: ' + body + ' | not matured ' + r.notMatured + ' | unscorable ' + r.unscorable);
+    if (r.n) {
+      console.log('    +' + h + 'd block sensitivity (window days L): ' + r.sens.map(x => 'L=' + x.L + ' blocks ' + x.blocks + ' CI ' + cif(x.ci)).join(' | '));
+      const months = Object.keys(r.monthly).sort();
+      console.log('    +' + h + 'd monthly R (sum by openedAt month, portfolio view): ' + months.map(m => m + ' ' + sg(r.monthly[m].sumR) + ' (n=' + r.monthly[m].n + ')').join(' | ') + ' | total ' + sg(r.totalR));
+    }
   });
-  const met = at10.n >= STEP13_FWD_PROMO.minMatured && at10.blocks >= STEP13_FWD_PROMO.minBlocks && at10.ci && at10.ci.lo > 0;
-  console.log('promotion status at +' + STEP13_FWD_PROMO.horizon + 'd: ' + (met ? 'MET' : 'NOT MET') + ' (matured ' + at10.n + '/' + STEP13_FWD_PROMO.minMatured + ', blocks ' + at10.blocks + '/' + STEP13_FWD_PROMO.minBlocks + ', CI lower bound ' + (at10.ci ? f(at10.ci.lo) : 'n/a') + ' vs > 0)');
 }
 
 // Step 13: run when executed; export the pure harness helpers for the local suite when required.
 if (require.main === module) run();
-else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_FWD_PROMO, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS };
+else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS };
