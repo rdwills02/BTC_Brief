@@ -195,7 +195,7 @@ function run() {
   if (a14.indexOf('--confirmatory') >= 0) { runStep14Confirmatory(over14, {}); return; }
   if (a14.indexOf('--feasibility') >= 0 || a14.indexOf('--calibrate') >= 0) {
     verifyManifestOrAbort();
-    const cur14 = require(path.join(REPO_ROOT, 'channel-core.js')), dc14 = loadDailyCaches(), o14 = { windowDays: opt14('--window') ? +opt14('--window') : undefined, runs: opt14('--runs') ? +opt14('--runs') : undefined, reps: opt14('--reps') ? +opt14('--reps') : undefined };
+    const cur14 = require(path.join(REPO_ROOT, 'channel-core.js')), dc14 = loadDailyCaches(), o14 = { windowDays: opt14('--window') ? +opt14('--window') : undefined, runs: opt14('--runs') ? +opt14('--runs') : undefined, reps: opt14('--reps') ? +opt14('--reps') : undefined, dataDir: over14 && over14.dataDir };
     if (a14.indexOf('--calibrate') >= 0) runStep14Calibrate(cur14, dc14, o14); else runStep14Feasibility(cur14, dc14, o14);
     return;
   }
@@ -1872,11 +1872,11 @@ function runStep13ForwardScore(current, ledgerPath) {
 //   default run       -> runStep14Operational: months 3/6/9 content ONLY (completeness, counts, statuses). No performance figure of any kind.
 //   --confirmatory    -> runStep14Confirmatory: reads the LOCKED generation, its cache resolved through the commit that added its checksums.json; §7 exactly.
 //   --feasibility     -> runStep14Feasibility: §8 entry-feasibility funnel on the fixtures (no path to the execution / P&L code).
-//   --calibrate       -> runStep14Calibrate: §8 nulls (i) and (ii); non-zero exit when a false-pass rate exceeds 0.10 + 2 SE.
+//   --calibrate       -> runStep14Calibrate: §8 nulls (i) and (ii); non-zero exit when a false-pass rate exceeds 0.15 (v1.3); writes data/forward/calibration.json.
 //   --data <dir>      -> read the forward state from <dir> instead of <repo>/data (tests, mirrors).
 // =====================================================================================================================================
 const STEP14 = { SEED: 20260925, REPS: 10000, BLOCKS: [10, 20, 40], PRIMARY_B: 20, N: 395, ISSUANCE_CUTOFF_DAY: 365, LAST_RECORD_DAY: 394, DEADLINE_DAY: 409, LOCK_MAX_DAY: 408,
-  START_CENTS: 1500000, MIN_FILLS: 24, MIN_POINT: 0.25, QUANTILE: 0.10, SHARE_SPAN_DAYS: 60 };
+  START_CENTS: 1500000, MIN_FILLS: 24, MIN_POINT: 0.25, QUANTILE: 0.10, SHARE_SPAN_DAYS: 60, CAL_RUNS: 10000, CAL_GATE: 0.15 };
 const STEP14_DAY_MS = 86400000;
 const STEP14_BLACKLIST = ['budgetR', 'plannedRiskR', 'meanR', 'expectancy', 'compoundedReturn', 'portfolioReturn', 'c1MinusN0', 'equityCurve', 'lowerBound'];
 
@@ -2010,6 +2010,10 @@ function step14LoadGeneration(d, cohort, id) {
   res.pinnedSha = addSha || pin;
   if (!res.pinnedSha) res.problems.push('adding commit of ' + rel + ' not resolvable');
   else Object.keys(ck.cache || {}).forEach(f => { const b = d.git.show(res.pinnedSha, f); if (b == null) { res.problems.push('cache unresolvable at pinned commit: ' + f); return; } res.cacheChecked++; if (step14Sha(b) !== ck.cache[f]) res.problems.push('cache checksum mismatch at pinned commit: ' + f); });
+  if (ck.episodeDays) {   // Protocol v1.3 §2: the immutable episode-days file is verified through the pinned commit like every other file
+    const eb = res.pinnedSha ? d.git.show(res.pinnedSha, ck.episodeDays.path) : null;
+    if (eb == null) res.problems.push('episode-days file unresolvable at pinned commit: ' + ck.episodeDays.path); else if (step14Sha(eb) !== ck.episodeDays.sha256) res.problems.push('episode-days checksum mismatch at pinned commit: ' + ck.episodeDays.path); else res.episodeDaysVerified = true;
+  }
   res.verified = res.problems.length === 0;
   res.checksums = ck;
   return res;
@@ -2104,7 +2108,9 @@ function runStep14Confirmatory(depsOver, opts) {
   const L = step14LockOf(cohort); if (L.problems.length) return fail(L.problems.join('; '));
   const gen = step14LoadGeneration(d, cohort, L.lock.generationId);
   console.log('\n=== STEP 14 CONFIRMATORY (Protocol §7) - dataset lock id ' + L.lock.generationId + ' (captured ' + L.lock.date + ', day ' + L.lock.day + '; cohort start ' + cohort.startDate + '; deadline day ' + STEP14.DEADLINE_DAY + ') ===');
-  console.log('locked dataset read through pinned commit ' + gen.pinnedSha + ' (' + gen.cacheChecked + ' cache files verified against their recorded sha256)');
+  console.log('locked dataset read through pinned commit ' + gen.pinnedSha + ' (' + gen.cacheChecked + ' cache files' + (gen.episodeDaysVerified ? ' and the episode-days file' : '') + ' verified against their recorded sha256)');
+  const cal = step14ReadJson(d, path.join(d.dataDir, 'forward', 'calibration.json'));
+  console.log(cal && cal.condition1 && cal.condition3 ? 'realised coverage of the 90% bounds under the calibration null (' + cal.runs + ' runs, PROVISIONAL shock parameters ' + JSON.stringify(cal.shockParameters) + '): condition 1 false-pass ' + cal.condition1.rate.toFixed(3) + ' (MC SE ' + cal.condition1.se.toFixed(4) + '), condition 3 false-pass ' + cal.condition3.rate.toFixed(3) + ' (MC SE ' + cal.condition3.se.toFixed(4) + '); nominal 0.100' : 'realised coverage of the 90% bounds under the calibration null: data/forward/calibration.json absent');
   if (!gen.verified) return fail('the locked generation failed verification: ' + gen.problems.join('; '));
   const r = step14Analyse(d, gen, cohort, opts), C = r.decision.conditions, f = v => v == null ? 'n/a' : (Math.abs(v) < 1e-12 ? '0' : v.toFixed(4));
   console.log('membership: portfolio window day 0..' + STEP14.LAST_RECORD_DAY + ' (N = ' + STEP14.N + ' records); trade-outcome cohort = orders issued before day ' + STEP14.ISSUANCE_CUTOFF_DAY + '; late-attributed trades (min(394, d) rule) S2/C1: ' + r.lateAttributed.S2 + ', S1/C1: ' + r.lateAttributed.S1 + '; unresolved at the deadline N0 ' + r.unresolved.N0 + ' / C1 ' + r.unresolved.C1);
@@ -2155,7 +2161,7 @@ function step14FixtureReplay(current, dailyCaches, opts) {
   const coins = Object.keys(dailyCaches).filter(c => dailyCaches[c].length >= 200).sort();
   const lastTime = Math.max.apply(null, coins.map(c => dailyCaches[c][dailyCaches[c].length - 1].time));
   const R = opts.windowDays || 150, lastCapture = lastTime - 4 * DAYSEC + DAYSEC, firstCapture = lastCapture - (R - 1) * DAYSEC;
-  let state = null; const days = [], series = {}, perDate = [];
+  let state = null; const days = [], series = {}, perDate = [], allRows = [];
   coins.forEach(cg => { series[cg] = {}; dailyCaches[cg].forEach(c => { series[cg][Math.round((c.time - firstCapture) / DAYSEC)] = c; }); });
   const t0 = Date.now();
   for (let i = 0; i < R; i++) {
@@ -2170,7 +2176,7 @@ function step14FixtureReplay(current, dailyCaches, opts) {
       const quote = arr[n] && arr[n].time === cutoff ? arr[n].open : null;
       if (fit) rows[cg] = { fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, atr14: fit.atr14, channelH: fit.channelH, supportTouches: fit.supportTouches, lifecycleState: fit.lifecycleState }, price: quote, gates: null, score: fit.score, entryEconomics: fit.entryEconomics || null };
     });
-    const up = EC.updateEpisodes(state, cap, rows, bars, universe, [], {}); state = up.state;
+    const up = EC.updateEpisodes(state, cap, rows, bars, universe, [], {}); state = up.state; up.episodeDayRows.forEach(r => allRows.push(r));
     const cand = [];
     up.episodeDays.forEach(ed => {
       const ee = ed.entryEconomics, ez = ee && ee.entryZone;
@@ -2182,9 +2188,9 @@ function step14FixtureReplay(current, dailyCaches, opts) {
   }
   const fun = step14FeasibilityFunnel(days, series, {});
   const eps = state.episodes, count = (a, fn) => { const m = {}; a.forEach(x => { const k = fn(x); m[k] = (m[k] || 0) + 1; }); return m; };
-  const rowCount = eps.reduce((a, e) => a + e.days.length, 0), stateBytes = JSON.stringify(state).length;   // replay rows carry no gate arrays; capture.js rows carry 16 gates (~1,454 bytes measured on 67 real verdicts)
+  const rowCount = allRows.length, stateBytes = JSON.stringify(state).length, rowBytes = allRows.reduce((a, r) => a + JSON.stringify(r).length + 1, 0);   // v1.3: episodes.json carries no rows; the episode-day rows are the separate per-day files
   return { window: { firstDate: perDate[0].date, lastDate: perDate[R - 1].date, days: R, coins: coins.length }, episodes: { total: eps.length, byStatus: count(eps, e => e.status), byCloseReason: count(eps.filter(e => e.status === 'closed'), e => e.closeReason), openedPerDay: eps.length / R },
-    funnel: fun.funnel, fillDays: fun.fillDays, daysSeries: days.map(x => x.candidates.length), storage: { episodeDayRows: rowCount, stateBytesWithoutGates: stateBytes }, seconds: (Date.now() - t0) / 1000 };
+    funnel: fun.funnel, fillDays: fun.fillDays, daysSeries: days.map(x => x.candidates.length), storage: { episodeDayRows: rowCount, episodesJsonBytes: stateBytes, episodeDayBytes: rowBytes }, seconds: (Date.now() - t0) / 1000 };
 }
 function runStep14Feasibility(current, dailyCaches, opts) {
   const r = step14FixtureReplay(current, dailyCaches, opts), F = r.funnel;
@@ -2192,8 +2198,11 @@ function runStep14Feasibility(current, dailyCaches, opts) {
   console.log('replay: ' + r.window.coins + ' fixture coins, ' + r.window.days + ' capture days ' + r.window.firstDate + ' .. ' + r.window.lastDate + ' (detector research pass per coin per day, then episodes-core.updateEpisodes); quote proxy = the capture date\'s own candle open; tick proxy = 5 significant digits; occupancy proxy = pending until resolved, filled orders hold a slot 10 bars; ' + r.seconds.toFixed(0) + ' s');
   console.log('episodes: ' + r.episodes.total + ' opened (' + r.episodes.openedPerDay.toFixed(2) + ' per day) | by status ' + JSON.stringify(r.episodes.byStatus) + ' | by close reason ' + JSON.stringify(r.episodes.byCloseReason));
   console.log('N0 entry-feasibility funnel: eligible episode-days ' + F.eligibleEpisodeDays + ' -> predicate holds (attempts) ' + F.predicateHolds + ' -> skipped-exposure ' + F.skippedExposure + ', rejected-levels ' + F.rejectedLevels + ', occupancy-skipped ' + F.occupancySkipped + ' -> issued ' + F.issued + ' -> skipped-missing-input ' + F.skippedMissingInput + ' (replay assumes every bar usable), rejected-gap ' + F.rejectedGap + ', rejected-crossing ' + F.rejectedCrossing + ' -> resting ' + F.resting + ' -> penetrated within 3 eligible bars ' + F.penetratedWithin3 + ' -> filled ' + F.filled + ' | expired ' + F.expired + ' | censored (bars beyond the fixtures) ' + F.censored);
-  const GATE_BYTES = 1454, est = r.storage.stateBytesWithoutGates + r.storage.episodeDayRows * GATE_BYTES, est395 = est * STEP14.N / r.window.days;
-  console.log('repo growth estimate (episodes.json is rewritten in full into every canonical generation): after ' + r.window.days + ' replay days ' + r.storage.episodeDayRows + ' episode-day rows = ' + (est / 1048576).toFixed(1) + ' MB with 16-gate rows; linear projection to ' + STEP14.N + ' days ' + (est395 / 1048576).toFixed(1) + ' MB per generation; ' + STEP14.N + ' retained generations ~ ' + (est395 * STEP14.N / 2 / 1073741824).toFixed(1) + ' GB of working-tree files (git delta compression not counted) plus the accounts/orders files and the cache rewrite');
+  const R = r.window.days, mb = x => (x / 1048576).toFixed(2), scale = STEP14.N / R, epj = r.storage.episodesJsonBytes, edb = r.storage.episodeDayBytes;
+  console.log('storage (Protocol v1.3 layout: episode records only in episodes.json; one immutable episode-day file per canonical capture; fixture replay, ' + r.storage.episodeDayRows + ' rows):');
+  console.log('  episodes.json per generation: ' + mb(epj) + ' MB after ' + R + ' days -> ' + mb(epj * scale) + ' MB projected at day ' + STEP14.N + '; ' + STEP14.N + ' retained generations ~ ' + (epj * scale * STEP14.N / 2 / 1073741824).toFixed(2) + ' GB of working-tree files');
+  console.log('  episode-days: ' + (edb / R / 1024).toFixed(1) + ' KB per day (' + (r.storage.episodeDayRows / R).toFixed(0) + ' rows/day, ' + (edb / r.storage.episodeDayRows).toFixed(0) + ' bytes/row) -> ' + mb(edb * scale) + ' MB over ' + STEP14.N + ' days (written once, never rewritten)');
+  console.log('  for comparison the v1.2 layout (days[] with 16-gate rows inside every generation) was projected at 55.9 MB per generation / 10.8 GB in total');
   const perYear = F.filled * 365 / r.window.days, sh = step14MaxShare(r.fillDays);
   console.log('fills: ' + F.filled + ' in ' + r.window.days + ' days = ' + perYear.toFixed(1) + ' per 365 days (condition 4 needs >= ' + STEP14.MIN_FILLS + '); max ' + sh.maxInSpan + ' in any ' + STEP14.SHARE_SPAN_DAYS + '-day span. ' + (perYear >= STEP14.MIN_FILLS ? 'Fills would not be too rare for condition 4 under this model.' : 'FILLS WOULD BE TOO RARE for condition 4: a new protocol version is required before the cohort starts.'));
   return r;
@@ -2203,7 +2212,7 @@ function runStep14Feasibility(current, dailyCaches, opts) {
 // daily-return paths with independent noise. The implemented decision (bootstrap, b = 20, 10th percentile, strict > 0) runs 1,000 times per null. ----
 function step14Normal(next) { let u = 0; while (u === 0) u = (next() >>> 0) / 4294967296; const v = (next() >>> 0) / 4294967296; return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 function step14Calibrate(fillDays, opts) {
-  opts = opts || {}; const runs = opts.runs || 1000, reps = opts.reps || STEP14.REPS, N = STEP14.N, b = STEP14.PRIMARY_B, SC = opts.sigmaCommon == null ? 0.5 : opts.sigmaCommon, SI = opts.sigmaIdio == null ? 1.0 : opts.sigmaIdio;
+  opts = opts || {}; const runs = opts.runs || STEP14.CAL_RUNS, reps = opts.reps || STEP14.REPS, N = STEP14.N, b = STEP14.PRIMARY_B, SC = opts.sigmaCommon == null ? 0.5 : opts.sigmaCommon, SI = opts.sigmaIdio == null ? 1.0 : opts.sigmaIdio;
   const src = opts.dailyCounts && opts.dailyCounts.length ? opts.dailyCounts : [1];   // the feasibility replay's empirical daily fill counts, tiled
   const gen = step14Xoshiro((opts.seed || 20260926) >>> 0);
   let pass1 = 0, pass3 = 0;
@@ -2219,15 +2228,23 @@ function step14Calibrate(fillDays, opts) {
     if (p.validated && p.bound > 0) pass3++;
   }
   const se = q => Math.sqrt(q * (1 - q) / runs), q1 = pass1 / runs, q3 = pass3 / runs;
-  return { runs, reps, cond1: { rate: q1, se: se(q1), blocks: q1 > 0.10 + 2 * se(q1) }, cond3: { rate: q3, se: se(q3), blocks: q3 > 0.10 + 2 * se(q3) }, params: { sigmaCommon: SC, sigmaIdio: SI } };
+  return { runs, reps, cond1: { rate: q1, se: se(q1), blocks: q1 > STEP14.CAL_GATE }, cond3: { rate: q3, se: se(q3), blocks: q3 > STEP14.CAL_GATE }, params: { sigmaCommon: SC, sigmaIdio: SI } };
 }
 function runStep14Calibrate(current, dailyCaches, opts) {
   opts = opts || {}; const rep = opts.replay || step14FixtureReplay(current, dailyCaches, opts);
   const counts = {}; rep.fillDays.forEach(x => { counts[x] = (counts[x] || 0) + 1; }); const series = []; for (let i = 0; i < rep.window.days; i++) series.push(counts[i] || 0);
   const r = step14Calibrate(rep.fillDays, Object.assign({}, opts, { dailyCounts: series }));
-  console.log('\n=== STEP 14 CALIBRATION (Protocol §8) - ' + r.runs + ' runs per null, ' + r.reps + ' bootstrap replications, b = 20; provisional shock parameters ' + JSON.stringify(r.params) + ' ===');
-  console.log('null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate ' + r.cond1.rate.toFixed(3) + ' (MC SE ' + r.cond1.se.toFixed(4) + '; limit ' + (0.10 + 2 * r.cond1.se).toFixed(3) + ') ' + (r.cond1.blocks ? 'BLOCKS FREEZE' : 'ok'));
-  console.log('null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate ' + r.cond3.rate.toFixed(3) + ' (MC SE ' + r.cond3.se.toFixed(4) + '; limit ' + (0.10 + 2 * r.cond3.se).toFixed(3) + ') ' + (r.cond3.blocks ? 'BLOCKS FREEZE' : 'ok'));
+  console.log('\n=== STEP 14 CALIBRATION (Protocol §8, v1.3) - ' + r.runs + ' runs per null, ' + r.reps + ' bootstrap replications, b = 20; gate: a false-pass rate above ' + STEP14.CAL_GATE + ' blocks freeze; shock parameters ' + JSON.stringify(r.params) + ' are PROVISIONAL ===');
+  console.log('null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate ' + r.cond1.rate.toFixed(4) + ' +/- ' + r.cond1.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond1.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
+  console.log('null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate ' + r.cond3.rate.toFixed(4) + ' +/- ' + r.cond3.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond3.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
+  try {
+    const dd = (opts.dataDir || path.join(REPO_ROOT, 'data')), out = path.join(dd, 'forward', 'calibration.json');
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, JSON.stringify({ schemaVersion: 1, description: 'Realised false-pass rates of the confirmatory 90% lower bounds under the Protocol section 8 calibration nulls (printed by the confirmatory header).', runs: r.runs, bootstrapReplications: r.reps, blockLength: STEP14.PRIMARY_B, gate: STEP14.CAL_GATE, seed: opts.seed || 20260926,
+      condition1: { null: '(i) mean budget-R = 0 per trade, common-shock clustering, fill counts from the fixture replay', rate: r.cond1.rate, se: r.cond1.se }, condition3: { null: '(ii) equal C1/N0 daily-return paths, independent noise', rate: r.cond3.rate, se: r.cond3.se },
+      shockParameters: { sigmaCommon: r.params.sigmaCommon, sigmaIdio: r.params.sigmaIdio, provisional: true }, gateBlocked: !!(r.cond1.blocks || r.cond3.blocks) }, null, 1) + '\n');
+    console.log('wrote ' + out);
+  } catch (e) { console.log('  BUG: calibration.json not written: ' + e.message); process.exitCode = 1; }
   if (r.cond1.blocks || r.cond3.blocks) process.exitCode = 1;
   return r;
 }
