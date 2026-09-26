@@ -127,11 +127,11 @@
   // a bar arriving after a later-dated bar was counted is appended but ignored by the counter (decisions are final).
   function lifecycle(ep, candles, capture, cfg, events) {
     var have = {}, i, b;
-    (ep.bars || []).forEach(function (x) { have[x.id] = 1; });
+    (ep.barIds || []).forEach(function (id) { have[id] = 1; });
     for (i = 0; i < candles.length; i++) {
       b = candles[i];
       if (b.id < ep.openCutoffSec || have[b.id]) continue;
-      ep.bars.push({ id: b.id, open: b.open, high: b.high, low: b.low, close: b.close });
+      ep.barIds.push(b.id);
       have[b.id] = 1;
       if (ep.lastBarId == null || b.id > ep.lastBarId) ep.lastBarId = b.id;
       if (ep.status !== 'open') continue;
@@ -217,7 +217,7 @@
                 closeCaptureId: null, closeCutoffSec: null, predecessorId: pred,
                 anchorAudit: candAnchors.slice(), anchorLive: candAnchors.slice(), refLine: refLineOf(fit, candAnchors, inCandles),
                 openGeometry: { slope: fit.supSlope, intercept: fit.supIntercept, supportNow: fit.supportNow, atr14: fit.atr14, channelH: fit.channelH, width: (num(row.price) && row.price > 0) ? fit.channelH / row.price : null },
-                frozenInvalidation: fit.invalidation, bars: [], lastBarId: null, lastCountedBarId: null, breakCount: 0,
+                frozenInvalidation: fit.invalidation, barIds: [], lastBarId: null, lastCountedBarId: null, breakCount: 0,
                 K: 0, gapDays: 0, obligationCandles: 0, venueEligible: venueOk, metadataEligible: meta.metadataEligible !== false, dataUnavailable: !!cs.dataUnavailable,
                 lastMatchedAt: capture.date
               };
