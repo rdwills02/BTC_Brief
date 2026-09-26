@@ -210,13 +210,17 @@
   function researchSummary(fit, res) {
     if (!res) return null;
     var ee = fit && fit.entryEconomics, xc = fit && fit.executionContext;
-    return {
+    var gs = res.details && Array.isArray(res.details.gates) ? res.details.gates : null;   // Gate log (2026-09-25 spec Part A): per-gate measurements as evaluated
+    var out = {
       verdict: res.verdict, gate: res.gate, reason: res.reason,
       score: fit && num(fit.score) ? fit.score : null, fitId: fit ? (fit.fitId || null) : null,
       lifecycleState: fit ? (fit.lifecycleState || null) : null,
       entryEconomics: ee ? { entryRef: num(ee.entryRef) ? ee.entryRef : null, stop: num(ee.stop) ? ee.stop : null, target: num(ee.target) ? ee.target : null, netRR: num(ee.netRR) ? ee.netRR : null } : null,
       executionContext: xc ? { volumeCharacter: xc.volumeCharacter || 'unknown', volumeRatio: num(xc.volumeRatio) ? xc.volumeRatio : null } : null   // Step 11-D (H10): descriptive, compact
     };
+    // gates: [{id, pass, value, threshold}] - value/threshold exactly as evaluated (no rounding), channel-core order; ABSENT (not []) when res has no details.
+    if (gs) out.gates = gs.map(function (g) { return { id: g.id, pass: g.pass, value: g.value === undefined ? null : g.value, threshold: g.threshold === undefined ? null : g.threshold }; });
+    return out;
   }
 
   return { SETUPS_SCHEMA_VERSION: SETUPS_SCHEMA_VERSION, SETUP_BREAK_CLOSES: SETUP_BREAK_CLOSES, SETUP_POST_CLOSE_BARS: SETUP_POST_CLOSE_BARS, consecutiveBreachBars: consecutiveBreachBars, openBarIdFrom: openBarIdFrom, emptyLedger: emptyLedger, normalizeLedger: normalizeLedger, updateSetupLedger: updateSetupLedger, researchSummary: researchSummary, makeRecord: makeRecord };

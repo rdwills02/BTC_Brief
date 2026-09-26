@@ -187,6 +187,83 @@ function ledgerSilentDisconnect(priorLedger, barsByCoin) {
   const fed = open.filter(x => barsByCoin[x.cgId] && barsByCoin[x.cgId].length).length;
   return fed === 0 ? 'no open setup (' + open.length + ') received any bars while ' + Object.keys(barsByCoin).length + ' coin(s) have a successful daily stream' : null;
 }
+// Detection/ledger configuration hash. Body moved VERBATIM from the manifest block (no change to any hashed value); called there and for the daily file's research block.
+function computeConfigHash() {
+  return crypto.createHash('sha256').update(JSON.stringify({
+      PIVOT_LB: C.PIVOT_LB, TOUCH_TOL: C.TOUCH_TOL, ROCKET_CLOSE_TOL: C.ROCKET_CLOSE_TOL,
+      FIT_SCHEMA_VERSION: C.FIT_SCHEMA_VERSION, CONTAINMENT_RECENT_WINDOW: C.CONTAINMENT_RECENT_WINDOW,
+      DETECTOR_VERSION: C.DETECTOR_VERSION, CANDLE_SCHEMA_VERSION: CANDLE_SCHEMA_VERSION,
+      GRID_SPAN_SECONDS: GRID_SPAN_SECONDS, DAY_SECONDS: DAY_SECONDS, BACKFILL_CANDLES: BACKFILL_CANDLES,
+      RATIO_ROBUST_ACCEPT: RATIO_ROBUST_ACCEPT, RATIO_ROBUST_REJECT: RATIO_ROBUST_REJECT,
+      RATIO_MIN_POINTS: RATIO_MIN_POINTS, RATIO_MAX_POINTS: RATIO_MAX_POINTS,
+      COLLISION_FAILOPEN_RATE: COLLISION_FAILOPEN_RATE, COLLISION_FAILOPEN_MIN_SAMPLE: COLLISION_FAILOPEN_MIN_SAMPLE,
+      // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §1): the
+      // new research-mode detection constants (A1-A5/H9). capture.js itself never calls
+      // detectChannel with meta.research (it always captures the flag-off reading - R3 removed
+      // the process-level "research mode" concept this comment used to describe as a boolean
+      // field here), so these don't change what capture.js writes - they're hashed here purely
+      // so any future tuning of them is visible in configHash exactly like every existing
+      // detection constant above.
+      FIT_WINDOW: C.FIT_WINDOW, FIT_WINDOW_GRID: C.FIT_WINDOW_GRID, BREAK_RUN_MAX: C.BREAK_RUN_MAX,
+      RECLAIM_BARS: C.RECLAIM_BARS, MIN_ANCHOR_SPAN: C.MIN_ANCHOR_SPAN,
+      MIN_ANCHOR_SPAN_GRID: C.MIN_ANCHOR_SPAN_GRID, MIN_TOUCH_GAP: C.MIN_TOUCH_GAP,
+      TOUCH_TOL_ATR_MULT: C.TOUCH_TOL_ATR_MULT, TOUCH_TOL_MIN: C.TOUCH_TOL_MIN, TOUCH_TOL_MAX: C.TOUCH_TOL_MAX,
+      // Step 7 (Remediation spec, 2026-09-21/22; per Step 7 plan review 2026-09-22): the new
+      // B1/B2 research-mode constants (independent-resistance fit, wedge lookahead,
+      // recency-weighted parallel fallback). Same rationale as the Step 6 block above -
+      // capture.js never sets meta.research, so these don't change what it writes; hashed
+      // here so future tuning is visible in configHash like every other detection constant.
+      // ACT_WIDTH_MAX and the B5 distToRailPct gate live in radar.html's buildAction, not
+      // channel-core.js - not exported from this module, so not hashed here.
+      NEAR_FLAT_SLOPE_PCT: C.NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: C.WEDGE_LOOKAHEAD,
+      WEDGE_LOOKAHEAD_GRID: C.WEDGE_LOOKAHEAD_GRID, RES_RECENT_BARS: C.RES_RECENT_BARS,
+      RES_RECENT_BARS_GRID: C.RES_RECENT_BARS_GRID,
+      // Step 8 E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23): bullEngulfingResearch's
+      // two new constants - same rationale as the Step 6/7 blocks above: capture.js never sets
+      // meta.research (still flag-off only), so this doesn't change what it writes, hashed
+      // here so any future tuning is visible in configHash like every other detection constant.
+      ENGULF_BODY_ATR_MULT: C.ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: C.ENGULF_BODY_RATIO,
+      // Step 8 E4 (Remediation spec, 2026-09-21/22): rocketAtSupportResearch's three new
+      // constants - same rationale as the Step 6/7/E3 blocks above: capture.js never sets
+      // meta.research (still flag-off only), so this doesn't change what it writes, hashed
+      // here so any future tuning is visible in configHash like every other detection constant.
+      ROCKET_WICK_BODY: C.ROCKET_WICK_BODY, ROCKET_WICK_ATR: C.ROCKET_WICK_ATR,
+      ROCKET_PRIOR_CLOSES_BELOW: C.ROCKET_PRIOR_CLOSES_BELOW,
+      // Step 9 F3/H3 (Remediation spec, 2026-09-21/22): the outlier-wick clip constants - same
+      // rationale as the Step 6/7/E3/E4 blocks above: capture.js never sets meta.research (flag-off
+      // only) and persists no wickClips, so this doesn't change what it writes, hashed here so any
+      // future tuning is visible in configHash like every other detection constant.
+      F3_WICK_ATR_MULT: C.F3_WICK_ATR_MULT, F3_CLIP_ATR_MULT: C.F3_CLIP_ATR_MULT,
+      F3_RAIL_UNCHANGED_PCT: C.F3_RAIL_UNCHANGED_PCT,
+      // Step 10 D (Remediation spec Plan D, 2026-09-21/22): the research score-rebalance constants - same rationale as
+      // the blocks above: capture.js never sets meta.research, so this doesn't change what it writes; hashed so any
+      // future tuning is visible in configHash like every other detection constant.
+      D_TOUCH_PTS: C.D_TOUCH_PTS, D_RES_PTS: C.D_RES_PTS, D_RES_PARALLEL_MAX: C.D_RES_PARALLEL_MAX,
+      D_CONT_GATE: C.D_CONT_GATE, D_CONT_MAX: C.D_CONT_MAX, D_BREAK_PENALTY: C.D_BREAK_PENALTY,
+      D_POS_MULT: C.D_POS_MULT, D_POS_FULL_CAP: C.D_POS_FULL_CAP, D_POS_PTS: C.D_POS_PTS,
+      D_AGE_RANGE: C.D_AGE_RANGE, D_AGE_RANGE_GRID: C.D_AGE_RANGE_GRID, D_AGE_MAX: C.D_AGE_MAX,
+      D_WIDTH_FRAC: C.D_WIDTH_FRAC, D_WIDTH_PENALTY: C.D_WIDTH_PENALTY,
+      D_EMA_SLOPE_BONUS: C.D_EMA_SLOPE_BONUS, D_EMA_SLOPE_BARS: C.D_EMA_SLOPE_BARS,
+      D_PATTERN_MAX: C.D_PATTERN_MAX, D_VOL_TOUCH_BONUS: C.D_VOL_TOUCH_BONUS,
+      D_VOL_TOUCH_MULT: C.D_VOL_TOUCH_MULT, D_VOL_WINDOW: C.D_VOL_WINDOW, D_RAW_MAX: C.D_RAW_MAX,
+      // Step 11-A (Remediation spec Plan C / C7, 2026-09-23): the research verdict-gate constants and the per-timeframe
+      // ACT floors (PROVISIONAL). capture.js never computes a research verdict; hashed so any tuning is visible in
+      // configHash like every other detection constant (ruling l).
+      C1_EMA_SLOPE_MIN: C.C1_EMA_SLOPE_MIN, C3_FRESH_BARS: C.C3_FRESH_BARS, C3_FRESH_BARS_GRID: C.C3_FRESH_BARS_GRID,
+      ACT_WIDTH_MAX: C.ACT_WIDTH_MAX, C2_DIST_TOL_MULT: C.C2_DIST_TOL_MULT, C2_DIST_CAP: C.C2_DIST_CAP,
+      C4_VOLUME24H_MIN: C.C4_VOLUME24H_MIN, C4_VOL_TOUCH_MIN: C.C4_VOL_TOUCH_MIN, C5_BTC_SLOPE_MIN: C.C5_BTC_SLOPE_MIN,
+      C6_SPIKE_BARS: C.C6_SPIKE_BARS, C6_SPIKE_ATR_MULT: C.C6_SPIKE_ATR_MULT, H6_RR_MIN: C.H6_RR_MIN,
+      ACT_SCORE_FLOOR_1D: C.ACT_SCORE_FLOOR_1D, ACT_SCORE_FLOOR_GRID: C.ACT_SCORE_FLOOR_GRID,
+      // Step 11-B (Remediation spec H6, 2026-09-23): entry-economics constants (PROVISIONAL). Research pass only; hashed
+      // so any tuning is visible in configHash like every other detection constant.
+      H6_ENTRY_ATR: C.H6_ENTRY_ATR, H6_STOP_ATR: C.H6_STOP_ATR, H6_STOP_CAP_ATR: C.H6_STOP_CAP_ATR, H6_COST_PCT: C.H6_COST_PCT,
+      H6_SWING_WINDOW: C.H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: C.H6_SWING_WINDOW_GRID,
+      // Step 11-C (H5, C-1 review ruling 2): the setup ledger's close rule (setups-core.js), PROVISIONAL.
+      SETUP_BREAK_CLOSES: S.SETUP_BREAK_CLOSES,
+      // Step 11-D (Remediation spec H10, 2026-09-23): execution-context constants (descriptive only), PROVISIONAL.
+      H10_BASELINE_BARS: C.H10_BASELINE_BARS, H10_CONTRACTION_MAX: C.H10_CONTRACTION_MAX, H10_EXPANSION_MIN: C.H10_EXPANSION_MIN
+    })).digest('hex');
+}
 // FIX (analysis-thread review, 2026-09-22, BLOCKS finding): stamping used to mutate the SAME
 // candle objects that also flow into detectChannel and end up on the returned fit's `candles`
 // field (channel-core.js's `candles.slice(-150)` — a SHALLOW slice, same object references,
@@ -1273,7 +1350,9 @@ async function main() {
         containment: dailyDiag.containment
       },
       coins: dailyCoins,
-      btcRegime: btcRegime   // Step 11-A / C5: {close, ema50, ema50Slope, aboveEma50, asOf, bars} | null - see the BTC pass above
+      btcRegime: btcRegime,   // Step 11-A / C5: {close, ema50, ema50Slope, aboveEma50, asOf, bars} | null - see the BTC pass above
+      // Gate log (2026-09-25 spec Part A): the configuration that produced each row's research.gates[], readable without the manifest.
+      research: { detectorVersion: C.DETECTOR_VERSION, configHash: computeConfigHash(), floor1d: C.ACT_SCORE_FLOOR_1D }
     };
     const dailyDayPath = path.join(DAILY_DIR, todayDate + '.json');
     fs.mkdirSync(path.dirname(dailyDayPath), { recursive: true });
@@ -1305,80 +1384,7 @@ async function main() {
   // write. Filed as BACKLOG in the H7/H8 handoff: a future step should surface
   // capture-manifest.json's staleness in the UI (e.g. next to the "cached" data source label).
   try {
-    const configHash = crypto.createHash('sha256').update(JSON.stringify({
-      PIVOT_LB: C.PIVOT_LB, TOUCH_TOL: C.TOUCH_TOL, ROCKET_CLOSE_TOL: C.ROCKET_CLOSE_TOL,
-      FIT_SCHEMA_VERSION: C.FIT_SCHEMA_VERSION, CONTAINMENT_RECENT_WINDOW: C.CONTAINMENT_RECENT_WINDOW,
-      DETECTOR_VERSION: C.DETECTOR_VERSION, CANDLE_SCHEMA_VERSION: CANDLE_SCHEMA_VERSION,
-      GRID_SPAN_SECONDS: GRID_SPAN_SECONDS, DAY_SECONDS: DAY_SECONDS, BACKFILL_CANDLES: BACKFILL_CANDLES,
-      RATIO_ROBUST_ACCEPT: RATIO_ROBUST_ACCEPT, RATIO_ROBUST_REJECT: RATIO_ROBUST_REJECT,
-      RATIO_MIN_POINTS: RATIO_MIN_POINTS, RATIO_MAX_POINTS: RATIO_MAX_POINTS,
-      COLLISION_FAILOPEN_RATE: COLLISION_FAILOPEN_RATE, COLLISION_FAILOPEN_MIN_SAMPLE: COLLISION_FAILOPEN_MIN_SAMPLE,
-      // Step 6 (Remediation spec, 2026-09-21/22; per Step 6 plan review 2026-09-22, §1): the
-      // new research-mode detection constants (A1-A5/H9). capture.js itself never calls
-      // detectChannel with meta.research (it always captures the flag-off reading - R3 removed
-      // the process-level "research mode" concept this comment used to describe as a boolean
-      // field here), so these don't change what capture.js writes - they're hashed here purely
-      // so any future tuning of them is visible in configHash exactly like every existing
-      // detection constant above.
-      FIT_WINDOW: C.FIT_WINDOW, FIT_WINDOW_GRID: C.FIT_WINDOW_GRID, BREAK_RUN_MAX: C.BREAK_RUN_MAX,
-      RECLAIM_BARS: C.RECLAIM_BARS, MIN_ANCHOR_SPAN: C.MIN_ANCHOR_SPAN,
-      MIN_ANCHOR_SPAN_GRID: C.MIN_ANCHOR_SPAN_GRID, MIN_TOUCH_GAP: C.MIN_TOUCH_GAP,
-      TOUCH_TOL_ATR_MULT: C.TOUCH_TOL_ATR_MULT, TOUCH_TOL_MIN: C.TOUCH_TOL_MIN, TOUCH_TOL_MAX: C.TOUCH_TOL_MAX,
-      // Step 7 (Remediation spec, 2026-09-21/22; per Step 7 plan review 2026-09-22): the new
-      // B1/B2 research-mode constants (independent-resistance fit, wedge lookahead,
-      // recency-weighted parallel fallback). Same rationale as the Step 6 block above -
-      // capture.js never sets meta.research, so these don't change what it writes; hashed
-      // here so future tuning is visible in configHash like every other detection constant.
-      // ACT_WIDTH_MAX and the B5 distToRailPct gate live in radar.html's buildAction, not
-      // channel-core.js - not exported from this module, so not hashed here.
-      NEAR_FLAT_SLOPE_PCT: C.NEAR_FLAT_SLOPE_PCT, WEDGE_LOOKAHEAD: C.WEDGE_LOOKAHEAD,
-      WEDGE_LOOKAHEAD_GRID: C.WEDGE_LOOKAHEAD_GRID, RES_RECENT_BARS: C.RES_RECENT_BARS,
-      RES_RECENT_BARS_GRID: C.RES_RECENT_BARS_GRID,
-      // Step 8 E3 (Remediation spec, 2026-09-21/22; restage 2026-09-23): bullEngulfingResearch's
-      // two new constants - same rationale as the Step 6/7 blocks above: capture.js never sets
-      // meta.research (still flag-off only), so this doesn't change what it writes, hashed
-      // here so any future tuning is visible in configHash like every other detection constant.
-      ENGULF_BODY_ATR_MULT: C.ENGULF_BODY_ATR_MULT, ENGULF_BODY_RATIO: C.ENGULF_BODY_RATIO,
-      // Step 8 E4 (Remediation spec, 2026-09-21/22): rocketAtSupportResearch's three new
-      // constants - same rationale as the Step 6/7/E3 blocks above: capture.js never sets
-      // meta.research (still flag-off only), so this doesn't change what it writes, hashed
-      // here so any future tuning is visible in configHash like every other detection constant.
-      ROCKET_WICK_BODY: C.ROCKET_WICK_BODY, ROCKET_WICK_ATR: C.ROCKET_WICK_ATR,
-      ROCKET_PRIOR_CLOSES_BELOW: C.ROCKET_PRIOR_CLOSES_BELOW,
-      // Step 9 F3/H3 (Remediation spec, 2026-09-21/22): the outlier-wick clip constants - same
-      // rationale as the Step 6/7/E3/E4 blocks above: capture.js never sets meta.research (flag-off
-      // only) and persists no wickClips, so this doesn't change what it writes, hashed here so any
-      // future tuning is visible in configHash like every other detection constant.
-      F3_WICK_ATR_MULT: C.F3_WICK_ATR_MULT, F3_CLIP_ATR_MULT: C.F3_CLIP_ATR_MULT,
-      F3_RAIL_UNCHANGED_PCT: C.F3_RAIL_UNCHANGED_PCT,
-      // Step 10 D (Remediation spec Plan D, 2026-09-21/22): the research score-rebalance constants - same rationale as
-      // the blocks above: capture.js never sets meta.research, so this doesn't change what it writes; hashed so any
-      // future tuning is visible in configHash like every other detection constant.
-      D_TOUCH_PTS: C.D_TOUCH_PTS, D_RES_PTS: C.D_RES_PTS, D_RES_PARALLEL_MAX: C.D_RES_PARALLEL_MAX,
-      D_CONT_GATE: C.D_CONT_GATE, D_CONT_MAX: C.D_CONT_MAX, D_BREAK_PENALTY: C.D_BREAK_PENALTY,
-      D_POS_MULT: C.D_POS_MULT, D_POS_FULL_CAP: C.D_POS_FULL_CAP, D_POS_PTS: C.D_POS_PTS,
-      D_AGE_RANGE: C.D_AGE_RANGE, D_AGE_RANGE_GRID: C.D_AGE_RANGE_GRID, D_AGE_MAX: C.D_AGE_MAX,
-      D_WIDTH_FRAC: C.D_WIDTH_FRAC, D_WIDTH_PENALTY: C.D_WIDTH_PENALTY,
-      D_EMA_SLOPE_BONUS: C.D_EMA_SLOPE_BONUS, D_EMA_SLOPE_BARS: C.D_EMA_SLOPE_BARS,
-      D_PATTERN_MAX: C.D_PATTERN_MAX, D_VOL_TOUCH_BONUS: C.D_VOL_TOUCH_BONUS,
-      D_VOL_TOUCH_MULT: C.D_VOL_TOUCH_MULT, D_VOL_WINDOW: C.D_VOL_WINDOW, D_RAW_MAX: C.D_RAW_MAX,
-      // Step 11-A (Remediation spec Plan C / C7, 2026-09-23): the research verdict-gate constants and the per-timeframe
-      // ACT floors (PROVISIONAL). capture.js never computes a research verdict; hashed so any tuning is visible in
-      // configHash like every other detection constant (ruling l).
-      C1_EMA_SLOPE_MIN: C.C1_EMA_SLOPE_MIN, C3_FRESH_BARS: C.C3_FRESH_BARS, C3_FRESH_BARS_GRID: C.C3_FRESH_BARS_GRID,
-      ACT_WIDTH_MAX: C.ACT_WIDTH_MAX, C2_DIST_TOL_MULT: C.C2_DIST_TOL_MULT, C2_DIST_CAP: C.C2_DIST_CAP,
-      C4_VOLUME24H_MIN: C.C4_VOLUME24H_MIN, C4_VOL_TOUCH_MIN: C.C4_VOL_TOUCH_MIN, C5_BTC_SLOPE_MIN: C.C5_BTC_SLOPE_MIN,
-      C6_SPIKE_BARS: C.C6_SPIKE_BARS, C6_SPIKE_ATR_MULT: C.C6_SPIKE_ATR_MULT, H6_RR_MIN: C.H6_RR_MIN,
-      ACT_SCORE_FLOOR_1D: C.ACT_SCORE_FLOOR_1D, ACT_SCORE_FLOOR_GRID: C.ACT_SCORE_FLOOR_GRID,
-      // Step 11-B (Remediation spec H6, 2026-09-23): entry-economics constants (PROVISIONAL). Research pass only; hashed
-      // so any tuning is visible in configHash like every other detection constant.
-      H6_ENTRY_ATR: C.H6_ENTRY_ATR, H6_STOP_ATR: C.H6_STOP_ATR, H6_STOP_CAP_ATR: C.H6_STOP_CAP_ATR, H6_COST_PCT: C.H6_COST_PCT,
-      H6_SWING_WINDOW: C.H6_SWING_WINDOW, H6_SWING_WINDOW_GRID: C.H6_SWING_WINDOW_GRID,
-      // Step 11-C (H5, C-1 review ruling 2): the setup ledger's close rule (setups-core.js), PROVISIONAL.
-      SETUP_BREAK_CLOSES: S.SETUP_BREAK_CLOSES,
-      // Step 11-D (Remediation spec H10, 2026-09-23): execution-context constants (descriptive only), PROVISIONAL.
-      H10_BASELINE_BARS: C.H10_BASELINE_BARS, H10_CONTRACTION_MAX: C.H10_CONTRACTION_MAX, H10_EXPANSION_MIN: C.H10_EXPANSION_MIN
-    })).digest('hex');
+    const configHash = computeConfigHash();   // moved verbatim to a top-level function (gate log, 2026-09-25) so the daily file can carry it too
     // Step 11-C (H5): setup ledger data/setups.json - read, pure update (setups-core.js), write. Isolated so a ledger
     // failure never costs the capture files above; a missing ledger starts empty. Invariants live in setups-core.js.
     try {
