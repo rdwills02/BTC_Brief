@@ -247,13 +247,47 @@
 
   // ---------- step 7: issuance (§4.1, §5.3, §5.4) ----------
   function inZone(cand) { var ez = cand.entryEconomics && cand.entryEconomics.entryZone; return !!(ez && num(ez[0]) && num(ez[1]) && num(cand.price) && cand.price >= ez[0] && cand.price <= ez[1]); }
+  // Challenger predicate (Protocol v1.3 §5.1): { minScore, minNetRR, requiredGates: [gate ids that must pass], excludeStopBasis: [stopBasis strings] }, inheriting N0's screen AND in-zone
+  // condition. An empty or absent configuration never qualifies (C1 not configured). Version and other keys are labels only.
+  function challengerActive(ch) {
+    return !!ch && (num(ch.minScore) || num(ch.minNetRR) || (Array.isArray(ch.requiredGates) && ch.requiredGates.length > 0) || (Array.isArray(ch.excludeStopBasis) && ch.excludeStopBasis.length > 0));
+  }
+  // Configuration errors (checked at startup by capture.js against the detector's gate ids; any error aborts the capture as an extra capture, so nothing is ever issued).
+  function validateChallenger(ch, knownGateIds) {
+    var errs = [];
+    if (ch == null) return errs;
+    if (typeof ch !== 'object' || Array.isArray(ch)) return ['challenger must be an object'];
+    if (ch.minScore != null && !num(ch.minScore)) errs.push('minScore must be a finite number');
+    if (ch.minNetRR != null && !num(ch.minNetRR)) errs.push('minNetRR must be a finite number');
+    if (ch.requiredGates != null) {
+      if (!Array.isArray(ch.requiredGates)) errs.push('requiredGates must be an array of gate ids');
+      else ch.requiredGates.forEach(function (g) { if (typeof g !== 'string' || (knownGateIds && knownGateIds.indexOf(g) < 0)) errs.push('unknown gate id: ' + JSON.stringify(g)); });
+    }
+    if (ch.excludeStopBasis != null) {
+      if (!Array.isArray(ch.excludeStopBasis)) errs.push('excludeStopBasis must be an array of stopBasis strings');
+      else ch.excludeStopBasis.forEach(function (b) { if (typeof b !== 'string') errs.push('excludeStopBasis entries must be strings'); });
+    }
+    return errs;
+  }
+  function qualify(ch, cand) {
+    if (!challengerActive(ch)) return false;
+    if (num(ch.minScore) && !(num(cand.score) && cand.score >= ch.minScore)) return false;
+    if (num(ch.minNetRR) && !(cand.entryEconomics && num(cand.entryEconomics.netRR) && cand.entryEconomics.netRR >= ch.minNetRR)) return false;
+    if (Array.isArray(ch.requiredGates)) {
+      var gates = Array.isArray(cand.gates) ? cand.gates : [];
+      for (var i = 0; i < ch.requiredGates.length; i++) {
+        var id = ch.requiredGates[i], g = null;
+        for (var j = 0; j < gates.length; j++) if (gates[j] && gates[j].id === id) { g = gates[j]; break; }
+        if (!g || g.pass !== true) return false;   // a listed gate that is absent from the log row does not pass
+      }
+    }
+    if (Array.isArray(ch.excludeStopBasis) && ch.excludeStopBasis.length && cand.entryEconomics && ch.excludeStopBasis.indexOf(cand.entryEconomics.stopBasis) >= 0) return false;
+    return true;
+  }
   function predicateHolds(policy, cand, cfg) {
     if (!(cand.screen && cand.screen.pass) || !inZone(cand)) return false;
     if (policy.id === 'N0') return true;
-    var ch = cfg && cfg.challenger; if (!ch) return false;   // C1 not configured: never qualifies
-    if (num(ch.minScore) && !(num(cand.score) && cand.score >= ch.minScore)) return false;
-    if (num(ch.minNetRR) && !(cand.entryEconomics && num(cand.entryEconomics.netRR) && cand.entryEconomics.netRR >= ch.minNetRR)) return false;
-    return true;
+    return qualify(cfg && cfg.challenger, cand);   // C1: no configuration -> never qualifies
   }
   function staleBlocked(book, pid) {
     return ordersOf(book, pid).some(function (o) { return isOpen(o) && o.stale && o.stale.count >= 1 && !o.stale.persistent; });
@@ -477,6 +511,7 @@
   }
 
   return {
+    predicateHolds: predicateHolds, qualify: qualify, validateChallenger: validateChallenger, challengerActive: challengerActive,
     buildScenarios: buildScenarios, unresolvedOf: unresolvedOf, replayPath: replayPath, pathAdmission: pathAdmission, rowIndexAtOrAfter: rowIndexAtOrAfter,
     ORDERS_SCHEMA_VERSION: ORDERS_SCHEMA_VERSION, CFG: CFG, DAY: DAY, newBook: newBook, cents: cents, bpOf: bpOf, floorTo: floorTo, ceilTo: ceilTo, notional: notional,
     adjudicateAll: adjudicateAll, activateAll: activateAll, activateOrder: activateOrder, valuation: valuation, suspend: suspend, issueBatch: issueBatch,

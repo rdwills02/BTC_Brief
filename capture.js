@@ -1096,7 +1096,7 @@ function fwdMakeCapture(issueMs, rndHex, protocolVersion) {
 function fwdPaths(d, root) {
   var p = d.path, dir = p.join(root, 'forward');
   return { root: root, dir: dir, current: p.join(dir, 'CURRENT'), currentTmp: p.join(dir, 'CURRENT.tmp'), history: p.join(dir, 'CURRENT.history'), lock: p.join(dir, 'LOCK'),
-    daily: p.join(root, 'daily'), cache: p.join(root, 'cache'), config: p.join(dir, 'config.json'), delistings: p.join(root, 'manual-delistings.json'),
+    daily: p.join(root, 'daily'), edays: p.join(dir, 'episode-days'), cache: p.join(root, 'cache'), config: p.join(dir, 'config.json'), delistings: p.join(root, 'manual-delistings.json'),
     gen: function (id) { return p.join(dir, 'gen-' + id); } };
 }
 function fwdReadJson(d, file) { try { return JSON.parse(d.fs.readFileSync(file, 'utf8')); } catch (e) { return null; } }
@@ -1116,6 +1116,11 @@ function fwdReadDelistings(d, root) {
   var j = fwdReadJson(d, fwdPaths(d, root).delistings), a = Array.isArray(j) ? j : (j && Array.isArray(j.delistings) ? j.delistings : []);
   return a.filter(function (x) { return x && typeof x.cgId === 'string' && typeof x.listDate === 'string'; });
 }
+// The detector's research gate ids (channel-core.js researchVerdict, 16 gates in log order). A challenger's requiredGates must be a subset; a local test compares this list
+// with the gate ids a real verdict emits so it cannot drift silently.
+var FWD_KNOWN_GATE_IDS = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C1.trend', 'C3.fresh-touch', 'C3.no-recent-break', 'C7.floor', 'C2.width', 'C2.entry-zone', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
+// Configuration errors abort the capture as an extra capture at startup (nothing is ever issued under a bad configuration).
+function fwdConfigErrors(d, cfg) { return cfg ? d.OC.validateChallenger(cfg.challenger, FWD_KNOWN_GATE_IDS) : []; }
 function fwdHistory(d, P) {   // JSON lines, append-only: { generationId, captureId, date } and { pin: true, generationId, sha }
   var txt = ''; try { txt = d.fs.readFileSync(P.history, 'utf8'); } catch (e) { return []; }
   var out = []; txt.split('\n').forEach(function (l) { if (!l.trim()) return; try { out.push(JSON.parse(l)); } catch (e) { /* torn last line from a crash: ignored, never rewritten */ } });
@@ -1154,6 +1159,9 @@ function fwdStartup(d, root) {
   if (cur && cur.captureId) {   // <date>.json must be the winner's log: repeat the rename from <date>.<captureId>.json if absent or another capture's file
     var dayFile = d.path.join(P.daily, cur.date + '.json'), src = d.path.join(P.daily, cur.date + '.' + cur.captureId + '.json'), have = fwdReadJson(d, dayFile);
     if ((!have || have.captureId !== cur.captureId) && d.fs.existsSync(src)) { d.fs.renameSync(src, dayFile); notes.push('daily-renamed'); }
+    // the immutable episode-days file follows the same rule (a crash between the daily-file rename and this one recovers both here)
+    var edFile = d.path.join(P.edays, cur.date + '.json'), edSrc = d.path.join(P.edays, cur.date + '.' + cur.captureId + '.json'), edHave = fwdReadJson(d, edFile);
+    if ((!edHave || edHave.captureId !== cur.captureId) && d.fs.existsSync(edSrc)) { d.fs.renameSync(edSrc, edFile); notes.push('episode-days-renamed'); }
   }
   hist.forEach(function (h) {   // pin generations whose commit is now knowable (written into THIS run's commit; a generation is pinned once)
     if (h.pin || !h.generationId || fwdPinOf(hist, h.generationId)) return;
@@ -1185,18 +1193,21 @@ function fwdLoadGenerationFiles(d, P, id) {
 // against those bytes, never against the working tree. CURRENT itself may be read from the working tree (its cache snapshot is the working tree's).
 function fwdLoadGeneration(d, root, id, opts) {
   opts = opts || {};
-  var P = fwdPaths(d, root), cur = fwdReadJson(d, P.current), hist = fwdHistory(d, P), res = fwdLoadGenerationFiles(d, P, id), chk = res.files['checksums.json'];
-  res.generationId = id; res.cacheChecked = 0; res.cacheMismatched = []; res.cacheUnresolvable = [];
+  var P = fwdPaths(d, root), hist = fwdHistory(d, P), res = fwdLoadGenerationFiles(d, P, id), chk = res.files['checksums.json'];
+  res.generationId = id; res.cacheChecked = 0; res.cacheMismatched = []; res.cacheUnresolvable = []; res.episodeDays = null;
   if (!chk) return res;
-  var isCurrent = !!(cur && cur.generationId === id && !opts.forcePinned), sha = fwdPinOf(hist, id);
+  // v1.3 §2: EVERY generation (CURRENT included) resolves its cache from the commit that added its checksums.json, never from the working tree
+  var addSha = d.git ? d.git.commitAdding('data/forward/gen-' + id + '/checksums.json') : null, sha = addSha || fwdPinOf(hist, id);
   Object.keys(chk.cache || {}).forEach(function (rel) {
-    var buf = null;
-    if (isCurrent && !sha) { try { buf = d.fs.readFileSync(d.path.join(root, '..', rel)); } catch (e) { buf = null; } }
-    else if (sha) buf = d.git.show(sha, rel);
+    var buf = sha ? d.git.show(sha, rel) : null;
     if (buf == null) { res.cacheUnresolvable.push(rel); return; }
     res.cacheChecked++; if (fwdSha256(d, buf) !== chk.cache[rel]) res.cacheMismatched.push(rel);
   });
-  res.verified = !res.missing.length && !res.mismatched.length && !res.cacheMismatched.length && !res.cacheUnresolvable.length;
+  if (chk.episodeDays) {
+    var eb = sha ? d.git.show(sha, chk.episodeDays.path) : null;
+    res.episodeDays = eb == null ? 'unresolvable' : (fwdSha256(d, eb) === chk.episodeDays.sha256 ? 'verified' : 'mismatch');
+  }
+  res.verified = !res.missing.length && !res.mismatched.length && !res.cacheMismatched.length && !res.cacheUnresolvable.length && (!chk.episodeDays || res.episodeDays === 'verified');
   res.pinnedSha = sha;
   return res;
 }
@@ -1270,7 +1281,7 @@ function fwdParseTicker(json, assetPairs) {   // -> { ALTNAME: last trade price 
 function fwdResearchRow(fit, res, summary, price) {
   if (!fit) return null;
   var ee = fit.entryEconomics || null;
-  return { fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, atr14: fit.atr14,
+  return { fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, atr14: fit.atr14, resistNow: fit.resistNow,
       channelH: fit.channelH, supportTouches: fit.supportTouches, lifecycleState: fit.lifecycleState },
     price: price, gates: (summary && summary.gates) || null, score: typeof fit.score === 'number' ? fit.score : null,
     entryEconomics: ee ? { entryZone: ee.entryZone, entryRef: ee.entryRef, defendedLow: ee.defendedLow, stop: ee.stop, stopBasis: ee.stopBasis, target: ee.target, targetSource: ee.targetSource, netRR: ee.netRR, grossRR: ee.grossRR, atr14: ee.atr14 } : null };
@@ -1288,14 +1299,14 @@ function fwdRunUpdate(d, prior, capture, inputs, cfg) {
   var eu = EC.updateEpisodes(prior.episodes, capture, rows, bars, inputs.universeIds || [], OC.obligations(book), { manualDelistings: cfg.manualDelistings || [] });   // step 6
   var cands = eu.episodeDays.map(function (ed) {
     var c = inputs.coins[ed.cgId] || {};
-    return { episodeId: ed.episodeId, cgId: ed.cgId, pair: ed.pair, screen: ed.screen, price: ed.price, score: ed.score, entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible !== false, meta: c.metadataEligible === false ? null : (c.meta || null) };
+    return { episodeId: ed.episodeId, cgId: ed.cgId, pair: ed.pair, screen: ed.screen, price: ed.price, score: ed.score, entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible !== false, gates: ed.gates || null, meta: c.metadataEligible === false ? null : (c.meta || null) };
   });
   var results = {};
   ['N0', 'C1'].forEach(function (p) {                                           // step 7
     var r = OC.issueBatch(book, { id: p, version: p === 'N0' ? 'N0-v1' : ((cfg.challenger && cfg.challenger.version) || 'C1-unconfigured') }, cands, capture, { challenger: cfg.challenger || null });
     book = r.book; results[p] = { results: r.results, blockedReason: r.blockedReason };
   });
-  return { episodes: eu.state, book: book, episodeDays: eu.episodeDays, results: results, obligations: eu.obligations };
+  return { episodes: eu.state, book: book, episodeDays: eu.episodeDays, episodeDayRows: eu.episodeDayRows, results: results, obligations: eu.obligations };
 }
 function fwdUpdatePairs(pairs, capture, coinsWithPair) {   // pair fixed at the coin's first eligible canonical capture and never changes
   var have = {}; pairs.forEach(function (p) { have[p.cgId] = p; });
@@ -1309,19 +1320,31 @@ function fwdUpdatePairs(pairs, capture, coinsWithPair) {   // pair fixed at the 
 //  ->  exclusive lock on data/forward/LOCK (60 s; failure: abort, extra)  ->  re-read CURRENT (changed since startup: abort, extra)  ->  CURRENT.tmp + rename
 //  ->  append CURRENT.history  ->  rename the daily file to <date>.json  ->  delete remnants  ->  release the lock  ->  git add/commit/push (rejected: abort, extra; no rebase, no force)
 // gen = { episodes, orders, accounts, scenarios, pairs } objects. Returns { status: 'canonical' | 'extra' | 'push-rejected', reason?, sha? }.
+// gen = { episodes, orders, accounts, scenarios, pairs, episodeDays } objects; gen.episodeDays = { schemaVersion, captureId, date, rows } is the immutable per-capture episode-day file (Protocol v1.3 §2).
+// An abort before the pointer rename deletes THIS run's own partial gen-* directory and episode-days file (never anything else) so an extra capture leaves no remnants.
+function fwdCleanupOwn(d, root, capture) {
+  var P = fwdPaths(d, root);
+  try { d.fs.rmSync(P.gen(capture.captureId), { recursive: true, force: true }); } catch (e) { /* best effort */ }
+  try { d.fs.rmSync(d.path.join(P.edays, capture.date + '.' + capture.captureId + '.json'), { force: true }); } catch (e) { /* best effort */ }
+}
 function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
-  var P = fwdPaths(d, root), dayTmp = d.path.join(P.daily, capture.date + '.' + capture.captureId + '.json'), tok = null;
+  var P = fwdPaths(d, root), dayTmp = d.path.join(P.daily, capture.date + '.' + capture.captureId + '.json'), edTmp = d.path.join(P.edays, capture.date + '.' + capture.captureId + '.json'), edFinal = d.path.join(P.edays, capture.date + '.json'), tok = null;
+  var abort = function (reason) { fwdCleanupOwn(d, root, capture); return { status: 'extra', reason: reason }; };
   fwdCrash(d, 'after-daily-write');
   // candle cache: every cache file rewritten tmp+rename; its sha256 goes into checksums.json
   var cacheSha = {}, names = []; try { names = d.fs.readdirSync(P.cache).filter(function (f) { return /\.json$/.test(f); }).sort(); } catch (e) { names = []; }
   names.forEach(function (f) { var file = d.path.join(P.cache, f), buf = d.fs.readFileSync(file); fwdAtomicWrite(d, file, buf); cacheSha['data/cache/' + f] = fwdSha256(d, buf); });
   fwdCrash(d, 'after-cache-write');
+  // the immutable episode-days file (written under its capture-specific name, renamed to <date>.json after the pointer rename; its checksum names the FINAL path, which is what the commit contains)
+  var edTxt = JSON.stringify(gen.episodeDays || { schemaVersion: 1, captureId: capture.captureId, date: capture.date, rows: [] }), edSha = fwdSha256(d, Buffer.from(edTxt, 'utf8'));
+  fwdAtomicWrite(d, edTmp, edTxt);
+  fwdCrash(d, 'after-episode-days-write');
   // generation files: episodes, orders, accounts, scenarios, pairs, then checksums (each written tmp+rename)
   var gdir = P.gen(capture.captureId), texts = {}, files = {};
   var body = { 'episodes.json': gen.episodes, 'orders.json': gen.orders, 'accounts.json': gen.accounts, 'scenarios.json': gen.scenarios, 'pairs.json': gen.pairs };
   FWD_GEN_FILES.forEach(function (f, n) {
     var txt;
-    if (f === 'checksums.json') { txt = JSON.stringify({ generationId: capture.captureId, protocolVersion: capture.protocolVersion, files: files, cache: cacheSha }); }
+    if (f === 'checksums.json') { txt = JSON.stringify({ generationId: capture.captureId, protocolVersion: capture.protocolVersion, files: files, episodeDays: { path: 'data/forward/episode-days/' + capture.date + '.json', sha256: edSha }, cache: cacheSha }); }
     else { txt = JSON.stringify(body[f]); files[f] = fwdSha256(d, Buffer.from(txt, 'utf8')); }
     texts[f] = txt; fwdAtomicWrite(d, d.path.join(gdir, f), txt);
     fwdCrash(d, 'after-gen-file-' + (n + 1));
@@ -1330,14 +1353,15 @@ function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
   var bad = [];
   FWD_GEN_FILES.forEach(function (f) { if (f === 'checksums.json') return; var b; try { b = d.fs.readFileSync(d.path.join(gdir, f)); } catch (e) { bad.push(f); return; } if (fwdSha256(d, b) !== files[f]) bad.push(f); });
   Object.keys(cacheSha).forEach(function (rel) { var b; try { b = d.fs.readFileSync(d.path.join(root, '..', rel)); } catch (e) { bad.push(rel); return; } if (fwdSha256(d, b) !== cacheSha[rel]) bad.push(rel); });
-  if (bad.length) return { status: 'extra', reason: 'checksum-verify-failed: ' + bad.join(',') };
+  (function () { var b; try { b = d.fs.readFileSync(edTmp); } catch (e) { bad.push('episode-days'); return; } if (fwdSha256(d, b) !== edSha) bad.push('episode-days'); })();
+  if (bad.length) return abort('checksum-verify-failed: ' + bad.join(','));
   fwdCrash(d, 'after-verify');
   fwdCrash(d, 'before-lock');   // test seam: another run may complete here
   tok = fwdAcquireLock(d, P, opts && opts.lockWaitMs != null ? opts.lockWaitMs : FWD_LOCK_WAIT_MS);
-  if (!tok) return { status: 'extra', reason: 'lock-timeout' };
+  if (!tok) return abort('lock-timeout');
   try {
     var nowCur = fwdReadJson(d, P.current);
-    if (JSON.stringify(nowCur) !== JSON.stringify(startupCurrent || null)) return { status: 'extra', reason: 'current-changed-since-startup' };
+    if (JSON.stringify(nowCur) !== JSON.stringify(startupCurrent || null)) return abort('current-changed-since-startup');
     fwdCrash(d, 'before-current-rename');
     fwdAtomicWrite(d, P.current, JSON.stringify({ generationId: capture.captureId, captureId: capture.captureId, date: capture.date, protocolVersion: capture.protocolVersion }));
     fwdCrash(d, 'after-current-rename');
@@ -1345,13 +1369,16 @@ function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
     fwdCrash(d, 'after-history-append');
     if (d.fs.existsSync(dayTmp)) d.fs.renameSync(dayTmp, d.path.join(P.daily, capture.date + '.json'));
     fwdCrash(d, 'after-daily-rename');
-    // remnants: gen-* directories neither listed in CURRENT.history nor named in CURRENT; deleted only after THIS run's own pointer rename
+    if (d.fs.existsSync(edTmp)) d.fs.renameSync(edTmp, edFinal);
+    fwdCrash(d, 'after-episode-days-rename');
+    // remnants: gen-* directories (and episode-days files) neither listed in CURRENT.history nor named in CURRENT; deleted only after THIS run's own pointer rename
     var ids = fwdHistoryIds(fwdHistory(d, P)), curNow = fwdReadJson(d, P.current);
     d.fs.readdirSync(P.dir).forEach(function (n) {
       var m = /^gen-(.+)$/.exec(n); if (!m) return;
       if (ids[m[1]] || (curNow && curNow.generationId === m[1])) return;
       d.fs.rmSync(d.path.join(P.dir, n), { recursive: true, force: true });
     });
+    try { d.fs.readdirSync(P.edays).forEach(function (n) { var m = /^\d{4}-\d{2}-\d{2}\.(.+)\.json$/.exec(n); if (!m) return; if (ids[m[1]] || (curNow && curNow.generationId === m[1])) return; d.fs.rmSync(d.path.join(P.edays, n), { force: true }); }); } catch (e) { /* no episode-days directory */ }
     fwdCrash(d, 'after-remnant-delete');
   } finally { fwdReleaseLock(d, P, tok); }
   if (d.git && !(opts && opts.noGit)) {
@@ -1428,6 +1455,8 @@ async function main() {
   // Forward experiment (Protocol v1.2 §2). DORMANT unless data/forward/config.json exists. Startup only repairs (history, daily-file rename, commit pins); it never deletes.
   const fwdDeps = fwdRealDeps();
   const fwdCfg = fwdReadConfig(fwdDeps, DATA_DIR);
+  const fwdCfgErrors = fwdCfg ? fwdConfigErrors(fwdDeps, fwdCfg) : [];   // a bad challenger configuration makes every capture an extra capture: nothing is ever issued
+  if (fwdCfgErrors.length) console.error('forward: CONFIGURATION ERROR in data/forward/config.json - ' + fwdCfgErrors.join('; ') + ' - EXTRA CAPTURE, no forward update');
   let fwdStart = null;
   if (fwdCfg) {
     try { fwdStart = fwdStartup(fwdDeps, DATA_DIR); console.log('forward: startup', fwdStart.notes.join(',') || 'clean', '| CURRENT', fwdStart.current ? fwdStart.current.generationId : '(none)'); }
@@ -1558,7 +1587,7 @@ async function main() {
   }
   const issueMs = Date.now();   // issueTimeUtc: read ONCE, after all fetches complete and before pipeline step 1 (Protocol §0)
   const capture = fwdMakeCapture(issueMs, crypto.randomBytes(3).toString('hex'), fwdCfg ? fwdCfg.protocolVersion : null);
-  const fwdCanonicalCandidate = !!(fwdCfg && fwdStart && fwdPrior && capture.afterCanonicalGate && !fwdAlreadyProcessed(fwdStart.current, capture));
+  const fwdCanonicalCandidate = !!(fwdCfg && fwdStart && fwdPrior && capture.afterCanonicalGate && !fwdCfgErrors.length && !fwdAlreadyProcessed(fwdStart.current, capture));
   if (fwdCfg) console.log('forward: capture', capture.captureId, 'issue', capture.issueTimeUtc, capture.afterCanonicalGate ? '(>= 00:10 UTC)' : '(before 00:10 UTC: never canonical)', '| canonical candidate:', fwdCanonicalCandidate);
 
   // The OHLC grid is every ~4 days. Use a reference coin (most candles) to get the set of
@@ -1852,7 +1881,7 @@ async function main() {
   // ---- Forward experiment: pipeline (Protocol §4.0 steps 1-7) and the §2 commit sequence, LAST so the single push carries every file this run wrote ----
   if (fwdCfg) {
     try {
-      if (!fwdCanonicalCandidate) console.log('forward: EXTRA capture (' + (!fwdStart ? 'startup failed' : !fwdPrior ? 'prior generation unavailable' : !capture.afterCanonicalGate ? 'issued before 00:10 UTC' : 'date already processed') + ') - data/daily/' + capture.date + '.' + capture.captureId + '.json only, no forward update');
+      if (!fwdCanonicalCandidate) console.log('forward: EXTRA CAPTURE — no forward update (' + (fwdCfgErrors.length ? 'configuration error' : !fwdStart ? 'startup failed' : !fwdPrior ? 'prior generation unavailable' : !capture.afterCanonicalGate ? 'issued before 00:10 UTC' : 'date already processed') + ') - data/daily/' + capture.date + '.' + capture.captureId + '.json only, no forward update');
       else {
         const coinsIn = {}, pairsNow = {};
         for (const cg of fwdFetchIds) {
@@ -1865,13 +1894,17 @@ async function main() {
         }
         const upd = fwdRunUpdate(fwdDeps, fwdPrior, capture, { coins: coinsIn, universeIds: pulls.map(p => p.coin.id) }, { manualDelistings: fwdReadDelistings(fwdDeps, DATA_DIR), challenger: fwdCfg.challenger });
         const gen = { episodes: upd.episodes, orders: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, orders: upd.book.orders, attempts: upd.book.attempts }, accounts: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, seq: upd.book.seq, accounts: upd.book.accounts },
-          scenarios: { schemaVersion: 1, label: 'counterfactual', built: false }, pairs: fwdUpdatePairs(fwdPrior.pairs, capture, pairsNow) };
+          scenarios: { schemaVersion: 1, label: 'counterfactual', built: false }, pairs: fwdUpdatePairs(fwdPrior.pairs, capture, pairsNow),
+          episodeDays: { schemaVersion: 1, captureId: capture.captureId, date: capture.date, rows: upd.episodeDayRows } };
         const r = fwdCommitSequence(fwdDeps, DATA_DIR, capture, fwdStart.current, gen, {});
         if (r.status === 'canonical') console.log('forward: CANONICAL capture', capture.captureId, 'committed', r.sha || '(no git)', '| episodes', gen.episodes.episodes.length, 'orders', gen.orders.orders.length);
         else if (r.status === 'push-rejected') { console.error('forward: PUSH REJECTED - this run is an extra capture (no rebase, no force):', r.reason); process.exitCode = 1; }
-        else console.warn('forward: aborted as an EXTRA capture:', r.reason);
+        else console.warn('forward: EXTRA CAPTURE — no forward update (aborted: ' + r.reason + '); this run\'s own partial generation was removed');
       }
-    } catch (e) { console.error('forward: update failed - this run is an extra capture (capture files above are unaffected):', e); }
+    } catch (e) {
+      console.error('forward: EXTRA CAPTURE — no forward update (update failed; capture files above are unaffected):', e);
+      try { const cur0 = fwdReadJson(fwdDeps, path.join(DATA_DIR, 'forward', 'CURRENT')); if (!cur0 || cur0.generationId !== capture.captureId) fwdCleanupOwn(fwdDeps, DATA_DIR, capture); } catch (e2) { /* best effort */ }
+    }
   }
 
   console.log('done');
