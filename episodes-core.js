@@ -7,10 +7,18 @@
  * INPUT CONTRACT (all times unix seconds; candle id = candle open time; dates 'YYYY-MM-DD' UTC)
  *   prior           null | { schemaVersion: 1, episodes: [...], coinState: {...} }   (never mutated; deep-cloned)
  *   capture         { captureId, issueTimeUtc, inputCutoffUtc, inputCutoffSec, date }   canonical captures only
- *   researchRows    { [cgId]: row } — the coin's WINNING fit at this capture, or absent/null for NOFIT. row:
+ *   researchRows    { [cgId]: row } — the coin's fit(s) at this capture, or absent/null for NOFIT. row:
  *                   { fit: { fitId, pivotIds[], supSlope, supIntercept, supportNow, invalidation, atr14, channelH,
- *                            supportTouches, lifecycleState }, price, gates[], entryEconomics{...as logged incl. stopBasis/targetSource} }
- *                   fit.supSlope/supIntercept are in the detector's index coordinates: y = slope*idx + intercept, idx = position in
+ *                            supportTouches, lifecycleState }, structuralFit: <same shape, or null/absent>, price,
+ *                     gates[], entryEconomics{...as logged incl. stopBasis/targetSource} }
+ *                   `fit` is the POLICY fit (channel-core.detectChannel, capped) — the §3 screen, opening a new episode
+ *                   and every predicate read this and ONLY this (Protocol v1.4 §3 rule 2/3). `structuralFit` (structure-
+ *                   core.detectStructure, uncapped) is CONTINUITY EVIDENCE ONLY when `fit` is null: it can keep an
+ *                   already-open episode matched (and reset K, exactly as a matched policy fit does) but it can never
+ *                   open an episode, satisfy a predicate, issue an order or consume an attempt. The continuity fit used
+ *                   for matching/K/anchor updates is `fit || structuralFit || null` (v1.4 §3 rule 1). A caller that
+ *                   never sets `structuralFit` sees byte-identical v1.3 behaviour (continuity fit === policy fit always).
+ *                   fit.supSlope/supIntercept (and structuralFit's) are in the detector's index coordinates: y = slope*idx + intercept, idx = position in
  *                   barsByCoin[cgId].candles filtered to id+86400 <= inputCutoffSec (the array the detector saw). capture.js guarantees it.
  *   barsByCoin      { [cgId]: { pair, venueEligible, metadataEligible, candles: [{id,open,high,low,close}] } } — candles USABLE at
  *                   issueTimeUtc (isClosed, endTime <= issueTimeUtc, fetchedAt <= issueTimeUtc), ascending by id, distinct ids.
@@ -18,7 +26,11 @@
  *   orderObligations array of { episodeId, cgId, remainingBars } from orders-core (pending: remaining eligible fill bars; open/unresolved: bars to horizon 20)
  *   cfg             DEFAULT_CFG overrides; cfg.manualDelistings = [{ cgId, listDate }]
  * Episode-day = an episode `matched` at this capture (the opening capture counts). episodeDays[] lists them for D2 with the screen result (and the row's gates, for the challenger predicate).
- * episodeDayRows[] (v1.3, Ruling 1): one immutable row per open episode per capture {episodeId, captureId, matchState, fitId, geometry {supportNow, invalidation, resistNow, atr14, width}, geomPartial, state, price}; episode records carry no days[].
+ * episodeDayRows[] (v1.3, Ruling 1; v1.4 adds fitKind/evidenceAnchors): one immutable row per open episode per capture
+ * {episodeId, captureId, matchState, fitId, fitKind ('policy'|'structural'|null), evidenceAnchors (anchor ids of the
+ * matched/candidate fit, ONLY when fitKind==='structural' — continuity evidence, never a policy fit or issuance
+ * source), geometry {supportNow, invalidation, resistNow, atr14, width}, geomPartial, state, price}; episode records
+ * carry no days[].
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory();
@@ -168,6 +180,11 @@
       var usableEval = venueOk && inCandles.length > 0 && inCandles[inCandles.length - 1].id === d1Id;
       var inUniverse = !!universe[cgId], delisted = delistedAsOf(cfg, cgId, capture.date);
       var row = researchRows[cgId] || null, fit = row && row.fit ? row.fit : null;
+      // v1.4 §3 rule 1: continuity fit = policyFit || structuralFit || null. Opening, the screen and every predicate
+      // still read `fit` (policy) ONLY, below and in episodeDays.push; contFit is used solely for matching/K/anchors.
+      var structFit = row && row.structuralFit ? row.structuralFit : null;
+      var contFit = fit || structFit || null;
+      var fitKind = fit ? 'policy' : (structFit ? 'structural' : null);
 
       // data-unavailable flag: 10th consecutive canonical capture with no usable evaluation for a mapped coin. Closes nothing.
       if (mapped) {
@@ -194,15 +211,15 @@
       if (!usableEval) {
         openEps().forEach(function (e) {
           e.lastMatchState = 'gap'; e.gapDays = (e.gapDays || 0) + 1;
-          rows.push({ episodeId: e.id, captureId: capture.captureId, matchState: 'gap', fitId: null, geometry: null, geomPartial: false, state: null, price: null });
+          rows.push({ episodeId: e.id, captureId: capture.captureId, matchState: 'gap', fitId: null, fitKind: null, evidenceAnchors: null, geometry: null, geomPartial: false, state: null, price: null });
         });
       } else {
         screen = screenOf(row, cfg, inUniverse, delisted);
-        if (fit) {
-          candAnchors = anchorsOfFit(fit);
+        if (contFit) {
+          candAnchors = anchorsOfFit(contFit);
           var open = openEps(), firstPossible = null, firstPossibleTests = null;
           for (i = 0; i < open.length && !matched; i++) {
-            var t = runTests(open[i], fit, candAnchors, inCandles, cfg);
+            var t = runTests(open[i], contFit, candAnchors, inCandles, cfg);
             if (t.a && t.b) { matched = open[i]; tests = t; }
             else if ((t.a || t.b) && !firstPossible) { firstPossible = open[i]; firstPossibleTests = t; }
           }
@@ -236,18 +253,28 @@
           e.lastMatchState = ms;
           if (isMatched && e !== opened) {
             e.anchorLive = candAnchors.slice(); e.anchorAudit = unionAnchors(e.anchorAudit, candAnchors);
-            e.refLine = refLineOf(fit, candAnchors, inCandles);
+            e.refLine = refLineOf(contFit, candAnchors, inCandles);
           }
-          // Episode-day row (Protocol v1.3 §2): NOT stored inside the episode record; returned to the caller, which writes data/forward/episode-days/<date>.<captureId>.json.
-          // Gates and entry economics live in the daily log, not here.
+          // Episode-day row (Protocol v1.3 §2, v1.4 fitKind/evidenceAnchors): NOT stored inside the episode record;
+          // returned to the caller, which writes data/forward/episode-days/<date>.<captureId>.json. Gates and entry
+          // economics live in the daily log, not here. fitId/geometry/state below describe the CONTINUITY fit
+          // (contFit) so a structural-only day still logs real evidence; fitKind says which kind it was. This is
+          // continuity evidence only — it never feeds the §3 screen, a predicate, issuance or an attempt (those all
+          // read `fit`, the policy fit, via `screen` and episodeDays below, never contFit/rows).
           var px = row && num(row.price) ? row.price : null;
-          rows.push({ episodeId: e.id, captureId: capture.captureId, matchState: ms, fitId: fit ? fit.fitId : null,
-            geometry: fit ? { supportNow: num(fit.supportNow) ? fit.supportNow : null, invalidation: num(fit.invalidation) ? fit.invalidation : null, resistNow: num(fit.resistNow) ? fit.resistNow : null, atr14: num(fit.atr14) ? fit.atr14 : null,
-              width: (px && px > 0 && num(fit.channelH)) ? fit.channelH / px : null } : null,
-            geomPartial: !!(tests && tests.geomPartial && (isMatched || isPossible)), state: fit ? fit.lifecycleState : null, price: px });
+          rows.push({ episodeId: e.id, captureId: capture.captureId, matchState: ms, fitId: contFit ? contFit.fitId : null, fitKind: fitKind,
+            evidenceAnchors: (fitKind === 'structural' && candAnchors) ? candAnchors.map(function (a) { return a.id; }) : null,
+            geometry: contFit ? { supportNow: num(contFit.supportNow) ? contFit.supportNow : null, invalidation: num(contFit.invalidation) ? contFit.invalidation : null, resistNow: num(contFit.resistNow) ? contFit.resistNow : null, atr14: num(contFit.atr14) ? contFit.atr14 : null,
+              width: (px && px > 0 && num(contFit.channelH)) ? contFit.channelH / px : null } : null,
+            geomPartial: !!(tests && tests.geomPartial && (isMatched || isPossible)), state: contFit ? contFit.lifecycleState : null, price: px });
           if (e.K >= cfg.K_FADE) closeEp(e, 'faded', capture, events);
         });
-        if (matched) {
+        // v1.4 §3 rule 2: an episode-day for ISSUANCE exists only when this capture also has a POLICY fit (`fit`).
+        // A structural-only day can keep `matched` true (continuity) but never becomes an episode-day here: it must
+        // never satisfy the screen/predicate, issue, or consume an attempt. Since screen.pass requires `fit` (see
+        // screenOf), and contFit === fit whenever fit is non-null, `matched` reached via a real policy fit implies
+        // fit is exactly this capture's contFit — no separate check needed beyond the `fit` guard below.
+        if (matched && fit) {
           var isOpening = matched === opened;
           episodeDays.push({ episodeId: matched.id, cgId: cgId, pair: matched.pair, captureId: capture.captureId, date: capture.date, opening: isOpening, screen: screen,
             fitId: fit.fitId, venueEligible: venueOk, metadataEligible: meta.metadataEligible !== false, price: row.price, entryEconomics: row.entryEconomics || null,

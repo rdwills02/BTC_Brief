@@ -1308,12 +1308,18 @@ function fwdParseTicker(json, assetPairs) {   // -> { ALTNAME: last trade price 
 }
 
 // ---- research row for D1/D2, built from the detector's own fit and verdict as logged ----
-function fwdResearchRow(fit, res, summary, price) {
-  if (!fit) return null;
-  var ee = fit.entryEconomics || null;
-  return { fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, atr14: fit.atr14, resistNow: fit.resistNow,
-      channelH: fit.channelH, supportTouches: fit.supportTouches, lifecycleState: fit.lifecycleState },
-    price: price, gates: (summary && summary.gates) || null, score: typeof fit.score === 'number' ? fit.score : null,
+// v1.4: `structuralFit` (structure-core's winner, whatever its positionBand) is accepted ONLY as continuity evidence
+// for episodes-core - it is written to the row's `structuralFit` field, never `fit`, and only when `fit` is null
+// (the caller guarantees this; see capture.js's forward-update wiring). `fit` null + `structuralFit` present still
+// means: no policy fit this capture - the §3 screen, opening and every predicate (which read row.fit only) see NOFIT
+// exactly as before v1.4. A caller that never passes `structuralFit` gets byte-identical v1.3 rows.
+function fwdResearchRow(fit, res, summary, price, structuralFit) {
+  if (!fit && !structuralFit) return null;
+  var ee = fit && fit.entryEconomics || null;
+  function lean(f) { return { fitId: f.fitId, pivotIds: f.pivotIds || [], supSlope: f.supSlope, supIntercept: f.supIntercept, supportNow: f.supportNow, invalidation: f.invalidation, atr14: f.atr14, resistNow: f.resistNow,
+    channelH: f.channelH, supportTouches: f.supportTouches, lifecycleState: f.lifecycleState }; }
+  return { fit: fit ? lean(fit) : null, structuralFit: (!fit && structuralFit) ? lean(structuralFit) : null,
+    price: price, gates: (summary && summary.gates) || null, score: fit && typeof fit.score === 'number' ? fit.score : null,
     entryEconomics: ee ? { entryZone: ee.entryZone, entryRef: ee.entryRef, defendedLow: ee.defendedLow, stop: ee.stop, stopBasis: ee.stopBasis, target: ee.target, targetSource: ee.targetSource, netRR: ee.netRR, grossRR: ee.grossRR, atr14: ee.atr14 } : null };
 }
 
@@ -1768,9 +1774,15 @@ async function main() {
         row.research = S.researchSummary(fit, res);
         // 17-H section 1: researchDaily = the research fit as the detector returned it (detectionDaily is the same object shape - no second field list), lean candles, written beside detectionDaily.
         // Section 1b: when the policy fit is null, the structural fallback runs on the SAME candles; its result is context only (research.fitId stays null, verdict NONE).
+        // st/so hoisted out of the else block (v1.4): the SAME structural fit computed for researchDaily below is
+        // reused for the forward update's continuity fallback a few lines down - no second detector call (Checkpoint
+        // 7 Code section). st is populated whenever structure-core finds a winner at all, regardless of positionBand;
+        // row.researchDaily (the page/log's own structural context row) still only shows it for upper/above-resistance,
+        // unchanged from 17-H section 1b - only the forward-update wiring below is new.
+        let so = null, st = null;
         if (fit) row.researchDaily = researchDailyOf(fit, row, null, cands, candPair);
         else {
-          const so = {}; let st = null;
+          so = {};
           if (cands && SC) { try { st = SC.detectStructure(cands, { coinId: row.cgId, timeframe: '1d', source: row.dailySource }, so); } catch (e) { console.warn('structural fallback failed for', row.cgId, '-', e.message); } }
           if (SC) {
             const band = st ? st.positionBand : null;
@@ -1785,9 +1797,12 @@ async function main() {
           const fe = fit.entryEconomics;
           Object.assign(row.research.entryEconomics, { entryLow: fe.entryZone[0], entryHigh: fe.entryZone[1], defendedLow: fe.defendedLow, stopBasis: fe.stopBasis, targetSource: fe.targetSource });
         }
-        if (fwdCfg && fit) {
+        // v1.4 §3 rule 1: when the policy fit is null, pass the structural winner (st, whatever its positionBand -
+        // continuity doesn't read band) into the forward update as CONTINUITY EVIDENCE ONLY. fwdResearchRow leaves
+        // `fit` null in that case, so episodes-core's screen/opening/predicates are untouched (they read `fit` only).
+        if (fwdCfg && (fit || st)) {
           const pid = fwdPairIdOf[row.cgId], px = pid && fwdInfo && fwdInfo.prices[pid];
-          fwdResearchByCoin[row.cgId] = fwdResearchRow(fit, res, row.research, typeof px === 'number' ? px : null);
+          fwdResearchByCoin[row.cgId] = fwdResearchRow(fit, res, row.research, typeof px === 'number' ? px : null, st);
         }
         if (fit) researchFits++;
         if (res.verdict === 'ACT') researchAct++;
