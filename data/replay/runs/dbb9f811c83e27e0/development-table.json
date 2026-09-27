@@ -1,0 +1,3616 @@
+{
+ "engineVersion": "replay-driver-v0.2-structural",
+ "baseCommit": "b10eef5ee803f857d01557ecb8dca110088c786f",
+ "storeHash": "d6f4110fc722912dca4284226eca5cf0abe8160a2fee615f9a067f117cbcb238",
+ "metadataSnapshotSha256": "df2f89ba0e8ea2c365d431bcaae7294663e269f1e870f027524adfd790e87a4e",
+ "firstAvailableCandle": "2024-10-02",
+ "firstAvailableCandleCoin": "aave",
+ "firstEligibleDate": "2024-10-31",
+ "firstEligibleCoin": "aave",
+ "warmUpNote": "The detector needs >= 30 usable candles before capture.js will attempt detectChannel at all (its own research-pass gate, mirrored here). Dates between the first available candle (2024-10-02, aave) and the first eligible date (2024-10-31, aave) are warm-up only for the earliest-starting coin - they are NOT zero-signal observations and must never be counted as episode-less/no-candidate days in any funnel, rate, or fill-count denominator.",
+ "volumeDefinition": "volume24h in this replay = the D-1 daily candle's base volume x price, where price is the Kraken OHLC vwap field (raw[5]) when present and positive, else the D-1 close - an approximation of USD quote turnover built from Kraken's own OHLC candle, not a directly reported exchange quote-turnover figure and not a plain close x base-volume computation either. Live capture.js instead reads the capture-time exchange/CoinGecko 24h volume figure directly (see contextDifferencesFromLive).",
+ "survivorshipNote": "Universe = the CURRENT (build-time) Kraken-designated-pair universe, held fixed for the whole window (v0.1 ruling). Coins that were once tradeable and are now delisted/dead cannot be reconstructed from the live caches this build reads, so survivorship bias here is LARGER than a monthly-reconstructed historical universe would show (spec §1/§8).",
+ "contextDifferencesFromLive": [
+  "price = the D-1 daily candle's close (live: the capture-time last-trade quote)",
+  "volume24h = the D-1 daily candle's quote volume in USD, base-volume x vwap (live: the capture-time exchange/CoinGecko 24h volume)",
+  "BTC regime (C5.btc-regime) = btcRegimeFromCandles() on the cached BTC candle series usable as of D (live: the same function on that capture's own freshly-fetched BTC series — identical definition, historical input)",
+  "touch volume (C4.touch-volume) = channel-core's own volTouch on the same lean candle array (identical to live; no substitution)",
+  "universe = the CURRENT Kraken-designated-pair universe held for the WHOLE window, not a monthly-reconstructed historical universe (v0.1 ruling; survivorship bias is therefore larger than a reconstructed universe would show)",
+  "designated pair and Kraken tick/lot/minOrder metadata are fixed for the whole window from one current snapshot, not re-derived per historical capture",
+  "no fetchedAt/latency modeling: a candle is usable as soon as its calendar day has closed (no live network lag to simulate)"
+ ],
+ "seed": 20260925,
+ "kind": "development-table",
+ "split": {
+  "start": "2024-09-01",
+  "end": "2025-07-31",
+  "embargoEnd": "2025-08-31",
+  "simulatedThrough": "2025-08-31"
+ },
+ "runId": "dbb9f811c83e27e0",
+ "policyFamilySize": 50,
+ "gridSize": 48,
+ "eligibilityRule": ">= 30 filled orders in development; no suspension in development",
+ "selectionRule": "one-sided 90% lower bootstrap bound on mean budget-R (b=20, seed 20260925), ties by fills/month then by smaller max drawdown",
+ "rows": [
+  {
+   "label": "N0",
+   "family": "reference",
+   "policyId": "N0",
+   "version": "baseline-screen-inzone",
+   "cfg": null,
+   "eligible": true,
+   "filled": 38,
+   "issued": 120,
+   "exited": 38,
+   "exitReasons": {
+    "target": 12,
+    "stop": 11,
+    "ambiguous-stop": 4,
+    "horizon": 11
+   },
+   "funnel": {
+    "order": 120,
+    "skipped-capacity": 195,
+    "skipped-exposure": 3
+   },
+   "meanBudgetR": 0.27573693062317306,
+   "medianBudgetR": 0.09707522821660332,
+   "fillsPerMonth": 3.4545454545454546,
+   "maxDrawdown": 0.10107986520850028,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2024-12": -1.5154470763325891,
+    "2025-01": -1.3019910460536153,
+    "2025-02": -3.244494032490633,
+    "2025-03": 6.552488186259549,
+    "2025-04": -0.9156366390250742,
+    "2025-05": 3.8983673730361845,
+    "2025-06": -0.706355842582105,
+    "2025-07": 9.967022422634665,
+    "2025-08": -2.2559499817658044
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|swing-high": 17,
+    "defended-low|independent": 84,
+    "cap|independent": 5,
+    "min-risk|independent": 11,
+    "min-risk|swing-high": 3
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.2757369306231731,
+     "lowerBound90": -0.074739064877731,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.2757369306231731,
+      "lowerBound90": -0.09529160138751946,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.2757369306231731,
+      "lowerBound90": -0.02363054043986884,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "B0-hist",
+   "family": "reference",
+   "policyId": "C1",
+   "version": "replay-B0hist",
+   "cfg": {
+    "requiredGates": [
+     "data.fit",
+     "data.price",
+     "struct.lifecycle",
+     "struct.quote-breach",
+     "struct.below-rail",
+     "C1.trend",
+     "C3.fresh-touch",
+     "C3.no-recent-break",
+     "C7.floor",
+     "C2.width",
+     "C2.entry-zone",
+     "C6.spike",
+     "H6.rr",
+     "C4.volume24h",
+     "C4.touch-volume",
+     "C5.btc-regime"
+    ]
+   },
+   "eligible": false,
+   "filled": 0,
+   "issued": 0,
+   "exited": 0,
+   "exitReasons": {},
+   "funnel": {},
+   "meanBudgetR": null,
+   "medianBudgetR": null,
+   "fillsPerMonth": 0,
+   "maxDrawdown": 0,
+   "suspended": false,
+   "monthlyBudgetR": {},
+   "stopBasisTargetSourceCrossTab": {},
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": null,
+     "lowerBound90": null,
+     "replications": 0,
+     "undefinedReplications": 10000,
+     "unvalidated": true
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": null,
+      "lowerBound90": null,
+      "replications": 0,
+      "undefinedReplications": 10000,
+      "unvalidated": true
+     },
+     "b40": {
+      "pointEstimate": null,
+      "lowerBound90": null,
+      "replications": 0,
+      "undefinedReplications": 10000,
+      "unvalidated": true
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 22,
+   "issued": 58,
+   "exited": 22,
+   "exitReasons": {
+    "target": 4,
+    "ambiguous-stop": 3,
+    "stop": 9,
+    "horizon": 6
+   },
+   "funnel": {
+    "order": 58,
+    "skipped-capacity": 36,
+    "skipped-exposure": 1
+   },
+   "meanBudgetR": 0.05344413070407325,
+   "medianBudgetR": -0.826247695769864,
+   "fillsPerMonth": 2,
+   "maxDrawdown": 0.09238450552978557,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.8534608143393823,
+    "2025-02": -2.7176619010500502,
+    "2025-03": 3.8733143198884927,
+    "2025-04": -0.7112241682049435,
+    "2025-05": 0.4969283276450512,
+    "2025-06": -0.6170970164956324,
+    "2025-07": 3.8733513699077458,
+    "2025-08": -1.16837924186167
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 52,
+    "cap|independent": 3,
+    "min-risk|independent": 3
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.05344413070407325,
+     "lowerBound90": -0.3634003503182761,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.05344413070407325,
+      "lowerBound90": -0.4066289979756479,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.05344413070407325,
+      "lowerBound90": -0.2866074706074954,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 23,
+   "issued": 57,
+   "exited": 23,
+   "exitReasons": {
+    "target": 4,
+    "stop": 10,
+    "ambiguous-stop": 3,
+    "horizon": 6
+   },
+   "funnel": {
+    "order": 57,
+    "skipped-exposure": 1,
+    "skipped-capacity": 33
+   },
+   "meanBudgetR": 0.004616509803403272,
+   "medianBudgetR": -0.941330029644706,
+   "fillsPerMonth": 2.090909090909091,
+   "maxDrawdown": 0.10694239945089618,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.922989076011307,
+    "2025-02": -2.7175568275398856,
+    "2025-03": 3.873332140884953,
+    "2025-04": -0.7112331274307939,
+    "2025-05": 0.4969475534178152,
+    "2025-06": -0.6172891020501863,
+    "2025-07": 3.8733679711490163,
+    "2025-08": -1.1683998069413364
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 54,
+    "min-risk|independent": 3
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.004616509803403272,
+     "lowerBound90": -0.3967742517564009,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.004616509803403272,
+      "lowerBound90": -0.4332089484843637,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.004616509803403272,
+      "lowerBound90": -0.33695195349577556,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[]-rr2-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 20,
+   "issued": 46,
+   "exited": 20,
+   "exitReasons": {
+    "stop": 8,
+    "ambiguous-stop": 2,
+    "horizon": 7,
+    "target": 3
+   },
+   "funnel": {
+    "order": 46,
+    "skipped-capacity": 29
+   },
+   "meanBudgetR": -0.05269821194450264,
+   "medianBudgetR": -0.6366242955506372,
+   "fillsPerMonth": 1.8181818181818181,
+   "maxDrawdown": 0.07578933333333333,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -3.403109102233799,
+    "2025-02": -1.5732580141758974,
+    "2025-03": 3.873401942964479,
+    "2025-04": -0.7112207486534197,
+    "2025-05": 2.416742837503133,
+    "2025-06": 0.4727167970395645,
+    "2025-07": -0.9608328519314199,
+    "2025-08": -1.1684050994026924
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 44,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 4,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.05269821194450264,
+     "lowerBound90": -0.47268019177943915,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.05269821194450264,
+      "lowerBound90": -0.46716131315240383,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.05269821194450264,
+      "lowerBound90": -0.5016826170626314,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[]-rr2-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 20,
+   "issued": 46,
+   "exited": 20,
+   "exitReasons": {
+    "stop": 8,
+    "ambiguous-stop": 2,
+    "horizon": 7,
+    "target": 3
+   },
+   "funnel": {
+    "order": 46,
+    "skipped-capacity": 29
+   },
+   "meanBudgetR": -0.05269821194450264,
+   "medianBudgetR": -0.6366242955506372,
+   "fillsPerMonth": 1.8181818181818181,
+   "maxDrawdown": 0.07578933333333333,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -3.403109102233799,
+    "2025-02": -1.5732580141758974,
+    "2025-03": 3.873401942964479,
+    "2025-04": -0.7112207486534197,
+    "2025-05": 2.416742837503133,
+    "2025-06": 0.4727167970395645,
+    "2025-07": -0.9608328519314199,
+    "2025-08": -1.1684050994026924
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 44,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 4,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.05269821194450264,
+     "lowerBound90": -0.47268019177943915,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.05269821194450264,
+      "lowerBound90": -0.46716131315240383,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.05269821194450264,
+      "lowerBound90": -0.5016826170626314,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 10,
+   "issued": 34,
+   "exited": 10,
+   "exitReasons": {
+    "target": 2,
+    "stop": 3,
+    "horizon": 4,
+    "ambiguous-stop": 1
+   },
+   "funnel": {
+    "order": 34,
+    "skipped-exposure": 1,
+    "skipped-capacity": 15
+   },
+   "meanBudgetR": -0.14999413847755433,
+   "medianBudgetR": -0.6560841844634165,
+   "fillsPerMonth": 0.9090909090909091,
+   "maxDrawdown": 0.06582947547509774,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": 0.48001825706925993,
+    "2025-02": -1.7064215572455526,
+    "2025-05": 0.1608914254654165,
+    "2025-06": 0.6728412635743013,
+    "2025-07": -1.1072707736389684
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 31,
+    "cap|independent": 3
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.14999413847755433,
+     "lowerBound90": -0.65023161355734,
+     "replications": 9994,
+     "undefinedReplications": 6,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.14999413847755433,
+      "lowerBound90": -0.630570576873632,
+      "replications": 9997,
+      "undefinedReplications": 3,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.14999413847755433,
+      "lowerBound90": -0.6380980039723613,
+      "replications": 9979,
+      "undefinedReplications": 21,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 12,
+   "issued": 34,
+   "exited": 12,
+   "exitReasons": {
+    "target": 2,
+    "stop": 5,
+    "horizon": 4,
+    "ambiguous-stop": 1
+   },
+   "funnel": {
+    "order": 34,
+    "skipped-exposure": 1,
+    "skipped-capacity": 12
+   },
+   "meanBudgetR": -0.29181213922675114,
+   "medianBudgetR": -0.9097919341846089,
+   "fillsPerMonth": 1.0909090909090908,
+   "maxDrawdown": 0.0676520406123237,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -0.5895178835998491,
+    "2025-02": -1.706376590219846,
+    "2025-05": 0.3619372065187368,
+    "2025-06": 0.6727609107956332,
+    "2025-07": -1.1072805624858244,
+    "2025-08": -1.1332687517298643
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 34
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.29181213922675114,
+     "lowerBound90": -0.746117105079268,
+     "replications": 9997,
+     "undefinedReplications": 3,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.29181213922675114,
+      "lowerBound90": -0.7122427239530201,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.29181213922675114,
+      "lowerBound90": -0.7481797431111756,
+      "replications": 9997,
+      "undefinedReplications": 3,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend]-rr2-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 23,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 3,
+    "horizon": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 23,
+    "skipped-capacity": 12
+   },
+   "meanBudgetR": 0.07567755583187749,
+   "medianBudgetR": -0.39313337850753965,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.04340372447630483,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.0696,
+    "2025-02": -0.5620398391977958,
+    "2025-05": 1.9198843629611078,
+    "2025-06": 1.4244767119318538,
+    "2025-07": -1.1073007890401456
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.07567755583187749,
+     "lowerBound90": -0.5277766049224794,
+     "replications": 9988,
+     "undefinedReplications": 12,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.4975006797716663,
+      "replications": 9992,
+      "undefinedReplications": 8,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.7437934891452457,
+      "replications": 9985,
+      "undefinedReplications": 15,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend]-rr2-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 23,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 3,
+    "horizon": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 23,
+    "skipped-capacity": 12
+   },
+   "meanBudgetR": 0.07567755583187749,
+   "medianBudgetR": -0.39313337850753965,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.04340372447630483,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.0696,
+    "2025-02": -0.5620398391977958,
+    "2025-05": 1.9198843629611078,
+    "2025-06": 1.4244767119318538,
+    "2025-07": -1.1073007890401456
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.07567755583187749,
+     "lowerBound90": -0.5277766049224794,
+     "replications": 9988,
+     "undefinedReplications": 12,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.4975006797716663,
+      "replications": 9992,
+      "undefinedReplications": 8,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.7437934891452457,
+      "replications": 9985,
+      "undefinedReplications": 15,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C3.fresh-touch]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C3.fresh-touch]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 17,
+   "issued": 55,
+   "exited": 17,
+   "exitReasons": {
+    "stop": 8,
+    "horizon": 6,
+    "ambiguous-stop": 1,
+    "target": 2
+   },
+   "funnel": {
+    "order": 55,
+    "skipped-exposure": 2,
+    "skipped-capacity": 32
+   },
+   "meanBudgetR": -0.22746447629297623,
+   "medianBudgetR": -0.7501596278390952,
+   "fillsPerMonth": 1.5454545454545454,
+   "maxDrawdown": 0.08557409341180938,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.222346758255001,
+    "2025-02": -2.717598221640025,
+    "2025-03": 3.8734238898921585,
+    "2025-04": -0.7111643897584367,
+    "2025-05": 0.49693644261545494,
+    "2025-06": -0.4569322337640598,
+    "2025-07": -0.9607610359764558,
+    "2025-08": -1.1684537900942302
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 50,
+    "cap|independent": 2,
+    "min-risk|independent": 3
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.22746447629297623,
+     "lowerBound90": -0.6013819210975425,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.22746447629297623,
+      "lowerBound90": -0.603189221091831,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.22746447629297623,
+      "lowerBound90": -0.6188905391356853,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C3.fresh-touch]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C3.fresh-touch]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 18,
+   "issued": 54,
+   "exited": 18,
+   "exitReasons": {
+    "stop": 9,
+    "horizon": 6,
+    "ambiguous-stop": 1,
+    "target": 2
+   },
+   "funnel": {
+    "order": 54,
+    "skipped-exposure": 2,
+    "skipped-capacity": 30
+   },
+   "meanBudgetR": -0.27425528530349524,
+   "medianBudgetR": -0.880640226281175,
+   "fillsPerMonth": 1.6363636363636365,
+   "maxDrawdown": 0.09011133333333333,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -3.2919719288340774,
+    "2025-02": -2.7176228317798463,
+    "2025-03": 3.8734063894148774,
+    "2025-04": -0.7112316675095398,
+    "2025-05": 0.4968632371392723,
+    "2025-06": -0.4568713875327646,
+    "2025-07": -0.9607468869184611,
+    "2025-08": -1.168420059442374
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 51,
+    "min-risk|independent": 3
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.27425528530349524,
+     "lowerBound90": -0.6343076469322897,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.27425528530349524,
+      "lowerBound90": -0.6346697841666118,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.27425528530349524,
+      "lowerBound90": -0.6595084160140693,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C3.fresh-touch]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C3.fresh-touch]-rr2-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 17,
+   "issued": 43,
+   "exited": 17,
+   "exitReasons": {
+    "stop": 8,
+    "horizon": 6,
+    "target": 3
+   },
+   "funnel": {
+    "order": 43,
+    "skipped-capacity": 28
+   },
+   "meanBudgetR": -0.0010853863672275347,
+   "medianBudgetR": -0.5620655875355693,
+   "fillsPerMonth": 1.5454545454545454,
+   "maxDrawdown": 0.058660666666666667,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.190066145715705,
+    "2025-02": -1.5732752167908641,
+    "2025-03": 3.873326829122558,
+    "2025-04": -0.7111496244945118,
+    "2025-05": 2.416838552258184,
+    "2025-06": 0.29492769552831466,
+    "2025-07": -0.9606713374184421,
+    "2025-08": -1.1683823207324018
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 41,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.0010853863672275347,
+     "lowerBound90": -0.4101249907797876,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.0010853863672275347,
+      "lowerBound90": -0.40084017345547035,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.0010853863672275347,
+      "lowerBound90": -0.44116180859885795,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C3.fresh-touch]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C3.fresh-touch]-rr2-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 17,
+   "issued": 43,
+   "exited": 17,
+   "exitReasons": {
+    "stop": 8,
+    "horizon": 6,
+    "target": 3
+   },
+   "funnel": {
+    "order": 43,
+    "skipped-capacity": 28
+   },
+   "meanBudgetR": -0.0010853863672275347,
+   "medianBudgetR": -0.5620655875355693,
+   "fillsPerMonth": 1.5454545454545454,
+   "maxDrawdown": 0.058660666666666667,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.190066145715705,
+    "2025-02": -1.5732752167908641,
+    "2025-03": 3.873326829122558,
+    "2025-04": -0.7111496244945118,
+    "2025-05": 2.416838552258184,
+    "2025-06": 0.29492769552831466,
+    "2025-07": -0.9606713374184421,
+    "2025-08": -1.1683823207324018
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 41,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.0010853863672275347,
+     "lowerBound90": -0.4101249907797876,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.0010853863672275347,
+      "lowerBound90": -0.40084017345547035,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.0010853863672275347,
+      "lowerBound90": -0.44116180859885795,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend+C3.fresh-touch]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend+C3.fresh-touch]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 10,
+   "issued": 34,
+   "exited": 10,
+   "exitReasons": {
+    "stop": 4,
+    "horizon": 4,
+    "ambiguous-stop": 1,
+    "target": 1
+   },
+   "funnel": {
+    "order": 34,
+    "skipped-exposure": 2,
+    "skipped-capacity": 14
+   },
+   "meanBudgetR": -0.42154167274704424,
+   "medianBudgetR": -0.9121701978919217,
+   "fillsPerMonth": 0.9090909090909091,
+   "maxDrawdown": 0.0658324631352446,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.7064283406598861,
+    "2025-05": 0.16076976582425226,
+    "2025-06": 0.6727408160923434,
+    "2025-07": -1.1072918098904625,
+    "2025-08": -1.133296047725578
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 31,
+    "cap|independent": 3
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.42154167274704424,
+     "lowerBound90": -0.9977248657152638,
+     "replications": 9994,
+     "undefinedReplications": 6,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.42154167274704424,
+      "lowerBound90": -0.901498072627723,
+      "replications": 9997,
+      "undefinedReplications": 3,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.42154167274704424,
+      "lowerBound90": -1.016062449200301,
+      "replications": 9986,
+      "undefinedReplications": 14,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend+C3.fresh-touch]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend+C3.fresh-touch]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 10,
+   "issued": 32,
+   "exited": 10,
+   "exitReasons": {
+    "stop": 4,
+    "horizon": 4,
+    "ambiguous-stop": 1,
+    "target": 1
+   },
+   "funnel": {
+    "order": 32,
+    "skipped-exposure": 2,
+    "skipped-capacity": 13
+   },
+   "meanBudgetR": -0.39506011344527003,
+   "medianBudgetR": -0.9098941974378297,
+   "fillsPerMonth": 0.9090909090909091,
+   "maxDrawdown": 0.06765466666666667,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.1715016215727903,
+    "2025-02": -1.7063983682574935,
+    "2025-05": 0.3619397709599887,
+    "2025-06": 0.6726313050918773,
+    "2025-07": -1.1072722206742824
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 32
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.39506011344527,
+     "lowerBound90": -1.0008016641683415,
+     "replications": 9992,
+     "undefinedReplications": 8,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.39506011344527,
+      "lowerBound90": -0.9008461852130927,
+      "replications": 9997,
+      "undefinedReplications": 3,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.39506011344527,
+      "lowerBound90": -1.005519333163845,
+      "replications": 9973,
+      "undefinedReplications": 27,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend+C3.fresh-touch]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend+C3.fresh-touch]-rr2-inclCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 23,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 3,
+    "horizon": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 23,
+    "skipped-capacity": 12
+   },
+   "meanBudgetR": 0.07567755583187749,
+   "medianBudgetR": -0.39313337850753965,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.04340372447630483,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.0696,
+    "2025-02": -0.5620398391977958,
+    "2025-05": 1.9198843629611078,
+    "2025-06": 1.4244767119318538,
+    "2025-07": -1.1073007890401456
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.07567755583187749,
+     "lowerBound90": -0.5277766049224794,
+     "replications": 9988,
+     "undefinedReplications": 12,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.4975006797716663,
+      "replications": 9992,
+      "undefinedReplications": 8,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.7437934891452457,
+      "replications": 9985,
+      "undefinedReplications": 15,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score70-gates[C1.trend+C3.fresh-touch]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score70-gates[C1.trend+C3.fresh-touch]-rr2-exCap",
+   "cfg": {
+    "minScore": 70,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 23,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 3,
+    "horizon": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 23,
+    "skipped-capacity": 12
+   },
+   "meanBudgetR": 0.07567755583187749,
+   "medianBudgetR": -0.39313337850753965,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.04340372447630483,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.0696,
+    "2025-02": -0.5620398391977958,
+    "2025-05": 1.9198843629611078,
+    "2025-06": 1.4244767119318538,
+    "2025-07": -1.1073007890401456
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.07567755583187749,
+     "lowerBound90": -0.5277766049224794,
+     "replications": 9988,
+     "undefinedReplications": 12,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.4975006797716663,
+      "replications": 9992,
+      "undefinedReplications": 8,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.07567755583187749,
+      "lowerBound90": -0.7437934891452457,
+      "replications": 9985,
+      "undefinedReplications": 15,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 16,
+   "issued": 36,
+   "exited": 16,
+   "exitReasons": {
+    "stop": 8,
+    "ambiguous-stop": 2,
+    "horizon": 5,
+    "target": 1
+   },
+   "funnel": {
+    "order": 36,
+    "skipped-exposure": 2,
+    "skipped-capacity": 17
+   },
+   "meanBudgetR": -0.4317069435264236,
+   "medianBudgetR": -0.976280089414977,
+   "fillsPerMonth": 1.4545454545454546,
+   "maxDrawdown": 0.09461756112482332,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.222346758255001,
+    "2025-02": -2.155571911872668,
+    "2025-03": 0.8014056415614018,
+    "2025-04": -0.7111955705705706,
+    "2025-05": 0.8587985743754836,
+    "2025-06": -1.1928803283628793,
+    "2025-07": -1.1170823179793832,
+    "2025-08": -1.1684384253191593
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 34,
+    "min-risk|independent": 1,
+    "cap|independent": 1
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.4317069435264236,
+     "lowerBound90": -0.7780193668210982,
+     "replications": 9999,
+     "undefinedReplications": 1,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.4317069435264236,
+      "lowerBound90": -0.7684688288136166,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.4317069435264236,
+      "lowerBound90": -0.8233592847045283,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 15,
+   "issued": 37,
+   "exited": 15,
+   "exitReasons": {
+    "stop": 7,
+    "ambiguous-stop": 2,
+    "horizon": 5,
+    "target": 1
+   },
+   "funnel": {
+    "order": 37,
+    "skipped-exposure": 2,
+    "skipped-capacity": 15
+   },
+   "meanBudgetR": -0.38761629844863577,
+   "medianBudgetR": -0.9413022705555808,
+   "fillsPerMonth": 1.3636363636363635,
+   "maxDrawdown": 0.07958686686496635,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.222346758255001,
+    "2025-02": -2.155571911872668,
+    "2025-03": 0.8014056415614018,
+    "2025-04": -0.7111955705705706,
+    "2025-05": 0.8587985743754836,
+    "2025-06": -0.0996897680164135,
+    "2025-07": -1.11723519151993,
+    "2025-08": -1.168409492431839
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 35,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.38761629844863577,
+     "lowerBound90": -0.7679601800867902,
+     "replications": 9999,
+     "undefinedReplications": 1,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.38761629844863577,
+      "lowerBound90": -0.7511946738307219,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.38761629844863577,
+      "lowerBound90": -0.8198976697381714,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[]-rr2-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 13,
+   "issued": 33,
+   "exited": 13,
+   "exitReasons": {
+    "stop": 6,
+    "horizon": 4,
+    "target": 2,
+    "ambiguous-stop": 1
+   },
+   "funnel": {
+    "order": 33,
+    "skipped-capacity": 11
+   },
+   "meanBudgetR": -0.08615712689589208,
+   "medianBudgetR": -0.7111756168359942,
+   "fillsPerMonth": 1.1818181818181819,
+   "maxDrawdown": 0.04500726273113108,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.1204444444444444,
+    "2025-02": -1.0112105596239038,
+    "2025-03": 0.8013862113283761,
+    "2025-04": -0.7111756168359942,
+    "2025-05": 2.4167478260671196,
+    "2025-06": 0.6505041725314387,
+    "2025-07": -0.9774853888360414,
+    "2025-08": -1.168364849833148
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 31,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 4,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.08615712689589208,
+     "lowerBound90": -0.5103411670999327,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.08615712689589208,
+      "lowerBound90": -0.5105063409425918,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.08615712689589208,
+      "lowerBound90": -0.5729334967347918,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[]-rr2-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 13,
+   "issued": 33,
+   "exited": 13,
+   "exitReasons": {
+    "stop": 6,
+    "horizon": 4,
+    "target": 2,
+    "ambiguous-stop": 1
+   },
+   "funnel": {
+    "order": 33,
+    "skipped-capacity": 11
+   },
+   "meanBudgetR": -0.08615712689589208,
+   "medianBudgetR": -0.7111756168359942,
+   "fillsPerMonth": 1.1818181818181819,
+   "maxDrawdown": 0.04500726273113108,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.1204444444444444,
+    "2025-02": -1.0112105596239038,
+    "2025-03": 0.8013862113283761,
+    "2025-04": -0.7111756168359942,
+    "2025-05": 2.4167478260671196,
+    "2025-06": 0.6505041725314387,
+    "2025-07": -0.9774853888360414,
+    "2025-08": -1.168364849833148
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 31,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 4,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.08615712689589208,
+     "lowerBound90": -0.5103411670999327,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.08615712689589208,
+      "lowerBound90": -0.5105063409425918,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.08615712689589208,
+      "lowerBound90": -0.5729334967347918,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 20,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 4,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-exposure": 2,
+    "skipped-capacity": 8
+   },
+   "meanBudgetR": -0.4079520912870508,
+   "medianBudgetR": -1.0975131435691599,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.06732564394658566,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 0.8780012820259131,
+    "2025-07": -1.1240173488750338,
+    "2025-08": -1.133357842010937
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 19,
+    "cap|independent": 1
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.4079520912870508,
+     "lowerBound90": -1.125200397203791,
+     "replications": 9986,
+     "undefinedReplications": 14,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.4079520912870508,
+      "lowerBound90": -1.1188945028390314,
+      "replications": 9987,
+      "undefinedReplications": 13,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.4079520912870508,
+      "lowerBound90": -1.1286531200579968,
+      "replications": 9981,
+      "undefinedReplications": 19,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 7,
+   "issued": 20,
+   "exited": 7,
+   "exitReasons": {
+    "stop": 3,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-exposure": 2,
+    "skipped-capacity": 7
+   },
+   "meanBudgetR": -0.3100600678141854,
+   "medianBudgetR": -1.101911111111111,
+   "fillsPerMonth": 0.6363636363636364,
+   "maxDrawdown": 0.05185523595553024,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 1.9710778430130795,
+    "2025-07": -1.1239944891338163,
+    "2025-08": -1.1332610071422113
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 20
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.3100600678141854,
+     "lowerBound90": -1.1251377243343124,
+     "replications": 9986,
+     "undefinedReplications": 14,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.3100600678141854,
+      "lowerBound90": -1.1197222024623794,
+      "replications": 9984,
+      "undefinedReplications": 16,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.3100600678141854,
+      "lowerBound90": -1.1286277481380138,
+      "replications": 9981,
+      "undefinedReplications": 19,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend]-rr2-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 5,
+   "issued": 16,
+   "exited": 5,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 2
+   },
+   "funnel": {
+    "order": 16,
+    "skipped-capacity": 5
+   },
+   "meanBudgetR": 0.47677840190631393,
+   "medianBudgetR": 0.36193867801615565,
+   "fillsPerMonth": 0.45454545454545453,
+   "maxDrawdown": 0.02106323433243351,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-07": -1.124003984063745,
+    "2025-08": -1.1332629801604053
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 16
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.47677840190631393,
+     "lowerBound90": -0.5333305176704488,
+     "replications": 9954,
+     "undefinedReplications": 46,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -0.45814359720725,
+      "replications": 9954,
+      "undefinedReplications": 46,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -1.124003984063745,
+      "replications": 9769,
+      "undefinedReplications": 231,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend]-rr2-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 5,
+   "issued": 16,
+   "exited": 5,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 2
+   },
+   "funnel": {
+    "order": 16,
+    "skipped-capacity": 5
+   },
+   "meanBudgetR": 0.47677840190631393,
+   "medianBudgetR": 0.36193867801615565,
+   "fillsPerMonth": 0.45454545454545453,
+   "maxDrawdown": 0.02106323433243351,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-07": -1.124003984063745,
+    "2025-08": -1.1332629801604053
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 16
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.47677840190631393,
+     "lowerBound90": -0.5333305176704488,
+     "replications": 9954,
+     "undefinedReplications": 46,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -0.45814359720725,
+      "replications": 9954,
+      "undefinedReplications": 46,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -1.124003984063745,
+      "replications": 9769,
+      "undefinedReplications": 231,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C3.fresh-touch]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C3.fresh-touch]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 15,
+   "issued": 34,
+   "exited": 15,
+   "exitReasons": {
+    "stop": 8,
+    "ambiguous-stop": 1,
+    "horizon": 5,
+    "target": 1
+   },
+   "funnel": {
+    "order": 34,
+    "skipped-exposure": 2,
+    "skipped-capacity": 17
+   },
+   "meanBudgetR": -0.3884243066675321,
+   "medianBudgetR": -1.0112612612612613,
+   "fillsPerMonth": 1.3636363636363635,
+   "maxDrawdown": 0.08906807058624981,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.222346758255001,
+    "2025-02": -2.155571911872668,
+    "2025-03": 0.8014056415614018,
+    "2025-04": -0.7111955705705706,
+    "2025-05": 0.8587985743754836,
+    "2025-06": -0.2515108380479947,
+    "2025-07": -0.9775181605836054,
+    "2025-08": -1.1684255766200278
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 32,
+    "min-risk|independent": 1,
+    "cap|independent": 1
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.3884243066675321,
+     "lowerBound90": -0.7552625717549767,
+     "replications": 9999,
+     "undefinedReplications": 1,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.3884243066675321,
+      "lowerBound90": -0.7441216404916741,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.3884243066675321,
+      "lowerBound90": -0.8081404439765918,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C3.fresh-touch]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C3.fresh-touch]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 14,
+   "issued": 36,
+   "exited": 14,
+   "exitReasons": {
+    "stop": 7,
+    "ambiguous-stop": 1,
+    "horizon": 5,
+    "target": 1
+   },
+   "funnel": {
+    "order": 36,
+    "skipped-exposure": 2,
+    "skipped-capacity": 14
+   },
+   "meanBudgetR": -0.3380858892035913,
+   "medianBudgetR": -0.8806833065682623,
+   "fillsPerMonth": 1.2727272727272727,
+   "maxDrawdown": 0.07770011919076851,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -2.222346758255001,
+    "2025-02": -2.155571911872668,
+    "2025-03": 0.8014056415614018,
+    "2025-04": -0.7111955705705706,
+    "2025-05": 0.8587985743754836,
+    "2025-06": 0.8416258112675035,
+    "2025-07": -0.9775604751159168,
+    "2025-08": -1.168357760240511
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 34,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.3380858892035913,
+     "lowerBound90": -0.7481990946765286,
+     "replications": 9999,
+     "undefinedReplications": 1,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.3380858892035913,
+      "lowerBound90": -0.7245482285784708,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.3380858892035913,
+      "lowerBound90": -0.804301952334131,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C3.fresh-touch]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C3.fresh-touch]-rr2-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 12,
+   "issued": 32,
+   "exited": 12,
+   "exitReasons": {
+    "stop": 6,
+    "horizon": 4,
+    "target": 2
+   },
+   "funnel": {
+    "order": 32,
+    "skipped-capacity": 11
+   },
+   "meanBudgetR": -0.014911892175194322,
+   "medianBudgetR": -0.28236858296848116,
+   "fillsPerMonth": 1.0909090909090908,
+   "maxDrawdown": 0.035074,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.1204444444444444,
+    "2025-02": -1.0112105596239038,
+    "2025-03": 0.8013862113283761,
+    "2025-04": -0.7111756168359942,
+    "2025-05": 2.4167478260671196,
+    "2025-06": 1.5917466941509404,
+    "2025-07": -0.977549600531766,
+    "2025-08": -1.1684432162126595
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 30,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.014911892175194322,
+     "lowerBound90": -0.4842807684445727,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.014911892175194322,
+      "lowerBound90": -0.47267692869270034,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.014911892175194322,
+      "lowerBound90": -0.5610710680708747,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C3.fresh-touch]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C3.fresh-touch]-rr2-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 12,
+   "issued": 32,
+   "exited": 12,
+   "exitReasons": {
+    "stop": 6,
+    "horizon": 4,
+    "target": 2
+   },
+   "funnel": {
+    "order": 32,
+    "skipped-capacity": 11
+   },
+   "meanBudgetR": -0.014911892175194322,
+   "medianBudgetR": -0.28236858296848116,
+   "fillsPerMonth": 1.0909090909090908,
+   "maxDrawdown": 0.035074,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.1204444444444444,
+    "2025-02": -1.0112105596239038,
+    "2025-03": 0.8013862113283761,
+    "2025-04": -0.7111756168359942,
+    "2025-05": 2.4167478260671196,
+    "2025-06": 1.5917466941509404,
+    "2025-07": -0.977549600531766,
+    "2025-08": -1.1684432162126595
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 30,
+    "min-risk|independent": 2
+   },
+   "sizeClippedCount": 3,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.014911892175194322,
+     "lowerBound90": -0.4842807684445727,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.014911892175194322,
+      "lowerBound90": -0.47267692869270034,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.014911892175194322,
+      "lowerBound90": -0.5610710680708747,
+      "replications": 9999,
+      "undefinedReplications": 1,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend+C3.fresh-touch]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend+C3.fresh-touch]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 20,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 4,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-exposure": 2,
+    "skipped-capacity": 8
+   },
+   "meanBudgetR": -0.4079520912870508,
+   "medianBudgetR": -1.0975131435691599,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.06732564394658566,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 0.8780012820259131,
+    "2025-07": -1.1240173488750338,
+    "2025-08": -1.133357842010937
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 19,
+    "cap|independent": 1
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.4079520912870508,
+     "lowerBound90": -1.125200397203791,
+     "replications": 9986,
+     "undefinedReplications": 14,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.4079520912870508,
+      "lowerBound90": -1.1188945028390314,
+      "replications": 9987,
+      "undefinedReplications": 13,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.4079520912870508,
+      "lowerBound90": -1.1286531200579968,
+      "replications": 9981,
+      "undefinedReplications": 19,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend+C3.fresh-touch]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend+C3.fresh-touch]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 7,
+   "issued": 20,
+   "exited": 7,
+   "exitReasons": {
+    "stop": 3,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-exposure": 2,
+    "skipped-capacity": 7
+   },
+   "meanBudgetR": -0.3100600678141854,
+   "medianBudgetR": -1.101911111111111,
+   "fillsPerMonth": 0.6363636363636364,
+   "maxDrawdown": 0.05185523595553024,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 1.9710778430130795,
+    "2025-07": -1.1239944891338163,
+    "2025-08": -1.1332610071422113
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 20
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.3100600678141854,
+     "lowerBound90": -1.1251377243343124,
+     "replications": 9986,
+     "undefinedReplications": 14,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.3100600678141854,
+      "lowerBound90": -1.1197222024623794,
+      "replications": 9984,
+      "undefinedReplications": 16,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.3100600678141854,
+      "lowerBound90": -1.1286277481380138,
+      "replications": 9981,
+      "undefinedReplications": 19,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend+C3.fresh-touch]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend+C3.fresh-touch]-rr2-inclCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 5,
+   "issued": 16,
+   "exited": 5,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 2
+   },
+   "funnel": {
+    "order": 16,
+    "skipped-capacity": 5
+   },
+   "meanBudgetR": 0.47677840190631393,
+   "medianBudgetR": 0.36193867801615565,
+   "fillsPerMonth": 0.45454545454545453,
+   "maxDrawdown": 0.02106323433243351,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-07": -1.124003984063745,
+    "2025-08": -1.1332629801604053
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 16
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.47677840190631393,
+     "lowerBound90": -0.5333305176704488,
+     "replications": 9954,
+     "undefinedReplications": 46,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -0.45814359720725,
+      "replications": 9954,
+      "undefinedReplications": 46,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -1.124003984063745,
+      "replications": 9769,
+      "undefinedReplications": 231,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score75-gates[C1.trend+C3.fresh-touch]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score75-gates[C1.trend+C3.fresh-touch]-rr2-exCap",
+   "cfg": {
+    "minScore": 75,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 5,
+   "issued": 16,
+   "exited": 5,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 2
+   },
+   "funnel": {
+    "order": 16,
+    "skipped-capacity": 5
+   },
+   "meanBudgetR": 0.47677840190631393,
+   "medianBudgetR": 0.36193867801615565,
+   "fillsPerMonth": 0.45454545454545453,
+   "maxDrawdown": 0.02106323433243351,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-07": -1.124003984063745,
+    "2025-08": -1.1332629801604053
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 16
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.47677840190631393,
+     "lowerBound90": -0.5333305176704488,
+     "replications": 9954,
+     "undefinedReplications": 46,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -0.45814359720725,
+      "replications": 9954,
+      "undefinedReplications": 46,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.47677840190631393,
+      "lowerBound90": -1.124003984063745,
+      "replications": 9769,
+      "undefinedReplications": 231,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 24,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 4,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 24,
+    "skipped-exposure": 2,
+    "skipped-capacity": 4
+   },
+   "meanBudgetR": -0.16235086523503087,
+   "medianBudgetR": -0.8844103668220884,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.051017340674640844,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-03": 0.8014530071730734,
+    "2025-04": -0.7111767378464334,
+    "2025-05": 0.3619747416762342,
+    "2025-06": 1.6636082618783554,
+    "2025-08": -1.1684130735274445
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.16235086523503087,
+     "lowerBound90": -0.7660740306696019,
+     "replications": 9998,
+     "undefinedReplications": 2,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7310344399652791,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7925334981018642,
+      "replications": 9998,
+      "undefinedReplications": 2,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 24,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 4,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 24,
+    "skipped-exposure": 2,
+    "skipped-capacity": 4
+   },
+   "meanBudgetR": -0.16235086523503087,
+   "medianBudgetR": -0.8844103668220884,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.051017340674640844,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-03": 0.8014530071730734,
+    "2025-04": -0.7111767378464334,
+    "2025-05": 0.3619747416762342,
+    "2025-06": 1.6636082618783554,
+    "2025-08": -1.1684130735274445
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.16235086523503087,
+     "lowerBound90": -0.7660740306696019,
+     "replications": 9998,
+     "undefinedReplications": 2,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7310344399652791,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7925334981018642,
+      "replications": 9998,
+      "undefinedReplications": 2,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[]-rr2-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 7,
+   "issued": 20,
+   "exited": 7,
+   "exitReasons": {
+    "horizon": 2,
+    "stop": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-capacity": 3
+   },
+   "meanBudgetR": 0.3533089486565157,
+   "medianBudgetR": 0.36201960614210116,
+   "fillsPerMonth": 0.6363636363636364,
+   "maxDrawdown": 0.01569924108935946,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-03": 0.8014666666666667,
+    "2025-04": -0.7111989459815546,
+    "2025-05": 1.919903128869374,
+    "2025-06": 1.6314341205985416,
+    "2025-08": -1.1684423295574178
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 19,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.3533089486565157,
+     "lowerBound90": -0.1885097690562358,
+     "replications": 9980,
+     "undefinedReplications": 20,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.21079063491491773,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.2334136517766386,
+      "replications": 9955,
+      "undefinedReplications": 45,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[]-rr2-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 7,
+   "issued": 20,
+   "exited": 7,
+   "exitReasons": {
+    "horizon": 2,
+    "stop": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-capacity": 3
+   },
+   "meanBudgetR": 0.3533089486565157,
+   "medianBudgetR": 0.36201960614210116,
+   "fillsPerMonth": 0.6363636363636364,
+   "maxDrawdown": 0.01569924108935946,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-03": 0.8014666666666667,
+    "2025-04": -0.7111989459815546,
+    "2025-05": 1.919903128869374,
+    "2025-06": 1.6314341205985416,
+    "2025-08": -1.1684423295574178
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 19,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.3533089486565157,
+     "lowerBound90": -0.1885097690562358,
+     "replications": 9980,
+     "undefinedReplications": 20,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.21079063491491773,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.2334136517766386,
+      "replications": 9955,
+      "undefinedReplications": 45,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 6,
+   "issued": 15,
+   "exited": 6,
+   "exitReasons": {
+    "stop": 3,
+    "ambiguous-stop": 1,
+    "horizon": 1,
+    "target": 1
+   },
+   "funnel": {
+    "order": 15,
+    "skipped-exposure": 2,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": -0.22564941818946027,
+   "medianBudgetR": -1.0797445430246857,
+   "fillsPerMonth": 0.5454545454545454,
+   "maxDrawdown": 0.0521782640339219,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 1.6636498837281593,
+    "2025-08": -1.1333035714285715
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 15
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.22564941818946027,
+     "lowerBound90": -1.1246791577718096,
+     "replications": 9952,
+     "undefinedReplications": 48,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1144680952380952,
+      "replications": 9965,
+      "undefinedReplications": 35,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1301983771189843,
+      "replications": 9970,
+      "undefinedReplications": 30,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 6,
+   "issued": 15,
+   "exited": 6,
+   "exitReasons": {
+    "stop": 3,
+    "ambiguous-stop": 1,
+    "horizon": 1,
+    "target": 1
+   },
+   "funnel": {
+    "order": 15,
+    "skipped-exposure": 2,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": -0.22564941818946027,
+   "medianBudgetR": -1.0797445430246857,
+   "fillsPerMonth": 0.5454545454545454,
+   "maxDrawdown": 0.0521782640339219,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 1.6636498837281593,
+    "2025-08": -1.1333035714285715
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 15
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.22564941818946027,
+     "lowerBound90": -1.1246791577718096,
+     "replications": 9952,
+     "undefinedReplications": 48,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1144680952380952,
+      "replications": 9965,
+      "undefinedReplications": 35,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1301983771189843,
+      "replications": 9970,
+      "undefinedReplications": 30,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend]-rr2-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 4,
+   "issued": 11,
+   "exited": 4,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 1
+   },
+   "funnel": {
+    "order": 11,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": 0.8769750854044016,
+   "medianBudgetR": 0.9599471167858555,
+   "fillsPerMonth": 0.36363636363636365,
+   "maxDrawdown": 0.014326690109793629,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-08": -1.1332586321381142
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 11
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.8769750854044016,
+     "lowerBound90": -0.23618723624022428,
+     "replications": 9833,
+     "undefinedReplications": 167,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.18632383080441262,
+      "replications": 9874,
+      "undefinedReplications": 126,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.46045508521469675,
+      "replications": 9652,
+      "undefinedReplications": 348,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend]-rr2-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 4,
+   "issued": 11,
+   "exited": 4,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 1
+   },
+   "funnel": {
+    "order": 11,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": 0.8769750854044016,
+   "medianBudgetR": 0.9599471167858555,
+   "fillsPerMonth": 0.36363636363636365,
+   "maxDrawdown": 0.014326690109793629,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-08": -1.1332586321381142
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 11
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.8769750854044016,
+     "lowerBound90": -0.23618723624022428,
+     "replications": 9833,
+     "undefinedReplications": 167,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.18632383080441262,
+      "replications": 9874,
+      "undefinedReplications": 126,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.46045508521469675,
+      "replications": 9652,
+      "undefinedReplications": 348,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C3.fresh-touch]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C3.fresh-touch]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 24,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 4,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 24,
+    "skipped-exposure": 2,
+    "skipped-capacity": 4
+   },
+   "meanBudgetR": -0.16235086523503087,
+   "medianBudgetR": -0.8844103668220884,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.051017340674640844,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-03": 0.8014530071730734,
+    "2025-04": -0.7111767378464334,
+    "2025-05": 0.3619747416762342,
+    "2025-06": 1.6636082618783554,
+    "2025-08": -1.1684130735274445
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.16235086523503087,
+     "lowerBound90": -0.7660740306696019,
+     "replications": 9998,
+     "undefinedReplications": 2,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7310344399652791,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7925334981018642,
+      "replications": 9998,
+      "undefinedReplications": 2,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C3.fresh-touch]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C3.fresh-touch]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 8,
+   "issued": 24,
+   "exited": 8,
+   "exitReasons": {
+    "stop": 4,
+    "ambiguous-stop": 1,
+    "horizon": 2,
+    "target": 1
+   },
+   "funnel": {
+    "order": 24,
+    "skipped-exposure": 2,
+    "skipped-capacity": 4
+   },
+   "meanBudgetR": -0.16235086523503087,
+   "medianBudgetR": -0.8844103668220884,
+   "fillsPerMonth": 0.7272727272727273,
+   "maxDrawdown": 0.051017340674640844,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-03": 0.8014530071730734,
+    "2025-04": -0.7111767378464334,
+    "2025-05": 0.3619747416762342,
+    "2025-06": 1.6636082618783554,
+    "2025-08": -1.1684130735274445
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 23,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.16235086523503087,
+     "lowerBound90": -0.7660740306696019,
+     "replications": 9998,
+     "undefinedReplications": 2,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7310344399652791,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.16235086523503087,
+      "lowerBound90": -0.7925334981018642,
+      "replications": 9998,
+      "undefinedReplications": 2,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C3.fresh-touch]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C3.fresh-touch]-rr2-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 7,
+   "issued": 20,
+   "exited": 7,
+   "exitReasons": {
+    "horizon": 2,
+    "stop": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-capacity": 3
+   },
+   "meanBudgetR": 0.3533089486565157,
+   "medianBudgetR": 0.36201960614210116,
+   "fillsPerMonth": 0.6363636363636364,
+   "maxDrawdown": 0.01569924108935946,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-03": 0.8014666666666667,
+    "2025-04": -0.7111989459815546,
+    "2025-05": 1.919903128869374,
+    "2025-06": 1.6314341205985416,
+    "2025-08": -1.1684423295574178
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 19,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.3533089486565157,
+     "lowerBound90": -0.1885097690562358,
+     "replications": 9980,
+     "undefinedReplications": 20,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.21079063491491773,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.2334136517766386,
+      "replications": 9955,
+      "undefinedReplications": 45,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C3.fresh-touch]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C3.fresh-touch]-rr2-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 7,
+   "issued": 20,
+   "exited": 7,
+   "exitReasons": {
+    "horizon": 2,
+    "stop": 3,
+    "target": 2
+   },
+   "funnel": {
+    "order": 20,
+    "skipped-capacity": 3
+   },
+   "meanBudgetR": 0.3533089486565157,
+   "medianBudgetR": 0.36201960614210116,
+   "fillsPerMonth": 0.6363636363636364,
+   "maxDrawdown": 0.01569924108935946,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-03": 0.8014666666666667,
+    "2025-04": -0.7111989459815546,
+    "2025-05": 1.919903128869374,
+    "2025-06": 1.6314341205985416,
+    "2025-08": -1.1684423295574178
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 19,
+    "min-risk|independent": 1
+   },
+   "sizeClippedCount": 2,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.3533089486565157,
+     "lowerBound90": -0.1885097690562358,
+     "replications": 9980,
+     "undefinedReplications": 20,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.21079063491491773,
+      "replications": 9996,
+      "undefinedReplications": 4,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.3533089486565157,
+      "lowerBound90": -0.2334136517766386,
+      "replications": 9955,
+      "undefinedReplications": 45,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend+C3.fresh-touch]-rr1.5-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend+C3.fresh-touch]-rr1.5-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 6,
+   "issued": 15,
+   "exited": 6,
+   "exitReasons": {
+    "stop": 3,
+    "ambiguous-stop": 1,
+    "horizon": 1,
+    "target": 1
+   },
+   "funnel": {
+    "order": 15,
+    "skipped-exposure": 2,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": -0.22564941818946027,
+   "medianBudgetR": -1.0797445430246857,
+   "fillsPerMonth": 0.5454545454545454,
+   "maxDrawdown": 0.0521782640339219,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 1.6636498837281593,
+    "2025-08": -1.1333035714285715
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 15
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.22564941818946027,
+     "lowerBound90": -1.1246791577718096,
+     "replications": 9952,
+     "undefinedReplications": 48,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1144680952380952,
+      "replications": 9965,
+      "undefinedReplications": 35,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1301983771189843,
+      "replications": 9970,
+      "undefinedReplications": 30,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend+C3.fresh-touch]-rr1.5-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend+C3.fresh-touch]-rr1.5-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 1.5,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 6,
+   "issued": 15,
+   "exited": 6,
+   "exitReasons": {
+    "stop": 3,
+    "ambiguous-stop": 1,
+    "horizon": 1,
+    "target": 1
+   },
+   "funnel": {
+    "order": 15,
+    "skipped-exposure": 2,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": -0.22564941818946027,
+   "medianBudgetR": -1.0797445430246857,
+   "fillsPerMonth": 0.5454545454545454,
+   "maxDrawdown": 0.0521782640339219,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-01": -1.101911111111111,
+    "2025-02": -1.1443420101229211,
+    "2025-05": 0.36201029979768257,
+    "2025-06": 1.6636498837281593,
+    "2025-08": -1.1333035714285715
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 15
+   },
+   "sizeClippedCount": 0,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": -0.22564941818946027,
+     "lowerBound90": -1.1246791577718096,
+     "replications": 9952,
+     "undefinedReplications": 48,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1144680952380952,
+      "replications": 9965,
+      "undefinedReplications": 35,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": -0.22564941818946027,
+      "lowerBound90": -1.1301983771189843,
+      "replications": 9970,
+      "undefinedReplications": 30,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend+C3.fresh-touch]-rr2-inclCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend+C3.fresh-touch]-rr2-inclCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": []
+   },
+   "eligible": false,
+   "filled": 4,
+   "issued": 11,
+   "exited": 4,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 1
+   },
+   "funnel": {
+    "order": 11,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": 0.8769750854044016,
+   "medianBudgetR": 0.9599471167858555,
+   "fillsPerMonth": 0.36363636363636365,
+   "maxDrawdown": 0.014326690109793629,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-08": -1.1332586321381142
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 11
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.8769750854044016,
+     "lowerBound90": -0.23618723624022428,
+     "replications": 9833,
+     "undefinedReplications": 167,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.18632383080441262,
+      "replications": 9874,
+      "undefinedReplications": 126,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.46045508521469675,
+      "replications": 9652,
+      "undefinedReplications": 348,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "G-score80-gates[C1.trend+C3.fresh-touch]-rr2-exCap",
+   "family": "grid",
+   "policyId": "C1",
+   "version": "replay-G-score80-gates[C1.trend+C3.fresh-touch]-rr2-exCap",
+   "cfg": {
+    "minScore": 80,
+    "minNetRR": 2,
+    "requiredGates": [
+     "C1.trend",
+     "C3.fresh-touch"
+    ],
+    "excludeStopBasis": [
+     "cap"
+    ]
+   },
+   "eligible": false,
+   "filled": 4,
+   "issued": 11,
+   "exited": 4,
+   "exitReasons": {
+    "target": 2,
+    "horizon": 1,
+    "stop": 1
+   },
+   "funnel": {
+    "order": 11,
+    "skipped-capacity": 1
+   },
+   "meanBudgetR": 0.8769750854044016,
+   "medianBudgetR": 0.9599471167858555,
+   "fillsPerMonth": 0.36363636363636365,
+   "maxDrawdown": 0.014326690109793629,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-05": 1.919894233571711,
+    "2025-06": 2.7212647401840093,
+    "2025-08": -1.1332586321381142
+   },
+   "stopBasisTargetSourceCrossTab": {
+    "defended-low|independent": 11
+   },
+   "sizeClippedCount": 1,
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.8769750854044016,
+     "lowerBound90": -0.23618723624022428,
+     "replications": 9833,
+     "undefinedReplications": 167,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.18632383080441262,
+      "replications": 9874,
+      "undefinedReplications": 126,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.8769750854044016,
+      "lowerBound90": -0.46045508521469675,
+      "replications": 9652,
+      "undefinedReplications": 348,
+      "unvalidated": false
+     }
+    }
+   }
+  }
+ ],
+ "developmentRanking": [],
+ "winner": null,
+ "pboCscv": {
+  "pbo": 0.4913752913752914,
+  "combinations": 12870,
+  "blocks": 16
+ },
+ "recommendation": "no-eligible-configuration",
+ "validationNote": "The validation split is not implemented in this build (spec v0.1 §8: selection is not applied until the analysis-thread review of the family+rule is in). --select DOES run below (checkpoint 7b: \"run validation ONLY if a configuration was selected\") - it is validation specifically, not the selection rule itself, that stays gated; recommendation === \"no-eligible-configuration\" means there is nothing to validate here."
+}
