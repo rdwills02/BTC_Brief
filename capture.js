@@ -867,13 +867,32 @@ function rowForCandle(pulled, idx, catLabels, diag) {
 // grid-index slicing — this runs once per calendar day on whatever daily history is cached,
 // so it always uses the full series. Written for EVERY coin, EVERY run, regardless of score —
 // see the header note on why this is unfiltered (same principle as upgrade #1c's candidates()).
-// 17-H section 1: the research fit as the detector returned it, with lean candles and the four identity fields stated explicitly (all native to the fit; nothing is re-derived). A structural fit also carries structural:true,
+// 17-H section 1: the research fit as the detector returned it, with the four identity fields stated explicitly (all native to the fit; nothing is re-derived). A structural fit also carries structural:true,
 // positionBand, lastTouchTime and its per-stage rejection counts (structure-core.js).
-function researchDailyOf(fit, row, rejections) {
+// 17-H Amendment A (2026-09-27): no inline candles. `fullCands` is the lean array detectChannel/detectStructure actually searched (`cands` at the call site) - same length and
+// order as data/cache/<cgId>.json's ohlcDaily (both are 1:1 toLeanCandles() maps of the same p.dailyCandles/p.cache.ohlcDaily array; nothing filters between them in the non-forward
+// path). fit.candles (candles.slice(-150), set by channel-core.js/structure-core.js) is therefore always fullCands' own tail slice, so its boundary in fullCands is exact, not inferred.
+// candlesRef lets the page re-fetch that exact window from the cache file instead of carrying it in every daily file: firstIdx/lastIdx bound the slice, lastId + sha256 let the page
+// prove the fetched slice is still the one the fit saw (sha256 over JSON.stringify([{id,open,high,low,close}, ...]) in candle order, id = candle.time - the same identifier
+// pivotIds/touchEvents already use elsewhere in this codebase).
+function researchDailyOf(fit, row, rejections, fullCands, pairVal) {
   const o = Object.assign({}, fit);
-  o.candles = toLeanCandles(fit.candles || []);
+  const full = fullCands || [];
+  const lean = toLeanCandles(fit.candles || []);
+  const n = full.length, m = lean.length;
+  const firstIdx = Math.max(0, n - m), lastIdx = n - 1;
+  delete o.candles;
   o.timeframe = '1d'; o.candleSource = row.dailySource; o.fitId = fit.fitId; o.detectionAsOf = fit.detectionAsOf; o.detectionPrice = fit.detectionPrice;
   if (rejections) o.rejections = rejections;
+  o.candlesRef = {
+    path: 'data/cache/' + row.cgId + '.json',
+    pair: pairVal || null,
+    firstIdx: firstIdx,
+    lastIdx: lastIdx,
+    lastId: lean.length ? lean[lean.length - 1].time : null,
+    count: m,
+    sha256: crypto.createHash('sha256').update(JSON.stringify(lean.map(function (c) { return { id: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }))).digest('hex')
+  };
   return o;
 }
 function rowForDaily(pulled, catLabels, diag) {
@@ -1743,12 +1762,13 @@ async function main() {
         // so the fit's index coordinates are the ones episodes-core.js expects (Build Spec D1 input contract).
         if (fwdCfg && p && fwdPairIdOf[p.coin.id] && exMap[p.coin.id] && exMap[p.coin.id].exchange === 'kraken') candSrc = fwdUsableCandles(p.cache.ohlcDaily, fwdCandlePair(fwdPairIdOf[p.coin.id]), capture.issueSec).filter(c => c.time + DAY_SECONDS <= capture.inputCutoffSec);
         const cands = (candSrc && candSrc.length >= 30) ? toLeanCandles(candSrc) : null;
+        const candPair = (candSrc && candSrc.length) ? (candSrc[candSrc.length - 1].pair || null) : null;   // 17-H Amendment A: the stamped exchange/coingecko pair, carried on candlesRef only (LEAN_CANDLE_FIELDS never included it)
         const fit = cands ? C.detectChannel(cands, null, { coinId: row.cgId, timeframe: '1d', source: row.dailySource, research: true }) : null;
         const res = C.researchVerdict(fit, { price: row.price, volume24h: row.volume24h, btc: btcRegime, quote: null, floor: C.ACT_SCORE_FLOOR_1D });
         row.research = S.researchSummary(fit, res);
         // 17-H section 1: researchDaily = the research fit as the detector returned it (detectionDaily is the same object shape - no second field list), lean candles, written beside detectionDaily.
         // Section 1b: when the policy fit is null, the structural fallback runs on the SAME candles; its result is context only (research.fitId stays null, verdict NONE).
-        if (fit) row.researchDaily = researchDailyOf(fit, row, null);
+        if (fit) row.researchDaily = researchDailyOf(fit, row, null, cands, candPair);
         else {
           const so = {}; let st = null;
           if (cands && SC) { try { st = SC.detectStructure(cands, { coinId: row.cgId, timeframe: '1d', source: row.dailySource }, so); } catch (e) { console.warn('structural fallback failed for', row.cgId, '-', e.message); } }
@@ -1757,7 +1777,7 @@ async function main() {
             row.research.reason = !cands ? 'data-gap' : (band === 'upper' ? 'upper-channel' : (band === 'above-resistance' ? 'above-resistance' : 'no-structure'));
             if (st && !band) console.warn('structural fit with position <= 0.75 for', row.cgId, '(policy fit was null) - treated as no-structure');
             if (cands) row.research.rejections = so.rejections || null;
-            if (st && band) row.researchDaily = researchDailyOf(st, row, so.rejections || null);
+            if (st && band) row.researchDaily = researchDailyOf(st, row, so.rejections || null, cands, candPair);
           }
         }
         if (fwdCfg && fit && row.research && row.research.entryEconomics && fit.entryEconomics) {

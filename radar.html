@@ -3530,8 +3530,33 @@ function renderTable() {
   }).join('') + pinStubs.map(pinStubHTML).join('');
 }
 
-function openDetail(r) {
+async function openDetail(r) {
   if (r && r.boardRow && r.noResearchFit) { openDetailNoFit(r); return; }   // 17-H: no research fit = no fit figures anywhere in the panel
+  // 17-H Amendment A: fetch this row's candle window BEFORE building anything below, so the panel, the chart, the
+  // refit verification (deferred from boardRowFor - see its comment) and every candle-derived narrative
+  // (boardStructuralText et al., read live by researchStateFor/researchAnalysisText) all see the real series in one
+  // pass - exactly as when candles were inline. Never fetched on page load; at most once per coin per session
+  // (CANDLE_CACHE). A fetch/hash failure leaves r.candles null - the existing "no chart" branch below already
+  // covers that display case unchanged, and console.warn already logged the reason inside boardFetchCandles().
+  if (r && r.boardRow && r.researchRow && r.researchRow.candlesRef && !r.candles) {
+    var openedKey = rowKey(r);
+    var entry = await boardFetchCandles(r);
+    if (selectedKey !== null && selectedKey !== openedKey) return;   // the panel moved to a different coin while this was in flight
+    if (entry && entry.candles) {
+      // 17-H Amendment A: re-run boardRowFor() with the fetched candles attached to researchDaily - the EXACT same
+      // path 17-H took when candles were inline (synchronous refit, boardFitMatches tolerance, every field copied
+      // from the refit) - so the row ends up byte-identical to 17-H's rendering, not a fresh approximation of it.
+      var c0 = LAST_DAILY_CAP && LAST_DAILY_CAP.coins && LAST_DAILY_CAP.coins.find(function (x) { return x.cgId === r.cgId; });
+      if (c0 && c0.researchDaily) {
+        var patched = Object.assign({}, c0, { researchDaily: Object.assign({}, c0.researchDaily, { candles: entry.candles }) });
+        var freshR;
+        try { freshR = boardRowFor(patched, LAST_DAILY_CAP, r.legacyRow); } catch (e) { freshR = null; }
+        if (freshR) { Object.assign(r, freshR); }
+      } else {
+        r.candles = entry.candles; if (r.researchRow) r.researchRow.candles = entry.candles;   // no raw coin on hand (shouldn't happen) - at least draw the chart
+      }
+    }
+  }
   panelLayout(RESEARCH_MODE_UI);   // Step 17-A (P3): research view builds the reorganised panel; legacy keeps the original DOM
   document.getElementById('detail-panel').style.display='flex';
   document.getElementById('layout').classList.add('open');
@@ -3626,6 +3651,12 @@ function openDetail(r) {
   if(r.candles) {
     buildChart(r);
     p3PlaceLegend();   // Step 17-A: the research legend lives in the hover key popover
+  } else if (r.boardRow && r.researchRow && r.researchRow.candlesRef) {
+    // 17-H Amendment A: the fetch above failed (404, lastId drift, or a sha256 mismatch) - boardFetchCandles()
+    // already console.warn'd the reason with this coin's cgId. The row itself stays exactly as rendered above;
+    // only the chart pane is affected.
+    if(detailChart){detailChart.remove();detailChart=null;}
+    document.getElementById('detail-chart').innerHTML = '<div class="state-view" style="height:100%"><div class="state-title">Candles unavailable</div><div class="state-sub">Could not load this coin\'s candle window from data/cache.</div></div>';
   } else {
     // Cached candidate - chart-only geometry (candles/pivotLows/supSlope/supIntercept)
     // isn't retained in the localStorage cache to keep it small. Re-run a scan this
@@ -4610,7 +4641,7 @@ window.addEventListener('load', function() {
 // Objective: every cell, filter, sort key and detail-panel figure on the research board describes ONE fit - the research fit the capture computed for that coin (data/latest-daily.json coins[].researchDaily;
 // a structural fit from structure-core.js when the policy fit is null). The board's population is the daily file's whole universe. Legacy measurements (detectionDaily, the grid detection) stay on row.legacyRow for the
 // Legacy view and the Legacy detail section only. Display only: nothing here changes a verdict, gate or score.
-var BOARD_ROWS = [], LEGACY_ROWS = [], BOARD_SUMMARY = null;
+var BOARD_ROWS = [], LEGACY_ROWS = [], BOARD_SUMMARY = null, LAST_DAILY_CAP = null;   // 17-H Amendment A: LAST_DAILY_CAP retains the raw daily coins[] so openDetail() can re-run boardRowFor() once a row's candles are fetched
 var HIDE_STRUCT_ONLY = false;
 var BOARD_PATTERN_KEYS = ['bb3','bullEngulf','threeInsideUp','rocket','multiSignal','bb3UpperReversion','threeInsideDown'];
 function rowKey(r) { return r && r.boardRow ? r.cgId : (r ? r.symbol : null); }   // section 2.4: the research board keys by cgId; the legacy view keeps the symbol
@@ -4660,6 +4691,35 @@ function positionLabelResearch(p) {
   return p < 0 ? 'Below support' : (p <= 0.33 ? 'Lower third' : (p <= 0.66 ? 'Middle' : (p <= 1 ? 'Upper third' : 'Above resistance')));
 }
 function boardPositionOf(r) { var rr = r ? r.researchRow : null; return (rr && typeof rr.position === 'number' && isFinite(rr.position) && rr.channelH > 0) ? rr.position : null; }
+// 17-H Amendment A (2026-09-27): researchDaily no longer carries candles inline - a research board row's candle window
+// lives in data/cache/<cgId>.json (candlesRef), fetched only when a row is opened (never on page load, never more than
+// once per coin per session). CANDLE_CACHE holds the outcome (success or failure) so a repeat open never re-fetches.
+var CANDLE_CACHE = {};
+function candlesRefLean(slice) { return slice.map(function (c) { return { id: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }); }
+async function boardFetchCandles(r) {
+  var rr = r && r.researchRow, ref = rr && rr.candlesRef;
+  if (!ref) return null;
+  if (CANDLE_CACHE[r.cgId]) return CANDLE_CACHE[r.cgId];
+  var entry = { candles: null, error: null };
+  CANDLE_CACHE[r.cgId] = entry;
+  try {
+    var resp = await fetch(ref.path);
+    if (!resp || !resp.ok) throw new Error('fetch failed (' + (resp && resp.status) + ')');
+    var j = await resp.json();
+    var full = (j && j.ohlcDaily) || [];
+    var slice = full.slice(ref.firstIdx, ref.lastIdx + 1);
+    if (!slice.length || slice[slice.length - 1].time !== ref.lastId) throw new Error('candle cache drift (lastId mismatch)');
+    var lean = candlesRefLean(slice);
+    var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(lean)));
+    var hex = Array.prototype.map.call(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    if (hex !== ref.sha256) throw new Error('candle cache drift (sha256 mismatch)');
+    entry.candles = slice.map(function (c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, date: c.date, volume: c.volume }; });
+  } catch (e) {
+    entry.error = e.message;
+    try { console.warn('Radar: candles unavailable for ' + r.cgId + ' - ' + e.message); } catch (e2) {}
+  }
+  return entry;
+}
 function boardFitMatches(rec, fit) {
   if (!fit || !rec) return false;
   if (fit.score !== rec.score) return false;
@@ -4696,13 +4756,19 @@ function boardRowFor(c, dailyCap, legacyRow) {
     R.noResearchFit = true; R.noFitReason = (cs && cs.reason) || 'no-structure'; R.researchRow = null; R.research = null; R.score = null; R.explanation = ''; R.railAge = null; R.supportRailAgeDays = null; R.supportRailAgeBand = 'unknown';
     R.candles = null; R.pivotLows = []; return R;
   }
-  var meta = { coinId: c.cgId, timeframe: '1d', source: rec.candleSource || c.dailySource, research: true }, fit = null;
-  try {
-    if (rec.structural) fit = (typeof StructureCore !== 'undefined') ? StructureCore.detectStructure(rec.candles, meta) : null;
-    else if (typeof detectChannel === 'function') fit = detectChannel(rec.candles, null, meta);
-  } catch (e) { fit = null; }
-  var matches = rec._fallback ? !!(fit && fit.score === rec.score) : boardFitMatches(rec, fit);
-  if (!matches) { R.refitMismatch = true; try { console.error('Radar: research refit does not reproduce the capture for ' + c.cgId + ' (score ' + (fit && fit.score) + ' vs ' + rec.score + ')'); } catch (e) {} }
+  var meta = { coinId: c.cgId, timeframe: '1d', source: rec.candleSource || c.dailySource, research: true }, fit = null, matches = true;
+  if (rec.candles) {
+    // 17-H Amendment A: only an old-format capture (or the detectionDaily fallback above) still carries candles inline -
+    // refit them now, exactly as 17-H did. The normal case (candlesRef, no inline candles) defers this to openDetail(),
+    // once the page has actually fetched the referenced window; until then every display field is native to the
+    // capture's own researchDaily/rec (never re-derived from candles), so matches stays true (nothing to disprove yet).
+    try {
+      if (rec.structural) fit = (typeof StructureCore !== 'undefined') ? StructureCore.detectStructure(rec.candles, meta) : null;
+      else if (typeof detectChannel === 'function') fit = detectChannel(rec.candles, null, meta);
+    } catch (e) { fit = null; }
+    matches = rec._fallback ? !!(fit && fit.score === rec.score) : boardFitMatches(rec, fit);
+    if (!matches) { R.refitMismatch = true; try { console.error('Radar: research refit does not reproduce the capture for ' + c.cgId + ' (score ' + (fit && fit.score) + ' vs ' + rec.score + ')'); } catch (e) {} }
+  }
   var src = fit || rec;
   R.structural = !!rec.structural;
   var rr = {}, k;
@@ -5262,7 +5328,7 @@ async function loadCachedOrResting() {
 
         if(adapted.length) {
           allResults = adapted; LEGACY_ROWS = adapted; BOARD_ROWS = [];
-          try { if (dailyCap && dailyCap.coins && dailyCap.coins.length) { var lgByCg = {}; adapted.forEach(function(x){ lgByCg[x.cgId] = x; }); BOARD_ROWS = buildResearchBoard(dailyCap, lgByCg); } } catch(eBoard) { BOARD_ROWS = []; try { console.error('research board build failed:', eBoard); } catch(e3) {} }
+          try { if (dailyCap && dailyCap.coins && dailyCap.coins.length) { var lgByCg = {}; adapted.forEach(function(x){ lgByCg[x.cgId] = x; }); BOARD_ROWS = buildResearchBoard(dailyCap, lgByCg); LAST_DAILY_CAP = dailyCap; } } catch(eBoard) { BOARD_ROWS = []; try { console.error('research board build failed:', eBoard); } catch(e3) {} }
           if (RESEARCH_MODE_UI && BOARD_ROWS.length) allResults = BOARD_ROWS;   // 17-H 2.2: the research view's population is the whole daily universe
           PIN_UNIVERSE = pinUniverseFrom(cap.coins, dailyCap && dailyCap.coins);   // Step 16-A: stub rows for pinned coins with no candidate row
           dailyDataAvailable = Object.keys(dailyMap).length > 0;
