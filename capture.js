@@ -70,6 +70,8 @@ const crypto = require('crypto');          // H8 — config hash
 const U = require('./universe-core.js');   // adjust path if capture.js not in repo root
 const C = require('./channel-core.js');
 const K = require('./cache-core.js');
+let SC = null;   // 17-H section 1b: structural discovery fallback. A missing/broken structure-core.js must never stop the daily capture: the fallback is then skipped (loud warning) and rows keep their pre-17-H reason.
+try { SC = require('./structure-core.js'); } catch (e) { console.warn('WARNING: structure-core.js not loaded - structural fallback disabled this run:', e.message); }
 const S = require('./setups-core.js');   // Step 11-C (H5): pure setup-ledger logic; this file only does the I/O around it
 const cp = require('child_process');     // forward experiment: git (single push, generation commit pins)
 const EC = require('./episodes-core.js'); // forward experiment D1 (pure): candidate episodes
@@ -865,6 +867,15 @@ function rowForCandle(pulled, idx, catLabels, diag) {
 // grid-index slicing — this runs once per calendar day on whatever daily history is cached,
 // so it always uses the full series. Written for EVERY coin, EVERY run, regardless of score —
 // see the header note on why this is unfiltered (same principle as upgrade #1c's candidates()).
+// 17-H section 1: the research fit as the detector returned it, with lean candles and the four identity fields stated explicitly (all native to the fit; nothing is re-derived). A structural fit also carries structural:true,
+// positionBand, lastTouchTime and its per-stage rejection counts (structure-core.js).
+function researchDailyOf(fit, row, rejections) {
+  const o = Object.assign({}, fit);
+  o.candles = toLeanCandles(fit.candles || []);
+  o.timeframe = '1d'; o.candleSource = row.dailySource; o.fitId = fit.fitId; o.detectionAsOf = fit.detectionAsOf; o.detectionPrice = fit.detectionPrice;
+  if (rejections) o.rejections = rejections;
+  return o;
+}
 function rowForDaily(pulled, catLabels, diag) {
   const { coin, dailySource, dailyCandles } = pulled;
   const base = {
@@ -1725,7 +1736,7 @@ async function main() {
     let researchAct = 0, researchFits = 0;
     dailyCoins.forEach((row, i) => {
       const p = pulls[i];
-      row.research = null;
+      row.research = null; row.researchDaily = null;
       try {
         let candSrc = p && p.dailyCandles;
         // Forward experiment: a Kraken-designated coin's detector input is exactly the candles USABLE at issueTimeUtc with endTime <= inputCutoffUtc on its designated pair,
@@ -1735,6 +1746,20 @@ async function main() {
         const fit = cands ? C.detectChannel(cands, null, { coinId: row.cgId, timeframe: '1d', source: row.dailySource, research: true }) : null;
         const res = C.researchVerdict(fit, { price: row.price, volume24h: row.volume24h, btc: btcRegime, quote: null, floor: C.ACT_SCORE_FLOOR_1D });
         row.research = S.researchSummary(fit, res);
+        // 17-H section 1: researchDaily = the research fit as the detector returned it (detectionDaily is the same object shape - no second field list), lean candles, written beside detectionDaily.
+        // Section 1b: when the policy fit is null, the structural fallback runs on the SAME candles; its result is context only (research.fitId stays null, verdict NONE).
+        if (fit) row.researchDaily = researchDailyOf(fit, row, null);
+        else {
+          const so = {}; let st = null;
+          if (cands && SC) { try { st = SC.detectStructure(cands, { coinId: row.cgId, timeframe: '1d', source: row.dailySource }, so); } catch (e) { console.warn('structural fallback failed for', row.cgId, '-', e.message); } }
+          if (SC) {
+            const band = st ? st.positionBand : null;
+            row.research.reason = !cands ? 'data-gap' : (band === 'upper' ? 'upper-channel' : (band === 'above-resistance' ? 'above-resistance' : 'no-structure'));
+            if (st && !band) console.warn('structural fit with position <= 0.75 for', row.cgId, '(policy fit was null) - treated as no-structure');
+            if (cands) row.research.rejections = so.rejections || null;
+            if (st && band) row.researchDaily = researchDailyOf(st, row, so.rejections || null);
+          }
+        }
         if (fwdCfg && fit && row.research && row.research.entryEconomics && fit.entryEconomics) {
           // The log row carries the levels exactly as the detector produced them (Protocol §4.1: S and T are taken as logged): zone, defended low, stop basis, target source.
           const fe = fit.entryEconomics;

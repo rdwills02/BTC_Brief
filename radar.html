@@ -368,6 +368,9 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Shows the previous scanner's verdicts (the pre-audit rules) instead of the research states. Same as ?legacy=1.">
     <input type="checkbox" id="research-mode"> Legacy verdicts
   </label>
+ <label id="hide-struct-label" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Hides rows whose only fit is structural (a channel exists but the policy found no tradable one). Off by default.">
+    <input type="checkbox" id="hide-struct"> Hide structure-only
+  </label>
   <label id="glow-cursor-label" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Replaces the mouse pointer with a white arrow (and hand) that has a soft glow, easier to follow on the dark chart. Display only; off by default. Safari keeps its native pointer.">
     <input type="checkbox" id="glow-cursor"> Glow cursor
   </label>
@@ -474,6 +477,7 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
 </div>
 
 <script src="channel-core.js"></script>
+<script src="structure-core.js"></script>
 <script src="universe-core.js"></script>
 <script>
 // CONFIG - replace YOUR_API_KEY_HERE with your CoinGecko Demo API key
@@ -1332,7 +1336,7 @@ function researchRailTags(rr, rails) {
 function addResearchChartSeries(chart, r, main) {
   var rr = r.researchRow, candles = r.candles, rails = researchRailData(rr, candles), st = { rails: rails, tags: [], shades: {}, band: null, ticks: {} };
   if (!rails) return st;
-  var line = function (color, w, style) { return chart.addLineSeries({ color: color, lineWidth: w, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }); };
+  var line = function (color, w, style) { return chart.addLineSeries({ color: rr.structural ? boardDim(color) : color, lineWidth: w, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }); };
   var shade = researchShadeData(rr, candles);
   if (shade.pre) st.shades.pre = addShadeSeries(chart, shade.pre, 'rgba(107,114,128,.14)');
   if (shade.runs) st.shades.runs = addShadeSeries(chart, shade.runs, 'rgba(160,82,45,.22)');
@@ -1624,6 +1628,7 @@ function railAgeTip(band) {
   return 'Rail age unknown.';
 }
 function railAgeCellHTML(r) {
+  if(r.railAge) return railAgeCellResearch(r);   // 17-H: research rows use the one rail-age helper
   if(r.supportRailAgeDays==null) return '<span style="color:var(--muted)">unknown</span>';
   var approx = railAgeApprox(r) ? ' <span class="cat-tip" data-tip="4-day grid pivots - resolution is +/-4 days, not daily precision" style="color:var(--muted)">(~4d)</span>' : '';
   return '<span class="cat-tip" data-tip="'+railAgeTip(r.supportRailAgeBand)+'" style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">'+r.supportRailAgeDays+'d</span>'+approx;
@@ -1885,10 +1890,10 @@ function jumpToAddedCoin(symbol) {
   setFilter('all');
   var sa = document.getElementById('show-all');
   if(!sa.checked) { sa.checked = true; applyFilters(); }
-  var tr = document.querySelector('.radar-table tr[data-key="'+symbol+'"]');
+  var jk = rowKey(r), tr = document.querySelector('.radar-table tr[data-key="'+jk+'"]');
   if(tr) tr.scrollIntoView({block:'center', behavior:'smooth'});
-  selectedKey = symbol;
-  document.querySelectorAll('.radar-table tr').forEach(function(row){row.classList.toggle('selected', row.dataset.key===symbol);});
+  selectedKey = jk;
+  document.querySelectorAll('.radar-table tr').forEach(function(row){row.classList.toggle('selected', row.dataset.key===jk);});
   openDetail(r);
 }
 
@@ -2048,7 +2053,7 @@ function structureArticleFor(structureLabel) { return /^[aeiou]/i.test(structure
 // buildReportHTML can render an identical position label instead of hand-rolling a similar-
 // but-not-guaranteed-identical version - same one-implementation-two-call-sites reasoning as
 // structureLabelFor/railNoteFor above.
-function positionLabelFor(r) { return r.position<=0.33 ? 'Lower third' : (r.position<=0.66 ? 'Middle' : 'Upper third'); }
+function positionLabelFor(r) { if (r && r.boardRow) return positionLabelResearch(boardPositionOf(r)); return r.position<=0.33 ? 'Lower third' : (r.position<=0.66 ? 'Middle' : 'Upper third'); }
 function railNoteFor(r) {
   if(r.supportRailAgeDays == null) return 'support rail age unknown';
   var approx = (typeof railAgeApprox==='function' && railAgeApprox(r)) ? ' (~4d resolution)' : '';
@@ -2059,7 +2064,7 @@ function railNoteFor(r) {
 function buildExpl(r, name) {
   var structureLabel = structureLabelFor(r);
   var structureArticle = structureArticleFor(structureLabel);
-  var railNote = railNoteFor(r);
+  var railNote = boardRailNote(r);   // 17-H: research rows use the one rail-age helper
 
   var resSentence = 'Resistance '+fmt(r.resistNow,pricePrecision(r.price))+' (touch recency not tracked).';
 
@@ -2445,7 +2450,13 @@ var RESEARCH_REASON_ORDER = RESEARCH_WAIT_GATES.concat(['page.target-below-price
 // untouched (byte-identical) and the flag-off/legacy path (which never calls this) is unaffected.
 function researchStateFor(r) {
   var rr = r ? r.researchRow : null;
-  if (!rr) return { state: 'NOFIT', gate: null, verdict: null, action: null, why: '' };
+  if (!rr) return { state: 'NOFIT', gate: null, verdict: null, action: null, why: '', noFitTip: (r && r.boardRow) ? boardNoFitText(r) : null };
+  if (r.structural) {   // 17-H 1b: a structural fit is context - Action WAIT, never NEAR or ACT
+    var sa = null; try { sa = buildAction(rr, { research: true }); } catch (e) { sa = null; }
+    var stxt = 'Wait: ' + boardStructuralText(r) + '.', hist = boardHistorical(r);
+    var sact = Object.assign({ details: { gates: [] }, gate: null }, sa || {}, { verdict: 'WAIT', text: stxt, reason: 'structure-only' });
+    return { state: 'WAIT', structural: true, historical: hist, gate: sact.gate, verdict: 'WAIT', action: sact, why: hist ? 'historical structure' : 'structure only' };
+  }
   var a = buildAction(rr, { research: true }), g = a.gate;
   if (a.verdict === 'NONE') {
     var stN = RESEARCH_NOFIT_GATES.hasOwnProperty(g) ? 'NOFIT' : 'BUG';
@@ -2497,7 +2508,7 @@ function researchNearClauses(r, byId, ids) {
     }
   });
 }
-function researchStateRank(r) { return RESEARCH_STATE_RANK[researchStateFor(r).state]; }
+function researchStateRank(r) { var rs = researchStateFor(r); return rs.structural ? 3.5 : RESEARCH_STATE_RANK[rs.state]; }   // 17-H: structure-only rows sort below every policy WAIT row (and above no-fit)
 var RESEARCH_STATE_PREFIX = { ACT: 'Act:', NEAR: 'Near:', DEVELOPING: 'Developing:', WAIT: 'Wait:' };
 // Step 15-C item 4: the panel/tooltip sentence prefix follows the page state - a text remap of researchVerdictText's
 // own leading marker ("Act zone (research):" / "Watch:" / "Wait:"), not a change to that function. NOFIT/BUG unchanged.
@@ -2514,28 +2525,28 @@ function researchStateText(rs) {
 function researchStateCellHTML(rs, legacyAction, size) {
   var cls = { ACT: 'va-act', NEAR: 'va-near', DEVELOPING: 'va-dev', WAIT: 'va-wait', NOFIT: '', BUG: 'va-wait' }[rs.state];
   var label = rs.state === 'NOFIT' ? '— no fit' : rs.state;
-  var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : 'Research: no fit on this series (no rail pair passed the research gates on these candles)';
+  var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : (rs.noFitTip || 'Research: no fit on this series (no rail pair passed the research gates on these candles)');
   var style = (size === 'detail' ? 'font-size:10px;' : '') + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
   var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '"' + (style ? ' style="' + style + '"' : '') + '>' + label + '</span>' +
     (why ? '<span class="rs-why" title="' + why.replace(/"/g, '&quot;') + '" style="font-size:10px;color:var(--muted,#9aa3b2)">' + why + '</span>' : '') +
-    '<span class="rs-legacy" title="legacy: ' + legacyAction.verdict + '" style="font-size:9px;color:var(--muted,#9aa3b2)">legacy: ' + legacyAction.verdict + '</span>';
+    (legacyAction ? '<span class="rs-legacy" title="legacy: ' + legacyAction.verdict + '" style="font-size:9px;color:var(--muted,#9aa3b2)">legacy: ' + legacyAction.verdict + '</span>' : '');
 }
 function researchStateCounts(rows) {
-  var c = { ACT: 0, NEAR: 0, DEVELOPING: 0, WAIT: 0, NOFIT: 0, BUG: 0 };
-  rows.forEach(function (r) { c[researchStateFor(r).state]++; });
+  var c = { ACT: 0, NEAR: 0, DEVELOPING: 0, WAIT: 0, NOFIT: 0, BUG: 0, STRUCT: 0 };
+  rows.forEach(function (r) { var rs = researchStateFor(r); c[rs.structural ? 'STRUCT' : rs.state]++; });
   return c;
 }
 function researchDiagStrip(rows) {
   var c = researchStateCounts(rows);
   var tile = function (cls, label, n) { return '<div class="diag-item ' + cls + '"><div class="diag-label">' + label + '</div><div class="diag-value">' + n + '</div></div>'; };
-  document.getElementById('diag-grid').innerHTML += tile('va-act', 'ACT', c.ACT) + tile('va-near', 'NEAR', c.NEAR) + tile('va-dev', 'DEVELOPING', c.DEVELOPING) + tile('va-wait', 'WAIT', c.WAIT) + tile('', 'No fit', c.NOFIT) + (c.BUG ? tile('', 'BUG', c.BUG) : '');
-  document.getElementById('diag-funnel').innerHTML += ' &nbsp;|&nbsp; <span class="vbadge va-act">' + c.ACT + ' ACT</span> <span class="vbadge va-near">' + c.NEAR + ' NEAR</span> <span class="vbadge va-dev">' + c.DEVELOPING + ' DEVELOPING</span> <span class="vbadge va-wait">' + c.WAIT + ' WAIT</span> <span class="vbadge" style="opacity:.6">' + c.NOFIT + ' no fit</span>' + (c.BUG ? ' <span class="vbadge" style="color:#ff5c8a">' + c.BUG + ' BUG</span>' : '');
+  document.getElementById('diag-grid').innerHTML += tile('va-act', 'ACT', c.ACT) + tile('va-near', 'NEAR', c.NEAR) + tile('va-dev', 'DEVELOPING', c.DEVELOPING) + tile('va-wait', 'WAIT', c.WAIT) + (c.STRUCT ? tile('', 'Structure only', c.STRUCT) : '') + tile('', 'No fit', c.NOFIT) + (c.BUG ? tile('', 'BUG', c.BUG) : '');
+  document.getElementById('diag-funnel').innerHTML += ' &nbsp;|&nbsp; <span class="vbadge va-act">' + c.ACT + ' ACT</span> <span class="vbadge va-near">' + c.NEAR + ' NEAR</span> <span class="vbadge va-dev">' + c.DEVELOPING + ' DEVELOPING</span> <span class="vbadge va-wait">' + c.WAIT + ' WAIT</span> ' + (c.STRUCT ? '<span class="vbadge" style="opacity:.75">' + c.STRUCT + ' structure only</span> ' : '') + '<span class="vbadge" style="opacity:.6">' + c.NOFIT + ' no fit</span>' + (c.BUG ? ' <span class="vbadge" style="color:#ff5c8a">' + c.BUG + ' BUG</span>' : '');
 }
 // Step 15-B: report header counts line - same researchStateCounts() the page's tiles use, over the same row set (allResults -> reportData.candidates).
 function researchReportCountsHTML(rows) {
   var c = researchStateCounts(rows);
-  return '<div class="rs-counts" style="font-size:12px;color:#9da3b4;margin-bottom:8px">Verdicts follow the research rules (under forward evaluation): <span class="vbadge va-act">'+c.ACT+' ACT</span> <span class="vbadge va-near">'+c.NEAR+' NEAR</span> <span class="vbadge va-dev">'+c.DEVELOPING+' DEVELOPING</span> <span class="vbadge va-wait">'+c.WAIT+' WAIT</span> <span class="vbadge">'+c.NOFIT+' no fit</span>'+(c.BUG?' <span class="vbadge va-wait">'+c.BUG+' BUG</span>':'')+'</div>';
+  return '<div class="rs-counts" style="font-size:12px;color:#9da3b4;margin-bottom:8px">Verdicts follow the research rules (under forward evaluation): <span class="vbadge va-act">'+c.ACT+' ACT</span> <span class="vbadge va-near">'+c.NEAR+' NEAR</span> <span class="vbadge va-dev">'+c.DEVELOPING+' DEVELOPING</span> <span class="vbadge va-wait">'+c.WAIT+' WAIT</span> '+(c.STRUCT?'<span class="vbadge">'+c.STRUCT+' structure only</span> ':'')+'<span class="vbadge">'+c.NOFIT+' no fit</span>'+(c.BUG?' <span class="vbadge va-wait">'+c.BUG+' BUG</span>':'')+'</div>';
 }
 function renderVerdictNote() {
   var el = document.getElementById('verdict-note'); if (!el) return;
@@ -2978,6 +2989,7 @@ function researchAnalysisText(res, r) {
   if (!rr || !res) return '';
   var rs = researchStateFor(r), st = rs.state;
   if (st === 'NOFIT' || st === 'BUG' || !rs.action) return '';
+  if (rs.structural) return 'Structure only: ' + boardStructuralText(r) + '. ' + boardStructureDisclosure(r);   // 17-H 1b.5
   var gates = (res.details && res.details.gates) || [], byId = {}, d = pricePrecision(rr.price);
   gates.forEach(function (g) { byId[g.id] = g; });
   var failed = function (id) { var x = byId[id]; return !x || x.pass !== true; };
@@ -2985,7 +2997,7 @@ function researchAnalysisText(res, r) {
   var label = structureLabelFor(rr), tf = rr.timeframe === '1d' ? 'daily' : (rr.timeframe === '4d-grid' ? '4-day' : String(rr.timeframe || ''));
   var tolPct = (typeof rr.tol === 'number' && isFinite(rr.tol)) ? researchNum(Number((rr.tol * 100).toFixed(2))) : '?';
   var pos = rr.position, posPhrase = (typeof pos !== 'number') ? 'position unknown' : (pos < 0 ? 'below the support rail' : (pos < 0.33 ? 'in the lower third of the channel' : (pos <= 0.67 ? 'in the middle of the channel' : 'in the upper third of the channel')));
-  var note = railNoteFor(rr).replace(/ \(([^)]*)\)/, ', $1'), rail = (rr.supportRailAgeDays == null) ? note : ((rr.supportRailAgeBand === 'fresh' ? 'a fresh support rail' : 'a non-fresh support rail') + ' (' + note + ')');
+  var note = boardRailNote(rr).replace(/ \(([^)]*)\)/, ', $1'), rail = (rr.supportRailAgeDays == null) ? note : ((rr.supportRailAgeBand === 'fresh' ? 'a fresh support rail' : 'a non-fresh support rail') + ' (' + note + ')');
   var s = (rr.name || rr.symbol || 'This coin') + ' ' + (broken ? 'held' : 'holds') + ' ' + structureArticleFor(label) + ' ' + label + ' ' + tf + ' channel: ' + rr.supportTouches + ' support / ' + rr.resTouches + ' resistance touches at ' + tolPct + '% tolerance, containment ' + rr.containment + '%, price ' + posPhrase + (rr.supportRailAgeDays == null ? ', ' : ' with ') + rail + '.';
   var list = st === 'NEAR' ? RESEARCH_ACT_ONLY_GATES.concat(RESEARCH_NEAR_GATES) : (st === 'DEVELOPING' ? RESEARCH_DEV_GATES : (st === 'WAIT' ? RESEARCH_WAIT_GATES : []));   // 17-G: a NEAR row names every failed ACT requirement, floor and touch-volume included
   var fails = list.filter(failed);
@@ -3188,10 +3200,11 @@ function p3PlaceLegend() {
 function researchHeaderStateHTML(rs, legacyAction) {
   var cls = { ACT: 'va-act', NEAR: 'va-near', DEVELOPING: 'va-dev', WAIT: 'va-wait', NOFIT: '', BUG: 'va-wait' }[rs.state];
   var label = rs.state === 'NOFIT' ? '— no fit' : rs.state;
-  var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : 'Research: no fit on this series (no rail pair passed the research gates on these candles)';
+  var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : (rs.noFitTip || 'Research: no fit on this series (no rail pair passed the research gates on these candles)');
   var style = 'font-size:10px;' + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
   var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '" style="' + style + '">' + label + '</span>' +
+    (rs.structural ? '<span class="p3-hist" style="font-size:10px;font-weight:700;color:var(--neut);margin-left:6px">' + (rs.historical ? 'historical structure' : 'structure only') + '</span>' : '') +
     (why ? '<span class="p3-why" title="' + why.replace(/"/g, '&quot;') + '">' + why + '</span>' : '') +
     '<span class="p3-leg" title="legacy: ' + legacyAction.verdict + (rs.action ? ' \u00b7 ' + RESEARCH_SCORE_LABEL : '') + '">legacy: ' + legacyAction.verdict + '</span>';   // the score-status label rides in the tooltips (badge + tag), not on the row
 }
@@ -3244,6 +3257,7 @@ function p3VerdictHTML(r, rs) {
   // Step 17-F: the leading state word takes the header badge's colour; text content is unchanged (17-E checks 2/3 read textContent).
   var vm = /^([^:]+):([\s\S]*)$/.exec(vt), vcls = 'p3-vword p3-vw-' + ({ACT:'act', NEAR:'near', DEVELOPING:'dev', WAIT:'wait'}[rs.state] || 'nofit');
   var h = '<div class="p3-v1">' + (vm ? '<span class="' + vcls + '">' + researchAttr(vm[1]) + ':</span>' + researchAttr(vm[2]) : '<span class="' + vcls + '">' + researchAttr(vt) + '</span>') + '</div>';
+  if (rs.structural) return h + '<div class="p3-v2">' + researchAttr(boardStructureDisclosure(r)) + '</div>';   // 17-H 1b.5: dates, last-touch age and lifecycle; never "the current channel"
   if (rs.state === 'NOFIT') return h;   // Step 17-E: no fit / data unavailable = the verdict line only
   var entry = rr ? researchEntryHTML(rr) : '';
   if (entry) h += '<div class="p3-v2">' + entry + '</div>';
@@ -3273,7 +3287,8 @@ function p3RenderPanel(r, rs, action) {
 // Step 17-C: in the research view the Score column, the status bands, the Min-score filters and the Recommended tiebreak use the RESEARCH score (the state is judged on it).
 // Bands are display-only and provisional: High = the research floor (ACT_SCORE_FLOOR_1D), the rest scaled to the same proportions. The legacy view keeps the legacy score everywhere.
 function researchBands() { return { high: ACT_SCORE_FLOOR_1D, probable: 68, emerging: 55, watch: 40 }; }
-function researchScoreOf(r) { var rr = r ? r.researchRow : null; return (rr && typeof rr.score === 'number' && isFinite(rr.score)) ? rr.score : null; }
+function researchScoreOf(r) { if (r && r.refitMismatch && r.captureResearch && typeof r.captureResearch.score === 'number') return r.captureResearch.score;   // 17-H 2.2: a refit that did not reproduce the capture shows the capture's summary score
+  var rr = r ? r.researchRow : null; return (rr && typeof rr.score === 'number' && isFinite(rr.score)) ? rr.score : null; }
 function researchBucket(s) {
   if (s == null) return null;
   var b = researchBands();
@@ -3301,16 +3316,20 @@ var RC_ORIG = null;
 function syncResearchScoreUI() {
   var ths = document.querySelectorAll('.radar-table thead th'), thS = ths[2], thB = ths[3], ids = ['high', 'probable', 'emerging', 'watch'];
   if (!thS || !thB) return;
+  var fl = document.querySelector('.filters .filter-label'), cf = document.getElementById('fb-confirmed'), dg = document.getElementById('daily-thresh-group'), hs = document.getElementById('hide-struct-label');
   if (!RC_ORIG) {
     if (!RESEARCH_MODE_UI) return;
-    RC_ORIG = { s: thS.getAttribute('data-tip'), b: thB.getAttribute('data-tip'), f: ids.map(function (n) { var e = document.getElementById('fb-' + n); return e ? e.textContent : ''; }) };
+    RC_ORIG = { s: thS.getAttribute('data-tip'), b: thB.getAttribute('data-tip'), f: ids.map(function (n) { var e = document.getElementById('fb-' + n); return e ? e.textContent : ''; }), fl: fl ? fl.textContent : '' };
   }
-  var b = researchBands(), nums = [b.high, b.probable, b.emerging, b.watch], names = ['High', 'Probable', 'Emerging', 'Watch'];
-  thS.setAttribute('data-tip', RESEARCH_MODE_UI ? 'Research score 0-100 (the score the Action state is judged on; score rescaled, floor provisional). The legacy score is in each cell\'s tooltip and in the panel\'s Legacy section.' : RC_ORIG.s);
-  thB.setAttribute('data-tip', RESEARCH_MODE_UI ? 'Display band on the research score (provisional): High (' + b.high + '+ = the research floor), Probable (' + b.probable + '+), Emerging (' + b.emerging + '+), Watch (' + b.watch + '+), Weak (below ' + b.watch + ').' : RC_ORIG.b);
-  ids.forEach(function (n, i) { var e = document.getElementById('fb-' + n); if (e) e.textContent = RESEARCH_MODE_UI ? names[i] + ' ' + nums[i] + '+' : RC_ORIG.f[i]; });
+  var b = researchBands(), lo = [b.high, b.probable, b.emerging, b.watch], hi = [null, b.high - 1, b.probable - 1, b.emerging - 1], names = ['High', 'Probable', 'Emerging', 'Watch'];
+  thS.setAttribute('data-tip', RESEARCH_MODE_UI ? 'Research score 0-100 (the score the Action state is judged on; score rescaled, floor provisional). ' + boardBandTip() : RC_ORIG.s);
+  thB.setAttribute('data-tip', RESEARCH_MODE_UI ? 'Display band on the research score.' : RC_ORIG.b);
+  ids.forEach(function (n, i) { var e = document.getElementById('fb-' + n); if (e) e.textContent = RESEARCH_MODE_UI ? names[i] + ' ' + lo[i] + (hi[i] == null ? '+' : '\u2013' + hi[i]) : RC_ORIG.f[i]; });
+  if (fl) fl.textContent = RESEARCH_MODE_UI ? 'Score band' : RC_ORIG.fl;
+  if (cf) cf.style.display = RESEARCH_MODE_UI ? 'none' : (dailyDataAvailable ? '' : 'none');   // 17-H 4.1: the Confirmed 89+ control is a legacy qualification model - hidden, not deleted
+  if (dg) dg.style.display = RESEARCH_MODE_UI ? 'none' : (dailyDataAvailable ? '' : 'none');   // every research row is a daily fit: one Min score control
+  if (hs) hs.style.display = RESEARCH_MODE_UI ? 'flex' : 'none';
 }
-
 function getThresh() {
   var dailySel = document.getElementById('t-score-daily');
   var railSel = document.getElementById('t-railage');
@@ -3392,7 +3411,7 @@ function applyFilters() {
   // Step 16-A: pinned rows bypass every filter above (they are flagged when the filters would have hidden them); the count below is still the rows that pass the filters.
   var nPass = 0;
   filtered = allResults.filter(function(r) {
-    var ok = passes(r);
+    var ok = RESEARCH_MODE_UI ? passesBoard(r, t) : passes(r);   // 17-H 4.1: the research board never uses the legacy Confirmed bypass
     if(ok) nPass++;
     if(isPinned(r)) { if(!ok) PIN_HIDDEN[r.cgId] = true; return true; }
     return ok;
@@ -3408,6 +3427,7 @@ function sortFilteredCore() {
   // see sortRowsByVerdict above. Every other sortCol keeps its prior column-sort behavior
   // untouched below.
   if(sortCol==='default') { filtered = sortRowsByVerdict(filtered, RESEARCH_MODE_UI); return; }
+  if(RESEARCH_MODE_UI) { boardSortCore(); return; }   // 17-H 4.2: every column sort reads the research projection; null sorts last both ways
   filtered.sort(function(a,b) {
     var av=a[sortCol], bv=b[sortCol];
     if(sortCol==='score' && RESEARCH_MODE_UI) { av = researchScoreOf(a); bv = researchScoreOf(b); }   // Step 17-C
@@ -3449,6 +3469,8 @@ function researchBucketCellHTML(r, rsc) {
 }
 function renderTable() {
   syncResearchScoreUI();   // Step 17-C
+  if (RESEARCH_MODE_UI) { boardRenderTable(); return; }   // 17-H: the 12-column research board (one column definition for rows, headers and pinned stubs)
+  boardHeaderSync();
   var tbody = document.getElementById('table-body');
   var th24 = document.getElementById('th-24h');
   if(th24) th24.textContent = captureMode ? '24h Price*' : '24h Price';
@@ -3509,6 +3531,7 @@ function renderTable() {
 }
 
 function openDetail(r) {
+  if (r && r.boardRow && r.noResearchFit) { openDetailNoFit(r); return; }   // 17-H: no research fit = no fit figures anywhere in the panel
   panelLayout(RESEARCH_MODE_UI);   // Step 17-A (P3): research view builds the reorganised panel; legacy keeps the original DOM
   document.getElementById('detail-panel').style.display='flex';
   document.getElementById('layout').classList.add('open');
@@ -3544,7 +3567,9 @@ function openDetail(r) {
   // Backlog #3: rail age - how old the support rail's most recent touch is, not a replacement
   // for the rail value shown above (which stays exactly as the detector emits it).
   var raEl = document.getElementById('dp-rail-age');
-  if(raEl) {
+  if(raEl && r.railAge) {
+    raEl.innerHTML = r.railAge.days == null ? '<span style="color:var(--muted)">Support rail age: unknown</span>' : '<span style="color:'+railAgeColor(r.railAge.band)+';font-weight:600">' + railAgeNoteResearch(r.railAge).replace(/^./, function(ch){return ch.toUpperCase();}) + ' \u2014 ' + railAgeLabel(r.railAge.band) + '</span>';   // 17-H: the one rail-age helper
+  } else if(raEl) {
     if(r.supportRailAgeDays==null) {
       raEl.innerHTML = '<span style="color:var(--muted)">Support rail age: unknown</span>';
     } else {
@@ -3552,13 +3577,13 @@ function openDetail(r) {
       raEl.innerHTML = '<span style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">Support last tested '+r.supportRailAgeDays+'d ago — '+railAgeLabel(r.supportRailAgeBand)+'</span>'+approxNote;
     }
   }
-  document.getElementById('dp-expl').textContent=r.explanation;
+  document.getElementById('dp-expl').textContent=(r.boardRow ? (r.legacyRow ? r.legacyRow.explanation : '') : r.explanation);   // 17-H: the board row's own text is research-derived; the legacy explanation belongs to the Legacy section
   // Backlog #6 (2026-09-19, Round 2): recommended-action synthesis line - see buildAction
   // above. Computed fresh on every openDetail() call from fields already on r; never cached
   // on the row itself (unlike r.explanation), since it's cheap and purely a display concern.
   var actionEl = document.getElementById('dp-action-badge'), actionTextEl = document.getElementById('dp-action-text');
   if(actionEl && actionTextEl && typeof buildAction==='function') {
-    var action = buildAction(r);
+    var action = legacyActionOf(r);   // 17-H 6: the Legacy section describes the legacy detection (r.legacyRow), never the research fit
     var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
     var badgeHtml = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
     // Step 15-A: default (research) view - the research state is the primary badge with the failing check in words, the legacy verdict a small muted tag; legacy view keeps the line above untouched.
@@ -3873,8 +3898,8 @@ function buildChart(r) {
     resOut = resData.concat(mext.future.map(function(t,k){return {time:t,value:railAt(r.supSlope,r.supIntercept,startCI+n+k)+r.channelH};}));
     invOut = invOut.concat(mext.future.map(function(t){return {time:t,value:r.invalidation};}));
   }
-  var mainSup=chart.addLineSeries({color:'#00c896',lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}); mainSup.setData(supOut);
-  var mainRes=chart.addLineSeries({color:'#e8754a',lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}); mainRes.setData(resOut);
+  var mainSup=chart.addLineSeries({color:(r.structural?'rgba(0,200,150,0.35)':'#00c896'),lineWidth:2,lineStyle:0,priceLineVisible:false,lastValueVisible:false,title:'Support'}); mainSup.setData(supOut);
+  var mainRes=chart.addLineSeries({color:(r.structural?'rgba(232,117,74,0.35)':'#e8754a'),lineWidth:2,lineStyle:1,priceLineVisible:false,lastValueVisible:false,title:'Resistance'}); mainRes.setData(resOut);
   var mainInv=chart.addLineSeries({color:'rgba(232,117,74,0.4)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false}); mainInv.setData(invOut);
   var markers=r.pivotLows.filter(function(p){return r.candles.some(function(c){return c.time===p.time;});}).map(function(p){return {time:p.time,position:'belowBar',color:'#00c896',shape:'circle',text:'S',size:1};}).sort(function(a,b){return a.time-b.time;});
   if(markers.length) cs.setMarkers(markers);
@@ -3984,6 +4009,7 @@ function buildReportHTML(data) {
     return Math.max(2, Math.ceil(-Math.log10(n)) + 3);
   };
   var rows = cands.map(function(r) {
+    if(r.noResearchFit) return boardNoFitCardHTML(r);   // 17-H 7: the report is built from the research population - a coin with no research fit gets a plain card
     // Backlog #17e (2026-09-20): missing the Weak tier getBucket() (radar.html's own
     // canonical bucket function) has - not reachable against live data today (min live score
     // is 59), fixed anyway per Ryan's call while already in this ternary for Group 1.
@@ -4312,7 +4338,7 @@ async function publishReport() {
       scanned: 100,
       btcPrice: null,
       btcChange: null,
-      candidates: allResults.map(function(r){var c=toLightCandidate(r); if(RESEARCH_MODE_UI) c.researchRow=r.researchRow||null; return c;}),   // Step 15-B: researchRow rides along (research export only) so the report reads the same state as the page
+      candidates: allResults.map(function(r){var c=toLightCandidate(r); if(RESEARCH_MODE_UI) { c.researchRow=r.researchRow||null; if(r.boardRow) { c.boardRow=true; c.structural=!!r.structural; c.noResearchFit=!!r.noResearchFit; c.noFitReason=r.noFitReason||null; c.railAge=r.railAge||null; } } return c;}),   // Step 15-B: researchRow rides along (research export only) so the report reads the same state as the page
       // Reuse the diff radar.html already computed this scan (from its own localStorage
       // history - see lastScanDiff/computeScanDiff) instead of independently re-deriving
       // it by fetching and parsing GitHub's copy of the previous report. Single source
@@ -4538,6 +4564,7 @@ window.addEventListener('load', function() {
     box.addEventListener('click', function (e) { cx = e.clientX; cy = e.clientY; });
     box.addEventListener('change', function () { var v = !!this.checked; try { localStorage.setItem(GLOW_CURSOR_KEY, v ? '1' : '0'); } catch (e) {} glowCursorApply(v, cx, cy); });
   })();
+  var hsBox = document.getElementById('hide-struct'); if (hsBox) hsBox.addEventListener('change', function() { HIDE_STRUCT_ONLY = !!this.checked; applyFilters(); });   // 17-H 3: filter toggle, off by default
   document.getElementById('research-mode').checked = LEGACY_UI;
   renderVerdictNote();
   document.getElementById('research-mode').addEventListener('change', function() {
@@ -4545,9 +4572,10 @@ window.addEventListener('load', function() {
     panelLayout(RESEARCH_MODE_UI);   // Step 17-A
     try { var u = new URL(location.href); if (LEGACY_UI) u.searchParams.set('legacy', '1'); else u.searchParams.delete('legacy'); u.searchParams.delete('research'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
     renderVerdictNote();
+    if (BOARD_ROWS.length) { allResults = RESEARCH_MODE_UI ? BOARD_ROWS : LEGACY_ROWS; if (RESEARCH_MODE_UI && activeFilter === 'confirmed') setFilter('all'); }   // 17-H: each view has its own population
     if (RESEARCH_MODE_UI && !SETUPS_LEDGER) loadResearchSetups();
     renderDiag(); applyFilters();
-    if(selectedKey) { var r = filtered.find(function(x){return x.symbol===selectedKey;}); if(r) openDetail(r); }
+    if(selectedKey) { var r = filtered.find(function(x){return rowKey(x)===selectedKey || x.symbol===selectedKey;}); if(r) { selectedKey = rowKey(r); openDetail(r); } }
   });
   document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
   document.getElementById('fb-high').addEventListener('click', function() { setFilter('high'); });
@@ -4567,7 +4595,7 @@ window.addEventListener('load', function() {
     var key = tr.dataset.key;
     selectedKey = key;
     document.querySelectorAll('.radar-table tr').forEach(function(r){r.classList.toggle('selected',r.dataset.key===key);});
-    var r = filtered.find(function(x){return x.symbol===key;});
+    var r = filtered.find(function(x){return rowKey(x)===key;});
     if(r) openDetail(r);
   });
   loadCachedOrResting();
@@ -4578,6 +4606,303 @@ window.addEventListener('load', function() {
 // if there's no history yet. Scanning only ever happens on an explicit Refresh click -
 // see runScan(). This avoids burning CoinGecko's rate limit (and losing chart-only data
 // on browser close/computer reset) just from opening or reloading the tab.
+// ===================== Step 17-H: research board (spec "Radar 17-H Research Table Projection Spec - 2026-09-26") =====================
+// Objective: every cell, filter, sort key and detail-panel figure on the research board describes ONE fit - the research fit the capture computed for that coin (data/latest-daily.json coins[].researchDaily;
+// a structural fit from structure-core.js when the policy fit is null). The board's population is the daily file's whole universe. Legacy measurements (detectionDaily, the grid detection) stay on row.legacyRow for the
+// Legacy view and the Legacy detail section only. Display only: nothing here changes a verdict, gate or score.
+var BOARD_ROWS = [], LEGACY_ROWS = [], BOARD_SUMMARY = null;
+var HIDE_STRUCT_ONLY = false;
+var BOARD_PATTERN_KEYS = ['bb3','bullEngulf','threeInsideUp','rocket','multiSignal','bb3UpperReversion','threeInsideDown'];
+function rowKey(r) { return r && r.boardRow ? r.cgId : (r ? r.symbol : null); }   // section 2.4: the research board keys by cgId; the legacy view keeps the symbol
+function boardTv(sym, dailySource) {
+  var s = String(sym || '').toUpperCase();
+  if (dailySource === 'kraken') return { exchange: 'KRAKEN', pair: s + 'USD', mapped: true, venue: 'Kraken' };
+  if (dailySource === 'coinbase') return { exchange: 'COINBASE', pair: s + '-USD', mapped: true, venue: 'Coinbase' };
+  var g = tvLink(s); return { exchange: g.exchange, pair: g.pair, mapped: false, venue: g.exchange };
+}
+// Rail age: ONE helper (section 3). Elapsed days from the latest research support TOUCH EVENT (the fresh-touch gate's basis: rr.touchEvents) to the last closed candle - end to end, so the touch bar's end and the
+// last bar's end are both one bar after their start times and cancel (the pre-17-H research helper subtracted one extra bar). A recent break (barsSinceBreak < RAIL_AGE_FRESH_MAX) forces the stale band and is reported as "broken Nd".
+function railAgeFromTouchEvents(rr) {
+  var out = { days: null, band: 'unknown', byAgeBand: 'unknown', brokenBars: null, sinceTouchToBreak: null, lastTouchTime: null };
+  if (!rr || !rr.candles || !rr.candles.length) return out;
+  var ev = rr.touchEvents || rr.pivotLows || [], lt = -Infinity, i;
+  for (i = 0; i < ev.length; i++) if (ev[i] && typeof ev[i].time === 'number' && ev[i].time > lt) lt = ev[i].time;
+  if (!isFinite(lt)) return out;
+  var days = Math.round((rr.candles[rr.candles.length - 1].time - lt) / 86400);
+  if (!isFinite(days) || days < 0) return out;
+  out.days = days; out.lastTouchTime = lt;
+  out.byAgeBand = days <= RAIL_AGE_FRESH_MAX ? 'fresh' : (days <= RAIL_AGE_AGING_MAX ? 'aging' : 'stale'); out.band = out.byAgeBand;
+  if (typeof rr.barsSinceBreak === 'number' && rr.barsSinceBreak < RAIL_AGE_FRESH_MAX) {
+    out.brokenBars = rr.barsSinceBreak; out.band = 'stale';
+    out.sinceTouchToBreak = days >= rr.barsSinceBreak ? days - rr.barsSinceBreak : null;
+  }
+  return out;
+}
+function railAgeNoteResearch(ra) {
+  if (!ra || ra.days == null) return 'support rail age unknown';
+  if (ra.brokenBars != null) return 'the support rail broke ' + ra.brokenBars + ' bars ago' + (ra.sinceTouchToBreak != null ? '; last touch ' + ra.sinceTouchToBreak + 'd before that' : '; last touch ' + ra.days + 'd ago');
+  if (ra.byAgeBand === 'stale') return 'the support rail was last tested ' + ra.days + 'd ago — treat it as a historical anchor, not current structure';
+  return 'support rail last tested ' + ra.days + 'd ago';
+}
+function railAgeTipResearch(ra) {
+  if (!ra || ra.days == null) return 'Rail age unknown.';
+  if (ra.brokenBars != null) return 'Support rail broke ' + ra.brokenBars + ' bars ago' + (ra.sinceTouchToBreak != null ? '; last touch ' + ra.sinceTouchToBreak + 'd before that' : '; last touch ' + ra.days + 'd ago') + '. A recent break keeps the rail in the Stale band regardless of the touch date.';
+  return railAgeTip(ra.band);
+}
+function railAgeCellResearch(r) {
+  var ra = r.railAge; if (!ra || ra.days == null) return '<span style="color:var(--muted)">—</span>';
+  var txt = ra.brokenBars != null ? 'broken ' + ra.brokenBars + 'd' : ra.days + 'd';
+  return '<span class="cat-tip" data-tip="' + railAgeTipResearch(ra).replace(/"/g, '&quot;') + '" style="color:' + railAgeColor(ra.band) + ';font-weight:600">' + txt + '</span>';
+}
+// Position label from the RAW research position (section 3): < 0 Below support; <= 0.33 Lower third; <= 0.66 Middle; <= 1 Upper third; > 1 Above resistance; null / crossed geometry "—". The graphic clamps to [0,1]; label and sort key use the raw value.
+function positionLabelResearch(p) {
+  if (typeof p !== 'number' || !isFinite(p)) return '—';
+  return p < 0 ? 'Below support' : (p <= 0.33 ? 'Lower third' : (p <= 0.66 ? 'Middle' : (p <= 1 ? 'Upper third' : 'Above resistance')));
+}
+function boardPositionOf(r) { var rr = r ? r.researchRow : null; return (rr && typeof rr.position === 'number' && isFinite(rr.position) && rr.channelH > 0) ? rr.position : null; }
+function boardFitMatches(rec, fit) {
+  if (!fit || !rec) return false;
+  if (fit.score !== rec.score) return false;
+  if (JSON.stringify(fit.pivotIds) !== JSON.stringify(rec.pivotIds)) return false;
+  if (fit.fitEndTime !== rec.fitEndTime || fit.lifecycleState !== rec.lifecycleState) return false;
+  if (typeof fit.position === 'number' && typeof rec.position === 'number' && Math.abs(fit.position - rec.position) > 0.02) return false;   // the refit sees the stored 150-bar window, the capture the full series: ATR / EMA warm-up can move a rail by a hair (CFX: 2.0133 vs 2.0092); score, pivots, span and lifecycle must still agree exactly
+  var a = String(fit.fitId).split('|'), b = String(rec.fitId).split('|');   // the index pair is relative to each side's candle array (capture: the full series; page: the stored window), so the fit's SPAN must agree
+  if (a.length !== b.length || a.length < 6 || a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2] || a[a.length - 1] !== b[b.length - 1]) return false;
+  return (+a[4]) - (+a[3]) === (+b[4]) - (+b[3]);
+}
+function boardDate(sec) { return (typeof sec === 'number' && isFinite(sec)) ? new Date(sec * 1000).toISOString().slice(0, 10) : '?'; }
+function boardStructuralText(r) {
+  var rr = r.researchRow, p = rr ? rr.position : null;
+  if (rr && rr.positionBand === 'above-resistance') {
+    var cl = rr.candles && rr.candles.length ? rr.candles[rr.candles.length - 1].close : r.price, res = rr.resistNow, pct = (typeof res === 'number' && res > 0) ? Math.round((cl - res) / res * 100) : null;
+    return 'channel found; price is above the channel\'s resistance' + (pct != null ? ' (+' + pct + '%)' : '');
+  }
+  return 'channel found; price is in the upper channel (' + (typeof p === 'number' ? Math.round(p * 100) : '?') + '% of height)';
+}
+function boardHistorical(r) { var rr = r.researchRow; return !!(r.structural && rr && (rr.positionBand === 'above-resistance' || rr.lifecycleState !== 'intact')); }
+function boardStructureDisclosure(r) {
+  var rr = r.researchRow, ra = r.railAge;
+  return 'Structure fitted ' + boardDate(rr.fitStartTime) + '–' + boardDate(rr.fitEndTime) + ' · last touch ' + (ra && ra.days != null ? ra.days + 'd ago' : 'unknown') + ' · lifecycle ' + (rr.lifecycleState || 'unknown') + '. Shown as context, never as the current channel: the policy fit found no tradable channel for this coin, and no rule acts on a structural fit.';
+}
+// One board row from one coin of latest-daily.json. Same field names as a merged legacy row (so the shared panel / pin / report code reads it), every fit value taken from the research fit.
+function boardRowFor(c, dailyCap, legacyRow) {
+  var rec = c.researchDaily || null, cs = c.research || null, sym = String(c.symbol || '').toUpperCase(), tv = boardTv(sym, c.dailySource);
+  if (!rec && cs && cs.fitId && c.detectionDaily && c.detectionDaily.candles) rec = Object.assign({}, c.detectionDaily, { fitId: cs.fitId, score: cs.score, _fallback: true });   // a capture that predates researchDaily: the old page-side refit, same as before
+  var R = { symbol: sym, name: c.name, cgId: c.cgId, rank: c.rank, price: c.price, change24h: (c.change24h != null ? c.change24h : null), volume24h: (c.volume24h != null ? c.volume24h : null), marketCap: c.marketCap,
+    category: c.category || null, dailySource: c.dailySource, tvExchange: tv.exchange, tvPair: tv.pair, tvMapped: tv.mapped, tvVenue: tv.venue, captureDate: dailyCap.date, captureTime: dailyCap.captureTime,
+    source: 'daily', dailyStale: false, boardRow: true, timeframe: '1d', candleSource: c.dailySource, legacyRow: legacyRow || null, captureResearch: cs,
+    noResearchFit: false, structural: false, refitMismatch: false, researchError: null, lastBarComplete: true, gridBroken: false, aligned: false, gridScore: null, dailyScore: null, candlesGrid: null, candlesDaily: null };
+  if (!rec) {
+    R.noResearchFit = true; R.noFitReason = (cs && cs.reason) || 'no-structure'; R.researchRow = null; R.research = null; R.score = null; R.explanation = ''; R.railAge = null; R.supportRailAgeDays = null; R.supportRailAgeBand = 'unknown';
+    R.candles = null; R.pivotLows = []; return R;
+  }
+  var meta = { coinId: c.cgId, timeframe: '1d', source: rec.candleSource || c.dailySource, research: true }, fit = null;
+  try {
+    if (rec.structural) fit = (typeof StructureCore !== 'undefined') ? StructureCore.detectStructure(rec.candles, meta) : null;
+    else if (typeof detectChannel === 'function') fit = detectChannel(rec.candles, null, meta);
+  } catch (e) { fit = null; }
+  var matches = rec._fallback ? !!(fit && fit.score === rec.score) : boardFitMatches(rec, fit);
+  if (!matches) { R.refitMismatch = true; try { console.error('Radar: research refit does not reproduce the capture for ' + c.cgId + ' (score ' + (fit && fit.score) + ' vs ' + rec.score + ')'); } catch (e) {} }
+  var src = fit || rec;
+  R.structural = !!rec.structural;
+  var rr = {}, k;
+  for (k in src) rr[k] = src[k];
+  rr.symbol = R.symbol; rr.name = R.name; rr.cgId = R.cgId; rr.price = R.price; rr.change24h = R.change24h; rr.volume24h = R.volume24h; rr.tvExchange = R.tvExchange; rr.tvPair = R.tvPair; rr.category = R.category;
+  rr.source = 'daily'; rr.dailyStale = false; rr.lastBarComplete = true; rr.gridBroken = false;
+  for (var i = 0; i < BOARD_PATTERN_KEYS.length; i++) { var pk = BOARD_PATTERN_KEYS[i]; rr[pk + '_4D'] = false; rr[pk + '_4DTrigger'] = null; rr[pk + '_1D'] = !!src[pk]; rr[pk + '_1DTrigger'] = src[pk + 'Trigger'] || null; }
+  if (R.structural) { rr.structural = true; rr.positionBand = rec.positionBand || src.positionBand || null; rr.entryEconomics = null; rr.executionContext = null; rr.rejections = rec.rejections || null; }
+  if (src.pivotLows) rr.supportTouches = src.pivotLows.length; if (src.pivotHighs) rr.resTouches = src.pivotHighs.length;   // section 3: S / R touches are the research touch sets; every display of a touch count (table, panel tiles, narrative, report) reads these
+  var ra = railAgeFromTouchEvents(src); rr.railAge = ra; rr.supportRailAgeDays = ra.days; rr.supportRailAgeBand = ra.band;
+  R.railAge = ra; R.supportRailAgeDays = ra.days; R.supportRailAgeBand = ra.band;
+  for (k in src) R[k] = src[k];
+  R.symbol = sym; R.name = c.name; R.cgId = c.cgId; R.price = c.price; R.change24h = (c.change24h != null ? c.change24h : null); R.volume24h = (c.volume24h != null ? c.volume24h : null); R.tvExchange = tv.exchange; R.tvPair = tv.pair; R.category = c.category || null;
+  R.timeframe = '1d'; R.candleSource = c.dailySource; R.boardRow = true; R.source = 'daily';
+  R.supportTouches = rr.supportTouches; R.resTouches = rr.resTouches;
+  for (i = 0; i < BOARD_PATTERN_KEYS.length; i++) { pk = BOARD_PATTERN_KEYS[i]; R[pk + '_4D'] = false; R[pk + '_4DTrigger'] = null; R[pk + '_1D'] = !!src[pk]; R[pk + '_1DTrigger'] = src[pk + 'Trigger'] || null; delete R[pk]; delete R[pk + 'Trigger']; }
+  R.candlesDaily = R.candles || null; R.dailyScore = (typeof src.score === 'number') ? src.score : null;
+  if (R.refitMismatch && cs && typeof cs.score === 'number') R.score = cs.score;
+  try { R.explanation = R.structural ? boardStructuralText(Object.assign({}, R, { researchRow: rr })) : ((typeof buildExpl === 'function') ? buildExpl(R, R.name) : ''); } catch (e) { R.explanation = ''; }
+  rr.explanation = R.explanation;
+  R.research = { lifecycleState: src.lifecycleState, maxBreakRun: src.maxBreakRun, lastBreakIdx: src.lastBreakIdx, barsSinceBreak: src.barsSinceBreak, tol: src.tol, atr14: src.atr14, score: src.score, railAgeDays: ra.days, railAgeBand: ra.band };
+  R.researchRow = rr;
+  return R;
+}
+function buildResearchBoard(dailyCap, legacyByCg) {
+  var rows = [], s = { total: 0, policy: 0, structural: 0, upper: 0, above: 0, noStructure: 0, dataGap: 0, otherNoFit: 0, refitMismatch: 0, mismatched: [], timeframes: {} };
+  ((dailyCap && dailyCap.coins) || []).forEach(function (c) {
+    if (!c || !c.cgId) return;
+    var R = boardRowFor(c, dailyCap, (legacyByCg && legacyByCg[c.cgId]) || null); rows.push(R); s.total++;
+    if (R.refitMismatch) { s.refitMismatch++; s.mismatched.push(R.cgId); }
+    s.timeframes[R.timeframe] = (s.timeframes[R.timeframe] || 0) + 1;
+    if (R.noResearchFit) { if (R.noFitReason === 'no-structure') s.noStructure++; else if (R.noFitReason === 'data-gap') s.dataGap++; else s.otherNoFit++; }
+    else if (R.structural) { s.structural++; if (R.researchRow && R.researchRow.positionBand === 'above-resistance') s.above++; else s.upper++; }
+    else s.policy++;
+  });
+  BOARD_SUMMARY = s;
+  try { console.info('research board: ' + s.total + ' coins = ' + s.policy + ' policy + ' + s.structural + ' structural (' + s.upper + ' upper-channel, ' + s.above + ' above-resistance) + ' + s.noStructure + ' no-structure + ' + s.dataGap + ' data-gap' + (s.otherNoFit ? ' + ' + s.otherNoFit + ' other no-fit' : '') + '; refit mismatches ' + s.refitMismatch + (s.refitMismatch ? ' (' + s.mismatched.join(',') + ')' : '')); } catch (e) {}
+  return rows;
+}
+function boardDim(c) { var m = /^#([0-9a-f]{6})$/i.exec(String(c)); if (m) { var n = parseInt(m[1], 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',0.35)'; } return c; }   // structural rows: rails dimmed in the chart (1b.5)
+function boardNoFitCardHTML(r) {
+  return '<div class="radar-card" id="card-' + r.symbol + '" data-score="0" style="background:#13141f;border:1px solid #1e2035;border-radius:8px;padding:16px 18px;margin-bottom:10px;opacity:.75">' +
+    '<div style="display:flex;align-items:center;gap:10px"><div style="width:32px;height:32px;border-radius:50%;background:#20223a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#7b6ef6">' + r.symbol.substring(0, 3) + '</div>' +
+    '<div><div style="font-size:16px;font-weight:700">' + r.symbol + '</div><div style="font-size:11px;color:#6b7280">' + r.name + ' - Daily - no research fit</div></div></div>' +
+    '<div style="font-size:12px;color:#9da3b4;line-height:1.6;background:#1a1b2a;border-radius:6px;padding:10px 12px;margin-top:10px">' + researchAttr(boardNoFitText(r)) + '</div></div>';
+}
+
+function boardRailNote(r) { return r && r.railAge ? railAgeNoteResearch(r.railAge) : railNoteFor(r); }
+// ---- research board table (section 3 / 5): ONE column definition drives the header, every row cell (normal, no-fit and pinned stub rows) and the sort key ----
+function boardFit(r) { return r ? (r.researchRow || null) : null; }
+function boardNoFitText(r) {
+  var why = r && r.noFitReason;
+  if (why === 'data-gap') return 'No research fit: fewer than 30 usable daily candles.';
+  if (why === 'no-structure') return 'No research fit: no rail pair survived the spacing, wedge, touch and containment checks on these candles.';
+  return 'No research fit for this coin in the current capture.';
+}
+function boardBandTip() { var b = researchBands(); return 'Score bands: High ' + b.high + ' or above; Probable ' + b.probable + '–' + (b.high - 1) + '; Emerging ' + b.emerging + '–' + (b.probable - 1) + '; Watch ' + b.watch + '–' + (b.emerging - 1) + '; Weak below ' + b.watch + '.'; }
+function boardCapTip(r) { return (r && r.captureDate) ? 'captured ' + r.captureDate + ' ' + String(r.captureTime || '').slice(11, 16) + ' UTC · ' + (r.dailySource || '?') : ''; }
+function boardFmtPct(v, d) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(d) : '—'; }
+var BOARD_DASH = '<td style="color:var(--muted)">—</td>';
+function boardCoinCell(r) {
+  var pinned = isPinned(r) || !!r.stub, sub = r.stub ? (r.name + (r.rank != null ? ' · #' + r.rank : '')) : r.name;
+  var note = r.stub ? '<div class="pin-note" title="pinned · outside current filters">pinned · outside current filters</div>' : (isPinned(r) && PIN_HIDDEN[r.cgId] ? '<div class="pin-note" title="pinned · outside current filters">pinned · outside current filters</div>' : '');
+  return '<td><div class="coin-cell"><div class="coin-icon">' + r.symbol.substring(0, 3) + '</div>' + pinButtonHTML(r.cgId, pinned) + '<div><div class="coin-name">' + r.symbol + '</div><div class="coin-sub"' + (r.stub ? ' style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + researchAttr(sub) + '"' : '') + '>' + sub + '</div>' + note + '</div></div></td>';
+}
+function boardScoreCell(r) {
+  var rr = boardFit(r);
+  if (!rr) return '<td title="' + researchAttr(r.stub ? 'Not in the current capture' : boardNoFitText(r)) + '"><span style="color:var(--muted)">—</span></td>';
+  var sc = researchScoreOf(r), c = researchScoreColor(sc);
+  var tag = r.structural ? '<span class="rs-tag" style="font-size:9px;color:var(--muted);border:1px solid var(--border2);border-radius:3px;padding:0 3px">structure</span>' : '';
+  var warn = r.refitMismatch ? '<span title="The page refit did not reproduce the capture\'s fit; the capture\'s summary score is shown." style="color:var(--neut)"> ⚠</span>' : '';
+  var tip = 'Research score ' + researchPts(sc) + (r.structural ? ' (structural fit: context only, never Near or Act)' : '') + '. ' + boardBandTip();
+  return '<td title="' + researchAttr(tip) + '"><div class="score-cell"><span style="font-weight:700;color:' + c + ';min-width:26px">' + researchPts(sc) + warn + '</span><div class="score-bar-wrap"><div class="score-bar" style="width:' + Math.max(0, Math.min(100, sc)) + '%;background:' + c + '"></div></div>' + tag + '</div></td>';
+}
+function boardTvHref(r) { return 'https://www.tradingview.com/chart/?symbol=' + (r.tvExchange || 'KRAKEN') + ':' + (r.tvPair || r.symbol + 'USD') + '&interval=D'; }
+var BOARD_COLS = [
+  { id: 'coin', th: 'Coin', cell: boardCoinCell },
+  { id: 'action', th: 'Action', cell: function (r) { return r.stub ? '<td><span class="vbadge pin-nofit" title="No channel found for this coin in the current capture">no channel found</span></td>' : '<td>' + researchStateCellHTML(researchStateFor(r), null) + '</td>'; }, sort: 'default' },
+  { id: 'score', th: 'Score', cell: boardScoreCell, sort: 'score' },
+  { id: 'vol', th: '24h Vol', tip: 'Total US-dollar trading volume over the last 24 hours (CoinGecko, as of the capture; hover a cell for the capture time and venue).',
+    cell: function (r) { return '<td style="color:var(--text2);font-variant-numeric:tabular-nums" title="' + researchAttr(boardCapTip(r)) + '">' + (r.volume24h != null ? fmtVol(r.volume24h) : '—') + '</td>'; } },
+  { id: 'st', th: 'S Touches', tip: 'Support touches in the research fit: how many times price tested the lower rail. More touches = a more established channel.', sort: 'supportTouches',
+    cell: function (r) { var rr = boardFit(r); return rr ? '<td style="color:var(--bull)">' + (rr.pivotLows ? rr.pivotLows.length : 0) + '</td>' : BOARD_DASH; } },
+  { id: 'rt', th: 'R Touches', tip: 'Resistance touches in the research fit: how many times price tested the upper rail.',
+    cell: function (r) { var rr = boardFit(r); return rr ? '<td style="color:var(--text2)">' + (rr.pivotHighs ? rr.pivotHighs.length : 0) + '</td>' : BOARD_DASH; } },
+  { id: 'contain', th: 'Contain', tip: 'Research containment: percent of closes inside the channel over the fit window. Higher = cleaner channel.', sort: 'containment',
+    cell: function (r) { var rr = boardFit(r); if (!rr || typeof rr.containment !== 'number') return BOARD_DASH; var n = (typeof rr.lastIdx === 'number' && typeof rr.firstIdx === 'number') ? rr.lastIdx - rr.firstIdx + 1 : '?';
+      return '<td style="color:' + (rr.containment > 75 ? 'var(--bull)' : 'var(--text2)') + '" title="closes inside the channel over the fit window (' + n + ' bars), tolerance ' + boardFmtPct(typeof rr.tol === 'number' ? rr.tol * 100 : null, 2) + '%">' + rr.containment + '%</td>'; } },
+  { id: 'slope', th: 'Slope/bar', tip: 'The research channel\'s tilt in percent per DAILY bar. Positive = ascending channel.', sort: 'slope',
+    cell: function (r) { var rr = boardFit(r); if (!rr || typeof rr.slope !== 'number') return BOARD_DASH; var s = rr.slope, cls = s > 0.05 ? 'sp' : (s < -0.05 ? 'sn' : 'sf'); return '<td class="' + cls + '" title="percent per daily bar">' + (s >= 0 ? '+' : '') + s.toFixed(3) + '%</td>'; } },
+  { id: 'pos', th: 'Position', tip: 'Where the latest closed candle sits in the research channel: Below support, Lower third, Middle, Upper third, Above resistance.', sort: 'position',
+    cell: function (r) { var p = boardPositionOf(r); if (p == null) return BOARD_DASH; var pw = Math.round(clamp(p, 0, 1) * 100);
+      return '<td><div class="pos-wrap"><div class="pos-bar-outer"><div class="pos-marker" style="left:' + pw + '%"></div></div><span style="font-size:11px;color:var(--text2)">' + positionLabelResearch(p) + '</span></div></td>'; } },
+  { id: 'age', th: 'Rail Age', tip: 'Days from the latest support touch (research fit) to the last closed candle. Fresh <=14d is live structure; Aging 15-28d; Stale >28d is a historical anchor. A recent rail break shows "broken Nd" and counts as Stale.', sort: 'supportRailAgeDays',
+    cell: function (r) { return boardFit(r) ? '<td>' + railAgeCellResearch(r) + '</td>' : BOARD_DASH; } },
+  { id: 'chg', th: '24h Change', tip: 'Price change over the last 24 hours (CoinGecko, as of the capture).',
+    cell: function (r) { var cc = r.change24h >= 0 ? 'up' : 'dn'; return '<td class="' + (r.change24h == null ? '' : cc) + '" title="' + researchAttr(boardCapTip(r)) + '">' + (r.change24h != null ? fmtP(r.change24h) : '—') + '</td>'; } },
+  { id: 'tv', th: 'TV', tip: 'Comparison chart on the venue that supplied the fit\'s candles (not the fitted series).',
+    cell: function (r) { var tv = r.stub ? boardTv(r.symbol, null) : { exchange: r.tvExchange, pair: r.tvPair, mapped: r.tvMapped, venue: r.tvVenue }, href = r.stub ? 'https://www.tradingview.com/chart/?symbol=' + tv.exchange + ':' + tv.pair + '&interval=D' : boardTvHref(r);
+      return '<td><a class="tv-link" href="' + href + '" target="_blank" onclick="event.stopPropagation()" title="' + researchAttr(tv.mapped ? tv.venue + ':' + tv.pair : 'comparison chart · ' + tv.exchange + ':' + tv.pair + ' — not the fitted series') + '">TV</a></td>'; } }
+];
+function boardRowHTML(r) {
+  var pinned = isPinned(r) || !!r.stub;
+  var attrs = r.stub ? ' class="pin-row pin-stub" data-pin-stub="' + String(r.cgId).replace(/"/g, '&quot;') + '"' : ' data-key="' + rowKey(r) + '"' + (pinned ? ' class="pin-row"' : '');
+  return '<tr' + attrs + '>' + BOARD_COLS.map(function (c) { return c.cell(r); }).join('') + '</tr>';
+}
+var HEAD_ORIG = null;
+function boardHeaderSync() {
+  var ths = document.querySelectorAll('.radar-table thead th'); if (ths.length !== 13) return;
+  if (!HEAD_ORIG) HEAD_ORIG = Array.prototype.map.call(ths, function (t) { return { tip: t.getAttribute('data-tip'), display: t.style.display }; });
+  var map = [0, 1, 2, null, 3, 4, 5, 6, 7, 8, 9, 10, 11];   // th index -> BOARD_COLS index (the legacy Channel Status column has none)
+  Array.prototype.forEach.call(ths, function (t, i) {
+    if (!RESEARCH_MODE_UI) { t.style.display = HEAD_ORIG[i].display; if (HEAD_ORIG[i].tip == null) t.removeAttribute('data-tip'); else t.setAttribute('data-tip', HEAD_ORIG[i].tip); return; }
+    if (map[i] == null) { t.style.display = 'none'; return; }
+    t.style.display = HEAD_ORIG[i].display; var c = BOARD_COLS[map[i]];
+    if (c.tip) t.setAttribute('data-tip', c.tip);
+    if (c.id === 'chg') t.textContent = c.th;
+  });
+  var s = ths[2]; if (RESEARCH_MODE_UI) s.setAttribute('data-tip', 'Research score 0-100 (the score the Action state is judged on; score rescaled, floor provisional). ' + boardBandTip());
+}
+function boardRenderTable() {
+  var tbody = document.getElementById('table-body'), pinStubs = pinStubRows();
+  boardHeaderSync();
+  if (!filtered.length && !pinStubs.length) { tbody.innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>'; return; }
+  tbody.innerHTML = filtered.map(boardRowHTML).join('') + pinStubs.map(function (u) { return boardRowHTML(Object.assign({ stub: true }, u)); }).join('');
+}
+// ---- filters and sort (section 4): every input is the research projection; no legacy bypass ----
+function passesBoard(r, t) {
+  if (HIDE_STRUCT_ONLY && r.structural) return false;
+  var rr = boardFit(r), sc = researchScoreOf(r), ra = r.railAge || null;
+  if (t.railAgeMode === 'fresh' && !(ra && ra.band === 'fresh')) return false;
+  if (t.railAgeMode === 'fresh-aging' && !(ra && (ra.band === 'fresh' || ra.band === 'aging'))) return false;
+  if (!t.showAll) {
+    if (!rr) return false;
+    if ((rr.pivotLows ? rr.pivotLows.length : 0) < t.minTouches) return false;
+    if (rr.containment < t.minContain) return false;
+    if (t.slopeMode === 'positive' && rr.slope < 0) return false;
+    if (t.slopeMode === 'flat' && rr.slope < -0.1) return false;
+    if (sc == null) { if (t.minScore > 0) return false; } else if (sc < t.minScore) return false;
+  }
+  var b = researchBands();
+  if (activeFilter !== 'all' && sc == null) return false;
+  if (activeFilter === 'high' && sc < b.high) return false;
+  if (activeFilter === 'probable' && (sc < b.probable || sc >= b.high)) return false;
+  if (activeFilter === 'emerging' && (sc < b.emerging || sc >= b.probable)) return false;
+  if (activeFilter === 'watch' && (sc < b.watch || sc >= b.emerging)) return false;
+  return true;
+}
+function boardSortVal(r, col) {
+  var rr = boardFit(r); if (!rr) return null;
+  var num = function (v) { return (typeof v === 'number' && isFinite(v)) ? v : null; };
+  if (col === 'score') return researchScoreOf(r);
+  if (col === 'position') return boardPositionOf(r);
+  if (col === 'slope') return num(rr.slope);
+  if (col === 'supportTouches') return rr.pivotLows ? rr.pivotLows.length : null;
+  if (col === 'containment') return num(rr.containment);
+  if (col === 'supportRailAgeDays') return (r.railAge && r.railAge.days != null) ? r.railAge.days : null;
+  return null;
+}
+function boardSortCore() {
+  var col = sortCol, dir = sortDir;
+  filtered.sort(function (a, b) {
+    var av = boardSortVal(a, col), bv = boardSortVal(b, col);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return dir * (av - bv);
+  });
+}
+function legacyActionOf(r) {
+  if (r && r.boardRow) return r.legacyRow ? buildAction(r.legacyRow) : { verdict: '—', text: 'No legacy detection for this coin in the current capture.' };
+  return buildAction(r);
+}
+// A coin with no research fit (no structure, or too few candles): the panel shows the state, the capture's reason and the Legacy section - no fit figure from any other source.
+function openDetailNoFit(r) {
+  var $ = function (id) { return document.getElementById(id); }, set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
+  panelLayout(true);
+  $('detail-panel').style.display = 'flex'; $('layout').classList.add('open');
+  set('dp-icon', r.symbol.substring(0, 3)); set('dp-symbol', r.symbol); pinSyncDetail(r);
+  set('dp-price', fmt(r.price, pricePrecision(r.price)) + '  ' + fmtP(r.change24h) + '   Vol ' + fmtVol(r.volume24h) + ' (as of capture)');
+  set('dp-score', '—'); var sc = $('dp-score'); if (sc) sc.style.color = 'var(--muted)';
+  var bd = $('dp-badge'); if (bd) bd.innerHTML = r.category ? '<span class="bbadge cat-tip" data-tip="' + categoryTip(r.category) + '" style="background:rgba(157,163,180,.12);color:var(--text2)">' + r.category + '</span>' : '';
+  set('dp-tf', 'Daily - ' + r.name);
+  var g = $('dp-score-grid'); if (g) g.innerHTML = '';
+  var lv = $('dp-levels'); if (lv) lv.innerHTML = '<div style="font-size:11px;color:var(--muted,#9aa3b2);padding:6px 18px">' + researchAttr(boardNoFitText(r)) + '</div>';
+  var fw = $('dp-fitwindow'); if (fw) fw.innerHTML = ''; var chip = $('dp-fitchip'); if (chip) chip.textContent = '';
+  set('dp-pos-label', '—'); var pb = $('dp-pos-bar'); if (pb) pb.style.width = '0%'; set('dp-sup', '—'); set('dp-cur', fmt(r.price, pricePrecision(r.price))); set('dp-res', '—');
+  var ra = $('dp-rail-age'); if (ra) ra.innerHTML = '';
+  set('dp-expl', r.legacyRow ? (r.legacyRow.explanation || '') : '');
+  var action = legacyActionOf(r), rs = researchStateFor(r), ae = $('dp-action-badge'), at = $('dp-action-text');
+  if (P3) p3RenderPanel(r, rs, action);
+  if (at) at.textContent = action.text;
+  if (ae && !P3) ae.innerHTML = researchStateCellHTML(rs, action, 'detail');
+  set('dp-inv', 'No research fit'); set('dp-inv-pct', '');
+  var tv = $('dp-tv'); if (tv) tv.href = boardTvHref(r); var cg = $('dp-cg'); if (cg) cg.href = 'https://www.coingecko.com/en/coins/' + r.cgId;
+  var cf = $('dp-confluence'); if (cf) cf.innerHTML = '';
+  if (detailChart) { detailChart.remove(); detailChart = null; }
+  var ch = $('detail-chart'); if (ch) ch.innerHTML = '<div class="state-view" style="height:100%"><div class="state-title">No research fit</div><div class="state-sub">' + researchAttr(boardNoFitText(r)) + '</div></div>';
+  var ohlc = $('dp-ohlc'); if (ohlc && ohlc.parentNode) ohlc.parentNode.removeChild(ohlc);
+}
 // Adapt a capture-file coin (from data/latest.json) into radar's result shape.
 // Spreads the stored `detection` channel object and adds coin-level fields; resolves TV link.
 function adaptCaptureCoin(c) {
@@ -4585,6 +4910,7 @@ function adaptCaptureCoin(c) {
   var d = c.detection;
   var tv = tvLink((c.symbol||'').toUpperCase());
   return {
+    timeframe:'4d-grid', candleSource:(d.candleSource||'coingecko'),   // 17-H 2.1: every refit states its timeframe (a grid row must never fall back to the daily default)
     symbol:(c.symbol||'').toUpperCase(), name:c.name, cgId:c.cgId,
     price:c.price, change24h:(c.change24h!=null?c.change24h:null),
     volume24h:(c.volume24h!=null?c.volume24h:null), category:c.category||null,
@@ -4663,7 +4989,8 @@ function adaptDailyCoin(c) {
     // - same fields, same reason.
     bb3UpperReversion:d.bb3UpperReversion, threeInsideDown:d.threeInsideDown,
     bb3UpperReversionTrigger:d.bb3UpperReversionTrigger, threeInsideDownTrigger:d.threeInsideDownTrigger,
-    dailySource:c.dailySource
+    dailySource:c.dailySource,
+    timeframe:d.timeframe, candleSource:d.candleSource   // 17-H 2.1: copied from the detection record
     // Backlog #5 (2026-09-19): see adaptCaptureCoin above - explanation is built in
     // mergeCandidateRow instead, after rail age is known.
   };
@@ -4828,7 +5155,10 @@ function mergeCandidateRow(gridRow, dailyRow, dailyStale) {
   merged.research = null;
   merged.researchRow = null;
   try {
-    if (typeof detectChannel === 'function' && merged.candles && merged.candles.length) {
+    if (merged.timeframe !== '1d' && merged.timeframe !== '4d-grid') {   // 17-H 2.1: never a silent daily default
+      try { console.error('Radar BUG: merged row has no valid timeframe (' + merged.timeframe + ') for ' + merged.cgId + ' - research refit skipped'); } catch (e2) {}
+      merged.researchError = 'timeframe-missing';
+    } else if (typeof detectChannel === 'function' && merged.candles && merged.candles.length) {
       var researchMeta = {coinId: merged.cgId, timeframe: merged.timeframe, source: merged.candleSource, research: true};
       var researchFit = detectChannel(merged.candles, null, researchMeta);
       if (researchFit) {
@@ -4931,7 +5261,9 @@ async function loadCachedOrResting() {
         });
 
         if(adapted.length) {
-          allResults = adapted;
+          allResults = adapted; LEGACY_ROWS = adapted; BOARD_ROWS = [];
+          try { if (dailyCap && dailyCap.coins && dailyCap.coins.length) { var lgByCg = {}; adapted.forEach(function(x){ lgByCg[x.cgId] = x; }); BOARD_ROWS = buildResearchBoard(dailyCap, lgByCg); } } catch(eBoard) { BOARD_ROWS = []; try { console.error('research board build failed:', eBoard); } catch(e3) {} }
+          if (RESEARCH_MODE_UI && BOARD_ROWS.length) allResults = BOARD_ROWS;   // 17-H 2.2: the research view's population is the whole daily universe
           PIN_UNIVERSE = pinUniverseFrom(cap.coins, dailyCap && dailyCap.coins);   // Step 16-A: stub rows for pinned coins with no candidate row
           dailyDataAvailable = Object.keys(dailyMap).length > 0;
           // Confirmed filter button and the daily-only threshold control only make sense
