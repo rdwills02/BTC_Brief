@@ -1872,7 +1872,8 @@ function runStep13ForwardScore(current, ledgerPath) {
 //   default run       -> runStep14Operational: months 3/6/9 content ONLY (completeness, counts, statuses). No performance figure of any kind.
 //   --confirmatory    -> runStep14Confirmatory: reads the LOCKED generation, its cache resolved through the commit that added its checksums.json; §7 exactly.
 //   --feasibility     -> runStep14Feasibility: §8 entry-feasibility funnel on the fixtures (no path to the execution / P&L code).
-//   --calibrate       -> runStep14Calibrate: §8 nulls (i) and (ii); non-zero exit when a false-pass rate exceeds 0.15 (v1.3); writes data/forward/calibration.json.
+//   --calibrate       -> runStep14Calibrate: §8 nulls for conditions 1 and 6 always, plus null (ii) for condition 3 only when confirmatoryPolicy (read from
+//                        data/forward/config.json, absent here) is C1; non-zero exit when a false-pass rate exceeds 0.15 (v1.4); writes data/forward/calibration.json.
 //   --data <dir>      -> read the forward state from <dir> instead of <repo>/data (tests, mirrors).
 // =====================================================================================================================================
 const STEP14 = { SEED: 20260925, REPS: 10000, BLOCKS: [10, 20, 40], PRIMARY_B: 20, N: 395, ISSUANCE_CUTOFF_DAY: 365, LAST_RECORD_DAY: 394, DEADLINE_DAY: 409, LOCK_MAX_DAY: 408,
@@ -1939,23 +1940,34 @@ function step14Cell(kind, data, b, reps, seed) {
   return { kind, b, reps, undefinedReplications: undef, validated: undef === 0, bound: undef === 0 ? step14Bound(values) : null, point };
 }
 // The status decision (Protocol §7). cells[analysis][scenario][b] = { validated, bound, point }; analysis in exp (condition 1), port (3), adv (6).
-// point = { S1, S2 } expectancy point estimates (condition 2, evaluated once per scenario). fills = FACTUAL fills of the trade-outcome cohort; c1Suspended = FACTUAL suspension in the window.
-function step14Decide(cells, point, fills, c1Suspended) {
-  const B = STEP14.BLOCKS, out = { conditions: {}, reasons: [], status: null };
+// point = { S1, S2 } expectancy point estimates (condition 2, evaluated once per scenario). fills = FACTUAL fills of the trade-outcome cohort; c1Suspended = FACTUAL
+// suspension in the window (reads confirmatoryPolicy's account — the name is historical). confirmatoryPolicy (Checkpoint 7b, Protocol §5.1/§7): 'C1' if a selection
+// record named one, else 'N0' — default 'C1' preserves every pre-checkpoint-7b caller's behaviour byte-for-byte (conditions 1/2/4/5/6 always evaluate against
+// whichever policy IS confirmatoryPolicy; condition 3 and the 'port' analysis are NOT APPLICABLE, never failed/undefined/unvalidated, when confirmatoryPolicy is 'N0'
+// (no C1 to compare against) — no phantom C1 account or series is read in that branch. Status rules (ii)-(iii) then evaluate conditions 1, 2, 6 only.
+function step14Decide(cells, point, fills, c1Suspended, confirmatoryPolicy) {
+  confirmatoryPolicy = confirmatoryPolicy || 'C1';
+  const portApplicable = confirmatoryPolicy === 'C1';
+  const B = STEP14.BLOCKS, out = { conditions: {}, reasons: [], status: null, confirmatoryPolicy: confirmatoryPolicy };
   const p2 = point.S2, p1 = point.S1;
   out.conditions[4] = { pass: fills >= STEP14.MIN_FILLS, fills };
   out.conditions[5] = { pass: !c1Suspended };
   out.conditions[2] = { pass: p2 != null && p2 >= STEP14.MIN_POINT, S2: p2, S1: p1 };
   const cond = { 1: 'exp', 3: 'port', 6: 'adv' };
-  Object.keys(cond).forEach(k => { const c = cells[cond[k]].S2[STEP14.PRIMARY_B]; out.conditions[k] = { pass: c.validated ? c.bound > 0 : null, validated: c.validated, bound: c.bound }; });
+  const strictConds = portApplicable ? [1, 3, 6] : [1, 6];   // condition 3 excluded entirely (NOT APPLICABLE) when confirmatoryPolicy is 'N0'
+  Object.keys(cond).forEach(k => {
+    if (k === '3' && !portApplicable) { out.conditions[3] = { pass: null, notApplicable: true }; return; }
+    const c = cells[cond[k]].S2[STEP14.PRIMARY_B]; out.conditions[k] = { pass: c.validated ? c.bound > 0 : null, validated: c.validated, bound: c.bound };
+  });
   if (!out.conditions[4].pass || !out.conditions[5].pass) { out.status = 'reject'; out.reasons.push('(i) condition ' + (!out.conditions[4].pass ? '4' : '5') + ' fails'); return out; }
   const failsS2 = [];
   if (!out.conditions[2].pass) failsS2.push(2);
-  [1, 3, 6].forEach(k => { if (out.conditions[k].validated && out.conditions[k].pass === false) failsS2.push(Number(k)); });
+  strictConds.forEach(k => { if (out.conditions[k].validated && out.conditions[k].pass === false) failsS2.push(Number(k)); });
   if (failsS2.length) { out.status = 'reject'; out.reasons.push('(ii) condition(s) ' + failsS2.join(',') + ' fail under S2'); return out; }
   const inc = [];
-  ['exp', 'port', 'adv'].forEach(a => ['S1', 'S2'].forEach(s => B.forEach(b => { if (!cells[a][s][b].validated) inc.push('unvalidated ' + a + '/' + s + '/b' + b); })));
-  [1, 3, 6].forEach(k => {
+  const analyses = portApplicable ? ['exp', 'port', 'adv'] : ['exp', 'adv'];
+  analyses.forEach(a => ['S1', 'S2'].forEach(s => B.forEach(b => { if (!cells[a][s][b].validated) inc.push('unvalidated ' + a + '/' + s + '/b' + b); })));
+  strictConds.forEach(k => {
     if (out.conditions[k].pass === true) ['S1', 'S2'].forEach(s => B.forEach(b => { if (s === 'S2' && b === STEP14.PRIMARY_B) return; const c = cells[cond[k]][s][b]; if (c.validated && !(c.bound > 0)) inc.push('condition ' + k + ' passes S2/b20 but fails ' + s + '/b' + b); }));
   });
   if (out.conditions[2].pass && !(p1 != null && p1 >= STEP14.MIN_POINT)) inc.push('condition 2 passes S2 but fails S1');
@@ -1988,6 +2000,16 @@ function step14Deps(over) {
 }
 function step14Sha(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
 function step14ReadJson(d, f) { try { return JSON.parse(d.fs.readFileSync(f, 'utf8')); } catch (e) { return null; } }
+// Checkpoint 7b (Protocol v1.4 §5.1/§7): confirmatoryPolicy = 'C1' if a selection record named one and it is
+// present in data/forward/config.json's frozen `challenger` field (the SAME field capture.js's fwdReadConfig
+// reads and OC.challengerActive gates issuance on — never re-derived here), else 'N0'. Mirrors capture.js's
+// fwdReadConfig exactly ({ protocolVersion, challenger }); config.json is frozen for the whole cohort (§5.1).
+function step14ReadForwardConfig(d) {
+  var cfg = step14ReadJson(d, d.path.join(d.dataDir, 'forward', 'config.json'));
+  if (!cfg || typeof cfg.protocolVersion !== 'string' || !cfg.protocolVersion) return null;
+  return { protocolVersion: cfg.protocolVersion, challenger: cfg.challenger || null };
+}
+function step14ConfirmatoryPolicy(d, fwdCfg) { return (fwdCfg && d.OC.challengerActive(fwdCfg.challenger)) ? 'C1' : 'N0'; }
 function step14Cohort(d) {
   const dir = path.join(d.dataDir, 'forward'), cur = step14ReadJson(d, path.join(dir, 'CURRENT')), out = { dir, current: cur, entries: [], pins: {}, startDate: null, problems: [] };
   if (!cur) { out.problems.push('no CURRENT'); return out; }
@@ -2073,32 +2095,47 @@ function step14LockOf(cohort) {
   const lockRow = withDay.filter(e => e.day <= STEP14.LOCK_MAX_DAY).pop();
   return { lock: lockRow, problems: [] };
 }
-function step14Analyse(d, gen, cohort, opts) {
-  opts = opts || {}; const OC = d.OC, reps = opts.reps || STEP14.REPS, start = cohort.startDate;
+// confirmatoryPolicy (Checkpoint 7b): defaults to 'C1' so every pre-checkpoint-7b caller (including the
+// existing synthetic-cohort tests) is byte-for-byte unaffected. Every occurrence of 'C1' that used to be
+// hardcoded in conditions 1/2/4/5/6 now reads confirmatoryPolicy instead; condition 3 / the 'port' analysis
+// are skipped entirely (never computed, never read) when confirmatoryPolicy is 'N0' — Protocol §5.1/§7: "no
+// phantom C1 account or series exists" in the absent branch. `recs`/`sc` (via OC.buildScenarios, unchanged,
+// orders-core's own unconditional N0+C1 loop) still compute BOTH policies' scenario paths internally — that
+// is orders-core.js's own bookkeeping, never touched here — but this function reads only confirmatoryPolicy's
+// (and, when portApplicable, N0's, for the relative comparison) records into the confirmatory result.
+function step14Analyse(d, gen, cohort, opts, confirmatoryPolicy) {
+  opts = opts || {}; confirmatoryPolicy = confirmatoryPolicy || 'C1';
+  const OC = d.OC, reps = opts.reps || STEP14.REPS, start = cohort.startDate, portApplicable = confirmatoryPolicy === 'C1';
   const book = { orders: gen.files['orders.json'].orders, attempts: gen.files['orders.json'].attempts, seq: gen.files['accounts.json'].seq, accounts: gen.files['accounts.json'].accounts };
   const deadlineSec = Math.floor(Date.parse(start + 'T00:00:00Z') / 1000) + STEP14.DEADLINE_DAY * 86400;
   const sc = OC.buildScenarios(JSON.parse(JSON.stringify(book)), { deadlineSec });
   const cohortOrders = {}; book.orders.forEach(o => { if (step14DayIndex(o.issueDate, start) < STEP14.ISSUANCE_CUTOFF_DAY) cohortOrders[o.id] = o; });
   const tradesOf = (pathObj) => pathObj.trades.filter(t => cohortOrders[t.orderId]);
   const recs = {};
-  ['S1', 'S2', 'S1adv', 'S2adv'].forEach(k => ['N0', 'C1'].forEach(p => { recs[k + '/' + p] = step14Records(sc.paths[k][p].series, tradesOf(sc.paths[k][p]), start, STEP14.N); }));
-  const cells = { exp: { S1: {}, S2: {} }, adv: { S1: {}, S2: {} }, port: { S1: {}, S2: {} } }, point = {};
+  const policiesNeeded = portApplicable ? ['N0', 'C1'] : [confirmatoryPolicy];   // never reads a phantom C1 series when confirmatoryPolicy is N0
+  ['S1', 'S2', 'S1adv', 'S2adv'].forEach(k => policiesNeeded.forEach(p => { recs[k + '/' + p] = step14Records(sc.paths[k][p].series, tradesOf(sc.paths[k][p]), start, STEP14.N); }));
+  const cells = { exp: { S1: {}, S2: {} }, adv: { S1: {}, S2: {} }, port: portApplicable ? { S1: {}, S2: {} } : null }, point = {};
   ['S1', 'S2'].forEach(S => {
-    const c1 = recs[S + '/C1'], c1a = recs[S + 'adv/C1'], n0 = recs[S + '/N0'];
-    point[S] = (() => { const t = c1.tradeCount; return t ? c1.s.reduce((a, b) => a + b, 0) / c1.n.reduce((a, b) => a + b, 0) : null; })();
-    const port = { N: STEP14.N, lr1: c1.r.map(x => Math.log1p(x)), lr0: n0.r.map(x => Math.log1p(x)), r1: c1.r, r0: n0.r };
+    const cp = recs[S + '/' + confirmatoryPolicy], cpa = recs[S + 'adv/' + confirmatoryPolicy];
+    point[S] = (() => { const t = cp.tradeCount; return t ? cp.s.reduce((a, b) => a + b, 0) / cp.n.reduce((a, b) => a + b, 0) : null; })();
     STEP14.BLOCKS.forEach(b => {
-      cells.exp[S][b] = step14Cell('exp', { N: STEP14.N, s: c1.s, n: c1.n }, b, reps);
-      cells.adv[S][b] = step14Cell('exp', { N: STEP14.N, s: c1a.s, n: c1a.n }, b, reps);
-      cells.port[S][b] = step14Cell('port', port, b, reps);
+      cells.exp[S][b] = step14Cell('exp', { N: STEP14.N, s: cp.s, n: cp.n }, b, reps);
+      cells.adv[S][b] = step14Cell('exp', { N: STEP14.N, s: cpa.s, n: cpa.n }, b, reps);
+      if (portApplicable) {
+        const n0 = recs[S + '/N0'], port = { N: STEP14.N, lr1: cp.r.map(x => Math.log1p(x)), lr0: n0.r.map(x => Math.log1p(x)), r1: cp.r, r0: n0.r };
+        cells.port[S][b] = step14Cell('port', port, b, reps);
+      }
     });
   });
-  const c1book = book.orders.filter(o => o.policyId === 'C1' && cohortOrders[o.id] && o.fill);
-  const fillDays = c1book.map(o => step14DayIndex(o.fill.date, start));
-  const c1acct = book.accounts.C1, susp = !!(c1acct.suspended && c1acct.suspendedAt && step14DayIndex(c1acct.suspendedAt, start) <= STEP14.LAST_RECORD_DAY);
-  const decision = step14Decide(cells, point, c1book.length, susp);
-  return { scenarios: sc, records: recs, cells, point, decision, fills: c1book.length, fillShare: step14MaxShare(fillDays), c1SuspendedInWindow: susp,
-    lateAttributed: { S1: recs['S1/C1'].lateAttributed, S2: recs['S2/C1'].lateAttributed }, unresolved: { N0: sc.unresolved.N0.length, C1: sc.unresolved.C1.length } };
+  const cpBook = book.orders.filter(o => o.policyId === confirmatoryPolicy && cohortOrders[o.id] && o.fill);
+  const fillDays = cpBook.map(o => step14DayIndex(o.fill.date, start));
+  const cpAcct = book.accounts[confirmatoryPolicy], susp = !!(cpAcct.suspended && cpAcct.suspendedAt && step14DayIndex(cpAcct.suspendedAt, start) <= STEP14.LAST_RECORD_DAY);
+  const decision = step14Decide(cells, point, cpBook.length, susp, confirmatoryPolicy);
+  return { scenarios: sc, records: recs, cells, point, decision, fills: cpBook.length, fillShare: step14MaxShare(fillDays),
+    confirmatoryPolicy: confirmatoryPolicy, portApplicable: portApplicable,
+    c1SuspendedInWindow: susp,   // name kept for backward compatibility with pre-checkpoint-7b callers; reads confirmatoryPolicy's account, not necessarily C1's
+    lateAttributed: { S1: recs['S1/' + confirmatoryPolicy].lateAttributed, S2: recs['S2/' + confirmatoryPolicy].lateAttributed },
+    unresolved: portApplicable ? { N0: sc.unresolved.N0.length, C1: sc.unresolved.C1.length } : { [confirmatoryPolicy]: sc.unresolved[confirmatoryPolicy].length } };
 }
 function runStep14Confirmatory(depsOver, opts) {
   opts = opts || {};
@@ -2107,15 +2144,26 @@ function runStep14Confirmatory(depsOver, opts) {
   if (!cohort.current) return fail('no forward state (' + cohort.problems.join('; ') + ')');
   const L = step14LockOf(cohort); if (L.problems.length) return fail(L.problems.join('; '));
   const gen = step14LoadGeneration(d, cohort, L.lock.generationId);
+  // Checkpoint 7b: confirmatoryPolicy read from the frozen data/forward/config.json, never re-derived from
+  // the locked generation's own orders (a cohort's challenger is fixed for its whole life - Protocol §5.1).
+  const fwdCfg = step14ReadForwardConfig(d), confirmatoryPolicy = step14ConfirmatoryPolicy(d, fwdCfg), portApplicable = confirmatoryPolicy === 'C1';
   console.log('\n=== STEP 14 CONFIRMATORY (Protocol §7) - dataset lock id ' + L.lock.generationId + ' (captured ' + L.lock.date + ', day ' + L.lock.day + '; cohort start ' + cohort.startDate + '; deadline day ' + STEP14.DEADLINE_DAY + ') ===');
+  console.log('confirmatoryPolicy: ' + confirmatoryPolicy + (portApplicable ? ' (challenger configured: ' + JSON.stringify(fwdCfg.challenger) + ')' : ' (no challenger selected for this cohort - config.json challenger: null; condition 3 and the C1-N0 comparison are NOT APPLICABLE, never failed/undefined/unvalidated; promote = the §5 live pilot for N0 alone)'));
   console.log('locked dataset read through pinned commit ' + gen.pinnedSha + ' (' + gen.cacheChecked + ' cache files' + (gen.episodeDaysVerified ? ' and the episode-days file' : '') + ' verified against their recorded sha256)');
   const cal = step14ReadJson(d, path.join(d.dataDir, 'forward', 'calibration.json'));
-  console.log(cal && cal.condition1 && cal.condition3 ? 'realised coverage of the 90% bounds under the calibration null (' + cal.runs + ' runs, PROVISIONAL shock parameters ' + JSON.stringify(cal.shockParameters) + '): condition 1 false-pass ' + cal.condition1.rate.toFixed(3) + ' (MC SE ' + cal.condition1.se.toFixed(4) + '), condition 3 false-pass ' + cal.condition3.rate.toFixed(3) + ' (MC SE ' + cal.condition3.se.toFixed(4) + '); nominal 0.100' : 'realised coverage of the 90% bounds under the calibration null: data/forward/calibration.json absent');
+  // Checkpoint 7b: calibration.json (schemaVersion 2) always carries condition1 and condition6 (both required in
+  // either branch); condition3 (null (ii)) is present only when the run that produced it had confirmatoryPolicy
+  // C1 - it is not required in the absent branch (Protocol §8) and is left out of the file entirely, never printed
+  // as a fake pass/fail.
+  console.log(cal && cal.condition1 && cal.condition6 ? 'realised coverage of the 90% bounds under the calibration null (' + cal.runs + ' runs, PROVISIONAL shock parameters ' + JSON.stringify(cal.shockParameters) + '): condition 1 false-pass ' + cal.condition1.rate.toFixed(3) + ' (MC SE ' + cal.condition1.se.toFixed(4) + '), condition 6 false-pass ' + cal.condition6.rate.toFixed(3) + ' (MC SE ' + cal.condition6.se.toFixed(4) + ')' + (portApplicable && cal.condition3 ? ', condition 3 false-pass ' + cal.condition3.rate.toFixed(3) + ' (MC SE ' + cal.condition3.se.toFixed(4) + ')' : (portApplicable ? ', condition 3 false-pass: not available in calibration.json' : ', condition 3: NOT REQUIRED (confirmatoryPolicy = N0)')) + '; nominal 0.100' : 'realised coverage of the 90% bounds under the calibration null: data/forward/calibration.json absent');
   if (!gen.verified) return fail('the locked generation failed verification: ' + gen.problems.join('; '));
-  const r = step14Analyse(d, gen, cohort, opts), C = r.decision.conditions, f = v => v == null ? 'n/a' : (Math.abs(v) < 1e-12 ? '0' : v.toFixed(4));
-  console.log('membership: portfolio window day 0..' + STEP14.LAST_RECORD_DAY + ' (N = ' + STEP14.N + ' records); trade-outcome cohort = orders issued before day ' + STEP14.ISSUANCE_CUTOFF_DAY + '; late-attributed trades (min(394, d) rule) S2/C1: ' + r.lateAttributed.S2 + ', S1/C1: ' + r.lateAttributed.S1 + '; unresolved at the deadline N0 ' + r.unresolved.N0 + ' / C1 ' + r.unresolved.C1);
-  ['exp', 'adv', 'port'].forEach(a => ['S1', 'S2'].forEach(S => console.log('  ' + ({ exp: 'C1 mean budget-R (base)', adv: 'C1 mean budget-R (adverse path)', port: 'C1 - N0 compounded return' })[a] + ' ' + S + ': ' + STEP14.BLOCKS.map(b => 'b=' + b + ' ' + (r.cells[a][S][b].validated ? 'lower ' + f(r.cells[a][S][b].bound) : 'UNVALIDATED (' + r.cells[a][S][b].undefinedReplications + ' undefined)')).join(' | ') + ' | point ' + f(a === 'port' ? r.cells[a][S][20].point : r.cells[a][S][20].point))));
-  console.log('conditions: 1 ' + (C[1].pass === null ? 'unvalidated' : C[1].pass) + ' (bound ' + f(C[1].bound) + ') | 2 ' + C[2].pass + ' (point S2 ' + f(C[2].S2) + ', S1 ' + f(C[2].S1) + ') | 3 ' + (C[3].pass === null ? 'unvalidated' : C[3].pass) + ' (bound ' + f(C[3].bound) + ') | 4 ' + C[4].pass + ' (' + r.fills + ' factual fills; max ' + r.fillShare.maxInSpan + ' in any ' + STEP14.SHARE_SPAN_DAYS + '-day span = ' + (r.fillShare.share * 100).toFixed(1) + '%) | 5 ' + C[5].pass + ' | 6 ' + (C[6].pass === null ? 'unvalidated' : C[6].pass) + ' (bound ' + f(C[6].bound) + ')');
+  const r = step14Analyse(d, gen, cohort, opts, confirmatoryPolicy), C = r.decision.conditions, f = v => v == null ? 'n/a' : (Math.abs(v) < 1e-12 ? '0' : v.toFixed(4));
+  const unresolvedStr = portApplicable ? ('unresolved at the deadline N0 ' + r.unresolved.N0 + ' / C1 ' + r.unresolved.C1) : ('unresolved at the deadline ' + confirmatoryPolicy + ' ' + r.unresolved[confirmatoryPolicy]);
+  console.log('membership: portfolio window day 0..' + STEP14.LAST_RECORD_DAY + ' (N = ' + STEP14.N + ' records); trade-outcome cohort = orders issued before day ' + STEP14.ISSUANCE_CUTOFF_DAY + '; late-attributed trades (min(394, d) rule) S2/' + confirmatoryPolicy + ': ' + r.lateAttributed.S2 + ', S1/' + confirmatoryPolicy + ': ' + r.lateAttributed.S1 + '; ' + unresolvedStr);
+  const analysisLabels = { exp: confirmatoryPolicy + ' mean budget-R (base)', adv: confirmatoryPolicy + ' mean budget-R (adverse path)', port: confirmatoryPolicy + ' - N0 compounded return' };
+  (portApplicable ? ['exp', 'adv', 'port'] : ['exp', 'adv']).forEach(a => ['S1', 'S2'].forEach(S => console.log('  ' + analysisLabels[a] + ' ' + S + ': ' + STEP14.BLOCKS.map(b => 'b=' + b + ' ' + (r.cells[a][S][b].validated ? 'lower ' + f(r.cells[a][S][b].bound) : 'UNVALIDATED (' + r.cells[a][S][b].undefinedReplications + ' undefined)')).join(' | ') + ' | point ' + f(r.cells[a][S][20].point))));
+  if (!portApplicable) console.log('  ' + confirmatoryPolicy + ' - N0 compounded return: NOT APPLICABLE (confirmatoryPolicy = N0; no C1 account exists in this cohort)');
+  console.log('conditions: 1 ' + (C[1].pass === null ? 'unvalidated' : C[1].pass) + ' (bound ' + f(C[1].bound) + ') | 2 ' + C[2].pass + ' (point S2 ' + f(C[2].S2) + ', S1 ' + f(C[2].S1) + ') | 3 ' + (C[3].notApplicable ? 'NOT APPLICABLE' : (C[3].pass === null ? 'unvalidated' : C[3].pass) + ' (bound ' + f(C[3].bound) + ')') + ' | 4 ' + C[4].pass + ' (' + r.fills + ' factual fills; max ' + r.fillShare.maxInSpan + ' in any ' + STEP14.SHARE_SPAN_DAYS + '-day span = ' + (r.fillShare.share * 100).toFixed(1) + '%) | 5 ' + C[5].pass + ' | 6 ' + (C[6].pass === null ? 'unvalidated' : C[6].pass) + ' (bound ' + f(C[6].bound) + ')');
   console.log('STATUS: ' + r.decision.status.toUpperCase() + ' - ' + r.decision.reasons.slice(0, 6).join('; ') + '. "reject" = does not meet the advancement requirement, not proof of negative expectancy.');
   return { lock: L.lock, result: r };
 }
@@ -2211,44 +2259,79 @@ function runStep14Feasibility(current, dailyCaches, opts) {
 // ---- calibration (§8): null (i) mean budget-R = 0 per trade under the feasibility model's fill-count distribution with common-shock clustering; null (ii) equal C1/N0
 // daily-return paths with independent noise. The implemented decision (bootstrap, b = 20, 10th percentile, strict > 0) runs 1,000 times per null. ----
 function step14Normal(next) { let u = 0; while (u === 0) u = (next() >>> 0) / 4294967296; const v = (next() >>> 0) / 4294967296; return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+// Checkpoint 7b (Protocol v1.4 §8): "nulls for conditions 1 and 6 on confirmatoryPolicy" - condition 6 (the
+// adverse-charge path) feeds the identical 'exp' bootstrap cell that condition 1 does, from a directly-specified
+// mean-zero-budget-R series (the real analysis's adverse-path data differs from its base-path data only in which
+// real trades and charges it holds, never in the null's generative shape - both are "mean budget-R = 0 per trade,
+// common-shock clustering"). So condition 6's null re-runs the SAME generative model as condition 1's null (i),
+// independently seeded, giving it its own Monte Carlo estimate rather than aliasing condition 1's rate.
+// Condition 3 (null (ii), the C1-N0 compounded-return comparison) is skipped entirely - not merely flagged - when
+// confirmatoryPolicy is 'N0': the absent branch has no C1 account or series, so there is nothing exchangeable
+// to calibrate (Protocol §8: "null (ii) not required in the absent branch").
 function step14Calibrate(fillDays, opts) {
   opts = opts || {}; const runs = opts.runs || STEP14.CAL_RUNS, reps = opts.reps || STEP14.REPS, N = STEP14.N, b = STEP14.PRIMARY_B, SC = opts.sigmaCommon == null ? 0.5 : opts.sigmaCommon, SI = opts.sigmaIdio == null ? 1.0 : opts.sigmaIdio;
+  const confirmatoryPolicy = opts.confirmatoryPolicy || 'C1', portApplicable = confirmatoryPolicy === 'C1';
   const src = opts.dailyCounts && opts.dailyCounts.length ? opts.dailyCounts : [1];   // the feasibility replay's empirical daily fill counts, tiled
   const gen = step14Xoshiro((opts.seed || 20260926) >>> 0);
-  let pass1 = 0, pass3 = 0;
-  for (let run = 0; run < runs; run++) {
-    // null (i): trade counts per record = the empirical fill-count series (random phase, tiled to N); every trade's budget-R = shared day shock + own noise, mean exactly 0
+  const drawExpNull = (seed) => {
     const phase = step14Draw(gen, src.length), s = new Array(N).fill(0), n = new Array(N).fill(0);
     for (let t = 0; t < N; t++) { const k = src[(phase + t) % src.length]; if (!k) continue; const z = SC * step14Normal(gen); for (let j = 0; j < k; j++) s[t] += z + SI * step14Normal(gen); n[t] = k; }
-    const seed = (0xC0FFEE + run) >>> 0, c = step14Cell('exp', { N, s, n }, b, reps, seed);
-    if (c.validated && c.bound > 0) pass1++;
-    // null (ii): the C1 and N0 daily-return paths are exchangeable (same mean, independent noise); the statistic is the compounded difference
-    const r1 = new Array(N), r0 = new Array(N); for (let t = 0; t < N; t++) { r1[t] = 0.0005 + 0.02 * step14Normal(gen); r0[t] = 0.0005 + 0.02 * step14Normal(gen); }
-    const p = step14Cell('port', { N, lr1: r1.map(Math.log1p), lr0: r0.map(Math.log1p), r1, r0 }, b, reps, seed);
-    if (p.validated && p.bound > 0) pass3++;
+    return step14Cell('exp', { N, s, n }, b, reps, seed);
+  };
+  let pass1 = 0, pass6 = 0, pass3 = 0;
+  for (let run = 0; run < runs; run++) {
+    // null (i), condition 1: trade counts per record = the empirical fill-count series (random phase, tiled to N); every trade's budget-R = shared day shock + own noise, mean exactly 0
+    const c1 = drawExpNull((0xC0FFEE + run) >>> 0);
+    if (c1.validated && c1.bound > 0) pass1++;
+    // null (i), condition 6: same generative model, independent draw/seed so the adverse-charge path gets its own MC estimate
+    const c6 = drawExpNull((0xDEC0DE + run) >>> 0);
+    if (c6.validated && c6.bound > 0) pass6++;
+    if (portApplicable) {
+      // null (ii): the C1 and N0 daily-return paths are exchangeable (same mean, independent noise); the statistic is the compounded difference
+      const r1 = new Array(N), r0 = new Array(N); for (let t = 0; t < N; t++) { r1[t] = 0.0005 + 0.02 * step14Normal(gen); r0[t] = 0.0005 + 0.02 * step14Normal(gen); }
+      const p = step14Cell('port', { N, lr1: r1.map(Math.log1p), lr0: r0.map(Math.log1p), r1, r0 }, b, reps, (0xFACADE + run) >>> 0);
+      if (p.validated && p.bound > 0) pass3++;
+    }
   }
-  const se = q => Math.sqrt(q * (1 - q) / runs), q1 = pass1 / runs, q3 = pass3 / runs;
-  return { runs, reps, cond1: { rate: q1, se: se(q1), blocks: q1 > STEP14.CAL_GATE }, cond3: { rate: q3, se: se(q3), blocks: q3 > STEP14.CAL_GATE }, params: { sigmaCommon: SC, sigmaIdio: SI } };
+  const se = q => Math.sqrt(q * (1 - q) / runs), q1 = pass1 / runs, q6 = pass6 / runs;
+  const out = { runs, reps, confirmatoryPolicy, portApplicable, cond1: { rate: q1, se: se(q1), blocks: q1 > STEP14.CAL_GATE }, cond6: { rate: q6, se: se(q6), blocks: q6 > STEP14.CAL_GATE }, params: { sigmaCommon: SC, sigmaIdio: SI } };
+  if (portApplicable) { const q3 = pass3 / runs; out.cond3 = { rate: q3, se: se(q3), blocks: q3 > STEP14.CAL_GATE }; }
+  return out;
 }
 function runStep14Calibrate(current, dailyCaches, opts) {
   opts = opts || {}; const rep = opts.replay || step14FixtureReplay(current, dailyCaches, opts);
   const counts = {}; rep.fillDays.forEach(x => { counts[x] = (counts[x] || 0) + 1; }); const series = []; for (let i = 0; i < rep.window.days; i++) series.push(counts[i] || 0);
-  const r = step14Calibrate(rep.fillDays, Object.assign({}, opts, { dailyCounts: series }));
-  console.log('\n=== STEP 14 CALIBRATION (Protocol §8, v1.3) - ' + r.runs + ' runs per null, ' + r.reps + ' bootstrap replications, b = 20; gate: a false-pass rate above ' + STEP14.CAL_GATE + ' blocks freeze; shock parameters ' + JSON.stringify(r.params) + ' are PROVISIONAL ===');
+  const dd = (opts.dataDir || path.join(REPO_ROOT, 'data'));
+  // Checkpoint 7b: confirmatoryPolicy read from the frozen data/forward/config.json (same source runStep14Confirmatory
+  // reads), never assumed 'C1' - the calibration run must match whichever branch the cohort is actually in.
+  const OCmod = opts.OC || require(path.join(opts.repoRoot || REPO_ROOT, 'orders-core.js'));
+  const dLike = { fs, path, dataDir: dd, OC: OCmod };
+  const fwdCfg = step14ReadForwardConfig(dLike), confirmatoryPolicy = step14ConfirmatoryPolicy(dLike, fwdCfg), portApplicable = confirmatoryPolicy === 'C1';
+  const r = step14Calibrate(rep.fillDays, Object.assign({}, opts, { dailyCounts: series, confirmatoryPolicy: confirmatoryPolicy }));
+  console.log('\n=== STEP 14 CALIBRATION (Protocol §8, v1.4) - ' + r.runs + ' runs per null, ' + r.reps + ' bootstrap replications, b = 20; gate: a false-pass rate above ' + STEP14.CAL_GATE + ' blocks freeze; shock parameters ' + JSON.stringify(r.params) + ' are PROVISIONAL; confirmatoryPolicy: ' + confirmatoryPolicy + ' ===');
   console.log('null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate ' + r.cond1.rate.toFixed(4) + ' +/- ' + r.cond1.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond1.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
-  console.log('null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate ' + r.cond3.rate.toFixed(4) + ' +/- ' + r.cond3.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond3.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
+  console.log('null (i), adverse-charge path  same generative model as condition 1, independently drawn: condition 6 false-pass rate ' + r.cond6.rate.toFixed(4) + ' +/- ' + r.cond6.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond6.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
+  if (portApplicable) {
+    console.log('null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate ' + r.cond3.rate.toFixed(4) + ' +/- ' + r.cond3.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond3.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
+  } else {
+    console.log('null (ii) equal C1/N0 daily-return paths: NOT REQUIRED (confirmatoryPolicy = N0; no C1 account or series exists in the absent branch)');
+  }
   try {
-    const dd = (opts.dataDir || path.join(REPO_ROOT, 'data')), out = path.join(dd, 'forward', 'calibration.json');
+    const out = path.join(dd, 'forward', 'calibration.json');
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify({ schemaVersion: 1, description: 'Realised false-pass rates of the confirmatory 90% lower bounds under the Protocol section 8 calibration nulls (printed by the confirmatory header).', runs: r.runs, bootstrapReplications: r.reps, blockLength: STEP14.PRIMARY_B, gate: STEP14.CAL_GATE, seed: opts.seed || 20260926,
-      condition1: { null: '(i) mean budget-R = 0 per trade, common-shock clustering, fill counts from the fixture replay', rate: r.cond1.rate, se: r.cond1.se }, condition3: { null: '(ii) equal C1/N0 daily-return paths, independent noise', rate: r.cond3.rate, se: r.cond3.se },
-      shockParameters: { sigmaCommon: r.params.sigmaCommon, sigmaIdio: r.params.sigmaIdio, provisional: true }, gateBlocked: !!(r.cond1.blocks || r.cond3.blocks) }, null, 1) + '\n');
+    const doc = { schemaVersion: 2, description: 'Realised false-pass rates of the confirmatory 90% lower bounds under the Protocol section 8 calibration nulls (printed by the confirmatory header).', runs: r.runs, bootstrapReplications: r.reps, blockLength: STEP14.PRIMARY_B, gate: STEP14.CAL_GATE, seed: opts.seed || 20260926, confirmatoryPolicy: confirmatoryPolicy, portApplicable: portApplicable,
+      condition1: { null: '(i) mean budget-R = 0 per trade, common-shock clustering, fill counts from the fixture replay', rate: r.cond1.rate, se: r.cond1.se },
+      condition6: { null: '(i) mean budget-R = 0 per trade, common-shock clustering, adverse-charge path - same generative model as condition 1, independently drawn', rate: r.cond6.rate, se: r.cond6.se },
+      shockParameters: { sigmaCommon: r.params.sigmaCommon, sigmaIdio: r.params.sigmaIdio, provisional: true },
+      gateBlocked: !!(r.cond1.blocks || r.cond6.blocks || (portApplicable && r.cond3.blocks)) };
+    if (portApplicable) doc.condition3 = { null: '(ii) equal C1/N0 daily-return paths, independent noise', rate: r.cond3.rate, se: r.cond3.se };
+    fs.writeFileSync(out, JSON.stringify(doc, null, 1) + '\n');
     console.log('wrote ' + out);
   } catch (e) { console.log('  BUG: calibration.json not written: ' + e.message); process.exitCode = 1; }
-  if (r.cond1.blocks || r.cond3.blocks) process.exitCode = 1;
+  if (r.cond1.blocks || r.cond6.blocks || (portApplicable && r.cond3.blocks)) process.exitCode = 1;
   return r;
 }
 
 // Step 13: run when executed; export the pure harness helpers for the local suite when required.
 if (require.main === module) run();
-else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS, STEP14, STEP14_BLACKLIST, step14Splitmix32, step14Xoshiro, step14Draw, step14Golden, step14Bound, step14DayIndex, step14Records, step14Prefix, step14Cell, step14Decide, step14MaxShare, step14Deps, step14Cohort, step14LoadGeneration, step14LockOf, step14CollectKeys, step14OperationalReport, runStep14Operational, step14Analyse, runStep14Confirmatory, step14FeasibilityFunnel, step14FixtureReplay, runStep14Feasibility, step14Calibrate, runStep14Calibrate };
+else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS, STEP14, STEP14_BLACKLIST, step14Splitmix32, step14Xoshiro, step14Draw, step14Golden, step14Bound, step14DayIndex, step14Records, step14Prefix, step14Cell, step14Decide, step14MaxShare, step14Deps, step14Cohort, step14LoadGeneration, step14LockOf, step14CollectKeys, step14OperationalReport, runStep14Operational, step14Analyse, runStep14Confirmatory, step14FeasibilityFunnel, step14FixtureReplay, runStep14Feasibility, step14Calibrate, runStep14Calibrate, step14ReadForwardConfig, step14ConfirmatoryPolicy };
