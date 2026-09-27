@@ -1,0 +1,4021 @@
+{
+ "schemaVersion": 1,
+ "source": "Kraken AssetPairs (public REST), fetched via the in-app browser (device_bash/web_fetch cannot reach Kraken; v0.1 ruling covers candles too, so this snapshot is a committed build input, not a live call the driver makes)",
+ "fetchedAt": "2026-09-27T00:00:00Z",
+ "pairs": {
+  "0G/USD": {
+   "altname": "0GUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "1INCH/USD": {
+   "altname": "1INCHUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 60
+  },
+  "2Z/USD": {
+   "altname": "2ZUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "AAVE/USD": {
+   "altname": "AAVEUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.05
+  },
+  "AB/USD": {
+   "altname": "ABUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 5000
+  },
+  "ACA/USD": {
+   "altname": "ACAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 12000
+  },
+  "ACH/USD": {
+   "altname": "ACHUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1100
+  },
+  "ACT/USD": {
+   "altname": "ACTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "ACU/USD": {
+   "altname": "ACUUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 40
+  },
+  "ACX/USD": {
+   "altname": "ACXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "ADA/USD": {
+   "altname": "ADAUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 20
+  },
+  "ADI/USD": {
+   "altname": "ADIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 0.6
+  },
+  "ADX/USD": {
+   "altname": "ADXUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 80
+  },
+  "AERO/USD": {
+   "altname": "AEROUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 10
+  },
+  "AEVO/USD": {
+   "altname": "AEVOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 220
+  },
+  "AI3/USD": {
+   "altname": "AI3USD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1800
+  },
+  "AIN/USD": {
+   "altname": "AINUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "AIO/USD": {
+   "altname": "AIOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "AIOZ/USD": {
+   "altname": "AIOZUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 90
+  },
+  "AI/USD": {
+   "altname": "AIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "AIXBT/USD": {
+   "altname": "AIXBTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "AKE/USD": {
+   "altname": "AKEUSD",
+   "tick": 1e-8,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "AKT/USD": {
+   "altname": "AKTUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 10
+  },
+  "ALCH/USD": {
+   "altname": "ALCHUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 180
+  },
+  "ALCX/USD": {
+   "altname": "ALCXUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 2.3
+  },
+  "ALEO/USD": {
+   "altname": "ALEOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "ALGO/USD": {
+   "altname": "ALGOUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 41
+  },
+  "ALICE/USD": {
+   "altname": "ALICEUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 40
+  },
+  "ALIGN/USD": {
+   "altname": "ALIGNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "ALKIMI/USD": {
+   "altname": "ALKIMIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "ALLO/USD": {
+   "altname": "ALLOUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 20
+  },
+  "ALPHA/USD": {
+   "altname": "ALPHAUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 10000
+  },
+  "ALTHEA/USD": {
+   "altname": "ALTHEAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "ALT/USD": {
+   "altname": "ALTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 800
+  },
+  "AMI/USD": {
+   "altname": "AMIUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 5000
+  },
+  "ANIME/USD": {
+   "altname": "ANIMEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1800
+  },
+  "ANKR/USD": {
+   "altname": "ANKRUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1300
+  },
+  "ANON/USD": {
+   "altname": "ANONUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "APENFT/USD": {
+   "altname": "APENFTUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 20000000
+  },
+  "APE/USD": {
+   "altname": "APEUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 35
+  },
+  "API3/USD": {
+   "altname": "API3USD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 20
+  },
+  "APR/USD": {
+   "altname": "APRUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "APT/USD": {
+   "altname": "APTUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 9
+  },
+  "APU/USD": {
+   "altname": "APUUSD",
+   "tick": 1e-8,
+   "lot": 0.00001,
+   "minOrder": 200000
+  },
+  "APXUSD/USD": {
+   "altname": "APXUSDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 6
+  },
+  "ARB/USD": {
+   "altname": "ARBUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "ARC/USD": {
+   "altname": "ARCUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "ARKM/USD": {
+   "altname": "ARKMUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 45
+  },
+  "ARPA/USD": {
+   "altname": "ARPAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 500
+  },
+  "AR/USD": {
+   "altname": "ARUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2.2
+  },
+  "ARX/USD": {
+   "altname": "ARXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 40
+  },
+  "ASSET/USD": {
+   "altname": "ASSETUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 20
+  },
+  "ASTER/USD": {
+   "altname": "ASTERUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 7
+  },
+  "ASTR/USD": {
+   "altname": "ASTRUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1000
+  },
+  "ATH/USD": {
+   "altname": "ATHUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "ATLAS/USD": {
+   "altname": "ATLASUSD",
+   "tick": 1e-7,
+   "lot": 1e-8,
+   "minOrder": 40000
+  },
+  "ATOM/USD": {
+   "altname": "ATOMUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 3.5
+  },
+  "AUCTION/USD": {
+   "altname": "AUCTIONUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 1.5
+  },
+  "AUDIO/USD": {
+   "altname": "AUDIOUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "AUD/USD": {
+   "altname": "AUDUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 7
+  },
+  "AUDX/USD": {
+   "altname": "AUDXUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 7
+  },
+  "AUGUR/USD": {
+   "altname": "AUGURUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "A/USD": {
+   "altname": "AUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "AUSD/USD": {
+   "altname": "AUSDUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "AVAAI/USD": {
+   "altname": "AVAAIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "AVA/USD": {
+   "altname": "AVAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "AVAX/USD": {
+   "altname": "AVAXUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 0.5
+  },
+  "AVL/USD": {
+   "altname": "AVLUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 230
+  },
+  "AVNT/USD": {
+   "altname": "AVNTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "AXS/USD": {
+   "altname": "AXSUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "AZTEC/USD": {
+   "altname": "AZTECUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "B2/USD": {
+   "altname": "B2USD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 12
+  },
+  "B3/USD": {
+   "altname": "B3USD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 10000
+  },
+  "BABYSHARK/USD": {
+   "altname": "BABYSHARKUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "BABY/USD": {
+   "altname": "BABYUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "BADGER/USD": {
+   "altname": "BADGERUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 14
+  },
+  "BAL/USD": {
+   "altname": "BALUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 40
+  },
+  "BANANAS31/USD": {
+   "altname": "BANANAS31USD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "BAND/USD": {
+   "altname": "BANDUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 30
+  },
+  "BASED/USD": {
+   "altname": "BASEDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "BAT/USD": {
+   "altname": "BATUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 70
+  },
+  "BCH/USD": {
+   "altname": "BCHUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.01
+  },
+  "BDXN/USD": {
+   "altname": "BDXNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 10000
+  },
+  "BEAM/USD": {
+   "altname": "BEAMUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 3500
+  },
+  "BERA/USD": {
+   "altname": "BERAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "BERT/USD": {
+   "altname": "BERTUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "BGB/USD": {
+   "altname": "BGBUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2.5
+  },
+  "BICO/USD": {
+   "altname": "BICOUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 250
+  },
+  "BIGTIME/USD": {
+   "altname": "BIGTIMEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 800
+  },
+  "BILL/USD": {
+   "altname": "BILLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "BILLY/USD": {
+   "altname": "BILLYUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "BIO/USD": {
+   "altname": "BIOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "BKS/USD": {
+   "altname": "BKSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 4000
+  },
+  "BLEND/USD": {
+   "altname": "BLENDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "BLESS/USD": {
+   "altname": "BLESSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "BLUAI/USD": {
+   "altname": "BLUAIUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "BLUE/USD": {
+   "altname": "BLUEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "BLUR/USD": {
+   "altname": "BLURUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "BLZ/USD": {
+   "altname": "BLZUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 500
+  },
+  "BMB/USD": {
+   "altname": "BMBUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2200
+  },
+  "BMT/USD": {
+   "altname": "BMTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "BNB/USD": {
+   "altname": "BNBUSD",
+   "tick": 0.01,
+   "lot": 0.00001,
+   "minOrder": 0.007
+  },
+  "BNC/USD": {
+   "altname": "BNCUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "BNKR/USD": {
+   "altname": "BNKRUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 20000
+  },
+  "BNT/USD": {
+   "altname": "BNTUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 15
+  },
+  "BOBA/USD": {
+   "altname": "BOBAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 250
+  },
+  "BOB/USD": {
+   "altname": "BOBUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "BODEN/USD": {
+   "altname": "BODENUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 4000
+  },
+  "BONK/USD": {
+   "altname": "BONKUSD",
+   "tick": 1e-9,
+   "lot": 0.00001,
+   "minOrder": 1500000
+  },
+  "BONZO/USD": {
+   "altname": "BONZOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "BOS/USD": {
+   "altname": "BOSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 120000
+  },
+  "BREV/USD": {
+   "altname": "BREVUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "BRL1/USD": {
+   "altname": "BRL1USD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 25
+  },
+  "BTR/USD": {
+   "altname": "BTRUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "BTT/USD": {
+   "altname": "BTTUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 17000000
+  },
+  "C98/USD": {
+   "altname": "C98USD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 350
+  },
+  "CAKE/USD": {
+   "altname": "CAKEUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2.5
+  },
+  "CAMP/USD": {
+   "altname": "CAMPUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 12000
+  },
+  "CAP/USD": {
+   "altname": "CAPUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "CARV/USD": {
+   "altname": "CARVUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "CASH/USD": {
+   "altname": "CASHUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "CAT/USD": {
+   "altname": "CATUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 3000000
+  },
+  "CCD/USD": {
+   "altname": "CCDUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "CC/USD": {
+   "altname": "CCUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 40
+  },
+  "CELO/USD": {
+   "altname": "CELOUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "CELR/USD": {
+   "altname": "CELRUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 2300
+  },
+  "CFG/USD": {
+   "altname": "CFGUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 45
+  },
+  "CFX/USD": {
+   "altname": "CFXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "CHECK/USD": {
+   "altname": "CHECKUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "CHEEMS/USD": {
+   "altname": "CHEEMSUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 10000000
+  },
+  "CHEX/USD": {
+   "altname": "CHEXUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 450
+  },
+  "CHILLHOUSE/USD": {
+   "altname": "CHILLHOUSEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "CHIP/USD": {
+   "altname": "CHIPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 110
+  },
+  "CHR/USD": {
+   "altname": "CHRUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 350
+  },
+  "CHZ/USD": {
+   "altname": "CHZUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "CLANKER/USD": {
+   "altname": "CLANKERUSD",
+   "tick": 0.01,
+   "lot": 0.00001,
+   "minOrder": 0.4
+  },
+  "CLOUD/USD": {
+   "altname": "CLOUDUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "CLV/USD": {
+   "altname": "CLVUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 2500
+  },
+  "CMETH/USD": {
+   "altname": "CMETHUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.003
+  },
+  "COMP/USD": {
+   "altname": "COMPUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.25
+  },
+  "COOKIE/USD": {
+   "altname": "COOKIEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "COPM/USD": {
+   "altname": "COPMUSD",
+   "tick": 1e-7,
+   "lot": 1e-8,
+   "minOrder": 18000
+  },
+  "COQ/USD": {
+   "altname": "COQUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 50000000
+  },
+  "CORN/USD": {
+   "altname": "CORNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 140
+  },
+  "COTI/USD": {
+   "altname": "COTIUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "COW/USD": {
+   "altname": "COWUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 40
+  },
+  "CPOOL/USD": {
+   "altname": "CPOOLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "CQT/USD": {
+   "altname": "CQTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 20000
+  },
+  "CRO/USD": {
+   "altname": "CROUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 90
+  },
+  "CRV/USD": {
+   "altname": "CRVUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 20
+  },
+  "CSPR/USD": {
+   "altname": "CSPRUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "CTC/USD": {
+   "altname": "CTCUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "CTR/USD": {
+   "altname": "CTRUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "CTSI/USD": {
+   "altname": "CTSIUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "CVC/USD": {
+   "altname": "CVCUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 250
+  },
+  "CVX/USD": {
+   "altname": "CVXUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 2
+  },
+  "CXT/USD": {
+   "altname": "CXTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 3000
+  },
+  "CYBER/USD": {
+   "altname": "CYBERUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "DAG/USD": {
+   "altname": "DAGUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "DAI/USD": {
+   "altname": "DAIUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "DASH/USD": {
+   "altname": "DASHUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 0.11
+  },
+  "DBR/USD": {
+   "altname": "DBRUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 340
+  },
+  "DCR/USD": {
+   "altname": "DCRUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.35
+  },
+  "DEEP/USD": {
+   "altname": "DEEPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "DEGEN/USD": {
+   "altname": "DEGENUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 5000
+  },
+  "DENT/USD": {
+   "altname": "DENTUSD",
+   "tick": 1e-7,
+   "lot": 1e-8,
+   "minOrder": 70000
+  },
+  "DGAI/USD": {
+   "altname": "DGAIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 7
+  },
+  "DMC/USD": {
+   "altname": "DMCUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 20000
+  },
+  "DOGS/USD": {
+   "altname": "DOGSUSD",
+   "tick": 1e-8,
+   "lot": 0.00001,
+   "minOrder": 120000
+  },
+  "DOG/USD": {
+   "altname": "DOGUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 4000
+  },
+  "DOLO/USD": {
+   "altname": "DOLOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "DOS/USD": {
+   "altname": "DOSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 20
+  },
+  "DOT/USD": {
+   "altname": "DOTUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 3.9
+  },
+  "DOVU/USD": {
+   "altname": "DOVUUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 3500
+  },
+  "DRIFT/USD": {
+   "altname": "DRIFTUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "DRV/USD": {
+   "altname": "DRVUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 35
+  },
+  "DUAL/USD": {
+   "altname": "DUALUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "DUCK/USD": {
+   "altname": "DUCKUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 200000
+  },
+  "DYDX/USD": {
+   "altname": "DYDXUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 45
+  },
+  "DYM/USD": {
+   "altname": "DYMUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "EAT/USD": {
+   "altname": "EATUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "EDGE/USD": {
+   "altname": "EDGEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "EDGEX/USD": {
+   "altname": "EDGEXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 13
+  },
+  "EDU/USD": {
+   "altname": "EDUUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "EGLD/USD": {
+   "altname": "EGLDUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 1.3
+  },
+  "EIGEN/USD": {
+   "altname": "EIGENUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "ELIZAOS/USD": {
+   "altname": "ELIZAOSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 25000
+  },
+  "ELX/USD": {
+   "altname": "ELXUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 4000
+  },
+  "ENA/USD": {
+   "altname": "ENAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "ENJ/USD": {
+   "altname": "ENJUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "ENSO/USD": {
+   "altname": "ENSOUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 6
+  },
+  "ENS/USD": {
+   "altname": "ENSUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.8
+  },
+  "EPT/USD": {
+   "altname": "EPTUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 12000
+  },
+  "ESPORTS/USD": {
+   "altname": "ESPORTSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "ESP/USD": {
+   "altname": "ESPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 60
+  },
+  "ES/USD": {
+   "altname": "ESUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5000
+  },
+  "ESX/USD": {
+   "altname": "ESXUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 12000
+  },
+  "ETHFI/USD": {
+   "altname": "ETHFIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 9
+  },
+  "EUL/USD": {
+   "altname": "EULUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 3.5
+  },
+  "EURC/USD": {
+   "altname": "EURCUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "EUROP/USD": {
+   "altname": "EUROPUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 4
+  },
+  "EURQ/USD": {
+   "altname": "EURQUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 4
+  },
+  "EURR/USD": {
+   "altname": "EURRUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 4
+  },
+  "EVAA/USD": {
+   "altname": "EVAAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 7
+  },
+  "EV/USD": {
+   "altname": "EVUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 20000
+  },
+  "EWT/USD": {
+   "altname": "EWTUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 18
+  },
+  "FARTCOIN/USD": {
+   "altname": "FARTCOINUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "FET/USD": {
+   "altname": "FETUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 18
+  },
+  "FF/USD": {
+   "altname": "FFUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "FHE/USD": {
+   "altname": "FHEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "FIDA/USD": {
+   "altname": "FIDAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 250
+  },
+  "FIDD/USD": {
+   "altname": "FIDDUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "FIGHT/USD": {
+   "altname": "FIGHTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "FIL/USD": {
+   "altname": "FILUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 7
+  },
+  "FIS/USD": {
+   "altname": "FISUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 3000
+  },
+  "FLOCK/USD": {
+   "altname": "FLOCKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "FLOKI/USD": {
+   "altname": "FLOKIUSD",
+   "tick": 1e-8,
+   "lot": 1e-8,
+   "minOrder": 200000
+  },
+  "FLOW/USD": {
+   "altname": "FLOWUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "FLR/USD": {
+   "altname": "FLRUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 800
+  },
+  "FLUX/USD": {
+   "altname": "FLUXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "FOLD/USD": {
+   "altname": "FOLDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 62
+  },
+  "FOLKS/USD": {
+   "altname": "FOLKSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 2.5
+  },
+  "FOREST/USD": {
+   "altname": "FORESTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 170
+  },
+  "FORTH/USD": {
+   "altname": "FORTHUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 25
+  },
+  "FRNT/USD": {
+   "altname": "FRNTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "FUN/USD": {
+   "altname": "FUNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "FWOG/USD": {
+   "altname": "FWOGUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "FXS/USD": {
+   "altname": "FXSUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 15
+  },
+  "GAIA/USD": {
+   "altname": "GAIAUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "GAIB/USD": {
+   "altname": "GAIBUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "GALA/USD": {
+   "altname": "GALAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 3000
+  },
+  "GAME2/USD": {
+   "altname": "GAME2USD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "GAS/USD": {
+   "altname": "GASUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 4
+  },
+  "GENIUS/USD": {
+   "altname": "GENIUSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 18
+  },
+  "GFI/USD": {
+   "altname": "GFIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 170
+  },
+  "GHIBLI/USD": {
+   "altname": "GHIBLIUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 40000
+  },
+  "GHST/USD": {
+   "altname": "GHSTUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 80
+  },
+  "GIB/USD": {
+   "altname": "GIBUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2300
+  },
+  "GIGA/USD": {
+   "altname": "GIGAUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "GLMR/USD": {
+   "altname": "GLMRUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 700
+  },
+  "GMT/USD": {
+   "altname": "GMTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 700
+  },
+  "GMX/USD": {
+   "altname": "GMXUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.7
+  },
+  "GNOT/USD": {
+   "altname": "GNOTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "GNO/USD": {
+   "altname": "GNOUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.04
+  },
+  "GOAT/USD": {
+   "altname": "GOATUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "GOMINING/USD": {
+   "altname": "GOMININGUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "GRASS/USD": {
+   "altname": "GRASSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "GRIFFAIN/USD": {
+   "altname": "GRIFFAINUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "GRT/USD": {
+   "altname": "GRTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 300
+  },
+  "GST/USD": {
+   "altname": "GSTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 4000
+  },
+  "GTC/USD": {
+   "altname": "GTCUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 60
+  },
+  "GUN/USD": {
+   "altname": "GUNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1800
+  },
+  "G/USD": {
+   "altname": "GUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1400
+  },
+  "GWEI/USD": {
+   "altname": "GWEIUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "HBAR/USD": {
+   "altname": "HBARUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 55
+  },
+  "HDX/USD": {
+   "altname": "HDXUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "HFT/USD": {
+   "altname": "HFTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 800
+  },
+  "HIPPO/USD": {
+   "altname": "HIPPOUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 40000
+  },
+  "HMSTR/USD": {
+   "altname": "HMSTRUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 30000
+  },
+  "HNT/USD": {
+   "altname": "HNTUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 8
+  },
+  "HOLO/USD": {
+   "altname": "HOLOUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "HONEY/USD": {
+   "altname": "HONEYUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 3000
+  },
+  "HOUSE/USD": {
+   "altname": "HOUSEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "HPOS10I/USD": {
+   "altname": "HPOS10IUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "HSK/USD": {
+   "altname": "HSKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "HYPE/USD": {
+   "altname": "HYPEUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.1
+  },
+  "IAG/USD": {
+   "altname": "IAGUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "ICNT/USD": {
+   "altname": "ICNTUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "ICP/USD": {
+   "altname": "ICPUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 2
+  },
+  "IDEX/USD": {
+   "altname": "IDEXUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 6000
+  },
+  "IDOS/USD": {
+   "altname": "IDOSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "IMX/USD": {
+   "altname": "IMXUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 40
+  },
+  "INIT/USD": {
+   "altname": "INITUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 90
+  },
+  "INJ/USD": {
+   "altname": "INJUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 1
+  },
+  "IN/USD": {
+   "altname": "INUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "INX/USD": {
+   "altname": "INXUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 800
+  },
+  "IP/USD": {
+   "altname": "IPUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "IR/USD": {
+   "altname": "IRUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "JAILSTOOL/USD": {
+   "altname": "JAILSTOOLUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 4000
+  },
+  "JASMY/USD": {
+   "altname": "JASMYUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1000
+  },
+  "JITOSOL/USD": {
+   "altname": "JITOSOLUSD",
+   "tick": 0.01,
+   "lot": 0.00001,
+   "minOrder": 0.04
+  },
+  "JOE/USD": {
+   "altname": "JOEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "JST/USD": {
+   "altname": "JSTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "JTO/USD": {
+   "altname": "JTOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 12
+  },
+  "JUNO/USD": {
+   "altname": "JUNOUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "JUP/USD": {
+   "altname": "JUPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 23
+  },
+  "KAITO/USD": {
+   "altname": "KAITOUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "KAS/USD": {
+   "altname": "KASUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "KAT/USD": {
+   "altname": "KATUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1100
+  },
+  "KAVA/USD": {
+   "altname": "KAVAUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 100
+  },
+  "KEEP/USD": {
+   "altname": "KEEPUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 300
+  },
+  "KERNEL/USD": {
+   "altname": "KERNELUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "KEY/USD": {
+   "altname": "KEYUSD",
+   "tick": 1e-7,
+   "lot": 1e-8,
+   "minOrder": 200000
+  },
+  "KGEN/USD": {
+   "altname": "KGENUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "KII/USD": {
+   "altname": "KIIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 86
+  },
+  "KIN/USD": {
+   "altname": "KINUSD",
+   "tick": 1e-9,
+   "lot": 0.00001,
+   "minOrder": 13000000
+  },
+  "KMNO/USD": {
+   "altname": "KMNOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "KNC/USD": {
+   "altname": "KNCUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 45
+  },
+  "KNTQ/USD": {
+   "altname": "KNTQUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "KOBAN/USD": {
+   "altname": "KOBANUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 250000
+  },
+  "KP3R/USD": {
+   "altname": "KP3RUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 7
+  },
+  "KSM/USD": {
+   "altname": "KSMUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 1.4
+  },
+  "KTA/USD": {
+   "altname": "KTAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 60
+  },
+  "KULA/USD": {
+   "altname": "KULAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "L3/USD": {
+   "altname": "L3USD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "LAPTOP/USD": {
+   "altname": "LAPTOPUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "LAVA/USD": {
+   "altname": "LAVAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "LAYER/USD": {
+   "altname": "LAYERUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "LCAP/USD": {
+   "altname": "LCAPUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.7
+  },
+  "LCX/USD": {
+   "altname": "LCXUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "LDO/USD": {
+   "altname": "LDOUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 15
+  },
+  "LIGHTER/USD": {
+   "altname": "LIGHTERUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 1.3
+  },
+  "LINEA/USD": {
+   "altname": "LINEAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "LINK/USD": {
+   "altname": "LINKUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 0.55
+  },
+  "LION/USD": {
+   "altname": "LIONUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 3500
+  },
+  "LIT/USD": {
+   "altname": "LITUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 35
+  },
+  "LMWR/USD": {
+   "altname": "LMWRUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "LOCKIN/USD": {
+   "altname": "LOCKINUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 5000
+  },
+  "LOFI/USD": {
+   "altname": "LOFIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "LPT/USD": {
+   "altname": "LPTUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "LQTY/USD": {
+   "altname": "LQTYUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 22
+  },
+  "LRC/USD": {
+   "altname": "LRCUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 600
+  },
+  "LSETH/USD": {
+   "altname": "LSETHUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.002
+  },
+  "LSK/USD": {
+   "altname": "LSKUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 50
+  },
+  "LSSOL/USD": {
+   "altname": "LSSOLUSD",
+   "tick": 0.01,
+   "lot": 0.00001,
+   "minOrder": 0.05
+  },
+  "LUNA/USD": {
+   "altname": "LUNAUSD",
+   "tick": 1e-8,
+   "lot": 1e-8,
+   "minOrder": 100000
+  },
+  "MANA/USD": {
+   "altname": "MANAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 70
+  },
+  "MANTRA/USD": {
+   "altname": "MANTRAUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 1100
+  },
+  "MASK/USD": {
+   "altname": "MASKUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 12
+  },
+  "MAT/USD": {
+   "altname": "MATUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "MEGA/USD": {
+   "altname": "MEGAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "MELANIA/USD": {
+   "altname": "MELANIAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "MEME/USD": {
+   "altname": "MEMEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 10000
+  },
+  "MERL/USD": {
+   "altname": "MERLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "METH/USD": {
+   "altname": "METHUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.002
+  },
+  "METIS/USD": {
+   "altname": "METISUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2
+  },
+  "MET/USD": {
+   "altname": "METUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "ME/USD": {
+   "altname": "MEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "MEW/USD": {
+   "altname": "MEWUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 12000
+  },
+  "MEZO/USD": {
+   "altname": "MEZOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "MF/USD": {
+   "altname": "MFUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "MIM/USD": {
+   "altname": "MIMUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 10000
+  },
+  "MINA/USD": {
+   "altname": "MINAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 70
+  },
+  "MIRA/USD": {
+   "altname": "MIRAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 120
+  },
+  "MIR/USD": {
+   "altname": "MIRUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 5000
+  },
+  "MNGO/USD": {
+   "altname": "MNGOUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 170
+  },
+  "MNT/USD": {
+   "altname": "MNTUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 10
+  },
+  "MOCA/USD": {
+   "altname": "MOCAUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "MOG/USD": {
+   "altname": "MOGUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 45000000
+  },
+  "MON/USD": {
+   "altname": "MONUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "MOODENG/USD": {
+   "altname": "MOODENGUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "MORPHO/USD": {
+   "altname": "MORPHOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 2
+  },
+  "MOVR/USD": {
+   "altname": "MOVRUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 6
+  },
+  "MSOL/USD": {
+   "altname": "MSOLUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.035
+  },
+  "MUBARAK/USD": {
+   "altname": "MUBARAKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "MULTI/USD": {
+   "altname": "MULTIUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 100
+  },
+  "M/USD": {
+   "altname": "MUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "MXNB/USD": {
+   "altname": "MXNBUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 85
+  },
+  "MYX/USD": {
+   "altname": "MYXUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "NANO/USD": {
+   "altname": "NANOUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 12
+  },
+  "NEAR/USD": {
+   "altname": "NEARUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "NEIRO/USD": {
+   "altname": "NEIROUSD",
+   "tick": 1e-8,
+   "lot": 0.00001,
+   "minOrder": 60000
+  },
+  "NEO/USD": {
+   "altname": "NEOUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2.5
+  },
+  "NES/USD": {
+   "altname": "NESUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 35
+  },
+  "NEX/USD": {
+   "altname": "NEXUSD",
+   "tick": 1e-9,
+   "lot": 0.00001,
+   "minOrder": 3500000
+  },
+  "NIGHT/USD": {
+   "altname": "NIGHTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "NIL/USD": {
+   "altname": "NILUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "NMR/USD": {
+   "altname": "NMRUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.6
+  },
+  "NOBODY/USD": {
+   "altname": "NOBODYUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 3500
+  },
+  "NOCK/USD": {
+   "altname": "NOCKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "NODE/USD": {
+   "altname": "NODEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 800
+  },
+  "NOS/USD": {
+   "altname": "NOSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 18
+  },
+  "NOT/USD": {
+   "altname": "NOTUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 10000
+  },
+  "NPC/USD": {
+   "altname": "NPCUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "NTRN/USD": {
+   "altname": "NTRNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 18000
+  },
+  "OBOL/USD": {
+   "altname": "OBOLUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "OCEAN/USD": {
+   "altname": "OCEANUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 35
+  },
+  "ODOS/USD": {
+   "altname": "ODOSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "OGN/USD": {
+   "altname": "OGNUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 300
+  },
+  "OKB/USD": {
+   "altname": "OKBUSD",
+   "tick": 0.01,
+   "lot": 0.00001,
+   "minOrder": 0.045
+  },
+  "OMG/USD": {
+   "altname": "OMGUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 110
+  },
+  "OMI/USD": {
+   "altname": "OMIUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 20000
+  },
+  "OMNI/USD": {
+   "altname": "OMNIUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 10
+  },
+  "ONDO/USD": {
+   "altname": "ONDOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "ONE/USD": {
+   "altname": "ONEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "OOB/USD": {
+   "altname": "OOBUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "OPEN/USD": {
+   "altname": "OPENUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 40
+  },
+  "OPN/USD": {
+   "altname": "OPNUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 90
+  },
+  "OP/USD": {
+   "altname": "OPUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "ORCA/USD": {
+   "altname": "ORCAUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "ORDER/USD": {
+   "altname": "ORDERUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "OSMO/USD": {
+   "altname": "OSMOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "OXT/USD": {
+   "altname": "OXTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 600
+  },
+  "PACK/USD": {
+   "altname": "PACKUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 1100
+  },
+  "PACT/USD": {
+   "altname": "PACTUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 25000
+  },
+  "PARTI/USD": {
+   "altname": "PARTIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "PAXG/USD": {
+   "altname": "PAXGUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.001
+  },
+  "PEAQ/USD": {
+   "altname": "PEAQUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 220
+  },
+  "PENDLE/USD": {
+   "altname": "PENDLEUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 3
+  },
+  "PENGU/USD": {
+   "altname": "PENGUUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "PEPECOIN/USD": {
+   "altname": "PEPECOINUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "PEPE/USD": {
+   "altname": "PEPEUSD",
+   "tick": 1e-9,
+   "lot": 0.00001,
+   "minOrder": 1500000
+  },
+  "PEP/USD": {
+   "altname": "PEPUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 40000
+  },
+  "PERP/USD": {
+   "altname": "PERPUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 250
+  },
+  "PHA/USD": {
+   "altname": "PHAUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "PIEVERSE/USD": {
+   "altname": "PIEVERSEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "PIPE/USD": {
+   "altname": "PIPEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "PI/USD": {
+   "altname": "PIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "PLAY/USD": {
+   "altname": "PLAYUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "PLUME/USD": {
+   "altname": "PLUMEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "PNUT/USD": {
+   "altname": "PNUTUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "POLIS/USD": {
+   "altname": "POLISUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 500
+  },
+  "POLS/USD": {
+   "altname": "POLSUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 90
+  },
+  "POL/USD": {
+   "altname": "POLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "POND/USD": {
+   "altname": "PONDUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 4000
+  },
+  "PONKE/USD": {
+   "altname": "PONKEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 250
+  },
+  "PONS/USD": {
+   "altname": "PONSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 6.3
+  },
+  "POPCAT/USD": {
+   "altname": "POPCATUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "PORTAL/USD": {
+   "altname": "PORTALUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "POWR/USD": {
+   "altname": "POWRUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 100
+  },
+  "PRCL/USD": {
+   "altname": "PRCLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 900
+  },
+  "PRIME/USD": {
+   "altname": "PRIMEUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 20
+  },
+  "PROMPT/USD": {
+   "altname": "PROMPTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "PROS/USD": {
+   "altname": "PROSUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 12
+  },
+  "PRO/USD": {
+   "altname": "PROUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 14
+  },
+  "PROVE/USD": {
+   "altname": "PROVEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 30
+  },
+  "PTB/USD": {
+   "altname": "PTBUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 7000
+  },
+  "PUFFER/USD": {
+   "altname": "PUFFERUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "PUMP/USD": {
+   "altname": "PUMPUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1100
+  },
+  "PUPS/USD": {
+   "altname": "PUPSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "PWT/USD": {
+   "altname": "PWTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 9
+  },
+  "PYTH/USD": {
+   "altname": "PYTHUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "PYUSD/USD": {
+   "altname": "PYUSDUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "QCAD/USD": {
+   "altname": "QCADUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 7
+  },
+  "QI/USD": {
+   "altname": "QIUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 4000
+  },
+  "QNT/USD": {
+   "altname": "QNTUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.08
+  },
+  "QTUM/USD": {
+   "altname": "QTUMUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 6
+  },
+  "QUAI/USD": {
+   "altname": "QUAIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "QUID/USD": {
+   "altname": "QUIDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "Q/USD": {
+   "altname": "QUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 230
+  },
+  "RAD/USD": {
+   "altname": "RADUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 20
+  },
+  "RAILS/USD": {
+   "altname": "RAILSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "RARE/USD": {
+   "altname": "RAREUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "RARI/USD": {
+   "altname": "RARIUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 60
+  },
+  "RAY/USD": {
+   "altname": "RAYUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 6
+  },
+  "RBC/USD": {
+   "altname": "RBCUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 3000
+  },
+  "RED/USD": {
+   "altname": "REDUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 45
+  },
+  "REKT/USD": {
+   "altname": "REKTUSD",
+   "tick": 1e-10,
+   "lot": 0.00001,
+   "minOrder": 50000000
+  },
+  "RENDER/USD": {
+   "altname": "RENDERUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2.5
+  },
+  "REN/USD": {
+   "altname": "RENUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1500
+  },
+  "REPPO/USD": {
+   "altname": "REPPOUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "REQ/USD": {
+   "altname": "REQUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 90
+  },
+  "RE/USD": {
+   "altname": "REUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 10
+  },
+  "REZ/USD": {
+   "altname": "REZUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1700
+  },
+  "RIVER/USD": {
+   "altname": "RIVERUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 4
+  },
+  "RIZE/USD": {
+   "altname": "RIZEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "RLC/USD": {
+   "altname": "RLCUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 15
+  },
+  "RLS/USD": {
+   "altname": "RLSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 2500
+  },
+  "RLUSD/USD": {
+   "altname": "RLUSDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "RNBW/USD": {
+   "altname": "RNBWUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "ROBO/USD": {
+   "altname": "ROBOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "ROLL/USD": {
+   "altname": "ROLLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 35
+  },
+  "RPL/USD": {
+   "altname": "RPLUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 3
+  },
+  "RSC/USD": {
+   "altname": "RSCUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 80
+  },
+  "RSR/USD": {
+   "altname": "RSRUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 3500
+  },
+  "RUJI/USD": {
+   "altname": "RUJIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "RUNE/USD": {
+   "altname": "RUNEUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 11
+  },
+  "RVV/USD": {
+   "altname": "RVVUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 80000
+  },
+  "SAFE/USD": {
+   "altname": "SAFEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "SAGA/USD": {
+   "altname": "SAGAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "SAHARA/USD": {
+   "altname": "SAHARAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "SAMO/USD": {
+   "altname": "SAMOUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 15000
+  },
+  "SAND/USD": {
+   "altname": "SANDUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 120
+  },
+  "SAPIEN/USD": {
+   "altname": "SAPIENUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 60
+  },
+  "SAUCE/USD": {
+   "altname": "SAUCEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 350
+  },
+  "SBR/USD": {
+   "altname": "SBRUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 50000
+  },
+  "SCA/USD": {
+   "altname": "SCAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "SCOR/USD": {
+   "altname": "SCORUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "SCRT/USD": {
+   "altname": "SCRTUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 500
+  },
+  "SC/USD": {
+   "altname": "SCUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 5000
+  },
+  "SEI/USD": {
+   "altname": "SEIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "SENT/USD": {
+   "altname": "SENTUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "SGB/USD": {
+   "altname": "SGBUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 4000
+  },
+  "SHAPE/USD": {
+   "altname": "SHAPEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 13000
+  },
+  "SHIB/USD": {
+   "altname": "SHIBUSD",
+   "tick": 1e-9,
+   "lot": 0.00001,
+   "minOrder": 770000
+  },
+  "SHX/USD": {
+   "altname": "SHXUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "SIDEKICK/USD": {
+   "altname": "SIDEKICKUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 50000
+  },
+  "SIGMA/USD": {
+   "altname": "SIGMAUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 3000
+  },
+  "SIGN/USD": {
+   "altname": "SIGNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "SKR/USD": {
+   "altname": "SKRUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "SKY/USD": {
+   "altname": "SKYUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "SLAY/USD": {
+   "altname": "SLAYUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "SLX/USD": {
+   "altname": "SLXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 70
+  },
+  "SN44/USD": {
+   "altname": "SN44USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.6
+  },
+  "SN51/USD": {
+   "altname": "SN51USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.25
+  },
+  "SN62/USD": {
+   "altname": "SN62USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2
+  },
+  "SN64/USD": {
+   "altname": "SN64USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.3
+  },
+  "SN75/USD": {
+   "altname": "SN75USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 1.2
+  },
+  "SN8/USD": {
+   "altname": "SN8USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.8
+  },
+  "SNEK/USD": {
+   "altname": "SNEKUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 12000
+  },
+  "SNX/USD": {
+   "altname": "SNXUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 25
+  },
+  "SODA/USD": {
+   "altname": "SODAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "SOFID/USD": {
+   "altname": "SOFIDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "SOL/USD": {
+   "altname": "SOLUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.06
+  },
+  "SOLV/USD": {
+   "altname": "SOLVUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1700
+  },
+  "SOMI/USD": {
+   "altname": "SOMIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 40
+  },
+  "SONIC/USD": {
+   "altname": "SONICUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "SOON/USD": {
+   "altname": "SOONUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "SOSO/USD": {
+   "altname": "SOSOUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 17
+  },
+  "SPACE/USD": {
+   "altname": "SPACEUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "SPELL/USD": {
+   "altname": "SPELLUSD",
+   "tick": 1e-7,
+   "lot": 1e-8,
+   "minOrder": 60000
+  },
+  "SPK/USD": {
+   "altname": "SPKUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 250
+  },
+  "SPX/USD": {
+   "altname": "SPXUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 9
+  },
+  "SRM/USD": {
+   "altname": "SRMUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 600
+  },
+  "SSV/USD": {
+   "altname": "SSVUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 1.8
+  },
+  "STABLE/USD": {
+   "altname": "STABLEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 180
+  },
+  "STBL/USD": {
+   "altname": "STBLUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "STG/USD": {
+   "altname": "STGUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 30
+  },
+  "STORJ/USD": {
+   "altname": "STORJUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 150
+  },
+  "STRK/USD": {
+   "altname": "STRKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "ST/USD": {
+   "altname": "STUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "STX/USD": {
+   "altname": "STXUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 20
+  },
+  "SUI/USD": {
+   "altname": "SUIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "SUKU/USD": {
+   "altname": "SUKUUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1000
+  },
+  "SUNDOG/USD": {
+   "altname": "SUNDOGUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "SUN/USD": {
+   "altname": "SUNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 280
+  },
+  "SUPER/USD": {
+   "altname": "SUPERUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 50
+  },
+  "SUP/USD": {
+   "altname": "SUPUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 8000
+  },
+  "S/USD": {
+   "altname": "SUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 180
+  },
+  "SUSHI/USD": {
+   "altname": "SUSHIUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 25
+  },
+  "SWARMS/USD": {
+   "altname": "SWARMSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "SWEAT/USD": {
+   "altname": "SWEATUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 15000
+  },
+  "SWELL/USD": {
+   "altname": "SWELLUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "SXT/USD": {
+   "altname": "SXTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "SYND/USD": {
+   "altname": "SYNDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "SYN/USD": {
+   "altname": "SYNUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 60
+  },
+  "SYRUP/USD": {
+   "altname": "SYRUPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "TAC/USD": {
+   "altname": "TACUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "TAKE/USD": {
+   "altname": "TAKEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 90
+  },
+  "TAO/USD": {
+   "altname": "TAOUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 0.02
+  },
+  "TBTC/USD": {
+   "altname": "TBTCUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.00006
+  },
+  "TCS/USD": {
+   "altname": "TCSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "TEL/USD": {
+   "altname": "TELUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 3000
+  },
+  "TGBP/USD": {
+   "altname": "TGBPUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "THQ/USD": {
+   "altname": "THQUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 450
+  },
+  "TIA/USD": {
+   "altname": "TIAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "TLM/USD": {
+   "altname": "TLMUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 3500
+  },
+  "TMX/USD": {
+   "altname": "TMXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 45
+  },
+  "TNSR/USD": {
+   "altname": "TNSRUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "TOKEN/USD": {
+   "altname": "TOKENUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2200
+  },
+  "TON/USD": {
+   "altname": "TONUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 3.5
+  },
+  "TOSHI/USD": {
+   "altname": "TOSHIUSD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 40000
+  },
+  "TRAC/USD": {
+   "altname": "TRACUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 15
+  },
+  "TREAD/USD": {
+   "altname": "TREADUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "TREE/USD": {
+   "altname": "TREEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 130
+  },
+  "TREMP/USD": {
+   "altname": "TREMPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "TRIA/USD": {
+   "altname": "TRIAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "TRUMP/USD": {
+   "altname": "TRUMPUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 2
+  },
+  "TRUST/USD": {
+   "altname": "TRUSTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "TRU/USD": {
+   "altname": "TRUUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 6000
+  },
+  "TRX/USD": {
+   "altname": "TRXUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 16
+  },
+  "TURBO/USD": {
+   "altname": "TURBOUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 5000
+  },
+  "T/USD": {
+   "altname": "TUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1500
+  },
+  "TX/USD": {
+   "altname": "TXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 2200
+  },
+  "U2U/USD": {
+   "altname": "U2UUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 7000
+  },
+  "UAI/USD": {
+   "altname": "UAIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 11
+  },
+  "UFD/USD": {
+   "altname": "UFDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "UMA/USD": {
+   "altname": "UMAUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 15
+  },
+  "UMXM/USD": {
+   "altname": "UMXMUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "UNFI/USD": {
+   "altname": "UNFIUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 150
+  },
+  "UNITAS/USD": {
+   "altname": "UNITASUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 10
+  },
+  "UNI/USD": {
+   "altname": "UNIUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 1.5
+  },
+  "UP/USD": {
+   "altname": "UPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "USAT/USD": {
+   "altname": "USATUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USD1/USD": {
+   "altname": "USD1USD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDC/USD": {
+   "altname": "USDCUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "USDD/USD": {
+   "altname": "USDDUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDE/USD": {
+   "altname": "USDEUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDGO/USD": {
+   "altname": "USDGOUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDG/USD": {
+   "altname": "USDGUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDPT/USD": {
+   "altname": "USDPTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDQ/USD": {
+   "altname": "USDQUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDR/USD": {
+   "altname": "USDRUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDSM/USD": {
+   "altname": "USDSMUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USDS/USD": {
+   "altname": "USDSUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "USDT/USD": {
+   "altname": "USDTUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 5
+  },
+  "USDUC/USD": {
+   "altname": "USDUCUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "USELESS/USD": {
+   "altname": "USELESSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "USTABLES/USD": {
+   "altname": "USTABLESUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "USUAL/USD": {
+   "altname": "USUALUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 450
+  },
+  "US/USD": {
+   "altname": "USUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "U/USD": {
+   "altname": "UUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 17000
+  },
+  "UXLINK/USD": {
+   "altname": "UXLINKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 7000
+  },
+  "VANRY/USD": {
+   "altname": "VANRYUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 9000
+  },
+  "VELODROME/USD": {
+   "altname": "VELODROMEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 220
+  },
+  "VELO/USD": {
+   "altname": "VELOUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 900
+  },
+  "VELVET/USD": {
+   "altname": "VELVETUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "VET/USD": {
+   "altname": "VETUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "VFY/USD": {
+   "altname": "VFYUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "VINE/USD": {
+   "altname": "VINEUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "VIRTUAL/USD": {
+   "altname": "VIRTUALUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 7
+  },
+  "VOOI/USD": {
+   "altname": "VOOIUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "VSN/USD": {
+   "altname": "VSNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 120
+  },
+  "VTHO/USD": {
+   "altname": "VTHOUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 13000
+  },
+  "VULT/USD": {
+   "altname": "VULTUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "VVV/USD": {
+   "altname": "VVVUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.3
+  },
+  "WAL/USD": {
+   "altname": "WALUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 200
+  },
+  "WARD/USD": {
+   "altname": "WARDUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 1500
+  },
+  "WAR/USD": {
+   "altname": "WARUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 10000
+  },
+  "WAXL/USD": {
+   "altname": "WAXLUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 120
+  },
+  "WBTC/USD": {
+   "altname": "WBTCUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.00006
+  },
+  "WBT/USD": {
+   "altname": "WBTUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.07
+  },
+  "WCT/USD": {
+   "altname": "WCTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "WELL/USD": {
+   "altname": "WELLUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "WEMIX/USD": {
+   "altname": "WEMIXUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "WEN/USD": {
+   "altname": "WENUSD",
+   "tick": 1e-9,
+   "lot": 1e-8,
+   "minOrder": 1000000
+  },
+  "WFB/USD": {
+   "altname": "WFBUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 12
+  },
+  "WIF/USD": {
+   "altname": "WIFUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 25
+  },
+  "WINGS/USD": {
+   "altname": "WINGSUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "WIN/USD": {
+   "altname": "WINUSD",
+   "tick": 1e-8,
+   "lot": 0.00001,
+   "minOrder": 150000
+  },
+  "WLD/USD": {
+   "altname": "WLDUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 11
+  },
+  "WLFI/USD": {
+   "altname": "WLFIUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 90
+  },
+  "WMTX/USD": {
+   "altname": "WMTXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "WOO/USD": {
+   "altname": "WOOUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 400
+  },
+  "W/USD": {
+   "altname": "WUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "XAN/USD": {
+   "altname": "XANUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 400
+  },
+  "XAUT/USD": {
+   "altname": "XAUTUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.0012
+  },
+  "XCN/USD": {
+   "altname": "XCNUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1500
+  },
+  "XDC/USD": {
+   "altname": "XDCUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 180
+  },
+  "XDG/USD": {
+   "altname": "XDGUSD",
+   "tick": 1e-7,
+   "lot": 1e-8,
+   "minOrder": 50
+  },
+  "ETC/USD": {
+   "altname": "ETCUSD",
+   "tick": 0.001,
+   "lot": 1e-8,
+   "minOrder": 0.7
+  },
+  "ETH/USD": {
+   "altname": "ETHUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.001
+  },
+  "XION/USD": {
+   "altname": "XIONUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 45
+  },
+  "XL1/USD": {
+   "altname": "XL1USD",
+   "tick": 1e-7,
+   "lot": 0.00001,
+   "minOrder": 17000
+  },
+  "LTC/USD": {
+   "altname": "LTCUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.1
+  },
+  "MLN/USD": {
+   "altname": "MLNUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 2.5
+  },
+  "XMN/USD": {
+   "altname": "XMNUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 9000
+  },
+  "XNY/USD": {
+   "altname": "XNYUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 700
+  },
+  "XPL/USD": {
+   "altname": "XPLUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 60
+  },
+  "XTER/USD": {
+   "altname": "XTERUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 500
+  },
+  "XTZ/USD": {
+   "altname": "XTZUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 13
+  },
+  "XU3O8/USD": {
+   "altname": "XU3O8USD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 0.9
+  },
+  "XBT/USD": {
+   "altname": "XBTUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.00005
+  },
+  "XLM/USD": {
+   "altname": "XLMUSD",
+   "tick": 0.000001,
+   "lot": 1e-8,
+   "minOrder": 30
+  },
+  "XMR/USD": {
+   "altname": "XMRUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.01
+  },
+  "XRP/USD": {
+   "altname": "XRPUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 1.65
+  },
+  "XYO/USD": {
+   "altname": "XYOUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 1300
+  },
+  "ZEC/USD": {
+   "altname": "ZECUSD",
+   "tick": 0.01,
+   "lot": 1e-8,
+   "minOrder": 0.01
+  },
+  "YALA/USD": {
+   "altname": "YALAUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 15000
+  },
+  "YB/USD": {
+   "altname": "YBUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 50
+  },
+  "YFI/USD": {
+   "altname": "YFIUSD",
+   "tick": 0.1,
+   "lot": 1e-8,
+   "minOrder": 0.0022
+  },
+  "YGG/USD": {
+   "altname": "YGGUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 200
+  },
+  "YOM/USD": {
+   "altname": "YOMUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 300
+  },
+  "ZAMA/USD": {
+   "altname": "ZAMAUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 100
+  },
+  "ZBCN/USD": {
+   "altname": "ZBCNUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 2500
+  },
+  "ZBT/USD": {
+   "altname": "ZBTUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 60
+  },
+  "ZEREBRO/USD": {
+   "altname": "ZEREBROUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 120
+  },
+  "ZETA/USD": {
+   "altname": "ZETAUSD",
+   "tick": 0.0001,
+   "lot": 0.00001,
+   "minOrder": 150
+  },
+  "EUR/USD": {
+   "altname": "EURUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "ZEUS/USD": {
+   "altname": "ZEUSUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 2000
+  },
+  "ZEX/USD": {
+   "altname": "ZEXUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "GBP/USD": {
+   "altname": "GBPUSD",
+   "tick": 0.00001,
+   "lot": 1e-8,
+   "minOrder": 4
+  },
+  "ZIG/USD": {
+   "altname": "ZIGUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 120
+  },
+  "ZKP/USD": {
+   "altname": "ZKPUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 110
+  },
+  "ZK/USD": {
+   "altname": "ZKUSD",
+   "tick": 0.00001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "ZORA/USD": {
+   "altname": "ZORAUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 600
+  },
+  "ZRC/USD": {
+   "altname": "ZRCUSD",
+   "tick": 0.000001,
+   "lot": 0.00001,
+   "minOrder": 6000
+  },
+  "ZRO/USD": {
+   "altname": "ZROUSD",
+   "tick": 0.001,
+   "lot": 0.00001,
+   "minOrder": 5
+  },
+  "ZRX/USD": {
+   "altname": "ZRXUSD",
+   "tick": 0.0001,
+   "lot": 1e-8,
+   "minOrder": 50
+  }
+ }
+}

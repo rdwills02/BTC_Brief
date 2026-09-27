@@ -1,0 +1,1967 @@
+{
+ "schemaVersion": 1,
+ "baseCommit": "b10eef5ee803f857d01557ecb8dca110088c786f",
+ "builtFrom": "data/cache/<cgId>.json at the pinned base commit (no live API fetch; v0.1 ruling)",
+ "metadataSnapshotSha256": "df2f89ba0e8ea2c365d431bcaae7294663e269f1e870f027524adfd790e87a4e",
+ "storeHash": "d6f4110fc722912dca4284226eca5cf0abe8160a2fee615f9a067f117cbcb238",
+ "coinCount": 97,
+ "tradeableCount": 96,
+ "coins": [
+  {
+   "cgId": "aave",
+   "symbol": "aave",
+   "pair": "AAVE/USD",
+   "krakenAltname": "AAVEUSD",
+   "file": "candles/AAVE-USD.json",
+   "sha256": "98c5ce14d4ff8a2a9bb0c7cb4f5a64983794bb8482d49f72333ca6af46ad0526",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.05
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "aerodrome-finance",
+   "symbol": "aero",
+   "pair": "AERO/USD",
+   "krakenAltname": "AEROUSD",
+   "file": "candles/AERO-USD.json",
+   "sha256": "266ffd4dbf4b3b2806fd1ef5b5efbd9bb2c4b668035e5c6ddeb025fa701e3f8d",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 10
+   },
+   "candleCount": 571,
+   "firstDate": "2025-03-05",
+   "lastDate": "2026-09-26",
+   "firstTime": 1741132800,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "akedo",
+   "symbol": "ake",
+   "pair": "AKE/USD",
+   "krakenAltname": "AKEUSD",
+   "file": "candles/AKE-USD.json",
+   "sha256": "c356e924f9953dee2b1d2cac0c27b8d95efc618b670b94b2255edefe0f203c46",
+   "meta": {
+    "tick": 1e-8,
+    "lot": 0.00001,
+    "minOrder": 100
+   },
+   "candleCount": 401,
+   "firstDate": "2025-08-22",
+   "lastDate": "2026-09-26",
+   "firstTime": 1755820800,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "algorand",
+   "symbol": "algo",
+   "pair": "ALGO/USD",
+   "krakenAltname": "ALGOUSD",
+   "file": "candles/ALGO-USD.json",
+   "sha256": "8c579d5ac0af5b17319c34b5f00df38e502532ba9f0d9441fe88d1736b265eb9",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 41
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "aptos",
+   "symbol": "apt",
+   "pair": "APT/USD",
+   "krakenAltname": "APTUSD",
+   "file": "candles/APT-USD.json",
+   "sha256": "4525538673262dbb3cbaf8e3ccd2ba3025e37cde465dbab6d218e9753262c4b1",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 9
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "arbitrum",
+   "symbol": "arb",
+   "pair": "ARB/USD",
+   "krakenAltname": "ARBUSD",
+   "file": "candles/ARB-USD.json",
+   "sha256": "52451c09f1e977831bdfae53bb43c3adeba60b6a7591c3b78a224b6966f29ae5",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 50
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "arweave",
+   "symbol": "ar",
+   "pair": "AR/USD",
+   "krakenAltname": "ARUSD",
+   "file": "candles/AR-USD.json",
+   "sha256": "b10c839d61fbf447244e120874ab7d20bc37d4b1032afae0d222c90585844542",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 2.2
+   },
+   "candleCount": 517,
+   "firstDate": "2025-04-28",
+   "lastDate": "2026-09-26",
+   "firstTime": 1745798400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "aster-2",
+   "symbol": "aster",
+   "pair": "ASTER/USD",
+   "krakenAltname": "ASTERUSD",
+   "file": "candles/ASTER-USD.json",
+   "sha256": "25eeb25a854a838e1a196836c148ef00e2dcf6c72d1b13269c242647261696e0",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 7
+   },
+   "candleCount": 342,
+   "firstDate": "2025-10-20",
+   "lastDate": "2026-09-26",
+   "firstTime": 1760918400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "avalanche-2",
+   "symbol": "avax",
+   "pair": "AVAX/USD",
+   "krakenAltname": "AVAXUSD",
+   "file": "candles/AVAX-USD.json",
+   "sha256": "736278a40e04d3a5c227ea8b47e1ce848c311d80d2d704b7d5be7cfa01e8811b",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 0.5
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "binancecoin",
+   "symbol": "bnb",
+   "pair": "BNB/USD",
+   "krakenAltname": "BNBUSD",
+   "file": "candles/BNB-USD.json",
+   "sha256": "fa355ef220821ff538d83e97db0a26b3a48569838cdbda7dc814fbfdfacb6839",
+   "meta": {
+    "tick": 0.01,
+    "lot": 0.00001,
+    "minOrder": 0.007
+   },
+   "candleCount": 523,
+   "firstDate": "2025-04-22",
+   "lastDate": "2026-09-26",
+   "firstTime": 1745280000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "bitcoin",
+   "symbol": "btc",
+   "pair": "XBT/USD",
+   "krakenAltname": "XBTUSD",
+   "file": "candles/XBT-USD.json",
+   "sha256": "a4cc1c085fee9d8e30a04dfa621dbb4920eb5a34a92883b4db7e59024bbdf963",
+   "meta": {
+    "tick": 0.1,
+    "lot": 1e-8,
+    "minOrder": 0.00005
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": false,
+   "excludedReason": "btc-benchmark"
+  },
+  {
+   "cgId": "bitcoin-cash",
+   "symbol": "bch",
+   "pair": "BCH/USD",
+   "krakenAltname": "BCHUSD",
+   "file": "candles/BCH-USD.json",
+   "sha256": "d8f19831212464c804cd1ef24d448b9f40f0b4bca5577ce94a7ad939f4cc9e6f",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.01
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "bitget-token",
+   "symbol": "bgb",
+   "pair": "BGB/USD",
+   "krakenAltname": "BGBUSD",
+   "file": "candles/BGB-USD.json",
+   "sha256": "3e2609ea3a16f6c98f7de17f07a7599804d7ba2c7436f6d39454528630571615",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 2.5
+   },
+   "candleCount": 240,
+   "firstDate": "2026-01-30",
+   "lastDate": "2026-09-26",
+   "firstTime": 1769731200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "bittensor",
+   "symbol": "tao",
+   "pair": "TAO/USD",
+   "krakenAltname": "TAOUSD",
+   "file": "candles/TAO-USD.json",
+   "sha256": "14a6a4b5234c439bfc757209f5c81d3bdf2721674810f02f927ad4406ff26ad4",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 0.02
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "blockstack",
+   "symbol": "stx",
+   "pair": "STX/USD",
+   "krakenAltname": "STXUSD",
+   "file": "candles/STX-USD.json",
+   "sha256": "967fd5549715514750a72f4c465faa4cfc91a4131df3229f047bcf5194365ea3",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 20
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "canton-network",
+   "symbol": "cc",
+   "pair": "CC/USD",
+   "krakenAltname": "CCUSD",
+   "file": "candles/CC-USD.json",
+   "sha256": "b424dc13ebdab167acb16e777d7d1230331ea07053d901192e95cff7650956ab",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 40
+   },
+   "candleCount": 321,
+   "firstDate": "2025-11-10",
+   "lastDate": "2026-09-26",
+   "firstTime": 1762732800,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "cardano",
+   "symbol": "ada",
+   "pair": "ADA/USD",
+   "krakenAltname": "ADAUSD",
+   "file": "candles/ADA-USD.json",
+   "sha256": "9afa70e4cbbf47ea10b7671197023536c7646ee31843e2fbd97e3bb6d38dd8d6",
+   "meta": {
+    "tick": 0.000001,
+    "lot": 1e-8,
+    "minOrder": 20
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "celestia",
+   "symbol": "tia",
+   "pair": "TIA/USD",
+   "krakenAltname": "TIAUSD",
+   "file": "candles/TIA-USD.json",
+   "sha256": "0ecf1623a201a1efecbab9d4a412793a92d79bc9212dde4fef1bb6d544d68719",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 15
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "chainlink",
+   "symbol": "link",
+   "pair": "LINK/USD",
+   "krakenAltname": "LINKUSD",
+   "file": "candles/LINK-USD.json",
+   "sha256": "fb3263ceb0fb30065ac29a1221d339a50fb9f3dce7b1ca9e5928931038a96953",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 0.55
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "conflux-token",
+   "symbol": "cfx",
+   "pair": "CFX/USD",
+   "krakenAltname": "CFXUSD",
+   "file": "candles/CFX-USD.json",
+   "sha256": "a92edc43bec490686e17e7082460a35dd6e4ce40233cb6571077e7ecaa49b1fe",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 100
+   },
+   "candleCount": 233,
+   "firstDate": "2026-02-06",
+   "lastDate": "2026-09-26",
+   "firstTime": 1770336000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "cosmos",
+   "symbol": "atom",
+   "pair": "ATOM/USD",
+   "krakenAltname": "ATOMUSD",
+   "file": "candles/ATOM-USD.json",
+   "sha256": "268b80bf1ba8b627c25225fc88fe06167554c92f6ddb08ab787b0783273ce7f0",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 3.5
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "crypto-com-chain",
+   "symbol": "cro",
+   "pair": "CRO/USD",
+   "krakenAltname": "CROUSD",
+   "file": "candles/CRO-USD.json",
+   "sha256": "5a31332c2e4a54826c17cfb947aaacb646ec5e009b221bc3ee8b9063f40c5bec",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 90
+   },
+   "candleCount": 606,
+   "firstDate": "2025-01-29",
+   "lastDate": "2026-09-26",
+   "firstTime": 1738108800,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "curve-dao-token",
+   "symbol": "crv",
+   "pair": "CRV/USD",
+   "krakenAltname": "CRVUSD",
+   "file": "candles/CRV-USD.json",
+   "sha256": "123b2000fe67c022be30657ce05431248249a914297e58dcb597381356a89f7f",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 20
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "dash",
+   "symbol": "dash",
+   "pair": "DASH/USD",
+   "krakenAltname": "DASHUSD",
+   "file": "candles/DASH-USD.json",
+   "sha256": "1fba280b6eb97902314f7203d21289a131d09e38f1d11d864147d0c1673e3228",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 0.11
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "derive",
+   "symbol": "drv",
+   "pair": "DRV/USD",
+   "krakenAltname": "DRVUSD",
+   "file": "candles/DRV-USD.json",
+   "sha256": "0346f46c15cebe91203e23e06269094a17e6ae251182cc6860e3dcb811a8547c",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 35
+   },
+   "candleCount": 620,
+   "firstDate": "2025-01-15",
+   "lastDate": "2026-09-26",
+   "firstTime": 1736899200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "dogecoin",
+   "symbol": "doge",
+   "pair": "XDG/USD",
+   "krakenAltname": "XDGUSD",
+   "file": "candles/XDG-USD.json",
+   "sha256": "3f3d13b2fa522d973366731ee3efcd5b1980a9864a3b5690401da2b5b8aa800c",
+   "meta": {
+    "tick": 1e-7,
+    "lot": 1e-8,
+    "minOrder": 50
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "dogwifcoin",
+   "symbol": "wif",
+   "pair": "WIF/USD",
+   "krakenAltname": "WIFUSD",
+   "file": "candles/WIF-USD.json",
+   "sha256": "4e47aed715472bbbc2fe4c165d111eb714a2685894e895765b2104cd7d00e6b2",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 25
+   },
+   "candleCount": 722,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-23",
+   "firstTime": 1727827200,
+   "lastTime": 1790121600,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "eigenlayer",
+   "symbol": "eigen",
+   "pair": "EIGEN/USD",
+   "krakenAltname": "EIGENUSD",
+   "file": "candles/EIGEN-USD.json",
+   "sha256": "1fae918d483af80a5e1988ab6f569d664892bb08b0faa01b8e96950d72d58b02",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 25
+   },
+   "candleCount": 720,
+   "firstDate": "2024-10-07",
+   "lastDate": "2026-09-26",
+   "firstTime": 1728259200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ethena",
+   "symbol": "ena",
+   "pair": "ENA/USD",
+   "krakenAltname": "ENAUSD",
+   "file": "candles/ENA-USD.json",
+   "sha256": "b851cf2622c24021c53aa72244b01d8d8fcd2d83ce5d745d30e3d8b56ae94c8e",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 30
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ether-fi",
+   "symbol": "ethfi",
+   "pair": "ETHFI/USD",
+   "krakenAltname": "ETHFIUSD",
+   "file": "candles/ETHFI-USD.json",
+   "sha256": "76d1b04d97d44b3a00e74ea8579d527e79df89a870487ab5f64bd603031f521f",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 9
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ethereum",
+   "symbol": "eth",
+   "pair": "ETH/USD",
+   "krakenAltname": "ETHUSD",
+   "file": "candles/ETH-USD.json",
+   "sha256": "690a7d88138422b0620c54fb2a5add6d66d425cba3e97d292369c5ad4368ff73",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.001
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ethereum-classic",
+   "symbol": "etc",
+   "pair": "ETC/USD",
+   "krakenAltname": "ETCUSD",
+   "file": "candles/ETC-USD.json",
+   "sha256": "cc9efa341aa8dcb1117b75209f30b09d9a557e3f83f05be87cd80028eac8286a",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 0.7
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ethereum-name-service",
+   "symbol": "ens",
+   "pair": "ENS/USD",
+   "krakenAltname": "ENSUSD",
+   "file": "candles/ENS-USD.json",
+   "sha256": "a1ca2bc6f7a38a4099a7837c8e789097490539d0f8879ce0ece2ad76dc60873a",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.8
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "falcon-finance-ff",
+   "symbol": "ff",
+   "pair": "FF/USD",
+   "krakenAltname": "FFUSD",
+   "file": "candles/FF-USD.json",
+   "sha256": "3be29975a175a83790126629ff4ff500d933ab73c2deee8abbc86be854e68cc0",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 50
+   },
+   "candleCount": 362,
+   "firstDate": "2025-09-29",
+   "lastDate": "2026-09-25",
+   "firstTime": 1759104000,
+   "lastTime": 1790294400,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "fetch-ai",
+   "symbol": "fet",
+   "pair": "FET/USD",
+   "krakenAltname": "FETUSD",
+   "file": "candles/FET-USD.json",
+   "sha256": "079a7effc86f7a80b6ae207f393700c74a6d6e7fc7e65a172ace0ccb38e8e37a",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 18
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "filecoin",
+   "symbol": "fil",
+   "pair": "FIL/USD",
+   "krakenAltname": "FILUSD",
+   "file": "candles/FIL-USD.json",
+   "sha256": "fe21bb3bcd821bc5a945cfe245611613b2b0f13a936ecbcb4b9df45bf5d23d9f",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 7
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "flare-networks",
+   "symbol": "flr",
+   "pair": "FLR/USD",
+   "krakenAltname": "FLRUSD",
+   "file": "candles/FLR-USD.json",
+   "sha256": "75d833ee83129da0c1a3ba1aac9e3908e7e5bc59d3baa7ed16a88ec2cbf0b118",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 800
+   },
+   "candleCount": 720,
+   "firstDate": "2024-10-03",
+   "lastDate": "2026-09-22",
+   "firstTime": 1727913600,
+   "lastTime": 1790035200,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "floki",
+   "symbol": "floki",
+   "pair": "FLOKI/USD",
+   "krakenAltname": "FLOKIUSD",
+   "file": "candles/FLOKI-USD.json",
+   "sha256": "85236c81592a85c7154bea250029f9d79ea74a870a0c6955671ea227460bf3b3",
+   "meta": {
+    "tick": 1e-8,
+    "lot": 1e-8,
+    "minOrder": 200000
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "grass",
+   "symbol": "grass",
+   "pair": "GRASS/USD",
+   "krakenAltname": "GRASSUSD",
+   "file": "candles/GRASS-USD.json",
+   "sha256": "9c8807734eea1c2f17cb195c3927f7edb314d148993ec06e16cd41147cdc5622",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 15
+   },
+   "candleCount": 608,
+   "firstDate": "2025-01-27",
+   "lastDate": "2026-09-26",
+   "firstTime": 1737936000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "hedera-hashgraph",
+   "symbol": "hbar",
+   "pair": "HBAR/USD",
+   "krakenAltname": "HBARUSD",
+   "file": "candles/HBAR-USD.json",
+   "sha256": "dc059a2d0d8fb4bc233a7bc5e961d209a4636ec3f9b8df2554fd8d7537233d82",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 55
+   },
+   "candleCount": 444,
+   "firstDate": "2025-07-10",
+   "lastDate": "2026-09-26",
+   "firstTime": 1752105600,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "hyperliquid",
+   "symbol": "hype",
+   "pair": "HYPE/USD",
+   "krakenAltname": "HYPEUSD",
+   "file": "candles/HYPE-USD.json",
+   "sha256": "14ea74f254dd07484c9087a710a87f76b2bdb5ed4e242a50838b83143418cb4c",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.1
+   },
+   "candleCount": 242,
+   "firstDate": "2026-01-28",
+   "lastDate": "2026-09-26",
+   "firstTime": 1769558400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "injective-protocol",
+   "symbol": "inj",
+   "pair": "INJ/USD",
+   "krakenAltname": "INJUSD",
+   "file": "candles/INJ-USD.json",
+   "sha256": "91c6202fbe73a74c73688a9676aed5fd3b45fc61669b3962de04a302a28376f3",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 1
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "internet-computer",
+   "symbol": "icp",
+   "pair": "ICP/USD",
+   "krakenAltname": "ICPUSD",
+   "file": "candles/ICP-USD.json",
+   "sha256": "64c624a8642f8a77289e213d33c5f5357a5b3ec8516ba8cb15946c44a04c00e2",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 2
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "jasmycoin",
+   "symbol": "jasmy",
+   "pair": "JASMY/USD",
+   "krakenAltname": "JASMYUSD",
+   "file": "candles/JASMY-USD.json",
+   "sha256": "76d6e7fdb6d9ed2174e8d0f414a6df890c395beb4d0e89b8bfd698c747e1ecca",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 1000
+   },
+   "candleCount": 720,
+   "firstDate": "2024-10-07",
+   "lastDate": "2026-09-26",
+   "firstTime": 1728259200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "jito-governance-token",
+   "symbol": "jto",
+   "pair": "JTO/USD",
+   "krakenAltname": "JTOUSD",
+   "file": "candles/JTO-USD.json",
+   "sha256": "ddf82692fa61fb5d567f6a0284ccd06947e5f8589761d8ce61fc0222057ff7e8",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 12
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "jupiter-exchange-solana",
+   "symbol": "jup",
+   "pair": "JUP/USD",
+   "krakenAltname": "JUPUSD",
+   "file": "candles/JUP-USD.json",
+   "sha256": "7806cab65965b0fe4dea66b0c16dc86e54c5900f648a0b5e57de2aea2c721a1a",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 23
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "kamino",
+   "symbol": "kmno",
+   "pair": "KMNO/USD",
+   "krakenAltname": "KMNOUSD",
+   "file": "candles/KMNO-USD.json",
+   "sha256": "f9263f11df8860403789f817f572a275ca1d4855248415823b9f73d7be1f1853",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 200
+   },
+   "candleCount": 720,
+   "firstDate": "2024-10-07",
+   "lastDate": "2026-09-26",
+   "firstTime": 1728259200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "kaspa",
+   "symbol": "kas",
+   "pair": "KAS/USD",
+   "krakenAltname": "KASUSD",
+   "file": "candles/KAS-USD.json",
+   "sha256": "f3ddaafaff0d10fd7f78501a002eb84ec576eeac1c461a68873535484570ed60",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 200
+   },
+   "candleCount": 677,
+   "firstDate": "2024-11-19",
+   "lastDate": "2026-09-26",
+   "firstTime": 1731974400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "layerzero",
+   "symbol": "zro",
+   "pair": "ZRO/USD",
+   "krakenAltname": "ZROUSD",
+   "file": "candles/ZRO-USD.json",
+   "sha256": "8d93dffae5ac3d8743615d21abbe067c1dc59178dd2068d70526378eaa6a68af",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 5
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "lido-dao",
+   "symbol": "ldo",
+   "pair": "LDO/USD",
+   "krakenAltname": "LDOUSD",
+   "file": "candles/LDO-USD.json",
+   "sha256": "b3e1e24528329e45d2e8ed18d7e7de7dfaf94c62d3bb9341c25b1690b7341709",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 15
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "litecoin",
+   "symbol": "ltc",
+   "pair": "LTC/USD",
+   "krakenAltname": "LTCUSD",
+   "file": "candles/LTC-USD.json",
+   "sha256": "700d6e7aecb61d4bcc6b5e704b540768f3631afe8b91db50ec149d015135b3c9",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.1
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "mantle",
+   "symbol": "mnt",
+   "pair": "MNT/USD",
+   "krakenAltname": "MNTUSD",
+   "file": "candles/MNT-USD.json",
+   "sha256": "e2e07e5fa62dc4a27343d9182355be14b47ba7fac44657a3c4b8d44d15fa9b13",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 10
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "midnight-3",
+   "symbol": "night",
+   "pair": "NIGHT/USD",
+   "krakenAltname": "NIGHTUSD",
+   "file": "candles/NIGHT-USD.json",
+   "sha256": "11148123a0db9050e8f2a7df19106e947b0fdfc0c1a52211c151972f14178b59",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 250
+   },
+   "candleCount": 292,
+   "firstDate": "2025-12-09",
+   "lastDate": "2026-09-26",
+   "firstTime": 1765238400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "monad",
+   "symbol": "mon",
+   "pair": "MON/USD",
+   "krakenAltname": "MONUSD",
+   "file": "candles/MON-USD.json",
+   "sha256": "3756494d1427a84804f023f1d67efdbe1e30ceb6648ba4239d04199089d64b74",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 200
+   },
+   "candleCount": 307,
+   "firstDate": "2025-11-24",
+   "lastDate": "2026-09-26",
+   "firstTime": 1763942400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "monero",
+   "symbol": "xmr",
+   "pair": "XMR/USD",
+   "krakenAltname": "XMRUSD",
+   "file": "candles/XMR-USD.json",
+   "sha256": "a6adc5899a18f141ac91698d5e745358b175208da90b2f58d0b35dde21edfeea",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.01
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "morpho",
+   "symbol": "morpho",
+   "pair": "MORPHO/USD",
+   "krakenAltname": "MORPHOUSD",
+   "file": "candles/MORPHO-USD.json",
+   "sha256": "cb9171b0c085d3a7c84b6c47cac5474b050283523f0f4609b9b4167242fc444b",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 2
+   },
+   "candleCount": 675,
+   "firstDate": "2024-11-21",
+   "lastDate": "2026-09-26",
+   "firstTime": 1732147200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "near",
+   "symbol": "near",
+   "pair": "NEAR/USD",
+   "krakenAltname": "NEARUSD",
+   "file": "candles/NEAR-USD.json",
+   "sha256": "e5e797897458886928d9a8f265601da1aa4c7309064b67ccdffd4be60aa1b567",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 4
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "official-trump",
+   "symbol": "trump",
+   "pair": "TRUMP/USD",
+   "krakenAltname": "TRUMPUSD",
+   "file": "candles/TRUMP-USD.json",
+   "sha256": "e85011d56bbdb2e65bee8d715617d7cc621c265442fe165024c14e927dded4e9",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 2
+   },
+   "candleCount": 617,
+   "firstDate": "2025-01-18",
+   "lastDate": "2026-09-26",
+   "firstTime": 1737158400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "okb",
+   "symbol": "okb",
+   "pair": "OKB/USD",
+   "krakenAltname": "OKBUSD",
+   "file": "candles/OKB-USD.json",
+   "sha256": "c196cf9170a5dc46c8133182fbdc4d49ece7bc3c73e7b185817de8a215ab8e31",
+   "meta": {
+    "tick": 0.01,
+    "lot": 0.00001,
+    "minOrder": 0.045
+   },
+   "candleCount": 177,
+   "firstDate": "2026-04-03",
+   "lastDate": "2026-09-26",
+   "firstTime": 1775174400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ondo-finance",
+   "symbol": "ondo",
+   "pair": "ONDO/USD",
+   "krakenAltname": "ONDOUSD",
+   "file": "candles/ONDO-USD.json",
+   "sha256": "d4274d71fb08a1f07025bebbafef593fd098bca47cb3abfd2a4663db91f78ef4",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 15
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "optimism",
+   "symbol": "op",
+   "pair": "OP/USD",
+   "krakenAltname": "OPUSD",
+   "file": "candles/OP-USD.json",
+   "sha256": "09093faf064c4afb87ad9c0026b2ecd8f16a7aa54e2540bf4097a4918cab957e",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 50
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pancakeswap-token",
+   "symbol": "cake",
+   "pair": "CAKE/USD",
+   "krakenAltname": "CAKEUSD",
+   "file": "candles/CAKE-USD.json",
+   "sha256": "f2800b244a9f015e1e6149d692233428adff9168f8f522e684c90b0678ae0538",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 2.5
+   },
+   "candleCount": 513,
+   "firstDate": "2025-05-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1746144000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pendle",
+   "symbol": "pendle",
+   "pair": "PENDLE/USD",
+   "krakenAltname": "PENDLEUSD",
+   "file": "candles/PENDLE-USD.json",
+   "sha256": "7efd36e8b25616bb9572fc2b5ed4d2e1efd82e28dfdd0fd644c4137bbf73013e",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 3
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pi-network",
+   "symbol": "pi",
+   "pair": "PI/USD",
+   "krakenAltname": "PIUSD",
+   "file": "candles/PI-USD.json",
+   "sha256": "cf4ca33eb6eaba18f08a41843162a711c9279ffa7f9272c9f80808e11a913036",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 50
+   },
+   "candleCount": 198,
+   "firstDate": "2026-03-13",
+   "lastDate": "2026-09-26",
+   "firstTime": 1773360000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pieverse",
+   "symbol": "pieverse",
+   "pair": "PIEVERSE/USD",
+   "krakenAltname": "PIEVERSEUSD",
+   "file": "candles/PIEVERSE-USD.json",
+   "sha256": "0da78bafd1e5e7109651c92f259f674773d2d72c57be65638b91b759d6d7b798",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 5
+   },
+   "candleCount": 130,
+   "firstDate": "2026-05-20",
+   "lastDate": "2026-09-26",
+   "firstTime": 1779235200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "plasma",
+   "symbol": "xpl",
+   "pair": "XPL/USD",
+   "krakenAltname": "XPLUSD",
+   "file": "candles/XPL-USD.json",
+   "sha256": "0d5da2341fd902edf00e2f40717b6e3c5736bcf1bb67b27ea08a43348532118f",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 60
+   },
+   "candleCount": 367,
+   "firstDate": "2025-09-25",
+   "lastDate": "2026-09-26",
+   "firstTime": 1758758400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "polkadot",
+   "symbol": "dot",
+   "pair": "DOT/USD",
+   "krakenAltname": "DOTUSD",
+   "file": "candles/DOT-USD.json",
+   "sha256": "2f9371d01b72b34af98b1fa34b703fb949218854effb5106e1fb072e8ced0150",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 3.9
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "polygon-ecosystem-token",
+   "symbol": "pol",
+   "pair": "POL/USD",
+   "krakenAltname": "POLUSD",
+   "file": "candles/POL-USD.json",
+   "sha256": "a23930aa5ae8110263851e5d106e59c886dd869401f505da236d8ad17604885c",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 50
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pudgy-penguins",
+   "symbol": "pengu",
+   "pair": "PENGU/USD",
+   "krakenAltname": "PENGUUSD",
+   "file": "candles/PENGU-USD.json",
+   "sha256": "d1456e8cb21b469cc822fc48cbc340c5a3fa1e722a27aa3e007c6cd58b98fa15",
+   "meta": {
+    "tick": 0.000001,
+    "lot": 0.00001,
+    "minOrder": 700
+   },
+   "candleCount": 607,
+   "firstDate": "2025-01-28",
+   "lastDate": "2026-09-26",
+   "firstTime": 1738022400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pump-fun",
+   "symbol": "pump",
+   "pair": "PUMP/USD",
+   "krakenAltname": "PUMPUSD",
+   "file": "candles/PUMP-USD.json",
+   "sha256": "935ef903ee1ef083bd3f3a661fff8cc7d01fa331a2f6af49362a6f009eb8a1cc",
+   "meta": {
+    "tick": 0.000001,
+    "lot": 0.00001,
+    "minOrder": 1100
+   },
+   "candleCount": 440,
+   "firstDate": "2025-07-14",
+   "lastDate": "2026-09-26",
+   "firstTime": 1752451200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "pyth-network",
+   "symbol": "pyth",
+   "pair": "PYTH/USD",
+   "krakenAltname": "PYTHUSD",
+   "file": "candles/PYTH-USD.json",
+   "sha256": "0fea8df17ee74a1c85031d3a1f00a50d32bcd4a4dd8b099823aa647123744ac2",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 100
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "quant-network",
+   "symbol": "qnt",
+   "pair": "QNT/USD",
+   "krakenAltname": "QNTUSD",
+   "file": "candles/QNT-USD.json",
+   "sha256": "37d9f7095ce6d444e19ee5cd4e86645d3d23cd531017714f1a9cf6bb1c26328d",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.08
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "raydium",
+   "symbol": "ray",
+   "pair": "RAY/USD",
+   "krakenAltname": "RAYUSD",
+   "file": "candles/RAY-USD.json",
+   "sha256": "25c57043fd1d92bb04b01f7d246bba5491ca04e1f360ffc4be5c8c02dcdb9fd4",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 6
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "render-token",
+   "symbol": "render",
+   "pair": "RENDER/USD",
+   "krakenAltname": "RENDERUSD",
+   "file": "candles/RENDER-USD.json",
+   "sha256": "92ff653e49fb873e81402f8fde5493d86ad2586c709a1bc00d4e9fc81a4a7de4",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 2.5
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "ripple",
+   "symbol": "xrp",
+   "pair": "XRP/USD",
+   "krakenAltname": "XRPUSD",
+   "file": "candles/XRP-USD.json",
+   "sha256": "471a1049419118529975cfc45bf4c54ffcd1cb37fa0b993a359fca3af60a5bb0",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 1.65
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "sei-network",
+   "symbol": "sei",
+   "pair": "SEI/USD",
+   "krakenAltname": "SEIUSD",
+   "file": "candles/SEI-USD.json",
+   "sha256": "e9cfe7a9cb92b6a53c05adc986282dcd5533ae43c357a7a95afeda431d5f12fb",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 100
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "sky",
+   "symbol": "sky",
+   "pair": "SKY/USD",
+   "krakenAltname": "SKYUSD",
+   "file": "candles/SKY-USD.json",
+   "sha256": "e8d40f669738ef5d50844b84d9c8bdddaa6cab6fe9c8f2266e1c98ad6d56b7d7",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 70
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "solana",
+   "symbol": "sol",
+   "pair": "SOL/USD",
+   "krakenAltname": "SOLUSD",
+   "file": "candles/SOL-USD.json",
+   "sha256": "44033b826fa4da5bdde932003c270a4616614932f1c76aa7d59ccfc84d24da4a",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.06
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "spx6900",
+   "symbol": "spx",
+   "pair": "SPX/USD",
+   "krakenAltname": "SPXUSD",
+   "file": "candles/SPX-USD.json",
+   "sha256": "3ab92c775f2528723c85cf70b596bb4a04757dfed665fdbf601278c8a5681662",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 9
+   },
+   "candleCount": 655,
+   "firstDate": "2024-12-11",
+   "lastDate": "2026-09-26",
+   "firstTime": 1733875200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "starknet",
+   "symbol": "strk",
+   "pair": "STRK/USD",
+   "krakenAltname": "STRKUSD",
+   "file": "candles/STRK-USD.json",
+   "sha256": "2fa0e6f2feb90e82b1c9c2ace4d2833861d601e985aaf85af5a8b2403f98a75c",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 200
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "stellar",
+   "symbol": "xlm",
+   "pair": "XLM/USD",
+   "krakenAltname": "XLMUSD",
+   "file": "candles/XLM-USD.json",
+   "sha256": "9323f6f8db283a57b25674ab321a66c48a39dab60ff6274e513c042afa2ea0cb",
+   "meta": {
+    "tick": 0.000001,
+    "lot": 1e-8,
+    "minOrder": 30
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "sui",
+   "symbol": "sui",
+   "pair": "SUI/USD",
+   "krakenAltname": "SUIUSD",
+   "file": "candles/SUI-USD.json",
+   "sha256": "2c31c765dc776a310d2f273bcbd5b2097124fca1192b54cecbba25229fbef6f9",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 5
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "sun-token",
+   "symbol": "sun",
+   "pair": "SUN/USD",
+   "krakenAltname": "SUNUSD",
+   "file": "candles/SUN-USD.json",
+   "sha256": "3d20f7d2ba8d51b87558f8ec0ad544e16dba38414f6d60d0c81b5c323c33048d",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 280
+   },
+   "candleCount": 537,
+   "firstDate": "2025-04-08",
+   "lastDate": "2026-09-26",
+   "firstTime": 1744070400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "syrup",
+   "symbol": "syrup",
+   "pair": "SYRUP/USD",
+   "krakenAltname": "SYRUPUSD",
+   "file": "candles/SYRUP-USD.json",
+   "sha256": "b959da198464d6f75569e76914fee6e5e236d7127a991e6f2085ac2c6772dcaa",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 25
+   },
+   "candleCount": 683,
+   "firstDate": "2024-11-13",
+   "lastDate": "2026-09-26",
+   "firstTime": 1731456000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "tezos",
+   "symbol": "xtz",
+   "pair": "XTZ/USD",
+   "krakenAltname": "XTZUSD",
+   "file": "candles/XTZ-USD.json",
+   "sha256": "75f4f7f3b08e287305d2e3145b2673941b471419b1a7e5e90232ea0eb383f5e4",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 13
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "the-graph",
+   "symbol": "grt",
+   "pair": "GRT/USD",
+   "krakenAltname": "GRTUSD",
+   "file": "candles/GRT-USD.json",
+   "sha256": "1bd05a17f6f7d6fc1b95e062ef5bf686fab226340fcb5bf782d905d5e2b20adc",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 1e-8,
+    "minOrder": 300
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "thorchain",
+   "symbol": "rune",
+   "pair": "RUNE/USD",
+   "krakenAltname": "RUNEUSD",
+   "file": "candles/RUNE-USD.json",
+   "sha256": "6e5421a2a62b27a4683e50dd530c85608e211a57cb0bcaf706dc33bcfff0ae9a",
+   "meta": {
+    "tick": 0.001,
+    "lot": 1e-8,
+    "minOrder": 11
+   },
+   "candleCount": 720,
+   "firstDate": "2024-10-07",
+   "lastDate": "2026-09-26",
+   "firstTime": 1728259200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "tron",
+   "symbol": "trx",
+   "pair": "TRX/USD",
+   "krakenAltname": "TRXUSD",
+   "file": "candles/TRX-USD.json",
+   "sha256": "eac7ccd738a189534d3037f220c37e644b6622769baf264cc73000cf17434a77",
+   "meta": {
+    "tick": 0.000001,
+    "lot": 1e-8,
+    "minOrder": 16
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "uniswap",
+   "symbol": "uni",
+   "pair": "UNI/USD",
+   "krakenAltname": "UNIUSD",
+   "file": "candles/UNI-USD.json",
+   "sha256": "f48397266b68515fab0e29ace2f1fd9b0f80280c282899e32900b9f754678426",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 1e-8,
+    "minOrder": 1.5
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "useless-3",
+   "symbol": "useless",
+   "pair": "USELESS/USD",
+   "krakenAltname": "USELESSUSD",
+   "file": "candles/USELESS-USD.json",
+   "sha256": "0b9380a7b10f6cd6943e9c30b7ad86b99233387df4c61f5cef0c3268bc723cb7",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 50
+   },
+   "candleCount": 410,
+   "firstDate": "2025-08-13",
+   "lastDate": "2026-09-26",
+   "firstTime": 1755043200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "vechain",
+   "symbol": "vet",
+   "pair": "VET/USD",
+   "krakenAltname": "VETUSD",
+   "file": "candles/VET-USD.json",
+   "sha256": "dfabd2732a4b1f4ab20cfccb1e1d4f1d255268cf3643b9547df3e12a5db1a887",
+   "meta": {
+    "tick": 0.000001,
+    "lot": 0.00001,
+    "minOrder": 700
+   },
+   "candleCount": 268,
+   "firstDate": "2026-01-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1767312000,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "venice-token",
+   "symbol": "vvv",
+   "pair": "VVV/USD",
+   "krakenAltname": "VVVUSD",
+   "file": "candles/VVV-USD.json",
+   "sha256": "e0c666064892fcab3f4a4d3532a120c56597f2f33d0cf5b4bece5a179bdd385b",
+   "meta": {
+    "tick": 0.001,
+    "lot": 0.00001,
+    "minOrder": 0.3
+   },
+   "candleCount": 577,
+   "firstDate": "2025-02-27",
+   "lastDate": "2026-09-26",
+   "firstTime": 1740614400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "virtual-protocol",
+   "symbol": "virtual",
+   "pair": "VIRTUAL/USD",
+   "krakenAltname": "VIRTUALUSD",
+   "file": "candles/VIRTUAL-USD.json",
+   "sha256": "a50f729e6dbdee24f038c085c3c776226ae2133de191e992208c59750bef5ec7",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 7
+   },
+   "candleCount": 592,
+   "firstDate": "2025-02-12",
+   "lastDate": "2026-09-26",
+   "firstTime": 1739318400,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "world-liberty-financial",
+   "symbol": "wlfi",
+   "pair": "WLFI/USD",
+   "krakenAltname": "WLFIUSD",
+   "file": "candles/WLFI-USD.json",
+   "sha256": "cdf0ccf9727f2b0323b29164a9a8d81ab40318e98f7ff8a7a25ded060ec6ede6",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 90
+   },
+   "candleCount": 391,
+   "firstDate": "2025-09-01",
+   "lastDate": "2026-09-26",
+   "firstTime": 1756684800,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "worldcoin-wld",
+   "symbol": "wld",
+   "pair": "WLD/USD",
+   "krakenAltname": "WLDUSD",
+   "file": "candles/WLD-USD.json",
+   "sha256": "848dd2282aca29f5dae12cd3686e53a3f9638df3aacbd5364e6af0c630e0265b",
+   "meta": {
+    "tick": 0.0001,
+    "lot": 0.00001,
+    "minOrder": 11
+   },
+   "candleCount": 571,
+   "firstDate": "2025-03-05",
+   "lastDate": "2026-09-26",
+   "firstTime": 1741132800,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "xdce-crowd-sale",
+   "symbol": "xdc",
+   "pair": "XDC/USD",
+   "krakenAltname": "XDCUSD",
+   "file": "candles/XDC-USD.json",
+   "sha256": "c6ecb19997e82440e9d1fc5bd016c733df28ad6803bdcb36b8231298cb831bb6",
+   "meta": {
+    "tick": 0.00001,
+    "lot": 0.00001,
+    "minOrder": 180
+   },
+   "candleCount": 390,
+   "firstDate": "2025-09-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1756771200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  },
+  {
+   "cgId": "zcash",
+   "symbol": "zec",
+   "pair": "ZEC/USD",
+   "krakenAltname": "ZECUSD",
+   "file": "candles/ZEC-USD.json",
+   "sha256": "d7154abaa417f9d45212441331b5f0ae9b65c5e4d63b79792fdbde64b364484d",
+   "meta": {
+    "tick": 0.01,
+    "lot": 1e-8,
+    "minOrder": 0.01
+   },
+   "candleCount": 725,
+   "firstDate": "2024-10-02",
+   "lastDate": "2026-09-26",
+   "firstTime": 1727827200,
+   "lastTime": 1790380800,
+   "tradeable": true,
+   "excludedReason": null
+  }
+ ],
+ "skipped": {
+  "backpack": "no-ohlcDaily",
+  "bedrock-token": "no-ohlcDaily",
+  "bianrensheng": "no-ohlcDaily",
+  "bitcoin-cash-sv": "no-ohlcDaily",
+  "bitway": "no-ohlcDaily",
+  "kite-2": "no-kraken-candles",
+  "kucoin-shares": "no-ohlcDaily",
+  "lighter": "no-ohlcDaily",
+  "lobster-2": "no-ohlcDaily",
+  "nexo": "no-ohlcDaily",
+  "rain": "no-ohlcDaily",
+  "the-open-network": "no-ohlcDaily",
+  "trust-wallet-token": "no-ohlcDaily",
+  "unibase": "no-ohlcDaily"
+ }
+}
