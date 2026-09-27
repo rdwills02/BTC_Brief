@@ -33,6 +33,10 @@ const OC = require('../../orders-core.js');
 // walk O(days^2); with it, the walk is linear in days (verified: ~94s for 365+31 days x 50 policies).
 OC.setInPlace(true);
 const C = require('../../channel-core.js');
+// Checkpoint 7b (Protocol v1.4 §3 rule 1): structure-core.js is REQUIRED (never touched, never copied)
+// so the replay can compute the same structural-continuity fallback capture.js ecd41806 computes for
+// researchDaily. Read-only input, exactly like channel-core.js above.
+const SC = require('../../structure-core.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const CACHE_DIR = path.join(ROOT, 'data', 'cache');
@@ -246,15 +250,21 @@ function captureFor(dateStr) {
 }
 
 // research row shape episodes-core.js expects: { fit:{fitId,pivotIds,supSlope,supIntercept,supportNow,invalidation,
-// atr14,channelH,supportTouches,lifecycleState}, price, gates[], entryEconomics{...} } — mirrors capture.js's own
-// fwdResearchRow() exactly (see capture.js line ~1311), applied to a HISTORICAL bar-close fit/ctx instead of a live one.
-function researchRowOf(fit, res, price) {
-  if (!fit) return null;
+// atr14,channelH,supportTouches,lifecycleState}, structuralFit: <same shape, or null>, price, gates[], entryEconomics{...} }
+// — mirrors capture.js's own fwdResearchRow() exactly (see capture.js line ~1311/1316), applied to a HISTORICAL
+// bar-close fit/ctx instead of a live one. Checkpoint 7b: `structuralFit` param added (v1.4 §3 rule 1) — accepted
+// ONLY as continuity evidence and ONLY when `fit` is null, exactly as fwdResearchRow guards it; a caller that never
+// passes structuralFit gets byte-identical pre-7b rows (no other field or caller changed).
+function researchRowOf(fit, res, price, structuralFit) {
+  if (!fit && !structuralFit) return null;
+  function lean(f) {
+    return { fitId: f.fitId, pivotIds: f.pivotIds || [], supSlope: f.supSlope, supIntercept: f.supIntercept, supportNow: f.supportNow,
+      invalidation: f.invalidation, atr14: f.atr14, resistNow: f.resistNow, channelH: f.channelH, supportTouches: f.supportTouches, lifecycleState: f.lifecycleState };
+  }
   return {
-    fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow,
-      invalidation: fit.invalidation, atr14: fit.atr14, resistNow: fit.resistNow, channelH: fit.channelH, supportTouches: fit.supportTouches, lifecycleState: fit.lifecycleState },
-    price: price, gates: (res && res.details && res.details.gates) || null, score: num(fit.score) ? fit.score : null,
-    entryEconomics: fit.entryEconomics ? { entryZone: fit.entryEconomics.entryZone, entryRef: fit.entryEconomics.entryRef, defendedLow: fit.entryEconomics.defendedLow,
+    fit: fit ? lean(fit) : null, structuralFit: (!fit && structuralFit) ? lean(structuralFit) : null,
+    price: price, gates: (res && res.details && res.details.gates) || null, score: (fit && num(fit.score)) ? fit.score : null,
+    entryEconomics: (fit && fit.entryEconomics) ? { entryZone: fit.entryEconomics.entryZone, entryRef: fit.entryEconomics.entryRef, defendedLow: fit.entryEconomics.defendedLow,
       stop: fit.entryEconomics.stop, stopBasis: fit.entryEconomics.stopBasis, target: fit.entryEconomics.target, targetSource: fit.entryEconomics.targetSource,
       netRR: fit.entryEconomics.netRR, grossRR: fit.entryEconomics.grossRR, atr14: fit.entryEconomics.atr14 } : null
   };
@@ -287,10 +297,20 @@ function sharedDayStep(universe, dateStr, priorEpisodesState, cfg) {
     universeIds.push(cgId);
     if (usable.length < MIN_CANDLES_FOR_FIT) return;   // capture.js's own gate: no detectChannel call below 30 usable candles
     var fit = C.detectChannel(usable, null, { coinId: cgId, timeframe: '1d', source: 'kraken', research: true });
-    if (!fit) return;
     var last = usable[usable.length - 1];
-    var res = C.researchVerdict(fit, { price: last.close, volume24h: num(last.quoteVolumeUsd) ? last.quoteVolumeUsd : null, btc: btcRegime, quote: null, floor: C.ACT_SCORE_FLOOR_1D });
-    researchRows[cgId] = researchRowOf(fit, res, last.close);
+    if (fit) {
+      var res = C.researchVerdict(fit, { price: last.close, volume24h: num(last.quoteVolumeUsd) ? last.quoteVolumeUsd : null, btc: btcRegime, quote: null, floor: C.ACT_SCORE_FLOOR_1D });
+      researchRows[cgId] = researchRowOf(fit, res, last.close, null);
+    } else {
+      // Checkpoint 7b (Protocol v1.4 §3 rule 1): mirrors capture.js ecd41806 exactly — the structural
+      // winner is computed on the SAME candles the (null) policy-fit attempt just used, and is accepted
+      // ONLY as continuity evidence for episodes-core (never opens an episode, never satisfies a
+      // predicate, never issues, never consumes an attempt — episodes-core enforces that via `fit` alone).
+      // No second detector call for the policy fit; no output change for a fit!=null day.
+      var structFit = null;
+      try { structFit = SC.detectStructure(usable, { coinId: cgId, timeframe: '1d', source: 'kraken' }); } catch (e) { structFit = null; }
+      if (structFit) researchRows[cgId] = researchRowOf(null, null, last.close, structFit);
+    }
   });
 
   var eu = EC.updateEpisodes(priorEpisodesState, capture, researchRows, bars, universeIds, [], cfg || EC.DEFAULT_CFG);
@@ -304,7 +324,11 @@ function sharedDayStep(universe, dateStr, priorEpisodesState, cfg) {
       entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible !== false, gates: ed.gates || null, meta: coin ? coin.meta : null,
       _channelH: (rr && rr.fit && num(rr.fit.channelH)) ? rr.fit.channelH : null };
   });
-  return { capture: capture, bars: bars, candidates: candidates, nextEpisodesState: eu.state, btcRegime: btcRegime, episodeDays: eu.episodeDays };
+  // Checkpoint 7b: episodeDayRows (fitKind/evidenceAnchors per open episode per capture, from episodes-core.js
+  // itself — see its header) exposed alongside the existing issuance-only episodeDays[], additively, for the
+  // structural-continuity acceptance/contract tests. No other caller reads this field; policy simulation and
+  // every existing report are unaffected.
+  return { capture: capture, bars: bars, candidates: candidates, nextEpisodesState: eu.state, btcRegime: btcRegime, episodeDays: eu.episodeDays, episodeDayRows: eu.episodeDayRows };
 }
 
 // Steps 2, 3, 4, 5, 7 for ONE policy's book on this capture (step 6 already ran in sharedDayStep; that is a
@@ -554,7 +578,12 @@ var CONTEXT_DIFFERENCES = [
   "no fetchedAt/latency modeling: a candle is usable as soon as its calendar day has closed (no live network lag to simulate)"
 ];
 
-var ENGINE_VERSION = 'replay-driver-v0.1';
+// Checkpoint 7b: bumped from v0.1 - the driver now computes the Protocol v1.4 §3 structural-continuity fallback
+// (structure-core.detectStructure on a null policy fit) per capture, per coin, threading { policyFit, structuralFit }
+// into updateEpisodes and fitKind into the episode-day rows exactly as capture.js ecd41806 does. ENGINE_VERSION is
+// hashed into every run's runId (see runDevelopment/runContaminated below), so this bump guarantees a run made with
+// the structural path gets a runId distinct from one made without it, even where every other input is identical.
+var ENGINE_VERSION = 'replay-driver-v0.2-structural';
 var SEED = 20260925, PRIMARY_B = 20, DEV_START = '2024-09-01', DEV_END = '2025-07-31', EMBARGO_END = '2025-08-31';
 var CONTAM_START = '2026-06-16', CONTAM_END = '2026-09-16';
 
@@ -564,9 +593,29 @@ function fillsPerMonthAvg(stats, windowDates) {
   return stats.fillsTotal / n;
 }
 
+// Checkpoint 7b (Build item 4 header requirements): the earliest usable candle in the pinned store, and the
+// earliest date at which ANY coin has accumulated >= MIN_CANDLES_FOR_FIT usable candles (capture.js's own
+// research-pass gate, cands.length >= 30, before it will call detectChannel at all). Computed from the actual
+// store every run, never hardcoded, so it stays correct if the store's coverage ever changes.
+function firstEligibilityInfo(universe) {
+  var tradeable = Object.keys(universe.byCgId).map(function (k) { return universe.byCgId[k]; }).filter(function (c) { return c.tradeable && c.candles && c.candles.length; });
+  var byFirst = tradeable.slice().sort(function (a, b) { return a.candles[0].date < b.candles[0].date ? -1 : (a.candles[0].date > b.candles[0].date ? 1 : 0); });
+  var earliest = byFirst[0] || null;
+  return {
+    firstAvailableCandle: earliest ? earliest.candles[0].date : null,
+    firstAvailableCandleCoin: earliest ? earliest.cgId : null,
+    firstEligibleDate: (earliest && earliest.candles.length >= MIN_CANDLES_FOR_FIT) ? earliest.candles[MIN_CANDLES_FOR_FIT - 1].date : null,
+    firstEligibleCoin: earliest ? earliest.cgId : null
+  };
+}
 function runHeader(universe, extra) {
+  var elig = firstEligibilityInfo(universe);
   return Object.assign({
     engineVersion: ENGINE_VERSION, baseCommit: BASE_COMMIT, storeHash: universe.storeHash, metadataSnapshotSha256: universe.metadataSnapshotSha256,
+    firstAvailableCandle: elig.firstAvailableCandle, firstAvailableCandleCoin: elig.firstAvailableCandleCoin,
+    firstEligibleDate: elig.firstEligibleDate, firstEligibleCoin: elig.firstEligibleCoin,
+    warmUpNote: 'The detector needs >= ' + MIN_CANDLES_FOR_FIT + ' usable candles before capture.js will attempt detectChannel at all (its own research-pass gate, mirrored here). Dates between the first available candle (' + elig.firstAvailableCandle + ', ' + elig.firstAvailableCandleCoin + ') and the first eligible date (' + elig.firstEligibleDate + ', ' + elig.firstEligibleCoin + ') are warm-up only for the earliest-starting coin - they are NOT zero-signal observations and must never be counted as episode-less/no-candidate days in any funnel, rate, or fill-count denominator.',
+    volumeDefinition: 'volume24h in this replay = the D-1 daily candle\'s base volume x price, where price is the Kraken OHLC vwap field (raw[5]) when present and positive, else the D-1 close - an approximation of USD quote turnover built from Kraken\'s own OHLC candle, not a directly reported exchange quote-turnover figure and not a plain close x base-volume computation either. Live capture.js instead reads the capture-time exchange/CoinGecko 24h volume figure directly (see contextDifferencesFromLive).',
     survivorshipNote: 'Universe = the CURRENT (build-time) Kraken-designated-pair universe, held fixed for the whole window (v0.1 ruling). Coins that were once tradeable and are now delisted/dead cannot be reconstructed from the live caches this build reads, so survivorship bias here is LARGER than a monthly-reconstructed historical universe would show (spec §1/§8).',
     contextDifferencesFromLive: CONTEXT_DIFFERENCES, seed: SEED
   }, extra || {});
@@ -626,7 +675,7 @@ function runDevelopment() {
     rows: rows, developmentRanking: ranked.map(function (r) { return { label: r.label, lowerBound90: r.bootstrap.primary.lowerBound90, meanBudgetR: r.meanBudgetR, filled: r.filled, fillsPerMonth: r.fillsPerMonth, maxDrawdown: r.maxDrawdown }; }),
     winner: winner ? { label: winner.label, cfg: winner.cfg, version: winner.version, lowerBound90: winner.bootstrap.primary.lowerBound90 } : null,
     pboCscv: pbo, recommendation: recommendation,
-    validationNote: 'The validation split and --select are NOT run in this build (spec v0.1 §8: selection is not applied until the analysis-thread review of the family+rule is in; the user instructed development-only for this build).'
+    validationNote: 'The validation split is not implemented in this build (spec v0.1 §8: selection is not applied until the analysis-thread review of the family+rule is in). --select DOES run below (checkpoint 7b: "run validation ONLY if a configuration was selected") - it is validation specifically, not the selection rule itself, that stays gated; recommendation === "no-eligible-configuration" means there is nothing to validate here.'
   });
 
   var runDir = path.join(RUNS_DIR, rid);
@@ -634,7 +683,37 @@ function runDevelopment() {
   var tableBody = JSON.stringify(doc, null, 1);
   fs.writeFileSync(path.join(runDir, 'development-table.json'), tableBody);
   fs.writeFileSync(path.join(runDir, 'development-table.sha256'), sha256Hex(Buffer.from(tableBody, 'utf8')));
-  return { runId: rid, runDir: runDir, doc: doc };
+  var exploratory = runExploratoryMeasuredMove(universe, fam, rid, runDir);
+  return { runId: rid, runDir: runDir, doc: doc, exploratory: exploratory.doc };
+}
+
+// ---- exploratory: measured-move target-redefinition variants (Protocol v0.1 §8: "exploratory only," never
+// promotable) - channel-height / 2R target overrides on N0's own screen and entries. Same dev window, universe,
+// seed and engine as the development table; reported separately and never fed into fam.eligibleFamily, the
+// development ranking, PBO/CSCV, or --select. Written beside development-table.json under the same runId. ----
+function runExploratoryMeasuredMove(universe, fam, rid, runDir) {
+  var windowDates = dateRange(DEV_START, DEV_END);
+  var books = simulateFamily(universe, dateRange(DEV_START, EMBARGO_END), fam.measuredMove, function (d) { return d <= DEV_END; }, null, null);
+  var rows = fam.measuredMove.map(function (p) {
+    var st = statsForPolicy(books[p.label], p.id, windowDates);
+    var bs = bootstrapReportFor(st, SEED, PRIMARY_B);
+    return { label: p.label, family: p.family, policyId: p.id, version: p.version, targetOverride: p.targetOverride,
+      filled: st.filled, issued: st.issued, exited: st.exited, exitReasons: st.exitReasons, funnel: st.funnel,
+      meanBudgetR: st.meanBudgetR, medianBudgetR: st.medianBudgetR, fillsPerMonth: fillsPerMonthAvg(st, windowDates),
+      maxDrawdown: st.maxDrawdown, suspended: st.suspended, monthlyBudgetR: st.monthlyBudgetR, bootstrap: bs };
+  });
+  var doc = runHeader(universe, {
+    kind: 'exploratory-measured-move', split: { start: DEV_START, end: DEV_END, embargoEnd: EMBARGO_END, simulatedThrough: EMBARGO_END },
+    linkedDevelopmentRunId: rid || null,
+    note: 'Exploratory only (Protocol v0.1 §8): these variants redefine the reward itself (a channel-height or 2R target override on N0\'s own screen/entries), so they are never part of fam.eligibleFamily, the development ranking, PBO/CSCV, or --select. Reported here for reference alongside the development table only.',
+    rows: rows
+  });
+  var dir = runDir || RUNS_DIR;
+  ensureDir(dir);
+  var body = JSON.stringify(doc, null, 1);
+  fs.writeFileSync(path.join(dir, 'exploratory-measured-move.json'), body);
+  fs.writeFileSync(path.join(dir, 'exploratory-measured-move.sha256'), sha256Hex(Buffer.from(body, 'utf8')));
+  return { runDir: dir, doc: doc };
 }
 
 // ---- deliverable 1/5: contaminated-window replay (report only + fixture cross-check hook; N0 by default) ----
@@ -696,6 +775,7 @@ module.exports.internal = { sha256Hex, stableStringify, sha256Of, ymdToSec, secT
   bootstrapMeanBudgetR, combinations, pboCscv, statsForPolicy, bootstrapReportFor, CONTEXT_DIFFERENCES, fillsPerMonthAvg,
   DEV_START, DEV_END, EMBARGO_END, CONTAM_START, CONTAM_END, SEED, PRIMARY_B, ENGINE_VERSION, gitBlobSha1, verifyPinnedCache };
 module.exports.runDevelopment = runDevelopment;
+module.exports.runExploratoryMeasuredMove = runExploratoryMeasuredMove;
 module.exports.runContaminated = runContaminated;
 module.exports.selectC1 = selectC1;
 module.exports.assertDevelopmentTableWritten = assertDevelopmentTableWritten;
@@ -710,6 +790,7 @@ function main() {
       var res = runDevelopment();
       console.log('development run written:', res.runDir);
       console.log('runId', res.runId, 'winner', res.doc.winner && res.doc.winner.label, 'recommendation', res.doc.recommendation);
+      console.log('exploratory measured-move table written beside it:', res.exploratory.rows.map(function (r) { return r.label + ' (' + r.filled + ' filled)'; }).join(', '));
       return;
     }
     if (argv.indexOf('--contaminated') >= 0) {

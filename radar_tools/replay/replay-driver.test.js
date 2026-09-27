@@ -39,6 +39,13 @@ test('A1: two short simulateFamily runs over identical inputs produce identical 
   assert.strictEqual(I.stableStringify(b1.N0), I.stableStringify(b2.N0), 'N0 book must be identical across runs');
 });
 
+test('A1 (checkpoint 7b): two full --dev runs (structural-continuity path included) produce an identical runId and a byte-identical development-table.json', function () {
+  const dev1 = D.runDevelopment();
+  const dev2 = D.runDevelopment();
+  assert.strictEqual(dev1.runId, dev2.runId, 'runId must be identical across two runs of the same inputs');
+  assert.strictEqual(I.stableStringify(dev1.doc), I.stableStringify(dev2.doc), 'development-table content must be byte-identical across two runs');
+});
+
 // ---------------- Acceptance 2: reuse + Protocol §4.0 pipeline-order ----------------
 test('A2: episodes-core.js and orders-core.js are required, not reimplemented (same module identity)', function () {
   const EC2 = require('../../episodes-core.js'), OC2 = require('../../orders-core.js');
