@@ -4696,6 +4696,17 @@ function boardPositionOf(r) { var rr = r ? r.researchRow : null; return (rr && t
 // once per coin per session). CANDLE_CACHE holds the outcome (success or failure) so a repeat open never re-fetches.
 var CANDLE_CACHE = {};
 function candlesRefLean(slice) { return slice.map(function (c) { return { id: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }); }
+// 13c (2026-09-27): locate candlesRef.lastId in the fetched cache array BY ID, not by the stored
+// firstIdx/lastIdx - those were indices into the array as it stood at capture time, and go stale
+// if data/cache/<cgId>.json has since grown (new candles appended) or shifted (a leading candle
+// pruned). Take the `count` candles ending at the located id; the sha256 check right after this
+// call still catches any real drift (missing/changed candles inside the window).
+function candlesRefSliceByLastId(full, ref) {
+  var lastIdx = -1;
+  if (ref.lastId != null) { for (var i = full.length - 1; i >= 0; i--) { if (full[i].time === ref.lastId) { lastIdx = i; break; } } }
+  if (lastIdx < 0) throw new Error('candle cache drift (lastId mismatch)');
+  return full.slice(Math.max(0, lastIdx - ref.count + 1), lastIdx + 1);
+}
 async function boardFetchCandles(r) {
   var rr = r && r.researchRow, ref = rr && rr.candlesRef;
   if (!ref) return null;
@@ -4707,8 +4718,7 @@ async function boardFetchCandles(r) {
     if (!resp || !resp.ok) throw new Error('fetch failed (' + (resp && resp.status) + ')');
     var j = await resp.json();
     var full = (j && j.ohlcDaily) || [];
-    var slice = full.slice(ref.firstIdx, ref.lastIdx + 1);
-    if (!slice.length || slice[slice.length - 1].time !== ref.lastId) throw new Error('candle cache drift (lastId mismatch)');
+    var slice = candlesRefSliceByLastId(full, ref);
     var lean = candlesRefLean(slice);
     var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(lean)));
     var hex = Array.prototype.map.call(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
