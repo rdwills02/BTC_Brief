@@ -1,0 +1,154 @@
+{
+ "engineVersion": "replay-driver-v0.3-warmup-gate",
+ "baseCommit": "b10eef5ee803f857d01557ecb8dca110088c786f",
+ "storeHash": "d6f4110fc722912dca4284226eca5cf0abe8160a2fee615f9a067f117cbcb238",
+ "metadataSnapshotSha256": "df2f89ba0e8ea2c365d431bcaae7294663e269f1e870f027524adfd790e87a4e",
+ "warmupCandlesUsed": 153,
+ "firstAvailableCandle": "2024-10-02",
+ "firstAvailableCandleCoin": "aave",
+ "lastWarmUpCandleDate": "2025-03-03",
+ "lastWarmUpCandleCoin": "aave",
+ "firstPermissibleEvaluationDate": "2025-03-04",
+ "firstEligibleDate": "2025-03-04",
+ "firstEligibleCoin": "aave",
+ "warmUpNote": "Warm-up boundary used for this run: 153 candles (PIVOT_LB 3 + FIT_WINDOW 150 = 153 by default; 30 under --warmup=30, capture.js's own research-pass attempt gate). Last warm-up candle for the earliest-starting coin (aave): 2025-03-03. First permissible evaluation date under the D-1 convention (captureFor(d) only ever sees candles through d-1): 2025-03-04. First actual eligible-episode date under the UNCHANGED live-mirroring gate (MIN_CANDLES_FOR_FIT=30, independent of the warm-up value above): 2025-03-04, aave. Dates before the first actual eligible-episode date are warm-up/no-attempt only for the earliest-starting coin - they are NOT zero-signal observations and must never be counted as episode-less/no-candidate days in any funnel, rate, or fill-count denominator.",
+ "volumeDefinition": "volume24h in this replay = the D-1 daily candle's base volume x price, where price is the Kraken OHLC vwap field (raw[5]) when present and positive, else the D-1 close - an approximation of USD quote turnover built from Kraken's own OHLC candle, not a directly reported exchange quote-turnover figure and not a plain close x base-volume computation either. Live capture.js instead reads the capture-time exchange/CoinGecko 24h volume figure directly (see contextDifferencesFromLive).",
+ "survivorshipNote": "Universe = the CURRENT (build-time) Kraken-designated-pair universe, held fixed for the whole window (v0.1 ruling). Coins that were once tradeable and are now delisted/dead cannot be reconstructed from the live caches this build reads, so survivorship bias here is LARGER than a monthly-reconstructed historical universe would show (spec §1/§8).",
+ "contextDifferencesFromLive": [
+  "price = the D-1 daily candle's close (live: the capture-time last-trade quote)",
+  "volume24h = the D-1 daily candle's quote volume in USD, base-volume x vwap (live: the capture-time exchange/CoinGecko 24h volume)",
+  "BTC regime (C5.btc-regime) = btcRegimeFromCandles() on the cached BTC candle series usable as of D (live: the same function on that capture's own freshly-fetched BTC series — identical definition, historical input)",
+  "touch volume (C4.touch-volume) = channel-core's own volTouch on the same lean candle array (identical to live; no substitution)",
+  "universe = the CURRENT Kraken-designated-pair universe held for the WHOLE window, not a monthly-reconstructed historical universe (v0.1 ruling; survivorship bias is therefore larger than a reconstructed universe would show)",
+  "designated pair and Kraken tick/lot/minOrder metadata are fixed for the whole window from one current snapshot, not re-derived per historical capture",
+  "no fetchedAt/latency modeling: a candle is usable as soon as its calendar day has closed (no live network lag to simulate)"
+ ],
+ "seed": 20260925,
+ "kind": "exploratory-measured-move",
+ "split": {
+  "start": "2024-09-01",
+  "end": "2025-07-31",
+  "embargoEnd": "2025-08-31",
+  "simulatedThrough": "2025-08-31"
+ },
+ "linkedDevelopmentRunId": "eb8c446d6d89e029",
+ "note": "Exploratory only (Protocol v0.1 §8): these variants redefine the reward itself (a channel-height or 2R target override on N0's own screen/entries), so they are never part of fam.eligibleFamily, the development ranking, PBO/CSCV, or --select. Reported here for reference alongside the development table only.",
+ "rows": [
+  {
+   "label": "MM-channel-height",
+   "family": "exploratory",
+   "policyId": "N0",
+   "version": "replay-mm-channel",
+   "targetOverride": "channel-height",
+   "filled": 21,
+   "issued": 72,
+   "exited": 21,
+   "exitReasons": {
+    "stop": 10,
+    "horizon": 6,
+    "target": 5
+   },
+   "funnel": {
+    "order": 72,
+    "skipped-capacity": 127,
+    "skipped-exposure": 1
+   },
+   "meanBudgetR": 0.25667047218537686,
+   "medianBudgetR": -0.5788253132943852,
+   "fillsPerMonth": 1.9090909090909092,
+   "maxDrawdown": 0.08556537919858499,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-03": -0.21082544510833479,
+    "2025-04": -1.2900004077698215,
+    "2025-05": 2.5659454102225325,
+    "2025-06": -4.048630112195007,
+    "2025-07": 10.629573485318739,
+    "2025-08": -2.2559830145751922
+   },
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.25667047218537686,
+     "lowerBound90": -0.32067188159160553,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.25667047218537686,
+      "lowerBound90": -0.324218038808912,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.25667047218537686,
+      "lowerBound90": -0.2831560471999814,
+      "replications": 9986,
+      "undefinedReplications": 14,
+      "unvalidated": false
+     }
+    }
+   }
+  },
+  {
+   "label": "MM-2R",
+   "family": "exploratory",
+   "policyId": "N0",
+   "version": "replay-mm-2r",
+   "targetOverride": "2r",
+   "filled": 22,
+   "issued": 75,
+   "exited": 22,
+   "exitReasons": {
+    "stop": 11,
+    "target": 8,
+    "horizon": 3
+   },
+   "funnel": {
+    "order": 75,
+    "skipped-capacity": 124,
+    "skipped-exposure": 1
+   },
+   "meanBudgetR": 0.16231542460400603,
+   "medianBudgetR": -0.6449946062310892,
+   "fillsPerMonth": 2,
+   "maxDrawdown": 0.06703560776949007,
+   "suspended": false,
+   "monthlyBudgetR": {
+    "2025-03": -0.5362296579307329,
+    "2025-04": 0.5493414079941337,
+    "2025-05": 2.6869054859846493,
+    "2025-06": -2.549254187395802,
+    "2025-07": 5.67617151673822,
+    "2025-08": -2.255995224102337
+   },
+   "bootstrap": {
+    "primary": {
+     "pointEstimate": 0.162315424604006,
+     "lowerBound90": -0.1723749523846328,
+     "replications": 10000,
+     "undefinedReplications": 0,
+     "unvalidated": false
+    },
+    "sensitivity": {
+     "b10": {
+      "pointEstimate": 0.162315424604006,
+      "lowerBound90": -0.22395292499624544,
+      "replications": 10000,
+      "undefinedReplications": 0,
+      "unvalidated": false
+     },
+     "b40": {
+      "pointEstimate": 0.162315424604006,
+      "lowerBound90": -0.12027971954207536,
+      "replications": 9986,
+      "undefinedReplications": 14,
+      "unvalidated": false
+     }
+    }
+   }
+  }
+ ]
+}

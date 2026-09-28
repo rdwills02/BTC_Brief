@@ -1,0 +1,29 @@
+{
+ "runId": "eb8c446d6d89e029",
+ "selectionRule": "one-sided 90% lower bootstrap bound on mean budget-R (b=20, seed 20260925), ties by fills/month then by smaller max drawdown",
+ "developmentRanking": [],
+ "winner": null,
+ "pboCscv": {
+  "pbo": 0.6393939393939394,
+  "combinations": 12870,
+  "blocks": 16
+ },
+ "recommendation": "no-eligible-configuration",
+ "feasibility": {
+  "n0Filled": 21,
+  "fullWindow": {
+   "days": 334,
+   "fillsPer365": 22.949101796407184,
+   "note": "includes 184 warm-up days with no evaluations"
+  },
+  "effectiveWindow": {
+   "start": "2025-03-04",
+   "end": "2025-07-31",
+   "days": 150,
+   "fillsPer365": 51.1,
+   "note": "from firstPermissibleEvaluationDate through devEnd - the window over which a fill was actually possible under the warmupCandles gate"
+  },
+  "threshold": 24
+ },
+ "note": "Selection record only. Per v0.1 §8 this is never applied to the forward cohort until the analysis-thread review of the family and rule is in."
+}
