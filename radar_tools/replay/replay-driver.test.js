@@ -46,6 +46,66 @@ test('A1 (checkpoint 7b): two full --dev runs (structural-continuity path includ
   assert.strictEqual(I.stableStringify(dev1.doc), I.stableStringify(dev2.doc), 'development-table content must be byte-identical across two runs');
 });
 
+// ---------------- Checkpoint 7c, Build item 4: determinism for BOTH the 153-candle (authoritative) and
+// 30-candle (sensitivity) warm-up runs, plus the three-date firstEligibilityInfo/runHeader contract. ----------
+test('7c: two --dev runs at the default (153-candle) warm-up produce an identical runId, and warmupCandlesUsed=153', function () {
+  const dev1 = D.runDevelopment(153);
+  const dev2 = D.runDevelopment(153);
+  assert.strictEqual(dev1.runId, dev2.runId, 'runId must be identical across two runs at warmup=153');
+  assert.strictEqual(I.stableStringify(dev1.doc), I.stableStringify(dev2.doc), 'development-table content must be byte-identical across two runs at warmup=153');
+  assert.strictEqual(dev1.doc.warmupCandlesUsed, 153, 'header must record warmupCandlesUsed=153');
+  assert.strictEqual(dev1.doc.runLabel, 'authoritative: PIVOT_LB 3 + FIT_WINDOW 150 warm-up');
+});
+test('7c: two --dev runs at warmup=30 (sensitivity) produce an identical runId, warmupCandlesUsed=30, and a DIFFERENT runId than the 153-candle run', function () {
+  const dev1 = D.runDevelopment(30);
+  const dev2 = D.runDevelopment(30);
+  assert.strictEqual(dev1.runId, dev2.runId, 'runId must be identical across two runs at warmup=30');
+  assert.strictEqual(I.stableStringify(dev1.doc), I.stableStringify(dev2.doc), 'development-table content must be byte-identical across two runs at warmup=30');
+  assert.strictEqual(dev1.doc.warmupCandlesUsed, 30, 'header must record warmupCandlesUsed=30');
+  assert.strictEqual(dev1.doc.runLabel, 'sensitivity: live-compatible warm-up');
+  const dev153 = D.runDevelopment(153);
+  assert.notStrictEqual(dev1.runId, dev153.runId, 'the 30-candle and 153-candle runs must land in distinct run directories (distinct runId)');
+});
+test('7c item 1 (BLOCKS fix): firstEligibilityInfo reports three distinct, correctly-ordered dates; warmupCandles now IS the real simulation gate, so firstActualEligibleEpisodeDate tracks it (not the old fixed 30-candle date)', function () {
+  const universe = D.loadUniverse();
+  const elig153 = I.firstEligibilityInfo(universe, 153);
+  const elig30 = I.firstEligibilityInfo(universe, 30);
+  assert.ok(elig153.firstAvailableCandle <= elig153.lastWarmUpCandleDate, 'first available candle must be on/before the last warm-up candle');
+  assert.ok(elig153.lastWarmUpCandleDate < elig153.firstPermissibleEvaluationDate, 'first permissible evaluation date must be strictly after the last warm-up candle (D-1 convention)');
+  assert.strictEqual(I.addDays(elig153.lastWarmUpCandleDate, 1), elig153.firstPermissibleEvaluationDate, 'first permissible evaluation date = last warm-up candle date + 1 day');
+  assert.strictEqual(elig153.firstActualEligibleEpisodeDate, elig153.firstPermissibleEvaluationDate, 'under warmup=153, the real gate (max(warmupCandles, MIN_CANDLES_FOR_FIT)=153) makes firstActualEligibleEpisodeDate equal the first permissible evaluation date, not the old fixed 30-candle date');
+  assert.ok(elig153.firstActualEligibleEpisodeDate >= elig153.firstPermissibleEvaluationDate, 'first actual eligible episode date must be >= first permissible evaluation date');
+  assert.strictEqual(elig30.firstActualEligibleEpisodeDate, elig30.firstPermissibleEvaluationDate, 'under warmup=30 (== MIN_CANDLES_FOR_FIT), the same identity holds');
+  assert.notStrictEqual(elig153.firstActualEligibleEpisodeDate, elig30.firstActualEligibleEpisodeDate, 'the real gate now DOES depend on warmupCandles (this is the item-1 fix - it is no longer independent of it)');
+  assert.notStrictEqual(elig153.lastWarmUpCandleDate, elig30.lastWarmUpCandleDate, 'the two warm-up boundaries must differ when the store has >=153 candles for the earliest coin');
+});
+test('7c item 1 (BLOCKS fix): under --warmup=153, no candidate/episode-day/attempt occurs before every coin has reached 153 usable candles', function () {
+  const universe = D.loadUniverse();
+  const elig = I.firstEligibilityInfo(universe, 153);
+  // A window entirely before the earliest coin's warm-up completes (elig.firstActualEligibleEpisodeDate,
+  // ~2025-03-04): under the warmupCandles gate, EVERY coin in the store is absent from the universe on every
+  // date in this window, so there must be zero candidates, zero episode-days, and zero attempts.
+  const earlyDates = I.dateRange('2024-09-01', '2024-10-31');
+  assert.ok(earlyDates[earlyDates.length - 1] < elig.firstActualEligibleEpisodeDate, 'sanity: the probe window must end before any coin clears the 153-candle gate');
+  const fam = I.buildPolicyFamily();
+  let totalCandidates = 0, totalEpisodeDays = 0;
+  const books = I.simulateFamily(universe, earlyDates, [fam.n0], function () { return true; }, null, function (dateStr, shared) {
+    totalCandidates += shared.candidates.length;
+    totalEpisodeDays += shared.episodeDays.length;
+  }, 153);
+  assert.strictEqual(totalCandidates, 0, 'no candidate may appear before any coin reaches the 153-candle warm-up gate');
+  assert.strictEqual(totalEpisodeDays, 0, 'no episode-day may appear before any coin reaches the 153-candle warm-up gate');
+  assert.strictEqual(books.N0.attempts.length, 0, 'no attempt may be consumed before any coin reaches the 153-candle warm-up gate');
+});
+test('7c item 1 (BLOCKS fix): --warmup=30 must be byte-identical to the pre-fix run 35ab1088541ccc54 (warmupCandles == MIN_CANDLES_FOR_FIT is a no-op gate)', function () {
+  const priorPath = path.join(__dirname, '..', '..', 'data', 'replay', 'runs', '35ab1088541ccc54', 'development-table.json');
+  if (!fs.existsSync(priorPath)) { console.log('  (skipped: prior run 35ab1088541ccc54 not present in this checkout)'); return; }
+  const prior = JSON.parse(fs.readFileSync(priorPath, 'utf8'));
+  const dev = D.runDevelopment(30);
+  assert.strictEqual(dev.runId, prior.runId, 'runId must be unchanged at warmup=30');
+  assert.strictEqual(I.stableStringify(dev.doc), I.stableStringify(prior), 'development-table content at warmup=30 must be byte-identical to the run recorded before the item-1 gate fix');
+});
+
 // ---------------- Acceptance 2: reuse + Protocol §4.0 pipeline-order ----------------
 test('A2: episodes-core.js and orders-core.js are required, not reimplemented (same module identity)', function () {
   const EC2 = require('../../episodes-core.js'), OC2 = require('../../orders-core.js');

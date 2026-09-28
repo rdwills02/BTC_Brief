@@ -275,14 +275,27 @@ function researchRowOf(fit, res, price, structuralFit) {
 var GATE_IDS = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C1.trend', 'C3.fresh-touch',
   'C3.no-recent-break', 'C7.floor', 'C2.width', 'C2.entry-zone', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
 
-var MIN_CANDLES_FOR_FIT = 30;   // capture.js's own research-pass gate (cands.length >= 30) before it will call detectChannel at all
+var MIN_CANDLES_FOR_FIT = 30;   // capture.js's own research-pass gate (cands.length >= 30) before it will call detectChannel at all - UNCHANGED, still gates the detectChannel call below (mirrors live capture.js exactly; capture.js itself is DO-NOT-TOUCH and still gates at 30)
+
+// Checkpoint 7c, Build item 2: WARMUP_CANDLES is a SEPARATE, reporting-only concept from MIN_CANDLES_FOR_FIT
+// above. It does not gate any detectChannel call (that gate stays at MIN_CANDLES_FOR_FIT=30 to keep mirroring
+// capture.js's own live attempt-gate exactly). It marks the candle count at which detectChannel's own fit
+// window is fully warmed up (PIVOT_LB 3 + FIT_WINDOW 150 = 153, per replay spec §1/§8), used only in
+// firstEligibilityInfo/runHeader to report where a fit first stops being window-truncated. Default 153;
+// --warmup=30 selects the old value for a sensitivity run (see warmupCandlesFromArgv/main).
+var WARMUP_CANDLES_DEFAULT = 153;
+function warmupCandlesFromArgv(argv) {
+  var hit = (argv || []).map(function (a) { return /^--warmup=(\d+)$/.exec(a); }).filter(Boolean)[0];
+  return hit ? parseInt(hit[1], 10) : WARMUP_CANDLES_DEFAULT;
+}
 
 // Step 1 (append usable candles) + step 6 (episode lifecycle/matching), computed ONCE per capture and shared
 // across every policy's book: episodes-core.js's updateEpisodes() takes no book/order input except
 // orderObligations, which feeds only the cosmetic obligationCandles field (never matching/opening/lifecycle) —
 // see episodes-core.js's own code. The replay always passes [] for orderObligations (no fetch-list to
 // optimize, unlike the live cohort), so the episode state is provably policy-independent and is computed once.
-function sharedDayStep(universe, dateStr, priorEpisodesState, cfg) {
+function sharedDayStep(universe, dateStr, priorEpisodesState, cfg, warmupCandles) {
+  var wc = warmupCandles == null ? WARMUP_CANDLES_DEFAULT : warmupCandles;
   var capture = captureFor(dateStr), cutoffSec = capture.inputCutoffSec;
   var btcUsable = usableSlice(universe.btcCandles, cutoffSec);
   var btcRegime = btcUsable.length ? C.btcRegimeFromCandles(btcUsable) : null;
@@ -294,8 +307,13 @@ function sharedDayStep(universe, dateStr, priorEpisodesState, cfg) {
     bars[cgId] = { pair: coin.pair, venueEligible: true, metadataEligible: true, candles: usable.map(function (c) { return { id: c.id, open: c.open, high: c.high, low: c.low, close: c.close }; }) };
     if (!coin.tradeable) return;   // BTC benchmark / stablecoin-symbol / excluded-symbol: candles kept for regime/context only, never episoded or traded
     if (!usable.length || usable[0].date > dateStr) return;   // not yet listed as of D-1
+    // Checkpoint 7c item 1 (BLOCKS fix): warmupCandles is a GATE, not a label. Below it the coin is treated as
+    // absent from the universe for this capture entirely - not in universeIds, no research row, no candidate,
+    // no episode open, no issuance, no attempt consumed. Under --warmup=30 this is a no-op vs MIN_CANDLES_FOR_FIT
+    // below (30 == 30), so that run must stay byte-identical to the pre-fix run (asserted by a dedicated test).
+    if (usable.length < wc) return;
     universeIds.push(cgId);
-    if (usable.length < MIN_CANDLES_FOR_FIT) return;   // capture.js's own gate: no detectChannel call below 30 usable candles
+    if (usable.length < MIN_CANDLES_FOR_FIT) return;   // capture.js's own gate: no detectChannel call below 30 usable candles (subsumed whenever warmupCandles >= 30, i.e. always in the two configs this build runs)
     var fit = C.detectChannel(usable, null, { coinId: cgId, timeframe: '1d', source: 'kraken', research: true });
     var last = usable[usable.length - 1];
     if (fit) {
@@ -398,11 +416,11 @@ function applyTargetOverride(candidates, kind) {
 // state computed once per day, one lightweight order book per policy (§4.0 order preserved per book: see
 // the acceptance-2 pipeline-order test). issuanceAllowed(dateStr) gates step 7 only (steps 1-6 always run,
 // so orders issued near a split's end still adjudicate/exit during a following embargo/continuation range). ----
-function simulateFamily(universe, dateList, policies, issuanceAllowedFn, cfgBase, onDay) {
+function simulateFamily(universe, dateList, policies, issuanceAllowedFn, cfgBase, onDay, warmupCandles) {
   var books = {}, priorEpisodes = null, cfgB = cfgBase || EC.DEFAULT_CFG;
   policies.forEach(function (p) { books[p.label] = OC.newBook(); });
   dateList.forEach(function (dateStr) {
-    var shared = sharedDayStep(universe, dateStr, priorEpisodes, cfgB);
+    var shared = sharedDayStep(universe, dateStr, priorEpisodes, cfgB, warmupCandles);
     priorEpisodes = shared.nextEpisodesState;
     var allowIssue = issuanceAllowedFn(dateStr);
     policies.forEach(function (p) {
@@ -583,7 +601,7 @@ var CONTEXT_DIFFERENCES = [
 // into updateEpisodes and fitKind into the episode-day rows exactly as capture.js ecd41806 does. ENGINE_VERSION is
 // hashed into every run's runId (see runDevelopment/runContaminated below), so this bump guarantees a run made with
 // the structural path gets a runId distinct from one made without it, even where every other input is identical.
-var ENGINE_VERSION = 'replay-driver-v0.2-structural';
+var ENGINE_VERSION = 'replay-driver-v0.3-warmup-gate';
 var SEED = 20260925, PRIMARY_B = 20, DEV_START = '2024-09-01', DEV_END = '2025-07-31', EMBARGO_END = '2025-08-31';
 var CONTAM_START = '2026-06-16', CONTAM_END = '2026-09-16';
 
@@ -593,28 +611,48 @@ function fillsPerMonthAvg(stats, windowDates) {
   return stats.fillsTotal / n;
 }
 
-// Checkpoint 7b (Build item 4 header requirements): the earliest usable candle in the pinned store, and the
-// earliest date at which ANY coin has accumulated >= MIN_CANDLES_FOR_FIT usable candles (capture.js's own
-// research-pass gate, cands.length >= 30, before it will call detectChannel at all). Computed from the actual
-// store every run, never hardcoded, so it stays correct if the store's coverage ever changes.
-function firstEligibilityInfo(universe) {
+// Checkpoint 7c (Build item 2, corrected by item 1's BLOCKS fix): three distinct dates. (1) lastWarmUpCandleDate
+// - the last candle of the WARMUP_CANDLES window (153 by default, PIVOT_LB 3 + FIT_WINDOW 150; 30 under
+// --warmup=30) for the earliest-starting tradeable coin: detectChannel's fit window is not fully warmed up
+// before this. (2) firstPermissibleEvaluationDate - the next simulated capture date under the D-1 convention
+// (captureFor(d) only ever sees candles through d-1, per line ~296 "not yet listed as of D-1"), i.e.
+// lastWarmUpCandleDate + 1 day: the earliest capture date at which that warm-up window is visible as D-1
+// history at all. (3) firstActualEligibleEpisodeDate - the earliest CAPTURE date the simulation itself now
+// actually admits the coin to the universe at all (sharedDayStep's warmupCandles gate, item 1): effective
+// candle-count threshold is max(warmupCandles, MIN_CANDLES_FOR_FIT) - always warmupCandles in the two configs
+// this build runs (153 and 30, both >= 30) - offset by the same D-1 convention as (2), since that is the real
+// first capture date the coin is no longer absent from the universe. Equal to (2) whenever warmupCandles >=
+// MIN_CANDLES_FOR_FIT (always, here); kept as a separate field for the case warmupCandles < 30. Computed from
+// the actual store every run, never hardcoded.
+function firstEligibilityInfo(universe, warmupCandles) {
+  var wc = warmupCandles == null ? WARMUP_CANDLES_DEFAULT : warmupCandles;
   var tradeable = Object.keys(universe.byCgId).map(function (k) { return universe.byCgId[k]; }).filter(function (c) { return c.tradeable && c.candles && c.candles.length; });
   var byFirst = tradeable.slice().sort(function (a, b) { return a.candles[0].date < b.candles[0].date ? -1 : (a.candles[0].date > b.candles[0].date ? 1 : 0); });
   var earliest = byFirst[0] || null;
+  var lastWarmUpCandleDate = (earliest && earliest.candles.length >= wc) ? earliest.candles[wc - 1].date : null;
+  var effectiveGateCandles = Math.max(wc, MIN_CANDLES_FOR_FIT);
+  var lastGateCandleDate = (earliest && earliest.candles.length >= effectiveGateCandles) ? earliest.candles[effectiveGateCandles - 1].date : null;
   return {
+    warmupCandles: wc,
     firstAvailableCandle: earliest ? earliest.candles[0].date : null,
     firstAvailableCandleCoin: earliest ? earliest.cgId : null,
-    firstEligibleDate: (earliest && earliest.candles.length >= MIN_CANDLES_FOR_FIT) ? earliest.candles[MIN_CANDLES_FOR_FIT - 1].date : null,
-    firstEligibleCoin: earliest ? earliest.cgId : null
+    lastWarmUpCandleDate: lastWarmUpCandleDate,
+    lastWarmUpCandleCoin: lastWarmUpCandleDate ? earliest.cgId : null,
+    firstPermissibleEvaluationDate: lastWarmUpCandleDate ? addDays(lastWarmUpCandleDate, 1) : null,
+    firstActualEligibleEpisodeDate: lastGateCandleDate ? addDays(lastGateCandleDate, 1) : null,
+    firstActualEligibleEpisodeCoin: earliest ? earliest.cgId : null
   };
 }
-function runHeader(universe, extra) {
-  var elig = firstEligibilityInfo(universe);
+function runHeader(universe, extra, warmupCandles) {
+  var elig = firstEligibilityInfo(universe, warmupCandles);
   return Object.assign({
     engineVersion: ENGINE_VERSION, baseCommit: BASE_COMMIT, storeHash: universe.storeHash, metadataSnapshotSha256: universe.metadataSnapshotSha256,
+    warmupCandlesUsed: elig.warmupCandles,
     firstAvailableCandle: elig.firstAvailableCandle, firstAvailableCandleCoin: elig.firstAvailableCandleCoin,
-    firstEligibleDate: elig.firstEligibleDate, firstEligibleCoin: elig.firstEligibleCoin,
-    warmUpNote: 'The detector needs >= ' + MIN_CANDLES_FOR_FIT + ' usable candles before capture.js will attempt detectChannel at all (its own research-pass gate, mirrored here). Dates between the first available candle (' + elig.firstAvailableCandle + ', ' + elig.firstAvailableCandleCoin + ') and the first eligible date (' + elig.firstEligibleDate + ', ' + elig.firstEligibleCoin + ') are warm-up only for the earliest-starting coin - they are NOT zero-signal observations and must never be counted as episode-less/no-candidate days in any funnel, rate, or fill-count denominator.',
+    lastWarmUpCandleDate: elig.lastWarmUpCandleDate, lastWarmUpCandleCoin: elig.lastWarmUpCandleCoin,
+    firstPermissibleEvaluationDate: elig.firstPermissibleEvaluationDate,
+    firstEligibleDate: elig.firstActualEligibleEpisodeDate, firstEligibleCoin: elig.firstActualEligibleEpisodeCoin,
+    warmUpNote: 'Warm-up boundary used for this run: ' + elig.warmupCandles + ' candles (PIVOT_LB 3 + FIT_WINDOW 150 = 153 by default; 30 under --warmup=30, capture.js\'s own research-pass attempt gate). Last warm-up candle for the earliest-starting coin (' + elig.lastWarmUpCandleCoin + '): ' + elig.lastWarmUpCandleDate + '. First permissible evaluation date under the D-1 convention (captureFor(d) only ever sees candles through d-1): ' + elig.firstPermissibleEvaluationDate + '. First actual eligible-episode date under the UNCHANGED live-mirroring gate (MIN_CANDLES_FOR_FIT=30, independent of the warm-up value above): ' + elig.firstActualEligibleEpisodeDate + ', ' + elig.firstActualEligibleEpisodeCoin + '. Dates before the first actual eligible-episode date are warm-up/no-attempt only for the earliest-starting coin - they are NOT zero-signal observations and must never be counted as episode-less/no-candidate days in any funnel, rate, or fill-count denominator.',
     volumeDefinition: 'volume24h in this replay = the D-1 daily candle\'s base volume x price, where price is the Kraken OHLC vwap field (raw[5]) when present and positive, else the D-1 close - an approximation of USD quote turnover built from Kraken\'s own OHLC candle, not a directly reported exchange quote-turnover figure and not a plain close x base-volume computation either. Live capture.js instead reads the capture-time exchange/CoinGecko 24h volume figure directly (see contextDifferencesFromLive).',
     survivorshipNote: 'Universe = the CURRENT (build-time) Kraken-designated-pair universe, held fixed for the whole window (v0.1 ruling). Coins that were once tradeable and are now delisted/dead cannot be reconstructed from the live caches this build reads, so survivorship bias here is LARGER than a monthly-reconstructed historical universe would show (spec §1/§8).',
     contextDifferencesFromLive: CONTEXT_DIFFERENCES, seed: SEED
@@ -625,16 +663,21 @@ function ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
 function writeJson(p, obj) { fs.writeFileSync(p, JSON.stringify(obj, null, 1)); }
 
 // ---- deliverable 1/3/4/5: the development run (the ONLY split this build executes; see the CLI guard) ----
-function runDevelopment() {
+function runDevelopment(warmupCandles) {
+  var wc = warmupCandles == null ? WARMUP_CANDLES_DEFAULT : warmupCandles;
   var universe = loadUniverse();
   var fam = buildPolicyFamily();
   var simDates = dateRange(DEV_START, EMBARGO_END);
   var windowDates = dateRange(DEV_START, DEV_END);
   var policyKey = fam.eligibleFamily.map(function (p) { return { label: p.label, id: p.id, version: p.version, cfg: p.cfg }; });
+  // warmupCandles is included in the runId: it only changes header/reporting fields (see firstEligibilityInfo),
+  // never the simulation itself, but checkpoint 7c's authoritative (153) and sensitivity (30) runs must land in
+  // distinct run directories, so it must distinguish the id even though it doesn't distinguish the sim result.
   var rid = sha256Of({ kind: 'development', storeHash: universe.storeHash, metadataSnapshotSha256: universe.metadataSnapshotSha256,
-    policies: policyKey, devStart: DEV_START, devEnd: DEV_END, embargoEnd: EMBARGO_END, seed: SEED, engineVersion: ENGINE_VERSION }).slice(0, 16);
+    policies: policyKey, devStart: DEV_START, devEnd: DEV_END, embargoEnd: EMBARGO_END, seed: SEED, engineVersion: ENGINE_VERSION,
+    warmupCandles: wc }).slice(0, 16);
 
-  var books = simulateFamily(universe, simDates, fam.eligibleFamily, function (d) { return d <= DEV_END; }, null, null);
+  var books = simulateFamily(universe, simDates, fam.eligibleFamily, function (d) { return d <= DEV_END; }, null, null, wc);
 
   var rows = fam.eligibleFamily.map(function (p) {
     var st = statsForPolicy(books[p.label], p.id, windowDates);
@@ -667,23 +710,44 @@ function runDevelopment() {
   var recommendation = (!winner || winner.bootstrap.primary.lowerBound90 == null) ? 'no-eligible-configuration'
     : 'candidate-selected (validation NOT run this build — v0.1 ruling: selection is not applied until the analysis-thread review of the family and rule is in)';
 
+  // Checkpoint 7c item 2: §8 feasibility (fills per 365 days vs the 24-fills/year threshold), reported both
+  // ways. "Full window" divides by every day in the development split, including warm-up days where the gate
+  // (item 1) admits no coin at all - those days cannot produce a fill by construction, so dividing by them
+  // dilutes the rate. "Effective window" divides only by days from firstPermissibleEvaluationDate (the first
+  // capture date the warm-up gate admits anything) through devEnd - the window over which fills were actually
+  // possible. N0 specifically, per §8's own convention (the confirmatory/calibration policy).
+  var n0Row = rows.filter(function (r) { return r.label === 'N0'; })[0];
+  var elig = firstEligibilityInfo(universe, wc);
+  var effectiveWindowStart = elig.firstPermissibleEvaluationDate;
+  var effectiveWindowDates = effectiveWindowStart ? dateRange(effectiveWindowStart, DEV_END) : [];
+  var feasibility = n0Row ? {
+    n0Filled: n0Row.filled,
+    fullWindow: { days: windowDates.length, fillsPer365: n0Row.filled * 365 / windowDates.length,
+      note: 'includes ' + (windowDates.length - effectiveWindowDates.length) + ' warm-up days with no evaluations' },
+    effectiveWindow: { start: effectiveWindowStart, end: DEV_END, days: effectiveWindowDates.length,
+      fillsPer365: effectiveWindowDates.length ? n0Row.filled * 365 / effectiveWindowDates.length : null,
+      note: 'from firstPermissibleEvaluationDate through devEnd - the window over which a fill was actually possible under the warmupCandles gate' },
+    threshold: 24
+  } : null;
+
   var doc = runHeader(universe, {
     kind: 'development-table', split: { start: DEV_START, end: DEV_END, embargoEnd: EMBARGO_END, simulatedThrough: EMBARGO_END },
     runId: rid, policyFamilySize: fam.eligibleFamily.length, gridSize: fam.grid.length,
     eligibilityRule: '>= 30 filled orders in development; no suspension in development',
     selectionRule: 'one-sided 90% lower bootstrap bound on mean budget-R (b=20, seed ' + SEED + '), ties by fills/month then by smaller max drawdown',
-    rows: rows, developmentRanking: ranked.map(function (r) { return { label: r.label, lowerBound90: r.bootstrap.primary.lowerBound90, meanBudgetR: r.meanBudgetR, filled: r.filled, fillsPerMonth: r.fillsPerMonth, maxDrawdown: r.maxDrawdown }; }),
+    rows: rows, feasibility: feasibility, developmentRanking: ranked.map(function (r) { return { label: r.label, lowerBound90: r.bootstrap.primary.lowerBound90, meanBudgetR: r.meanBudgetR, filled: r.filled, fillsPerMonth: r.fillsPerMonth, maxDrawdown: r.maxDrawdown }; }),
     winner: winner ? { label: winner.label, cfg: winner.cfg, version: winner.version, lowerBound90: winner.bootstrap.primary.lowerBound90 } : null,
     pboCscv: pbo, recommendation: recommendation,
-    validationNote: 'The validation split is not implemented in this build (spec v0.1 §8: selection is not applied until the analysis-thread review of the family+rule is in). --select DOES run below (checkpoint 7b: "run validation ONLY if a configuration was selected") - it is validation specifically, not the selection rule itself, that stays gated; recommendation === "no-eligible-configuration" means there is nothing to validate here.'
-  });
+    validationNote: 'The validation split is not implemented in this build (spec v0.1 §8: selection is not applied until the analysis-thread review of the family+rule is in). --select DOES run below (checkpoint 7b: "run validation ONLY if a configuration was selected") - it is validation specifically, not the selection rule itself, that stays gated; recommendation === "no-eligible-configuration" means there is nothing to validate here.',
+    runLabel: wc === WARMUP_CANDLES_DEFAULT ? 'authoritative: PIVOT_LB 3 + FIT_WINDOW 150 warm-up' : 'sensitivity: live-compatible warm-up'
+  }, wc);
 
   var runDir = path.join(RUNS_DIR, rid);
   ensureDir(runDir);
   var tableBody = JSON.stringify(doc, null, 1);
   fs.writeFileSync(path.join(runDir, 'development-table.json'), tableBody);
   fs.writeFileSync(path.join(runDir, 'development-table.sha256'), sha256Hex(Buffer.from(tableBody, 'utf8')));
-  var exploratory = runExploratoryMeasuredMove(universe, fam, rid, runDir);
+  var exploratory = runExploratoryMeasuredMove(universe, fam, rid, runDir, wc);
   return { runId: rid, runDir: runDir, doc: doc, exploratory: exploratory.doc };
 }
 
@@ -691,9 +755,9 @@ function runDevelopment() {
 // promotable) - channel-height / 2R target overrides on N0's own screen and entries. Same dev window, universe,
 // seed and engine as the development table; reported separately and never fed into fam.eligibleFamily, the
 // development ranking, PBO/CSCV, or --select. Written beside development-table.json under the same runId. ----
-function runExploratoryMeasuredMove(universe, fam, rid, runDir) {
+function runExploratoryMeasuredMove(universe, fam, rid, runDir, warmupCandles) {
   var windowDates = dateRange(DEV_START, DEV_END);
-  var books = simulateFamily(universe, dateRange(DEV_START, EMBARGO_END), fam.measuredMove, function (d) { return d <= DEV_END; }, null, null);
+  var books = simulateFamily(universe, dateRange(DEV_START, EMBARGO_END), fam.measuredMove, function (d) { return d <= DEV_END; }, null, null, warmupCandles);
   var rows = fam.measuredMove.map(function (p) {
     var st = statsForPolicy(books[p.label], p.id, windowDates);
     var bs = bootstrapReportFor(st, SEED, PRIMARY_B);
@@ -707,7 +771,7 @@ function runExploratoryMeasuredMove(universe, fam, rid, runDir) {
     linkedDevelopmentRunId: rid || null,
     note: 'Exploratory only (Protocol v0.1 §8): these variants redefine the reward itself (a channel-height or 2R target override on N0\'s own screen/entries), so they are never part of fam.eligibleFamily, the development ranking, PBO/CSCV, or --select. Reported here for reference alongside the development table only.',
     rows: rows
-  });
+  }, warmupCandles);
   var dir = runDir || RUNS_DIR;
   ensureDir(dir);
   var body = JSON.stringify(doc, null, 1);
@@ -757,7 +821,8 @@ function selectC1(runDir) {
   var table = assertDevelopmentTableWritten(runDir);
   var winner = table.winner;
   var record = { runId: table.runId, selectionRule: table.selectionRule, developmentRanking: table.developmentRanking, winner: winner,
-    pboCscv: table.pboCscv, recommendation: table.recommendation, note: 'Selection record only. Per v0.1 §8 this is never applied to the forward cohort until the analysis-thread review of the family and rule is in.' };
+    pboCscv: table.pboCscv, recommendation: table.recommendation, feasibility: table.feasibility || null,
+    note: 'Selection record only. Per v0.1 §8 this is never applied to the forward cohort until the analysis-thread review of the family and rule is in.' };
   var selDir = path.join(path.dirname(assertDevelopmentTableWrittenPath(runDir)), 'selection-record.json');
   writeJson(selDir, record);
   return record;
@@ -770,7 +835,8 @@ function runValidationGuard(runDir) {
 }
 
 module.exports.internal = { sha256Hex, stableStringify, sha256Of, ymdToSec, secToYmd, addDays, dateRange, computeStore, normSym, slugPair,
-  usableSlice, captureFor, researchRowOf, GATE_IDS, MIN_CANDLES_FOR_FIT, sharedDayStep, policyDayStep, buildPolicyFamily, subsetsOf,
+  usableSlice, captureFor, researchRowOf, GATE_IDS, MIN_CANDLES_FOR_FIT, WARMUP_CANDLES_DEFAULT, warmupCandlesFromArgv, firstEligibilityInfo,
+  runHeader, sharedDayStep, policyDayStep, buildPolicyFamily, subsetsOf,
   simulateFamily, applyTargetOverride, splitmix32Next, makeXoshiro128ss, goldenVector, drawIndex, blockResampleIndices, percentileBound,
   bootstrapMeanBudgetR, combinations, pboCscv, statsForPolicy, bootstrapReportFor, CONTEXT_DIFFERENCES, fillsPerMonthAvg,
   DEV_START, DEV_END, EMBARGO_END, CONTAM_START, CONTAM_END, SEED, PRIMARY_B, ENGINE_VERSION, gitBlobSha1, verifyPinnedCache };
@@ -787,8 +853,9 @@ function main() {
   try {
     if (argv.indexOf('--build-store') >= 0) { buildStore(); return; }
     if (argv.indexOf('--dev') >= 0) {
-      var res = runDevelopment();
-      console.log('development run written:', res.runDir);
+      var wcArg = warmupCandlesFromArgv(argv);
+      var res = runDevelopment(wcArg);
+      console.log('development run written:', res.runDir, '(warmup=' + wcArg + ', ' + res.doc.runLabel + ')');
       console.log('runId', res.runId, 'winner', res.doc.winner && res.doc.winner.label, 'recommendation', res.doc.recommendation);
       console.log('exploratory measured-move table written beside it:', res.exploratory.rows.map(function (r) { return r.label + ' (' + r.filled + ' filled)'; }).join(', '));
       return;

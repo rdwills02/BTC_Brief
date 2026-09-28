@@ -9,6 +9,22 @@
  * re-baseline, not routine maintenance — it changes what regression-runner.js measures against.
  *
  * Run: node populate-fixtures.js   (from inside radar_tools/, at repo root alongside data/)
+ *
+ * BACKLOG (checkpoint 7c): a fresh clone's live data/ has almost always drifted past manifest.json's
+ * pinnedCommit by the time anyone runs this (capture.js commits daily) — running this file as-is against
+ * live data/ will NOT reproduce the pinned fixture set, and regression-runner.js's verifyManifestOrAbort()
+ * will then hard-abort on every fixture file. If you just need the EXISTING pin's exact bytes back (not a
+ * deliberate re-baseline), reconstruct from git history at the pinned commit instead of from HEAD:
+ *   cd radar_tools && rm -rf fixtures && mkdir fixtures && python3 -c "
+ *   import json,subprocess,os,hashlib
+ *   m=json.load(open('manifest.json'))
+ *   for f in m['files']:
+ *       p=f['path']; out=os.path.join('fixtures',p); os.makedirs(os.path.dirname(out),exist_ok=True)
+ *       b=subprocess.run(['git','show',f\"{m['pinnedCommit']}:{p}\"],capture_output=True).stdout
+ *       open(out,'wb').write(b)
+ *   "
+ * (requires a full, non-shallow clone so the pinned commit is present). This is not a fix for this script
+ * itself — filed here per Ryan's 7c blocker-resolution instruction, not implemented as code.
  */
 const fs = require('fs');
 const path = require('path');

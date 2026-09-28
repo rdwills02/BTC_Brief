@@ -2273,18 +2273,18 @@ function step14Calibrate(fillDays, opts) {
   const confirmatoryPolicy = opts.confirmatoryPolicy || 'C1', portApplicable = confirmatoryPolicy === 'C1';
   const src = opts.dailyCounts && opts.dailyCounts.length ? opts.dailyCounts : [1];   // the feasibility replay's empirical daily fill counts, tiled
   const gen = step14Xoshiro((opts.seed || 20260926) >>> 0);
-  const drawExpNull = (seed) => {
+  const drawExpNull = () => {
     const phase = step14Draw(gen, src.length), s = new Array(N).fill(0), n = new Array(N).fill(0);
     for (let t = 0; t < N; t++) { const k = src[(phase + t) % src.length]; if (!k) continue; const z = SC * step14Normal(gen); for (let j = 0; j < k; j++) s[t] += z + SI * step14Normal(gen); n[t] = k; }
-    return step14Cell('exp', { N, s, n }, b, reps, seed);
+    return step14Cell('exp', { N, s, n }, b, reps); // inner bootstrap uses step14Cell's own default seed (STEP14.SEED, 20260925) - no per-run seed passed
   };
   let pass1 = 0, pass6 = 0, pass3 = 0;
   for (let run = 0; run < runs; run++) {
     // null (i), condition 1: trade counts per record = the empirical fill-count series (random phase, tiled to N); every trade's budget-R = shared day shock + own noise, mean exactly 0
-    const c1 = drawExpNull((0xC0FFEE + run) >>> 0);
+    const c1 = drawExpNull();
     if (c1.validated && c1.bound > 0) pass1++;
-    // null (i), condition 6: same generative model, independent draw/seed so the adverse-charge path gets its own MC estimate
-    const c6 = drawExpNull((0xDEC0DE + run) >>> 0);
+    // null (i), condition 6: same generative model, independent draw so the adverse-charge path gets its own MC estimate (outer generator only - inner bootstrap shares STEP14.SEED with condition 1, per checkpoint 7c)
+    const c6 = drawExpNull();
     if (c6.validated && c6.bound > 0) pass6++;
     if (portApplicable) {
       // null (ii): the C1 and N0 daily-return paths are exchangeable (same mean, independent noise); the statistic is the compounded difference
