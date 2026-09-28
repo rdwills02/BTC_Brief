@@ -93,7 +93,7 @@ const MARKET_CHART_BACKFILL_DAYS = 365;    // first-ever pull for a coin (no cac
 const MARKET_CHART_INCREMENTAL_DAYS = 10;  // subsequent pulls once cached — 10d overlap for safety
 
 // Display categories (context tags shown on radar/report). Mirrors radar's DISPLAY_CATEGORIES.
-// Each is a CoinGecko category slug + the label to store. 7 extra calls/run (negligible).
+// Each is a CoinGecko category slug + the label to store. 8 extra calls/run (negligible).
 const DISPLAY_CATEGORIES = [
   { slug: 'artificial-intelligence', label: 'AI' },
   { slug: 'decentralized-finance-defi', label: 'DeFi' },
@@ -101,7 +101,8 @@ const DISPLAY_CATEGORIES = [
   { slug: 'layer-2', label: 'Layer 2' },
   { slug: 'oracle', label: 'Oracle' },
   { slug: 'meme-token', label: 'Meme' },
-  { slug: 'privacy-coins', label: 'Privacy Coin' }
+  { slug: 'privacy-coins', label: 'Privacy Coin' },
+  { slug: 'centralized-exchange-token-cex', label: 'Exchange' }   // 13e: last on purpose - the first matching category wins (fetchCategoryLabels), so this labels only coins no earlier category claims
 ];
 
 if (!CG_KEY) { console.error('FATAL: CG_KEY env not set'); process.exit(1); }
@@ -553,7 +554,7 @@ async function buildUniverse() {
   return { list: list, counts: counts };
 }
 
-// Fetch display-category membership -> { coinId: 'Label' }. 7 calls. Context tags only.
+// Fetch display-category membership -> { coinId: 'Label' }. 8 calls. Context tags only.
 async function fetchCategoryLabels() {
   const labels = {};
   for (const dc of DISPLAY_CATEGORIES) {
@@ -1524,7 +1525,7 @@ async function main() {
   console.log('universe:', universe.length, 'coins');
   if (!universe.length) { console.error('empty universe — aborting, not writing'); process.exit(1); }
 
-  // Display-category labels (context tags). 7 calls.
+  // Display-category labels (context tags). 8 calls.
   const catLabels = await fetchCategoryLabels();
   console.log('category labels for', Object.keys(catLabels).length, 'coins');
 

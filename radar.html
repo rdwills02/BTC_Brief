@@ -1942,7 +1942,8 @@ var DISPLAY_CATEGORIES = [
   {slug:'artificial-intelligence', label:'AI'},
   {slug:'oracle', label:'Oracle'},
   {slug:'layer-2', label:'Layer 2'},
-  {slug:'layer-1', label:'Layer 1'}
+  {slug:'layer-1', label:'Layer 1'},
+  {slug:'centralized-exchange-token-cex', label:'Exchange'}   // 13e: last on purpose - the first matching category wins, so this only labels coins no earlier category claims
 ];
 var CATEGORY_LABELS = {};
 
@@ -1955,9 +1956,35 @@ var CATEGORY_TIPS = {
   'Layer 2':'Built on top of a Layer 1 to make it faster/cheaper (e.g. Arbitrum). Context only.',
   'Oracle':'Feeds real-world data (prices, events) into blockchains. Context only — does not affect score.',
   'Meme':'Community/hype-driven coins with no specific use case. Context only — does not affect score.',
-  'Privacy Coin':'Designed to keep transactions private/untraceable (e.g. Monero). Context only.'
+  'Privacy Coin':'Designed to keep transactions private/untraceable (e.g. Monero). Context only.',
+  'Exchange':"Token issued by a centralized exchange (e.g. BNB, OKB); its value is tied to that exchange's business. Context only — does not affect score.",
+  'Uncategorised':"Not in any of the categories Radar tracks; not a judgment on the coin."
 };
-function categoryTip(cat){ return CATEGORY_TIPS[cat] || (cat+' — coin category (context only, does not affect score).'); }
+function categoryTip(cat){ return cat ? (CATEGORY_TIPS[cat] || (cat+' — coin category (context only, does not affect score).')) : CATEGORY_TIPS['Uncategorised']; }
+// 13e: the category badge for the research table column and the detail-panel title line; null category = "—" with the null tooltip.
+var CAT_FILTER = {};   // 13e (1): label -> true; none set = no category filter
+function catFilterOn() { for (var k in CAT_FILTER) if (CAT_FILTER[k]) return true; return false; }
+// 13e: research-view-only controls are added to the DOM here, never to the static HTML, so the ?legacy=1 markup stays byte-identical. Idempotent.
+function researchUiExtras() {
+  if (!RESEARCH_MODE_UI) return;
+  var tg = document.getElementById('research-mode'), lab = tg ? tg.parentNode : null;
+  if (lab && lab.parentNode) lab.parentNode.removeChild(lab);   // the header toggle and its tooltip: ?legacy=1 is the only way into the legacy view
+  var ss = document.getElementById('sort-sel'); if (!ss) return;
+  if (!ss.querySelector('option[value="category"]')) { var op = document.createElement('option'); op.value = 'category'; op.textContent = 'Sort: Category'; ss.appendChild(op); }
+  if (!document.getElementById('cat-filter')) {
+    var lbl = document.createElement('span'); lbl.className = 'filter-label'; lbl.id = 'cat-filter-label'; lbl.textContent = 'Category';
+    var box = document.createElement('div'); box.className = 'bucket-filter'; box.id = 'cat-filter';
+    DISPLAY_CATEGORIES.map(function (d) { return d.label; }).concat(['Uncategorised']).forEach(function (label) {
+      var b = document.createElement('button'); b.className = 'bbtn'; b.type = 'button'; b.setAttribute('data-cat', label); b.textContent = label; b.title = categoryTip(label === 'Uncategorised' ? null : label);
+      b.addEventListener('click', function () { CAT_FILTER[label] = !CAT_FILTER[label]; b.className = 'bbtn' + (CAT_FILTER[label] ? ' a-all' : ''); applyFilters(); });
+      box.appendChild(b);
+    });
+    ss.parentNode.insertBefore(lbl, ss); ss.parentNode.insertBefore(box, ss);
+  }
+}
+function categoryBadgeHTML(cat) {
+  return '<span class="bbadge cat-tip" data-tip="' + researchAttr(categoryTip(cat)) + '" style="background:rgba(157,163,180,.12);color:' + (cat ? 'var(--text2)' : 'var(--muted,#9aa3b2)') + '">' + (cat ? researchAttr(cat) : '\u2014') + '</span>';
+}
 
 async function fetchDisplayCategories() {
   CATEGORY_LABELS = {};
@@ -2296,6 +2323,7 @@ function researchVerdictText(res, r) {
   if (res.details && res.details.gates) { for (var i = 0; i < res.details.gates.length; i++) if (res.details.gates[i].id === res.gate) { g = res.details.gates[i]; break; } }
   var pctOf = function(v) { return (v*100).toFixed(1)+'%'; };
   var lim = function(t) { var m = String(t == null ? '' : t).match(/[0-9]+(?:\.[0-9]+)?/); return m ? m[0] : '?'; };   // ">= 2" -> "2"
+  var mg = researchGateMargins(res.details && res.details.gates, r, r.price), zc = researchZoneClause(res, mg, d);   // 13f: margins first, then the sentence; zc = null only when the entry-zone check passes
   switch (res.reason) {
     case 'all-gates': return 'Act: every entry check passed on this snapshot.';
     case 'data-unavailable': return 'Data unavailable: no research fit for this row - no levels shown.';
@@ -2315,8 +2343,8 @@ function researchVerdictText(res, r) {
       return 'Watch: base forming - price trend is not up yet ('+(v ? 'close '+fmt(v.close, d)+' vs EMA50 '+fmt(v.ema50, d)+', EMA50 slope '+pctOf(v.ema50Slope) : 'trend inputs unknown')+'); an entry needs a close above a non-falling EMA50.';
     }
     case 'unconfirmed': return 'Watch: unconfirmed level - '+(res.gate === 'C3.fresh-touch' ? 'the last support touch was '+(g ? g.value : '?')+' bars ago (freshness limit '+lim(g && g.threshold)+')' : 'a break run sits inside the recency window ('+(g ? g.value : '?')+' bars since break; needs '+lim(g && g.threshold)+' or more)')+' - wait for a fresh test before treating the support level as active support.';
-    case 'below-floor': return 'Watch: would be an act zone, but the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+') - watch for a bounce off support.';
-    case 'too-wide': return 'Watch: would be an act zone, but the channel is unusually wide ('+(g ? (g.value*100).toFixed(0) : '?')+'%, over the '+(g ? (g.threshold*100) : '?')+'% cap) - treat as a range boundary, not a price target.';
+    case 'below-floor': return 'Watch: '+(zc ? zc+', and the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+')' : 'would be an act zone, but the research score ('+r.score+') is below the provisional floor ('+(g ? g.threshold : '?')+')')+' - watch for a bounce off support.';
+    case 'too-wide': return 'Watch: '+(zc ? zc+', and the channel is unusually wide (' : 'would be an act zone, but the channel is unusually wide (')+(g ? (g.value*100).toFixed(0) : '?')+'%, over the '+(g ? (g.threshold*100) : '?')+'% cap) - treat as a range boundary, not a price target.';
     case 'not-at-support': return 'Watch: price '+(g && g.value ? fmt(g.value.price, d) : '--')+' is outside the entry zone '+(g && g.value ? fmt(g.value.entryLow, d)+' – '+fmt(g.value.entryHigh, d) : '')+' - wait for a pullback into the zone.';
     case 'extended': return 'Watch: extended - the last 3 bars gained '+(g ? fmt(g.value, d) : '?')+', more than 4x ATR14 ('+(g ? fmt(g.threshold, d) : '?')+'); wait for the move to settle.';
     case 'rr-unknown': return 'Watch: reward-to-risk is Unknown - no resistance or swing high sits above the entry zone, so there is no target to size against.';
@@ -2331,6 +2359,79 @@ function researchVerdictText(res, r) {
       try { console.error('Radar BUG: research verdict with unmapped reason ' + res.reason); } catch (e) {}
       return 'Verdict unavailable (unmapped reason).';
   }
+}
+// Step 13f (b): signed distance to qualification for every gate that has a numeric value and threshold. Computed ONCE from the gate log, BEFORE the state and the reason text are chosen
+// (researchStateFor and researchVerdictText both call this first). + = clear of the threshold by that much, - = short of it; the sign is the margin's own, not the gate's pass flag.
+// Native units: % of price and ATR14 for price levels, pts for the score and the channel width, ratio for volume and R:R, bars for counts. Display only: no composite closeness number, and no gate, state or score reads it.
+var RESEARCH_MARGIN_GATES = { 'struct.quote-breach': 1, 'struct.below-rail': 1, 'C1.trend': 1, 'C3.fresh-touch': 1, 'C3.no-recent-break': 1, 'C7.floor': 1, 'C2.width': 1, 'C2.entry-zone': 1, 'C6.spike': 1, 'H6.rr': 1, 'C4.volume24h': 1, 'C4.touch-volume': 1, 'C5.btc-regime': 1 };
+function researchGateMargins(gates, rr, price) {
+  var out = {}, num = function (v) { return typeof v === 'number' && isFinite(v); };
+  var atr = (rr && num(rr.atr14) && rr.atr14 > 0) ? rr.atr14 : null, px = (num(price) && price > 0) ? price : null;
+  var sg = function (v, dec) {   // sign follows the value, never the rounding; a value too small for the precision prints as <10^-dec
+    if (v === 0) return '±0';
+    var a = Number(Math.abs(v).toFixed(dec)), sign = v < 0 ? '−' : '+';
+    return sign + (a === 0 ? '<' + Math.pow(10, -dec) : a);
+  };
+  var tn = function (t) { if (num(t)) return t; var m = String(t == null ? '' : t).match(/[0-9]+(?:\.[0-9]+)?/); return m ? Number(m[0]) : null; };
+  var lvl = function (dist, note) {   // a price distance -> "% of price / ATR" text
+    var pct = px ? dist / px * 100 : null, a = atr ? dist / atr : null, parts = [];
+    if (pct != null) parts.push(sg(pct, Math.abs(pct) < 0.1 ? 2 : 1) + '%');
+    if (a != null) parts.push(sg(a, 2) + ' ATR');
+    return { ok: dist >= 0, pct: pct, atr: a, text: parts.join(' / ') + (note ? ' ' + note : '') };
+  };
+  var one = function (dist, dec, unit) { return { ok: dist >= 0, text: sg(dist, dec) + ' ' + unit }; };
+  (gates || []).forEach(function (g) {
+    if (!g || !RESEARCH_MARGIN_GATES.hasOwnProperty(g.id)) return;
+    var v = g.value, t = g.threshold, tv = tn(t), m = null;
+    switch (g.id) {
+      case 'struct.quote-breach': if (num(v) && num(t)) m = lvl(v - t, 'vs invalidation'); break;
+      case 'struct.below-rail': if (num(v) && rr && num(rr.channelH)) m = lvl(v * rr.channelH, 'vs the support rail'); break;   // position = (price - support) / channelH
+      case 'C1.trend':
+        if (v && typeof v === 'object') {
+          var p1 = (num(v.close) && num(v.ema50)) ? lvl(v.close - v.ema50, 'vs EMA50') : null, p2 = num(v.ema50Slope) ? sg(v.ema50Slope * 100, 2) + '% EMA50 slope' : null;
+          if (p1 || p2) m = { ok: (!p1 || p1.ok) && (!num(v.ema50Slope) || v.ema50Slope >= 0), text: [p1 && p1.text, p2].filter(Boolean).join('; ') };
+        }
+        break;
+      case 'C3.fresh-touch': if (num(v) && tv != null) m = one(tv - v, 0, 'bars'); break;
+      case 'C3.no-recent-break': if (v == null) { if (g.pass === true) m = { ok: true, text: 'no break in the window' }; } else if (num(v) && tv != null) m = one(v - tv, 0, 'bars'); break;
+      case 'C7.floor': if (num(v) && num(t)) m = one(v - t, 1, 'pts'); break;
+      case 'C2.width': if (num(v) && tv != null) m = one((tv - v) * 100, 1, 'pts of width'); break;
+      case 'C2.entry-zone':
+        if (v && typeof v === 'object' && num(v.price) && num(v.entryLow) && num(v.entryHigh)) {
+          var above = v.price > v.entryHigh, below = v.price < v.entryLow;
+          m = lvl(above ? v.entryHigh - v.price : (below ? v.price - v.entryLow : Math.min(v.price - v.entryLow, v.entryHigh - v.price)), above ? '(above the zone top)' : (below ? '(below the zone bottom)' : '(inside the zone, to the nearer edge)'));
+          m.side = above ? 'above' : (below ? 'below' : 'inside');
+        }
+        break;
+      case 'C6.spike': if (num(v) && num(t)) m = lvl(t - v, 'vs the 3-bar gain limit'); break;
+      case 'H6.rr': if (num(v) && tv != null) m = one(v - tv, 2, 'R:R'); break;
+      case 'C4.volume24h': if (num(v) && tv) m = one(v / tv - 1, 2, 'x floor'); break;
+      case 'C4.touch-volume': if (num(v) && tv != null) m = one(v - tv, 2, 'x avg'); break;
+      case 'C5.btc-regime': if (v && typeof v === 'object' && num(v.ema50Slope)) m = { ok: v.aboveEma50 !== false && v.ema50Slope >= 0, text: sg(v.ema50Slope * 100, 2) + '% BTC EMA50 slope, BTC ' + (v.aboveEma50 ? 'above' : 'below') + ' EMA50' }; break;
+    }
+    out[g.id] = m || { ok: null, text: 'unknown' };
+  });
+  return out;
+}
+// Step 13f (c): the distance (entry-zone) clause for a sentence, or null when the entry-zone check passes - "would be an act zone" is only true then.
+// mg = researchGateMargins(...) for the same row, computed by the caller before it picks the sentence.
+function researchZoneClause(res, mg, d) {
+  var gs = (res && res.details && res.details.gates) || [], zg = null;
+  for (var i = 0; i < gs.length; i++) if (gs[i].id === 'C2.entry-zone') { zg = gs[i]; break; }
+  if (zg && zg.pass === true) return null;
+  var v = zg ? zg.value : null;
+  if (!v || typeof v !== 'object') return 'the entry-zone check could not be evaluated';
+  var z = mg && mg['C2.entry-zone'], side = v.price > v.entryHigh ? 'above' : (v.price < v.entryLow ? 'below' : 'outside');
+  var dist = (z && typeof z.pct === 'number' && z.pct === z.pct) ? ' (' + Math.abs(z.pct).toFixed(1) + '%' + (typeof z.atr === 'number' ? ' / ' + Math.abs(z.atr).toFixed(2) + ' ATR' : '') + ' ' + (side === 'above' ? 'over the top' : (side === 'below' ? 'under the bottom' : 'outside')) + ')' : '';
+  return 'price ' + fmt(v.price, d) + ' is ' + side + ' the entry zone ' + fmt(v.entryLow, d) + ' – ' + fmt(v.entryHigh, d) + dist;
+}
+// Step 13f (c): when the distance test and the score test both fail, the distance failure is named first (reason line, verdict sentence, analysis paragraph).
+function researchDistanceFirst(ids) {
+  if (ids.indexOf('C7.floor') < 0) return ids;
+  var dist = ids.filter(function (x) { return x === 'C2.entry-zone' || x === 'page.far-from-zone'; });
+  if (!dist.length) return ids;
+  var rest = ids.filter(function (x) { return dist.indexOf(x) < 0; }), at = rest.indexOf('C7.floor');
+  return rest.slice(0, at).concat(dist, rest.slice(at));
 }
 // Step 11-B (H6 / G6): entry zone, stop, target and R:R beside the research verdict. Every value is read off
 // rr.entryEconomics (channel-core.js entryEconomicsOf) - no page arithmetic, no page-side constant. Empty string when
@@ -2465,6 +2566,7 @@ function researchStateFor(r) {
   }
   var gates = (a.details && a.details.gates) || [], byId = {};
   for (var i = 0; i < gates.length; i++) byId[gates[i].id] = gates[i];
+  var margins = researchGateMargins(gates, rr, r.price);   // 13f (b): every margin is computed here, before the state and the reason text are chosen
   var unmapped = [];
   for (var i2 = 0; i2 < gates.length; i2++) { var gg = gates[i2]; if (gg.pass !== true && !RESEARCH_STATE_BY_GATE.hasOwnProperty(gg.id) && !RESEARCH_NOFIT_GATES.hasOwnProperty(gg.id)) unmapped.push(gg.id); }
   if (unmapped.length) { try { console.error('Radar BUG: research verdict with unmapped gate ' + unmapped[0]); } catch (e) {} return { state: 'BUG', gate: unmapped[0], verdict: a.verdict, action: a, why: 'unmapped gate ' + unmapped[0] }; }
@@ -2485,9 +2587,9 @@ function researchStateFor(r) {
     else if (typeof zoneHi === 'number' && isFinite(zoneHi) && typeof atr === 'number' && isFinite(atr) && typeof r.price === 'number' && r.price > zoneHi + NEAR_ZONE_ATR * atr) { state = 'DEVELOPING'; fails['page.far-from-zone'] = true; }
     else state = 'NEAR';
   } else state = 'ACT';
-  var why = RESEARCH_REASON_ORDER.filter(function (id) { return fails[id]; }).map(function (id) { return RESEARCH_GATE_WORDS[id]; }).join(', ');
-  var out = { state: state, gate: g, verdict: a.verdict, action: a, why: why };
-  if (state === 'NEAR') out.nearClauses = researchNearClauses(r, byId, actReqFails);   // 17-G: every failed ACT requirement, in words, for the verdict sentence
+  var why = researchDistanceFirst(RESEARCH_REASON_ORDER.filter(function (id) { return fails[id]; })).map(function (id) { return RESEARCH_GATE_WORDS[id]; }).join(', ');   // 13f (c): a failed distance test is named before a failed score test
+  var out = { state: state, gate: g, verdict: a.verdict, action: a, why: why, margins: margins };
+  if (state === 'NEAR') out.nearClauses = researchNearClauses(r, byId, researchDistanceFirst(actReqFails));   // 17-G: every failed ACT requirement, in words, for the verdict sentence
   return out;
 }
 // Step 17-G: one clause per failed ACT requirement (17-E lexicon: plain words, no gate ids), every number read off the gate's own value/threshold or the row.
@@ -2550,7 +2652,7 @@ function researchReportCountsHTML(rows) {
 }
 function renderVerdictNote() {
   var el = document.getElementById('verdict-note'); if (!el) return;
-  el.textContent = RESEARCH_MODE_UI ? 'Verdicts follow the research rules (under forward evaluation). Zero ACT is the normal reading most days. Previous scanner: ?legacy=1.' : 'Legacy verdicts: the previous scanner (pre-audit rules). Research rules: remove ?legacy=1.';
+  el.textContent = RESEARCH_MODE_UI ? 'Verdicts follow the research rules (under forward evaluation). Zero ACT is the normal reading most days.' : 'Legacy verdicts: the previous scanner (pre-audit rules). Research rules: remove ?legacy=1.';
 }
 function verdictRankFor(r) {
   var v = null;
@@ -3000,7 +3102,7 @@ function researchAnalysisText(res, r) {
   var note = boardRailNote(rr).replace(/ \(([^)]*)\)/, ', $1'), rail = (rr.supportRailAgeDays == null) ? note : ((rr.supportRailAgeBand === 'fresh' ? 'a fresh support rail' : 'a non-fresh support rail') + ' (' + note + ')');
   var s = (rr.name || rr.symbol || 'This coin') + ' ' + (broken ? 'held' : 'holds') + ' ' + structureArticleFor(label) + ' ' + label + ' ' + tf + ' channel: ' + rr.supportTouches + ' support / ' + rr.resTouches + ' resistance touches at ' + tolPct + '% tolerance, containment ' + rr.containment + '%, price ' + posPhrase + (rr.supportRailAgeDays == null ? ', ' : ' with ') + rail + '.';
   var list = st === 'NEAR' ? RESEARCH_ACT_ONLY_GATES.concat(RESEARCH_NEAR_GATES) : (st === 'DEVELOPING' ? RESEARCH_DEV_GATES : (st === 'WAIT' ? RESEARCH_WAIT_GATES : []));   // 17-G: a NEAR row names every failed ACT requirement, floor and touch-volume included
-  var fails = list.filter(failed);
+  var fails = researchDistanceFirst(list.filter(failed));   // 13f (c)
   var say = function (id) {
     var g = byId[id], w = P3_FAIL_WORDS[id] || id;
     if (!g) return w + ' (not evaluated)';
@@ -3011,11 +3113,11 @@ function researchAnalysisText(res, r) {
   var pageLevel = st === 'WAIT' ? 'the nearest target sits below the current price' : (st === 'DEVELOPING' ? 'price is well above the entry zone' : '');
   if (st === 'ACT') return s + ' Every entry check passed.';
   if (st === 'NEAR') return s + (fails.length === 1 ? ' One check short of Act \u2014 ' + say(fails[0]) + '.' : ' ' + fails.length + ' checks short of Act \u2014 ' + fails.map(say).join('; ') + '.');
-  if (st === 'DEVELOPING') return s + ' Not yet actionable: ' + (fails.length ? say(fails[0]) : (failed('C7.floor') && !(researchScoreOf(r) >= NEAR_SCORE_FLOOR) ? say('C7.floor') : pageLevel)) + '.';   // 17-G: below the Near floor names the score; otherwise the page-level far-from-zone reason
+  if (st === 'DEVELOPING') return s + ' Not yet actionable: ' + (fails.length ? say(fails[0]) : (failed('C7.floor') && !(researchScoreOf(r) >= NEAR_SCORE_FLOOR) ? (failed('C2.entry-zone') ? say('C2.entry-zone') + ' and ' + say('C7.floor') : say('C7.floor')) : pageLevel)) + '.';   // 17-G: below the Near floor names the score; otherwise the page-level far-from-zone reason
   return s + ' Standing aside: ' + (fails.length ? say(fails[0]) : pageLevel) + '.';
 }
 
-var P3_SEC_DEFAULT = { verdict: true, levels: true, checks: true, rdetail: false, legacy: false };
+var P3_SEC_DEFAULT = { verdict: true, levels: true, checks: true, rdetail: false };
 var P3_GATE_WORDS = {   // Step 17-F part 3: nouns; the glyph carries pass/fail. Display only (RESEARCH_GATE_WORDS, verdict and analysis text are separate).
   'data.fit': 'Channel fit', 'data.price': 'Live price', 'struct.lifecycle': 'Support rail status', 'struct.quote-breach': 'Price vs invalidation',
   'struct.below-rail': 'Position in channel', 'C1.trend': 'Trend (50-day EMA)', 'C3.fresh-touch': 'Last support touch',
@@ -3171,11 +3273,12 @@ function p3Build(panel) {
   o.checks.addEventListener('click', function (e) { var row = e.target.closest ? e.target.closest('.p3-check.has-explain') : null; if (row && o.checks.contains(row)) p3ChecksToggle(row.getAttribute('data-gate')); });
   o.checks.addEventListener('keydown', function (e) { if (e.key !== 'Enter' && e.key !== ' ') return; var row = e.target.closest ? e.target.closest('.p3-check.has-explain') : null; if (row && o.checks.contains(row)) { e.preventDefault(); p3ChecksToggle(row.getAttribute('data-gate')); } });
   o.sRd = p3Sec('rdetail', 'Research detail'); o.rd = document.createElement('div'); o.rd.id = 'dp-rdetail'; o.rd.className = 'p3-rd'; o.sRd.b.appendChild(o.rd);
-  o.sLg = p3Sec('legacy', 'Legacy');
-  o.recTitle.textContent = 'Legacy verdict'; o.recTitle.removeAttribute('data-tip'); o.recTitle.classList.remove('cat-tip');
-  [o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs].forEach(function (d) { o.sLg.b.appendChild(d); });
+  // 13e: the collapsed Legacy section is gone from the research view. The old panel blocks that openDetail() still fills by id (score tiles, position, explanation, action, invalidation) move into a hidden holder so those writes keep landing; the holder shows nothing.
+  o.hold = document.createElement('div'); o.hold.id = 'dp-p3-hold'; o.hold.hidden = true; o.hold.style.display = 'none';
+  [o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs].forEach(function (d) { o.hold.appendChild(d); });
+  o.catBadge = document.createElement('span'); o.catBadge.id = 'dp-cat'; o.catBadge.className = 'p3-cat'; o.catBadge.style.marginLeft = '6px'; o.symrow.appendChild(o.catBadge);   // 13e (2): category badge right of the coin name
   body.removeChild(o.confDs);
-  [o.strip, o.sVd.sec, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { body.appendChild(e); });
+  [o.strip, o.sVd.sec, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.hold].forEach(function (e) { body.appendChild(e); });
   o.btnDs.classList.add('p3-btns'); panel.appendChild(o.btnDs);
   P3 = o;
 }
@@ -3189,15 +3292,15 @@ function p3Restore(panel) {
   o.recTitle.innerHTML = o.recTitleHTML; if (o.recTitleTip != null) { o.recTitle.setAttribute('data-tip', o.recTitleTip); o.recTitle.classList.add('cat-tip'); }
   o.btnDs.classList.remove('p3-btns');
   [o.fw, o.levels, o.confDs, o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs, o.btnDs].forEach(function (e) { o.body.appendChild(e); });
-  [o.strip, o.sVd.sec, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.sLg.sec].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
+  [o.strip, o.sVd.sec, o.sLv.sec, o.sCk.sec, o.sRd.sec, o.hold].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
 }
 function p3PlaceLegend() {
   if (!P3) return;
   var lg = document.getElementById(RESEARCH_LEGEND_ID);
   if (lg && lg.parentNode !== P3.pop) P3.pop.appendChild(lg);
 }
-// Header state row: the same badge (label + tooltip) and plain-words reason the table row shows, plus the legacy verdict as a small tag.
-function researchHeaderStateHTML(rs, legacyAction) {
+// Header state row: the same badge (label + tooltip) and plain-words reason the table row shows.
+function researchHeaderStateHTML(rs) {
   var cls = { ACT: 'va-act', NEAR: 'va-near', DEVELOPING: 'va-dev', WAIT: 'va-wait', NOFIT: '', BUG: 'va-wait' }[rs.state];
   var label = rs.state === 'NOFIT' ? '— no fit' : rs.state;
   var tip = rs.action ? 'Research: ' + researchStateText(rs) + ' [' + RESEARCH_SCORE_LABEL + ']' : (rs.noFitTip || 'Research: no fit on this series (no rail pair passed the research gates on these candles)');
@@ -3205,8 +3308,7 @@ function researchHeaderStateHTML(rs, legacyAction) {
   var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '" style="' + style + '">' + label + '</span>' +
     (rs.structural ? '<span class="p3-hist" style="font-size:10px;font-weight:700;color:var(--neut);margin-left:6px">' + (rs.historical ? 'historical structure' : 'structure only') + '</span>' : '') +
-    (why ? '<span class="p3-why" title="' + why.replace(/"/g, '&quot;') + '">' + why + '</span>' : '') +
-    '<span class="p3-leg" title="legacy: ' + legacyAction.verdict + (rs.action ? ' \u00b7 ' + RESEARCH_SCORE_LABEL : '') + '">legacy: ' + legacyAction.verdict + '</span>';   // the score-status label rides in the tooltips (badge + tag), not on the row
+    (why ? '<span class="p3-why" title="' + why.replace(/"/g, '&quot;') + '">' + why + '</span>' : '');   // 13e: no legacy tag in the research view
 }
 // Checks: researchVerdict's details.gates as a compact list, failing (and unknown) first, the engine's own order otherwise.
 function p3GateValue(g, d) {
@@ -3239,15 +3341,15 @@ function p3GateValue(g, d) {
 function p3ChecksHTML(rs, r) {
   var gates = (rs && rs.action && rs.action.details && rs.action.details.gates) || [];
   if (!gates.length) return '<div class="p3-check unk" style="grid-column:1/-1"><span class="p3-ck-i">?</span><span>No research fit on this series — no checks to run</span></div>';
-  var d = pricePrecision(r.price);
+  var d = pricePrecision(r.price), mg = (rs && rs.margins) || researchGateMargins(gates, r.researchRow, r.price);
   var items = gates.map(function (g, i) { return { g: g, i: i, bad: g.pass !== true ? 1 : 0 }; });
   items.sort(function (a, b) { return (b.bad - a.bad) || (a.i - b.i); });
   return items.map(function (x) {
     var g = x.g, cls = g.pass === true ? 'ok' : (g.pass === false ? 'bad' : 'unk'), fv = p3GateValue(g, d);
-    var name = P3_GATE_WORDS[g.id] || g.id;
+    var name = P3_GATE_WORDS[g.id] || g.id, mgn = mg[g.id] || null;   // 13f (b): signed distance to the threshold, from rs.margins
     var ex = p3xText(g, r);   // Step 17-F part 2: '' (name only, no chevron) when a gate has no explanation
-    return '<div class="p3-check ' + cls + (ex ? ' has-explain' : '') + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '"' + (ex ? ' role="button" tabindex="0" aria-expanded="false"' : '') + ' title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '')) + '">' +
-      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '<span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + '</span></span></div>' +
+    return '<div class="p3-check ' + cls + (ex ? ' has-explain' : '') + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '"' + (ex ? ' role="button" tabindex="0" aria-expanded="false"' : '') + ' title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '') + (mgn ? '; margin ' + mgn.text + ' (+ clear of the threshold, - short of it)' : '')) + '">' +
+      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '<span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + (mgn ? ' · <span class="p3-ck-m" data-margin="' + researchAttr(mgn.text) + '">margin ' + researchAttr(mgn.text) + '</span>' : '') + '</span></span></div>' +
       (ex ? '<div class="p3-explain ' + cls + '" data-gate-explain="' + g.id + '">' + researchAttr(ex) + '</div>' : '');
   }).join('');
 }
@@ -3269,9 +3371,9 @@ function p3VerdictHTML(r, rs) {
   }
   return h;
 }
-function p3RenderPanel(r, rs, action) {
+function p3RenderPanel(r, rs) {
   var o = P3; if (!o) return;
-  o.state.innerHTML = researchHeaderStateHTML(rs, action);
+  o.state.innerHTML = researchHeaderStateHTML(rs);
   o.verdict.innerHTML = p3VerdictHTML(r, rs);
   var at = researchAnalysisText(rs.action, r); o.analysis.textContent = at; o.analysis.style.display = at ? '' : 'none';   // Step 17-E
   o.checks.innerHTML = p3ChecksHTML(rs, r);
@@ -3510,7 +3612,7 @@ function renderTable() {
     // colspan/header this table already has). Toggle-gated; researchRow absent (row too short,
     // or the research computation threw - see mergeCandidateRow) shows nothing extra.
     var actionCell = '<span class="vbadge '+vcls+'">'+action.verdict+'</span>';
-    if (RESEARCH_MODE_UI) actionCell = researchStateCellHTML(researchStateFor(r), action);   // Step 15-A: research state primary, failing check in words, legacy verdict as a muted tag
+    if (RESEARCH_MODE_UI) actionCell = researchStateCellHTML(researchStateFor(r), null);   // Step 15-A: research state primary, failing check in words (13e: no legacy tag)
     var pinned = isPinned(r);
     return '<tr data-key="'+r.symbol+'"'+(pinned?' class="pin-row"':'')+'>'+
       '<td><div class="coin-cell"><div class="coin-icon">'+r.symbol.substring(0,3)+'</div>'+pinButtonHTML(r.cgId, pinned)+'<div><div class="coin-name">'+r.symbol+'</div><div class="coin-sub">'+r.name+'</div>'+(pinned && PIN_HIDDEN[r.cgId] ? '<div class="pin-note" title="pinned \u00b7 outside current filters">pinned \u00b7 outside current filters</div>' : '')+'</div></div></td>'+
@@ -3573,6 +3675,7 @@ async function openDetail(r) {
   document.getElementById('dp-score').style.color=sc;
   document.getElementById('dp-badge').innerHTML='<span class="bbadge cat-tip '+bk.cls+'" data-tip="'+bucketTip(bk.label)+'">'+bk.label+'</span>'+(r.category?' <span class="bbadge cat-tip" data-tip="'+categoryTip(r.category)+'" style="background:rgba(157,163,180,.12);color:var(--text2)">'+r.category+'</span>':'');
   document.getElementById('dp-tf').textContent='Daily - '+r.name;
+  if (RESEARCH_MODE_UI) dpCategorySync(r);   // 13e (2)
   document.getElementById('dp-score-grid').innerHTML=
     '<div class="score-item"><div class="si-label">Support touches</div><div class="si-value" style="color:var(--bull)">'+r.supportTouches+'</div></div>'+
     '<div class="score-item"><div class="si-label">Resistance touches</div><div class="si-value">'+r.resTouches+'</div></div>'+
@@ -3602,29 +3705,29 @@ async function openDetail(r) {
       raEl.innerHTML = '<span style="color:'+railAgeColor(r.supportRailAgeBand)+';font-weight:600">Support last tested '+r.supportRailAgeDays+'d ago — '+railAgeLabel(r.supportRailAgeBand)+'</span>'+approxNote;
     }
   }
-  document.getElementById('dp-expl').textContent=(r.boardRow ? (r.legacyRow ? r.legacyRow.explanation : '') : r.explanation);   // 17-H: the board row's own text is research-derived; the legacy explanation belongs to the Legacy section
+  document.getElementById('dp-expl').textContent=(r.boardRow ? ((r.legacyRow && !RESEARCH_MODE_UI) ? r.legacyRow.explanation : '') : r.explanation);   // 17-H: the board row's own text is research-derived; the legacy explanation belongs to the Legacy section
   // Backlog #6 (2026-09-19, Round 2): recommended-action synthesis line - see buildAction
   // above. Computed fresh on every openDetail() call from fields already on r; never cached
   // on the row itself (unlike r.explanation), since it's cheap and purely a display concern.
   var actionEl = document.getElementById('dp-action-badge'), actionTextEl = document.getElementById('dp-action-text');
   if(actionEl && actionTextEl && typeof buildAction==='function') {
-    var action = legacyActionOf(r);   // 17-H 6: the Legacy section describes the legacy detection (r.legacyRow), never the research fit
-    var vcls = action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait');
-    var badgeHtml = '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>';
-    // Step 15-A: default (research) view - the research state is the primary badge with the failing check in words, the legacy verdict a small muted tag; legacy view keeps the line above untouched.
+    var action = RESEARCH_MODE_UI ? null : legacyActionOf(r);   // 13e: the research view carries no legacy element; the legacy detection (r.legacyRow) is read by the ?legacy=1 view only
+    var vcls = action ? (action.verdict==='ACT' ? 'va-act' : (action.verdict==='WATCH' ? 'va-watch' : 'va-wait')) : '';
+    var badgeHtml = action ? '<span class="vbadge '+vcls+' cat-tip" data-tip="'+ACT_TOOLTIP+'">'+action.verdict+'</span>' : '';
+    // Step 15-A: default (research) view - the research state is the primary badge with the failing check in words; legacy view keeps the line above untouched.
     if (RESEARCH_MODE_UI && P3) {
-      p3RenderPanel(r, researchStateFor(r), action);   // Step 17-A: header state + Checks + Research detail; the legacy verdict badge/text stay in the Legacy section
-      actionTextEl.textContent = action.text;
+      p3RenderPanel(r, researchStateFor(r));   // Step 17-A: header state + Checks + Research detail
+      actionTextEl.textContent = '';
     } else if (RESEARCH_MODE_UI) {
       var rs = researchStateFor(r);
-      badgeHtml = researchStateCellHTML(rs, action, 'detail');
+      badgeHtml = researchStateCellHTML(rs, null, 'detail');
       if (r.researchRow) {
         badgeHtml += '<span style="font-size:9px;color:var(--muted,#9aa3b2);margin-left:4px">'+RESEARCH_SCORE_LABEL+'</span>';
         badgeHtml += researchEntryHTML(r.researchRow);   // Step 11-B (H6 / G6): entry / stop / target / R:R, values off rr only
         badgeHtml += researchCorrelatedHTML(r, researchActRows(allResults)) + researchSetupHTML(r.researchRow, SETUPS_LEDGER);   // Step 11-E (H12) + C-2 (H5): display only
-        actionTextEl.textContent = (rs.action ? researchStateText(rs) : 'Research: no fit on this series') + ' (' + RESEARCH_SCORE_LABEL + ')  |  Legacy: ' + action.text;
+        actionTextEl.textContent = (rs.action ? researchStateText(rs) : 'Research: no fit on this series') + ' (' + RESEARCH_SCORE_LABEL + ')';
       } else {
-        actionTextEl.textContent = 'Research: no fit on this series  |  Legacy: ' + action.text;
+        actionTextEl.textContent = 'Research: no fit on this series';
       }
     } else {
       actionTextEl.textContent = action.text;
@@ -4570,7 +4673,7 @@ window.addEventListener('load', function() {
     handle.addEventListener('pointercancel', endDrag);
   })();
   document.getElementById('sort-sel').addEventListener('change', function() {
-    sortCol=this.value; sortDir=(sortCol==='position'||sortCol==='supportRailAgeDays')?1:-1; sortFiltered(); renderTable();
+    sortCol=this.value; sortDir=(sortCol==='position'||sortCol==='supportRailAgeDays'||sortCol==='category')?1:-1; sortFiltered(); renderTable();
   });
   document.getElementById('t-touches').addEventListener('change', applyFilters);
   document.getElementById('t-contain').addEventListener('change', applyFilters);
@@ -4596,10 +4699,11 @@ window.addEventListener('load', function() {
     box.addEventListener('change', function () { var v = !!this.checked; try { localStorage.setItem(GLOW_CURSOR_KEY, v ? '1' : '0'); } catch (e) {} glowCursorApply(v, cx, cy); });
   })();
   var hsBox = document.getElementById('hide-struct'); if (hsBox) hsBox.addEventListener('change', function() { HIDE_STRUCT_ONLY = !!this.checked; applyFilters(); });   // 17-H 3: filter toggle, off by default
-  document.getElementById('research-mode').checked = LEGACY_UI;
+  var rmBox = document.getElementById('research-mode');   // 13e: absent in the research view (removed by researchUiExtras)
+  if (rmBox) rmBox.checked = LEGACY_UI;
   renderVerdictNote();
-  document.getElementById('research-mode').addEventListener('change', function() {
-    LEGACY_UI = this.checked; RESEARCH_MODE_UI = !LEGACY_UI;
+  if (rmBox) rmBox.addEventListener('change', function() {
+    LEGACY_UI = this.checked; RESEARCH_MODE_UI = !LEGACY_UI; researchUiExtras();
     panelLayout(RESEARCH_MODE_UI);   // Step 17-A
     try { var u = new URL(location.href); if (LEGACY_UI) u.searchParams.set('legacy', '1'); else u.searchParams.delete('legacy'); u.searchParams.delete('research'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
     renderVerdictNote();
@@ -4608,6 +4712,7 @@ window.addEventListener('load', function() {
     renderDiag(); applyFilters();
     if(selectedKey) { var r = filtered.find(function(x){return rowKey(x)===selectedKey || x.symbol===selectedKey;}); if(r) { selectedKey = rowKey(r); openDetail(r); } }
   });
+  researchUiExtras();   // 13e: research view only
   document.getElementById('fb-all').addEventListener('click', function() { setFilter('all'); });
   document.getElementById('fb-high').addEventListener('click', function() { setFilter('high'); });
   document.getElementById('fb-probable').addEventListener('click', function() { setFilter('probable'); });
@@ -4787,7 +4892,7 @@ function boardRowFor(c, dailyCap, legacyRow) {
   rr.source = 'daily'; rr.dailyStale = false; rr.lastBarComplete = true; rr.gridBroken = false;
   for (var i = 0; i < BOARD_PATTERN_KEYS.length; i++) { var pk = BOARD_PATTERN_KEYS[i]; rr[pk + '_4D'] = false; rr[pk + '_4DTrigger'] = null; rr[pk + '_1D'] = !!src[pk]; rr[pk + '_1DTrigger'] = src[pk + 'Trigger'] || null; }
   if (R.structural) { rr.structural = true; rr.positionBand = rec.positionBand || src.positionBand || null; rr.entryEconomics = null; rr.executionContext = null; rr.rejections = rec.rejections || null; }
-  if (src.pivotLows) rr.supportTouches = src.pivotLows.length; if (src.pivotHighs) rr.resTouches = src.pivotHighs.length;   // section 3: S / R touches are the research touch sets; every display of a touch count (table, panel tiles, narrative, report) reads these
+  // 13f (a): S / R touches are the detector's own supportTouches / resTouches (already on rr, copied from src above - the score's inputs). pivotLows / pivotHighs are the anchors and appear only in the touch-cell tooltips.
   var ra = railAgeFromTouchEvents(src); rr.railAge = ra; rr.supportRailAgeDays = ra.days; rr.supportRailAgeBand = ra.band;
   R.railAge = ra; R.supportRailAgeDays = ra.days; R.supportRailAgeBand = ra.band;
   for (k in src) R[k] = src[k];
@@ -4854,16 +4959,24 @@ function boardScoreCell(r) {
   return '<td title="' + researchAttr(tip) + '"><div class="score-cell"><span style="font-weight:700;color:' + c + ';min-width:26px">' + researchPts(sc) + warn + '</span><div class="score-bar-wrap"><div class="score-bar" style="width:' + Math.max(0, Math.min(100, sc)) + '%;background:' + c + '"></div></div>' + tag + '</div></td>';
 }
 function boardTvHref(r) { return 'https://www.tradingview.com/chart/?symbol=' + (r.tvExchange || 'KRAKEN') + ':' + (r.tvPair || r.symbol + 'USD') + '&interval=D'; }
+// 13f (a): the detector's touch count (the score's input); the pivot arrays are anchors, shown in the tooltip.
+function boardTouchCell(r, kind) {
+  var rr = boardFit(r); if (!rr) return BOARD_DASH;
+  var n = kind === 'S' ? rr.supportTouches : rr.resTouches;
+  if (typeof n !== 'number' || !isFinite(n)) return BOARD_DASH;
+  return '<td style="color:var(' + (kind === 'S' ? '--bull' : '--text2') + ')" title="anchors: S ' + (rr.pivotLows ? rr.pivotLows.length : 0) + ' / R ' + (rr.pivotHighs ? rr.pivotHighs.length : 0) + '">' + n + '</td>';
+}
 var BOARD_COLS = [
   { id: 'coin', th: 'Coin', cell: boardCoinCell },
+  { id: 'category', th: 'Category', tip: 'Coin category (CoinGecko). Context only - does not affect score. "\u2014" = not in any category Radar tracks.', sort: 'category', cell: function (r) { return r.stub ? BOARD_DASH : '<td>' + categoryBadgeHTML(r.category) + '</td>'; } },
   { id: 'action', th: 'Action', cell: function (r) { return r.stub ? '<td><span class="vbadge pin-nofit" title="No channel found for this coin in the current capture">no channel found</span></td>' : '<td>' + researchStateCellHTML(researchStateFor(r), null) + '</td>'; }, sort: 'default' },
   { id: 'score', th: 'Score', cell: boardScoreCell, sort: 'score' },
   { id: 'vol', th: '24h Vol', tip: 'Total US-dollar trading volume over the last 24 hours (CoinGecko, as of the capture; hover a cell for the capture time and venue).',
     cell: function (r) { return '<td style="color:var(--text2);font-variant-numeric:tabular-nums" title="' + researchAttr(boardCapTip(r)) + '">' + (r.volume24h != null ? fmtVol(r.volume24h) : '—') + '</td>'; } },
   { id: 'st', th: 'S Touches', tip: 'Support touches in the research fit: how many times price tested the lower rail. More touches = a more established channel.', sort: 'supportTouches',
-    cell: function (r) { var rr = boardFit(r); return rr ? '<td style="color:var(--bull)">' + (rr.pivotLows ? rr.pivotLows.length : 0) + '</td>' : BOARD_DASH; } },
+    cell: function (r) { return boardTouchCell(r, 'S'); } },
   { id: 'rt', th: 'R Touches', tip: 'Resistance touches in the research fit: how many times price tested the upper rail.',
-    cell: function (r) { var rr = boardFit(r); return rr ? '<td style="color:var(--text2)">' + (rr.pivotHighs ? rr.pivotHighs.length : 0) + '</td>' : BOARD_DASH; } },
+    cell: function (r) { return boardTouchCell(r, 'R'); } },
   { id: 'contain', th: 'Contain', tip: 'Research containment: percent of closes inside the channel over the fit window. Higher = cleaner channel.', sort: 'containment',
     cell: function (r) { var rr = boardFit(r); if (!rr || typeof rr.containment !== 'number') return BOARD_DASH; var n = (typeof rr.lastIdx === 'number' && typeof rr.firstIdx === 'number') ? rr.lastIdx - rr.firstIdx + 1 : '?';
       return '<td style="color:' + (rr.containment > 75 ? 'var(--bull)' : 'var(--text2)') + '" title="closes inside the channel over the fit window (' + n + ' bars), tolerance ' + boardFmtPct(typeof rr.tol === 'number' ? rr.tol * 100 : null, 2) + '%">' + rr.containment + '%</td>'; } },
@@ -4887,9 +5000,12 @@ function boardRowHTML(r) {
 }
 var HEAD_ORIG = null;
 function boardHeaderSync() {
-  var ths = document.querySelectorAll('.radar-table thead th'); if (ths.length !== 13) return;
+  var catTh = document.getElementById('th-category');
+  if (RESEARCH_MODE_UI && !catTh) { var first = document.querySelector('.radar-table thead th'); if (first) { catTh = document.createElement('th'); catTh.id = 'th-category'; catTh.className = 'cat-tip tip-down'; catTh.textContent = 'Category'; catTh.setAttribute('data-tip', BOARD_COLS[1].tip); first.parentNode.insertBefore(catTh, first.nextSibling); } }   // 13e (1): research view only
+  else if (!RESEARCH_MODE_UI && catTh) catTh.parentNode.removeChild(catTh);
+  var ths = document.querySelectorAll('.radar-table thead th:not(#th-category)'); if (ths.length !== 13) return;
   if (!HEAD_ORIG) HEAD_ORIG = Array.prototype.map.call(ths, function (t) { return { tip: t.getAttribute('data-tip'), display: t.style.display }; });
-  var map = [0, 1, 2, null, 3, 4, 5, 6, 7, 8, 9, 10, 11];   // th index -> BOARD_COLS index (the legacy Channel Status column has none)
+  var map = [0, 2, 3, null, 4, 5, 6, 7, 8, 9, 10, 11, 12];   // th index -> BOARD_COLS index (the legacy Channel Status column has none)
   Array.prototype.forEach.call(ths, function (t, i) {
     if (!RESEARCH_MODE_UI) { t.style.display = HEAD_ORIG[i].display; if (HEAD_ORIG[i].tip == null) t.removeAttribute('data-tip'); else t.setAttribute('data-tip', HEAD_ORIG[i].tip); return; }
     if (map[i] == null) { t.style.display = 'none'; return; }
@@ -4902,18 +5018,19 @@ function boardHeaderSync() {
 function boardRenderTable() {
   var tbody = document.getElementById('table-body'), pinStubs = pinStubRows();
   boardHeaderSync();
-  if (!filtered.length && !pinStubs.length) { tbody.innerHTML = '<tr><td colspan="12"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>'; return; }
+  if (!filtered.length && !pinStubs.length) { tbody.innerHTML = '<tr><td colspan="13"><div class="state-view"><div class="state-title">No channels match filters</div><div class="state-sub">Try loosening thresholds or check scan details.</div></div></td></tr>'; return; }
   tbody.innerHTML = filtered.map(boardRowHTML).join('') + pinStubs.map(function (u) { return boardRowHTML(Object.assign({ stub: true }, u)); }).join('');
 }
 // ---- filters and sort (section 4): every input is the research projection; no legacy bypass ----
 function passesBoard(r, t) {
   if (HIDE_STRUCT_ONLY && r.structural) return false;
+  if (catFilterOn() && !CAT_FILTER[r.category || 'Uncategorised']) return false;   // 13e (1)
   var rr = boardFit(r), sc = researchScoreOf(r), ra = r.railAge || null;
   if (t.railAgeMode === 'fresh' && !(ra && ra.band === 'fresh')) return false;
   if (t.railAgeMode === 'fresh-aging' && !(ra && (ra.band === 'fresh' || ra.band === 'aging'))) return false;
   if (!t.showAll) {
     if (!rr) return false;
-    if ((rr.pivotLows ? rr.pivotLows.length : 0) < t.minTouches) return false;
+    if ((typeof rr.supportTouches === 'number' ? rr.supportTouches : 0) < t.minTouches) return false;
     if (rr.containment < t.minContain) return false;
     if (t.slopeMode === 'positive' && rr.slope < 0) return false;
     if (t.slopeMode === 'flat' && rr.slope < -0.1) return false;
@@ -4928,12 +5045,13 @@ function passesBoard(r, t) {
   return true;
 }
 function boardSortVal(r, col) {
+  if (col === 'category') return r.category || null;   // 13e (1): text sort; uncategorised rows last
   var rr = boardFit(r); if (!rr) return null;
   var num = function (v) { return (typeof v === 'number' && isFinite(v)) ? v : null; };
   if (col === 'score') return researchScoreOf(r);
   if (col === 'position') return boardPositionOf(r);
   if (col === 'slope') return num(rr.slope);
-  if (col === 'supportTouches') return rr.pivotLows ? rr.pivotLows.length : null;
+  if (col === 'supportTouches') return num(rr.supportTouches);
   if (col === 'containment') return num(rr.containment);
   if (col === 'supportRailAgeDays') return (r.railAge && r.railAge.days != null) ? r.railAge.days : null;
   return null;
@@ -4945,7 +5063,7 @@ function boardSortCore() {
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
     if (bv == null) return -1;
-    return dir * (av - bv);
+    return (typeof av === 'string' || typeof bv === 'string') ? dir * String(av).localeCompare(String(bv)) : dir * (av - bv);
   });
 }
 function legacyActionOf(r) {
@@ -4953,6 +5071,11 @@ function legacyActionOf(r) {
   return buildAction(r);
 }
 // A coin with no research fit (no structure, or too few candles): the panel shows the state, the capture's reason and the Legacy section - no fit figure from any other source.
+// 13e (2): the category badge to the right of the coin name. P3 puts it in the header symbol row (#dp-cat); the dp-tf title line carries it too (the un-reorganised panel shows that line).
+function dpCategorySync(r) {
+  var el = document.getElementById('dp-cat'); if (el) el.innerHTML = categoryBadgeHTML(r.category);
+  var tf = document.getElementById('dp-tf'); if (tf) tf.innerHTML = researchAttr('Daily - ' + r.name) + ' ' + categoryBadgeHTML(r.category);
+}
 function openDetailNoFit(r) {
   var $ = function (id) { return document.getElementById(id); }, set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
   panelLayout(true);
@@ -4961,17 +5084,17 @@ function openDetailNoFit(r) {
   set('dp-price', fmt(r.price, pricePrecision(r.price)) + '  ' + fmtP(r.change24h) + '   Vol ' + fmtVol(r.volume24h) + ' (as of capture)');
   set('dp-score', '—'); var sc = $('dp-score'); if (sc) sc.style.color = 'var(--muted)';
   var bd = $('dp-badge'); if (bd) bd.innerHTML = r.category ? '<span class="bbadge cat-tip" data-tip="' + categoryTip(r.category) + '" style="background:rgba(157,163,180,.12);color:var(--text2)">' + r.category + '</span>' : '';
-  set('dp-tf', 'Daily - ' + r.name);
+  set('dp-tf', 'Daily - ' + r.name); dpCategorySync(r);   // 13e (2)
   var g = $('dp-score-grid'); if (g) g.innerHTML = '';
   var lv = $('dp-levels'); if (lv) lv.innerHTML = '<div style="font-size:11px;color:var(--muted,#9aa3b2);padding:6px 18px">' + researchAttr(boardNoFitText(r)) + '</div>';
   var fw = $('dp-fitwindow'); if (fw) fw.innerHTML = ''; var chip = $('dp-fitchip'); if (chip) chip.textContent = '';
   set('dp-pos-label', '—'); var pb = $('dp-pos-bar'); if (pb) pb.style.width = '0%'; set('dp-sup', '—'); set('dp-cur', fmt(r.price, pricePrecision(r.price))); set('dp-res', '—');
   var ra = $('dp-rail-age'); if (ra) ra.innerHTML = '';
-  set('dp-expl', r.legacyRow ? (r.legacyRow.explanation || '') : '');
-  var action = legacyActionOf(r), rs = researchStateFor(r), ae = $('dp-action-badge'), at = $('dp-action-text');
-  if (P3) p3RenderPanel(r, rs, action);
-  if (at) at.textContent = action.text;
-  if (ae && !P3) ae.innerHTML = researchStateCellHTML(rs, action, 'detail');
+  set('dp-expl', '');
+  var rs = researchStateFor(r), ae = $('dp-action-badge'), at = $('dp-action-text');   // 13e: no legacy element in the research view
+  if (P3) p3RenderPanel(r, rs);
+  if (at) at.textContent = '';
+  if (ae) ae.innerHTML = P3 ? '' : researchStateCellHTML(rs, null, 'detail');
   set('dp-inv', 'No research fit'); set('dp-inv-pct', '');
   var tv = $('dp-tv'); if (tv) tv.href = boardTvHref(r); var cg = $('dp-cg'); if (cg) cg.href = 'https://www.coingecko.com/en/coins/' + r.cgId;
   var cf = $('dp-confluence'); if (cf) cf.innerHTML = '';
