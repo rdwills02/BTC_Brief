@@ -1,0 +1,9 @@
+Manifest verified: 129 fixture files + stable-detector blob, 0 drift.
+Pinned commit: d5f20b4942fe95362d6fea9f895269f5ffe87ab7 | pinned 2026-09-22T17:37:38.119Z
+
+
+=== STEP 14 CALIBRATION (Protocol §8, v1.4) - 10000 runs per null, 10000 bootstrap replications, b = 20; gate: a false-pass rate above 0.15 blocks freeze; shock parameters {"sigmaCommon":0.5,"sigmaIdio":1} are PROVISIONAL; confirmatoryPolicy: N0 ===
+null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate 0.1147 +/- 0.0032 (Monte Carlo SE; nominal 0.1000) below the gate
+null (i), adverse-charge path  same generative model as condition 1, independently drawn: condition 6 false-pass rate 0.1059 +/- 0.0031 (Monte Carlo SE; nominal 0.1000) below the gate
+null (ii) equal C1/N0 daily-return paths: NOT REQUIRED (confirmatoryPolicy = N0; no C1 account or series exists in the absent branch)
+wrote /home/claude/repo/data/forward/calibration.json
