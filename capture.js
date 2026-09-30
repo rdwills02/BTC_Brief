@@ -1284,7 +1284,7 @@ function fwdUsableCandles(cacheArr, candlePair, tauSec) {
     if (c.venue !== undefined && c.venue !== 'kraken') return;
     if (c.time + FWD_DAY > tauSec) return;
     if (c.fetchedAt !== undefined) { var f = Date.parse(c.fetchedAt); if (!isFinite(f) || f / 1000 > tauSec) return; }
-    seen[c.time] = 1; out.push({ id: c.time, time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, date: c.date });
+    seen[c.time] = 1; out.push({ id: c.time, time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, date: c.date, volume: c.volume });
   });
   return out.sort(function (a, b) { return a.time - b.time; });
 }
