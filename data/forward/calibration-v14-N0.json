@@ -6,27 +6,22 @@
  "blockLength": 20,
  "gate": 0.15,
  "seed": 20260926,
- "confirmatoryPolicy": "C1",
- "portApplicable": true,
+ "confirmatoryPolicy": "N0",
+ "portApplicable": false,
  "condition1": {
   "null": "(i) mean budget-R = 0 per trade, common-shock clustering, fill counts from the fixture replay",
-  "rate": 0.1108,
-  "se": 0.0031388430989777107
+  "rate": 0.1147,
+  "se": 0.0031865955187315503
  },
  "condition6": {
   "null": "(i) mean budget-R = 0 per trade, common-shock clustering, adverse-charge path - same generative model as condition 1, independently drawn",
-  "rate": 0.1106,
-  "se": 0.00313636158629709
+  "rate": 0.1059,
+  "se": 0.0030770958711096408
  },
  "shockParameters": {
   "sigmaCommon": 0.5,
   "sigmaIdio": 1,
   "provisional": true
  },
- "gateBlocked": false,
- "condition3": {
-  "null": "(ii) equal C1/N0 daily-return paths, independent noise",
-  "rate": 0.1043,
-  "se": 0.00305649325207827
- }
+ "gateBlocked": false
 }
