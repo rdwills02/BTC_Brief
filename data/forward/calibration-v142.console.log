@@ -1,0 +1,10 @@
+NOTE: executed as 2 resumable chunks (checkpoint at run 8561/10000 with PRNG state restored; a 200-run resumed run was verified identical to an uninterrupted one). Logic = regression-runner.js 1927c532 + sandbox-only checkpoint hook. Config = 16-gate ACT-v1 (blob 6a887a86), local copy.
+Manifest verified: 129 fixture files + stable-detector blob, 0 drift.
+Pinned commit: d5f20b4942fe95362d6fea9f895269f5ffe87ab7 | pinned 2026-09-22T17:37:38.119Z
+
+
+=== STEP 14 CALIBRATION (Protocol §8, v1.4) - 10000 runs per null, 10000 bootstrap replications, b = 20; gate: a false-pass rate above 0.15 blocks freeze; shock parameters {"sigmaCommon":0.5,"sigmaIdio":1} are PROVISIONAL; confirmatoryPolicy: C1 ===
+null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate 0.1108 +/- 0.0031 (Monte Carlo SE; nominal 0.1000) below the gate
+null (i), adverse-charge path  same generative model as condition 1, independently drawn: condition 6 false-pass rate 0.1106 +/- 0.0031 (Monte Carlo SE; nominal 0.1000) below the gate
+null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate 0.1043 +/- 0.0031 (Monte Carlo SE; nominal 0.1000) below the gate
+wrote /sessions/rcw-01xebicofjt6cgahfjktfjzt/k24/repo/data/forward/calibration.json
