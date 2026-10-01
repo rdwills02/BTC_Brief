@@ -2289,7 +2289,7 @@ function step14Calibrate(fillDays, opts) {
     if (portApplicable) {
       // null (ii): the C1 and N0 daily-return paths are exchangeable (same mean, independent noise); the statistic is the compounded difference
       const r1 = new Array(N), r0 = new Array(N); for (let t = 0; t < N; t++) { r1[t] = 0.0005 + 0.02 * step14Normal(gen); r0[t] = 0.0005 + 0.02 * step14Normal(gen); }
-      const p = step14Cell('port', { N, lr1: r1.map(Math.log1p), lr0: r0.map(Math.log1p), r1, r0 }, b, reps, (0xFACADE + run) >>> 0);
+      const p = step14Cell('port', { N, lr1: r1.map(Math.log1p), lr0: r0.map(Math.log1p), r1, r0 }, b, reps);
       if (p.validated && p.bound > 0) pass3++;
     }
   }
