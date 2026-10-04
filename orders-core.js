@@ -3,19 +3,20 @@
  * (Protocol §4.1: the ATR-capped stop may sit above the defended low; an independent resistance line is the target without a nearer-swing-high check).
  *
  * BOOK = { schemaVersion, orders[], attempts[], accounts: { N0: acct, C1: acct } }. All functions take a book and return a NEW book (deep clone).
- * Pipeline (Protocol §4.0), called by capture.js per canonical capture, in this order:
- *   2 adjudicateAll(book, capture, barsByCoin)        3 activateAll(book, capture, barsByCoin)
+ * Protocol v1.4.3 (Amendment: ordinary limits, immediate submission, timestamp-valid evidence). Pipeline, called by capture.js per canonical capture, in this order:
+ *   2 adjudicateAll(book, capture, barsByCoin, opts)  [step 3 (activation) is RETIRED: an order is submitted at issuance]
  *   4 valuation(book, policyId, capture, barsByCoin)  5 suspend(book, policyId, capture)
- *   7 issueBatch(book, policy, candidates, capture, cfg)
- * barsByCoin = { [cgId]: { candles: [{id,open,high,low,close}] } } — candles USABLE at the capture's issueTimeUtc, distinct ids (id = open time, unix s).
- * capture = { captureId, date, inputCutoffSec, issueTimeUtc }. All USD amounts are integer cents; prices are real numbers on the tick grid.
+ *   7 issueBatch(book, policy, candidates, capture, cfg)   cfg.quotes = { [pair]: submission-time Ticker snapshot }, cfg.needs = [] collects missing evidence
+ * barsByCoin = { [cgId]: { candles: [{id,open,high,low,close}], bars5: [{id,open,high,low,close}], trades: [{fromSec,toSec,complete,trades:[{t,p,n}]}] } } — daily candles USABLE at the capture's
+ * issueTimeUtc (id = open time, unix s); bars5 = Kraken 5-minute bars (id = open time); trades = timestamped Trades slices whose coverage is declared by fromSec/toSec/complete.
+ * capture = { captureId, date, inputCutoffSec, issueTimeUtc, issueSec }. All USD amounts are integer cents; prices are real numbers on the tick grid.
  * Order state is event-sourced: order.events is append-only, keyed (type|barId|k); re-applying an event is a no-op.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory();
   else root.OrdersCore = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  var ORDERS_SCHEMA_VERSION = 1, DAY = 86400;
+  var ORDERS_SCHEMA_VERSION = 2, DAY = 86400, BAR5 = 300;
   // Constants (Protocol §0, §4, §5). Basis points are integers so every charge is computed exactly.
   var CFG = {
     START_CASH: 1500000,          // $15,000 (§5.2)
@@ -25,15 +26,18 @@
     DD_SUSPEND_NUM: 15, DD_SUSPEND_DEN: 100,   // drawdown >= 15% inclusive (§5.5)
     STALE_PERSISTENT_AT: 4,       // 4th consecutive capture without a usable mark (§0)
     MAKER_BP: 30, TAKER_BP: 60, FRICTION_BASE_BP: 10, FRICTION_ADVERSE_BP: 25,
-    FEE_RESERVE_BP: 120           // feeReserve = 2 x 0.60% x (E_issue/3)
+    FEE_RESERVE_BP: 120,          // feeReserve = 2 x 0.60% x (E_issue/3)
+    QUOTE_MAX_AGE_SEC: 30,        // v1.4.3: a Ticker snapshot whose request-to-response latency exceeds this is stale (treated as missing)
+    TRADES_STORE_MAX: 400         // trades kept per stored slice on the order
   };
-  var PENDING = { issued: 1, resting: 1, 'pending-unresolved': 1, 'cancel-pending': 1 };
-  var TERMINAL = { 'skipped-missing-input': 1, 'rejected-gap': 1, 'rejected-crossing': 1, expired: 1, 'cancelled-suspension': 1, exited: 1 };
+  // v1.4.3: `issued` (holding state), `skipped-missing-input`, `rejected-gap`, `rejected-crossing` are retired. An order is created `resting` at its submission instant; `expired` is reached only from
+  // `resting` (an unresolved interval keeps the order `pending-unresolved`: expiry closes the window to NEW fills, it never erases unknown execution).
+  var PENDING = { resting: 1, 'pending-unresolved': 1, 'cancel-pending': 1 };
+  var TERMINAL = { 'rejected-invalid-at-submission': 1, expired: 1, 'cancelled-suspension': 1, exited: 1 };
   var TRANSITIONS = {
-    issued: { 'skipped-missing-input': 1, 'rejected-gap': 1, resting: 1, 'cancelled-suspension': 1 },
-    resting: { 'rejected-crossing': 1, 'pending-unresolved': 1, expired: 1, open: 1, 'cancelled-suspension': 1, 'cancel-pending': 1 },
-    'pending-unresolved': { resting: 1, expired: 1, open: 1, 'cancel-pending': 1 },
-    'cancel-pending': { 'cancelled-suspension': 1, open: 1, 'rejected-crossing': 1 },
+    resting: { 'rejected-invalid-at-submission': 1, 'pending-unresolved': 1, expired: 1, open: 1, 'cancelled-suspension': 1, 'cancel-pending': 1 },
+    'pending-unresolved': { resting: 1, open: 1, 'cancel-pending': 1 },
+    'cancel-pending': { 'cancelled-suspension': 1, open: 1 },
     open: { exited: 1 }
   };
 
@@ -102,65 +106,222 @@
   function exitRecord(o, r, bar, capture, mode) {
     var n = notional(o.Q, o.lotsInv, r.price), ch = sideCharges(n, r.kind, r.adverse, mode);
     var entry = o.fill, pnl = n - ch.feeCents - ch.frictionCents - (entry.notionalCents + entry.feeCents + entry.frictionCents);
-    return { reason: r.reason, price: r.price, barId: bar.id, kind: r.kind, adverse: r.adverse, notionalCents: n, feeCents: ch.feeCents, frictionCents: ch.frictionCents,
+    return { reason: r.reason, price: r.price, barId: bar.id, tSec: r.tSec != null ? r.tSec : bar.id, kind: r.kind, adverse: r.adverse, notionalCents: n, feeCents: ch.feeCents, frictionCents: ch.frictionCents,
       pnlCents: pnl, budgetR: o.Bcents ? pnl / o.Bcents : null, plannedRiskR: pnl / plannedRiskCents(o), captureId: capture.captureId, date: capture.date };
   }
   function plannedRiskCents(o) { return notional(o.Q, o.lotsInv, o.L - o.S) || 1; }
 
-  // ---------- step 2: adjudication ----------
-  function adjudicateOrder(book, o, byId, capture) {
-    var a = book.accounts[o.policyId], guard = 0;
-    var cutoff = capture.inputCutoffSec;
-    while (guard++ < 64) {
-      if (o.status === 'resting' || o.status === 'pending-unresolved' || o.status === 'cancel-pending') {
-        if (o.status === 'cancel-pending' && o.nextBarId >= o.cancelCutoffSec) { terminate(book, o, capture, 'cancelled-suspension', 'cancel-pending resolved unfilled', 2); return; }
-        var bar = byId[o.nextBarId];
-        if (!bar) {   // never advance past an unusable bar: if the bar is due but not usable, the order waits (pending-unresolved), reservation and slot held
-          if (o.nextBarId + DAY <= cutoff && o.status === 'resting') { setStatus(o, 'pending-unresolved'); addEv(o, capture, 'unresolved', { barId: o.nextBarId, step: 2 }); }
-          return;
-        }
-        if (o.status === 'pending-unresolved') { setStatus(o, 'resting'); addEv(o, capture, 'resumed', { barId: o.nextBarId, step: 2 }); }
-        var idx = o.eligibleDone + 1;
-        o.bars.push({ id: bar.id, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
-        if (idx === 1 && bar.open < o.L) { terminate(book, o, capture, 'rejected-crossing', 'submission-bar crossing', 2); return; }   // open = L rests
-        var fillPrice = null, reason = null;
-        if (idx >= 2 && bar.open < o.L) { fillPrice = bar.open; reason = 'fill-gap-open'; }
-        else if (bar.low <= clean(o.L - o.tick)) { fillPrice = o.L; reason = 'limit'; }
-        if (fillPrice != null) { doFill(book, o, bar, fillPrice, reason, capture); positionPhase(book, o, byId, capture); return; }
-        o.eligibleDone++; o.nextBarId += DAY; addEv(o, capture, 'no-fill', { barId: bar.id, step: 2 });
-        if (o.eligibleDone >= CFG.EXPIRY_BARS) { terminate(book, o, capture, o.status === 'cancel-pending' ? 'cancelled-suspension' : 'expired', 'eligible bars exhausted', 2); return; }
-        continue;
-      }
-      if (o.fill) { positionPhase(book, o, byId, capture); }
-      return;
+  // ---------- v1.4.3 evidence model (Amendment §1, §3, §11) ----------
+  // Windows of an order (entry): w = 0 is [submittedAtSec, end of D) resolved from 5-minute bars (range rule on the straddling bar, Trades when the range touches a barrier);
+  // w = 1, 2 are the daily bars D+1, D+2. EXPIRY_BARS windows in all. In the declared daily proxy (replay / calibration only) window 0 does not exist and the windows are D+1..D+3 (w0 = 1).
+  // The intraday cursor (o.cursorSec, seconds) and the holding-day counter (o.hDone) are separate: 5-minute processing never increments hDone.
+  function winStart(o, w) { return w === 0 ? o.submittedAtSec : o.dId + w * DAY; }
+  function winEnd(o, w) { return o.dId + (w + 1) * DAY; }
+  function dayOf(t) { return Math.floor(t / DAY) * DAY; }
+  function bar5Ok(b) { return !!b && num(b.id) && b.id % BAR5 === 0 && num(b.open) && num(b.high) && num(b.low) && num(b.close) && b.low <= b.high && b.open >= b.low && b.open <= b.high && b.close >= b.low && b.close <= b.high; }
+  // Per-coin intraday evidence: closed, well-formed 5-minute bars (bar usable only when id + 300 <= issueSec) and trade slices { fromSec, toSec, complete, trades:[{t,p,n?}] }.
+  function indexIntraday(barsByCoin, capture) {
+    var out = {}, issueSec = capture && num(capture.issueSec) ? capture.issueSec : null;
+    Object.keys(barsByCoin || {}).forEach(function (cg) {
+      var src = barsByCoin[cg] || {}, m = {};
+      (src.bars5 || []).forEach(function (b) { if (bar5Ok(b) && (issueSec == null || b.id + BAR5 <= issueSec)) m[b.id] = b; });
+      out[cg] = { bars: m, slices: Array.isArray(src.trades) ? src.trades : [] };
+    });
+    return out;
+  }
+  function ctxOf(barsByCoin, capture, opts) { return { daily: indexBars(barsByCoin), ev: indexIntraday(barsByCoin, capture), needs: (opts && opts.needs) || [] }; }
+  function needOnce(ctx, n) {
+    for (var i = 0; i < ctx.needs.length; i++) { var x = ctx.needs[i]; if (x.kind === n.kind && x.cgId === n.cgId && x.fromSec === n.fromSec && x.toSec === n.toSec && x.pair === n.pair) return; }
+    ctx.needs.push(n);
+  }
+  // Trades over [lo, hi): { status: 'ok', list } | { status: 'unavailable' } | { status: 'need' }. Only a slice whose coverage reaches hi AND is marked complete can declare anything
+  // (a no-event included); an incomplete slice (truncation, failed page, gap) is `unavailable`; no slice at all registers a need so the caller can fetch and re-run.
+  function tradesFor(ctx, o, lo, hi) {
+    var ev = ctx.ev[o.cgId], slices = ev ? ev.slices : [], bad = false;
+    for (var i = 0; i < slices.length; i++) {
+      var s = slices[i];
+      if (!s || !(s.fromSec <= lo && s.toSec >= hi)) continue;
+      if (s.complete !== true) { bad = true; continue; }
+      var list = (s.trades || []).filter(function (x) { return x && num(x.t) && num(x.p) && x.t >= lo && x.t < hi; });
+      list = list.map(function (x, k) { return { t: x.t, p: x.p, n: x.n != null ? x.n : k }; }).sort(function (a, b) { return a.t - b.t || (a.n < b.n ? -1 : a.n > b.n ? 1 : 0); });
+      return { status: 'ok', list: list };
     }
+    if (bad) return { status: 'unavailable' };
+    needOnce(ctx, { kind: 'trades', cgId: o.cgId, pair: o.pair || null, fromSec: lo, toSec: hi });
+    return { status: 'need' };
+  }
+  function intradayOf(o) { if (!o.intraday) o.intraday = { granularity: BAR5, bars: [], trades: [] }; return o.intraday; }
+  function pushBar5(o, bar) {
+    var it = intradayOf(o), n = it.bars.length;
+    if (n && it.bars[n - 1].id >= bar.id) return;
+    it.bars.push({ id: bar.id, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+  }
+  function storeSlice(o, role, lo, hi, list) {
+    var it = intradayOf(o);
+    it.trades.push({ role: role, fromSec: lo, toSec: hi, count: list.length, trades: list.slice(0, CFG.TRADES_STORE_MAX).map(function (x) { return [x.t, x.p]; }), truncated: list.length > CFG.TRADES_STORE_MAX });
+  }
+  // An interval that cannot be resolved from the evidence in hand. Entry: the order is `pending-unresolved` (reservation and slot held). Exit with a KNOWN fill: the position stays `open`
+  // (one entry charge, ordinary open exposure, no reservation restored) with a separate unresolved-exit interval (Amendment §11 B1).
+  function markUnresolved(book, o, capture, phase, fromSec, toSec, reason, ctx) {
+    var prev = o.unresolved, same = prev && prev.phase === phase && prev.fromSec === fromSec && prev.reason === reason;
+    o.unresolved = { phase: phase, fromSec: fromSec, toSec: toSec, reason: reason, sinceCaptureId: same ? prev.sinceCaptureId : capture.captureId, sinceDate: same ? prev.sinceDate : capture.date,
+      captures: same ? (prev.lastCaptureId === capture.captureId ? prev.captures : prev.captures + 1) : 1, lastCaptureId: capture.captureId };
+    if (phase === 'entry' && o.status === 'resting') setStatus(o, 'pending-unresolved');
+    addEv(o, capture, 'unresolved', { barId: fromSec, k: phase + ':' + reason, step: 2 });
+    if (ctx && reason === 'bars5-missing') needOnce(ctx, { kind: 'bars5', cgId: o.cgId, pair: o.pair || null, fromSec: fromSec, toSec: toSec });
+  }
+  function clearUnresolved(o, capture) {
+    if (o.unresolved) { addEv(o, capture, 'resumed', { barId: o.unresolved.fromSec, k: o.unresolved.phase, step: 2 }); o.unresolved = null; }
+    if (o.status === 'pending-unresolved') setStatus(o, 'resting');
   }
 
-  function doFill(book, o, bar, price, reason, capture) {
-    var a = book.accounts[o.policyId], n = notional(o.Q, o.lotsInv, price);
-    var ch = sideCharges(n, reason === 'fill-gap-open' ? 'taker' : 'maker', reason === 'fill-gap-open', 'base');
-    o.fill = { price: price, barId: bar.id, reason: reason, notionalCents: n, feeCents: ch.feeCents, frictionCents: ch.frictionCents, adverse: reason === 'fill-gap-open', captureId: capture.captureId, date: capture.date };
+  // ---------- fills ----------
+  // spec: { price, reason, kind, adverse, tSec, barId, dayId, daily, sizeProxy? }. Fee kind and adversity are RECORDED here and read everywhere else (never inferred from `reason`).
+  function applyFill(book, o, spec, capture, step) {
+    var a = book.accounts[o.policyId], n = notional(o.Q, o.lotsInv, spec.price), ch = sideCharges(n, spec.kind, spec.adverse, 'base');
+    o.fill = { price: spec.price, barId: spec.barId, dayId: spec.dayId, tSec: spec.tSec, reason: spec.reason, kind: spec.kind, adverse: spec.adverse, notionalCents: n, feeCents: ch.feeCents, frictionCents: ch.frictionCents,
+      captureId: capture.captureId, date: capture.date };
+    if (spec.sizeProxy) o.fill.sizeProxy = spec.sizeProxy;
     a.cash -= n + ch.feeCents + ch.frictionCents;
     releaseReservation(book, o, capture, 'filled');
     setStatus(o, 'open');
-    o.hDone = 1; o.stale = { count: 0, persistent: false, mark: price, markDate: capture.date };
-    addEv(o, capture, 'filled', { barId: bar.id, price: price, reason: reason, step: 2 });
-    // fill-bar processing (§4.4): same bar, pessimistic
-    var r = null;
-    if (reason === 'fill-gap-open' && bar.open <= o.S) r = { reason: 'gap-stop-on-fill', price: bar.open, kind: 'taker', adverse: true };
-    else if (bar.low <= o.S) r = { reason: 'ambiguous-stop', price: o.S, kind: 'taker', adverse: true };
-    if (r) { primaryExit(book, o, r, bar, capture); o.sens.exit = exitRecord(o, r, bar, capture, 'base'); }
+    o.hDone = spec.daily ? 1 : 0; o.stale = { count: 0, persistent: false, mark: spec.price, markDate: capture.date };
+    o.unresolved = null;
+    addEv(o, capture, 'filled', { barId: spec.barId, price: spec.price, reason: spec.reason, step: step });
+  }
+  function exitNow(book, o, r, bar, capture) {   // primary exit and the identical sensitivity exit (no horizon bar can be reached on the fill day)
+    primaryExit(book, o, r, bar, capture); o.sens.exit = exitRecord(o, r, bar, capture, 'base');
   }
   function primaryExit(book, o, r, bar, capture) {
     var a = book.accounts[o.policyId], rec = exitRecord(o, r, bar, capture, 'base');
     a.cash += rec.notionalCents - rec.feeCents - rec.frictionCents;
     o.exit = rec; setStatus(o, 'exited'); addEv(o, capture, 'exited', { barId: bar.id, reason: r.reason, price: r.price, step: 2 });
   }
-  // Horizon bars 2..20 for filled orders, strictly sequential; the 20-bar sensitivity is its own state and never touches the account.
-  function positionPhase(book, o, byId, capture) {
-    var guard = 0;
+  // fill-candle convention (§4.4, unamended): intrabar order unknown, a stop in the fill candle is honoured, no target credit.
+  function fillCandleExit(o, bar, gapOpenFill) {
+    if (gapOpenFill && bar.open <= o.S) return { reason: 'gap-stop-on-fill', price: bar.open, kind: 'taker', adverse: true };
+    if (bar.low <= o.S) return { reason: 'ambiguous-stop', price: o.S, kind: 'taker', adverse: true };
+    return null;
+  }
+  // First stop / target print in time order among the trades (Amendment §1: at/below S => stop; at/above T => target).
+  function scanExitTrades(o, list) {
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      if (x.p <= o.S) return { reason: 'stop', price: o.S, kind: 'taker', adverse: false, tSec: x.t };
+      if (x.p >= o.T) return { reason: 'target', price: o.T, kind: 'maker', adverse: false, tSec: x.t };
+    }
+    return null;
+  }
+
+  // ---------- step 2: adjudication ----------
+  // Entry evidence for [cur, endEff) from 5-minute bars. Returns 'done' | 'filled' | 'unresolved'. The cursor only moves past an interval that is RESOLVED.
+  function entryIntraday(book, o, ctx, capture, cur, endEff) {
+    var ev = ctx.ev[o.cgId] || { bars: {}, slices: [] }, Lm = clean(o.L - o.tick), guard = 0;
+    while (cur < endEff && guard++ < 400) {
+      var b = Math.floor(cur / BAR5) * BAR5, bend = b + BAR5, segEnd = Math.min(bend, endEff), bar = ev.bars[b];
+      if (!bar) { o.cursorSec = cur; markUnresolved(book, o, capture, 'entry', cur, endEff, 'bars5-missing', ctx); return 'unresolved'; }
+      var partial = cur > b || segEnd < bend;
+      if (!partial) {   // full bar: start >= submission and end <= the active interval's end
+        var gap = bar.open < o.L, lim = !gap && bar.low <= Lm;
+        if (gap || lim) {
+          if (o.status === 'pending-unresolved') clearUnresolved(o, capture);
+          pushBar5(o, bar);
+          applyFill(book, o, { price: gap ? bar.open : o.L, reason: gap ? 'fill-gap-open' : 'limit', kind: gap ? 'taker' : 'maker', adverse: gap, tSec: b, barId: b, dayId: dayOf(b), daily: false }, capture, 2);
+          var r = fillCandleExit(o, bar, gap);
+          o.cursorSec = bend;
+          if (r) { exitNow(book, o, r, bar, capture); o.hDone = 1; }
+          return 'filled';
+        }
+        pushBar5(o, bar); cur = segEnd; o.cursorSec = cur; continue;
+      }
+      // partial bar (the submission-straddling bar, or a bar cut by a cancellation cutoff): its RANGE decides
+      if (bar.low > Lm) { pushBar5(o, bar); cur = segEnd; o.cursorSec = cur; continue; }   // range clear of the barrier: no event
+      var tr = tradesFor(ctx, o, cur, bend);   // whole remainder of the bar: the fill candle's stop check needs it
+      if (tr.status !== 'ok') { o.cursorSec = cur; markUnresolved(book, o, capture, 'entry', cur, endEff, tr.status === 'need' ? 'trades-pending' : 'trades-unavailable', ctx); return 'unresolved'; }
+      var fi = -1; for (var i = 0; i < tr.list.length; i++) { if (tr.list[i].t >= segEnd) break; if (tr.list[i].p <= Lm) { fi = i; break; } }
+      storeSlice(o, 'entry', cur, bend, tr.list);
+      if (fi < 0) { pushBar5(o, bar); cur = segEnd; o.cursorSec = cur; continue; }   // coverage reached the interval end and no print at/below L - tick
+      if (o.status === 'pending-unresolved') clearUnresolved(o, capture);
+      pushBar5(o, bar);
+      applyFill(book, o, { price: o.L, reason: 'limit', kind: 'maker', adverse: false, tSec: tr.list[fi].t, barId: b, dayId: dayOf(b), daily: false }, capture, 2);
+      o.cursorSec = bend;
+      for (var j = fi; j < tr.list.length; j++) if (tr.list[j].p <= o.S) { exitNow(book, o, { reason: 'stop', price: o.S, kind: 'taker', adverse: false, tSec: tr.list[j].t }, bar, capture); o.hDone = 1; break; }
+      return 'filled';
+    }
+    return 'done';
+  }
+  function adjudicateOrder(book, o, ctx, capture) {
+    var guard = 0, byId = ctx.daily[o.cgId] || {};
+    while (guard++ < 64) {
+      if (o.status === 'resting' || o.status === 'pending-unresolved' || o.status === 'cancel-pending') {
+        if (o.status === 'cancel-pending' && o.cursorSec >= o.cancelCutoffSec) { terminate(book, o, capture, 'cancelled-suspension', 'cancel-pending resolved unfilled', 2); return; }
+        if (o.eligibleDone >= CFG.EXPIRY_BARS) { terminate(book, o, capture, o.status === 'cancel-pending' ? 'cancelled-suspension' : 'expired', 'eligible windows exhausted', 2); return; }
+        var w = o.w0 + o.eligibleDone, ws = winStart(o, w), we = winEnd(o, w);
+        var clipped = o.status === 'cancel-pending' && o.cancelCutoffSec < we, endEff = clipped ? o.cancelCutoffSec : we;
+        if (endEff > capture.inputCutoffSec) return;   // the interval is not over yet: nothing is due (a bar that is not usable yet is not an unresolved one)
+        var cur = o.cursorSec == null ? ws : o.cursorSec;
+        if (w >= 1 && !clipped && cur === ws) {   // daily window
+          var bar = byId[ws];
+          if (!bar) { markUnresolved(book, o, capture, 'entry', ws, we, 'daily-bar-unavailable', ctx); return; }   // never advance past an unusable bar
+          if (o.unresolved || o.status === 'pending-unresolved') clearUnresolved(o, capture);
+          o.bars.push({ id: bar.id, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+          var gapD = bar.open < o.L, limD = !gapD && bar.low <= clean(o.L - o.tick);   // no crossing rejection, no window-index guard: a bar opening below L fills at that open
+          if (gapD || limD) {
+            applyFill(book, o, { price: gapD ? bar.open : o.L, reason: gapD ? 'fill-gap-open' : 'limit', kind: gapD ? 'taker' : 'maker', adverse: gapD, tSec: ws, barId: bar.id, dayId: ws, daily: true }, capture, 2);
+            var rd = fillCandleExit(o, bar, gapD); if (rd) { exitNow(book, o, rd, bar, capture); }
+            o.nextBarId = null; positionPhase(book, o, ctx, capture); return;
+          }
+          o.eligibleDone++; o.cursorSec = we; o.nextBarId = o.dId + (o.w0 + o.eligibleDone) * DAY; addEv(o, capture, 'no-fill', { barId: bar.id, step: 2 });
+          continue;
+        }
+        var res = entryIntraday(book, o, ctx, capture, cur, endEff);
+        if (res === 'unresolved') return;
+        if (res === 'filled') { o.nextBarId = null; positionPhase(book, o, ctx, capture); return; }
+        if (o.unresolved || o.status === 'pending-unresolved') clearUnresolved(o, capture);
+        addEv(o, capture, 'no-fill', { barId: ws, k: 'w' + w, step: 2 });
+        if (clipped) { o.cursorSec = endEff; continue; }
+        o.eligibleDone++; o.cursorSec = we; o.nextBarId = o.dId + (o.w0 + o.eligibleDone) * DAY;
+        continue;
+      }
+      if (o.fill) positionPhase(book, o, ctx, capture);
+      return;
+    }
+  }
+
+  // Fill-day exit evidence from 5-minute bars (holding day 1). Returns 'done' | 'wait' | 'unresolved'. The first bar after an ask / trades fill is partial: its range decides, Trades when the range touches S or T.
+  function positionIntraday(book, o, ctx, capture) {
+    var dayEnd = o.fill.dayId + DAY;
+    if (dayEnd > capture.inputCutoffSec) return 'wait';
+    var ev = ctx.ev[o.cgId] || { bars: {}, slices: [] }, cur = o.cursorSec == null ? o.fill.tSec : o.cursorSec, guard = 0;
+    while (cur < dayEnd && guard++ < 400) {
+      var b = Math.floor(cur / BAR5) * BAR5, bend = b + BAR5, bar = ev.bars[b];
+      if (!bar) { o.cursorSec = cur; markUnresolved(book, o, capture, 'exit', cur, dayEnd, 'bars5-missing', ctx); return 'unresolved'; }
+      if (cur === b) {   // full bar: the normal open-first / stop-first race
+        var r = exitRules(bar, o, false);
+        pushBar5(o, bar);
+        if (r) { exitNow(book, o, r, bar, capture); o.hDone = 1; o.cursorSec = dayEnd; clearUnresolved(o, capture); return 'done'; }
+      } else {           // partial bar: only prints at/after the fill time count; the range decides, Trades when the range touches S or T
+        if (bar.low <= o.S || bar.high >= o.T) {
+          var tr = tradesFor(ctx, o, cur, bend);
+          if (tr.status !== 'ok') { o.cursorSec = cur; markUnresolved(book, o, capture, 'exit', cur, dayEnd, tr.status === 'need' ? 'trades-pending' : 'trades-unavailable', ctx); return 'unresolved'; }
+          storeSlice(o, 'exit', cur, bend, tr.list);
+          var rt = scanExitTrades(o, tr.list);
+          pushBar5(o, bar);
+          if (rt) { exitNow(book, o, rt, bar, capture); o.hDone = 1; o.cursorSec = dayEnd; clearUnresolved(o, capture); return 'done'; }
+        } else pushBar5(o, bar);
+      }
+      cur = bend; o.cursorSec = cur;
+    }
+    clearUnresolved(o, capture);
+    o.hDone = 1; o.cursorSec = dayEnd;
+    return 'done';
+  }
+  // Holding days 2..20 on daily bars, strictly sequential; holding day h is the daily bar fill.dayId + (h-1)*DAY, day 1 being the fill day itself. The 20-bar sensitivity is its own state.
+  function positionPhase(book, o, ctx, capture) {
+    var byId = ctx.daily[o.cgId] || {}, guard = 0;
+    if (o.hDone === 0) { var pi = positionIntraday(book, o, ctx, capture); if (pi !== 'done') return; }
     while (o.hDone < CFG.RETAIN_BARS && guard++ < 32) {
-      var h = o.hDone + 1, id = o.fill.barId + (h - 1) * DAY, bar = byId[id];
+      var h = o.hDone + 1, id = o.fill.dayId + (h - 1) * DAY, bar = byId[id];
       if (!bar) return;   // stall: no exit is adjudicated past an unusable bar
       o.bars.push({ id: bar.id, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
       if (!o.exit) { var r = exitRules(bar, o, h === CFG.HORIZON_BAR); if (r) primaryExit(book, o, r, bar, capture); }
@@ -168,23 +329,11 @@
       o.hDone = h;
     }
   }
-  function adjudicateAll(book, capture, barsByCoin) {
-    var b = cloneBook(book), idx = indexBars(barsByCoin); curStep = 2;
-    b.orders.forEach(function (o) { if (o.status !== 'issued') adjudicateOrder(b, o, idx[o.cgId] || {}, capture); });
-    curStep = null; return b;
-  }
-
-  // ---------- step 3: activation (§4.2) ----------
-  function activateOrder(book, o, capture, dCandle) {
-    if (o.status !== 'issued' || capture.inputCutoffSec < o.dId + DAY) return;   // not yet the D+1 evaluation
-    if (capture.inputCutoffSec > o.dId + DAY) { terminate(book, o, capture, 'skipped-missing-input', 'no canonical capture on D+1', 3); return; }
-    if (!dCandle) { terminate(book, o, capture, 'skipped-missing-input', 'D candle unusable at activation', 3); return; }
-    if (dCandle.close < o.S) { terminate(book, o, capture, 'rejected-gap', 'D close below S', 3); return; }   // D close = S submits
-    setStatus(o, 'resting'); o.nextBarId = o.dId + DAY; o.submittedAtSec = o.dId + DAY; addEv(o, capture, 'status', { to: 'resting', step: 3, k: 'resting' });
-  }
-  function activateAll(book, capture, barsByCoin) {
-    var b = cloneBook(book), idx = indexBars(barsByCoin); curStep = 3;
-    b.orders.forEach(function (o) { if (o.status === 'issued') activateOrder(b, o, capture, (idx[o.cgId] || {})[o.dId] || null); });
+  // opts.needs (optional array) collects evidence the pipeline asked for and did not have: { kind: 'bars5' | 'trades', cgId, pair, fromSec, toSec }.
+  function adjudicateAll(book, capture, barsByCoin, opts) {
+    if (book.schemaVersion !== ORDERS_SCHEMA_VERSION) throw new Error('orders book schemaVersion ' + book.schemaVersion + ' != ' + ORDERS_SCHEMA_VERSION + ' (a v1.4.2 book is never carried into v1.4.3: the cohort restart resets)');
+    var b = cloneBook(book), ctx = ctxOf(barsByCoin, capture, opts); curStep = 2;
+    b.orders.forEach(function (o) { adjudicateOrder(b, o, ctx, capture); });
     curStep = null; return b;
   }
 
@@ -198,7 +347,11 @@
     return s;
   }
   function valuation(book, pid, capture, barsByCoin) {
-    var b = cloneBook(book), a = b.accounts[pid], idx = indexBars(barsByCoin), marked = 0, anyStale = false;
+    var b = cloneBook(book); valuationInPlace(b, pid, capture, indexBars(barsByCoin)); return b;
+  }
+  // Also called mid-issuance (same capture) after an immediate fill: marks already written for this capture are reused (no second mark); the capture's series row is re-written.
+  function valuationInPlace(b, pid, capture, idx) {
+    var a = b.accounts[pid], marked = 0, anyStale = false;
     ordersOf(b, pid).forEach(function (o) {
       if (!isOpen(o)) return;
       var lastMark = o.marks.length ? o.marks[o.marks.length - 1] : null;
@@ -218,32 +371,39 @@
       suspended: a.suspended, riskLimitExceeded: a.riskLimitExceeded, staleMark: anyStale, blockedReason: null };
     var i = a.series.length - 1; if (i >= 0 && a.series[i].captureId === capture.captureId) a.series[i] = row; else a.series.push(row);
     a.lastValuation = { captureId: capture.captureId, date: capture.date, E: E, HWM: a.hwm };
-    return b;
+    return row;
   }
 
   // ---------- step 5: suspension (§5.5) ----------
   function suspend(book, pid, capture) {
-    var b = cloneBook(book), a = b.accounts[pid], v = a.lastValuation; curStep = 5;
-    if (!v || v.captureId !== capture.captureId) { curStep = null; throw new Error('valuation() must run before suspend()'); }
+    var b = cloneBook(book), a = b.accounts[pid], v = a.lastValuation;
+    if (!v || v.captureId !== capture.captureId) throw new Error('valuation() must run before suspend()');
+    suspendInPlace(b, pid, capture, capture.inputCutoffSec);
+    return b;
+  }
+  // cutSec: the suspension cutoff. Step 5: the capture's input cutoff. Mid-capture (after an immediate fill, step 7): t_sub of the fill that caused it (Amendment §2).
+  function suspendInPlace(b, pid, capture, cutSec) {
+    var a = b.accounts[pid], v = a.lastValuation, prevStep = curStep; curStep = 5;
     if (!a.suspended && v.HWM > 0 && (v.HWM - v.E) * CFG.DD_SUSPEND_DEN >= CFG.DD_SUSPEND_NUM * v.HWM) {
-      a.suspended = true; a.suspendedAt = capture.date; a.suspensionCutoffSec = capture.inputCutoffSec;
+      a.suspended = true; a.suspendedAt = capture.date; a.suspensionCutoffSec = cutSec;
       var last = a.series[a.series.length - 1]; if (last && last.captureId === capture.captureId) last.suspended = true;
-      var cut = capture.inputCutoffSec;
       ordersOf(b, pid).forEach(function (o) {
-        if (o.status === 'issued') { terminate(b, o, capture, 'cancelled-suspension', 'suspension', 5); return; }
         if (o.status === 'resting') {
-          // every eligible bar opening before the cutoff must already be adjudicated (usable) and unfilled
-          var pre = firstPreCutoffUnadjudicated(o, cut);
+          // every window that opens before the cutoff must already be adjudicated (usable) and unfilled; windows are [t_sub, end D], D+1, D+2 and open at their start
+          var pre = firstPreCutoffUnadjudicated(o, cutSec);
           if (pre == null) terminate(b, o, capture, 'cancelled-suspension', 'suspension', 5);
-          else { setStatus(o, 'cancel-pending'); o.cancelCutoffSec = cut; addEv(o, capture, 'cancel-pending', { cutoff: cut, step: 5 }); }
+          else { setStatus(o, 'cancel-pending'); o.cancelCutoffSec = cutSec; addEv(o, capture, 'cancel-pending', { cutoff: cutSec, step: 5 }); }
           return;
         }
-        if (o.status === 'pending-unresolved') { setStatus(o, 'cancel-pending'); o.cancelCutoffSec = cut; addEv(o, capture, 'cancel-pending', { cutoff: cut, step: 5 }); }
+        if (o.status === 'pending-unresolved') { setStatus(o, 'cancel-pending'); o.cancelCutoffSec = cutSec; addEv(o, capture, 'cancel-pending', { cutoff: cutSec, step: 5 }); }
       });
     }
-    curStep = null; return b;
+    curStep = prevStep;
   }
-  function firstPreCutoffUnadjudicated(o, cut) { for (var k = o.eligibleDone + 1; k <= CFG.EXPIRY_BARS; k++) { var id = o.dId + k * DAY; if (id < cut) return id; } return null; }
+  function firstPreCutoffUnadjudicated(o, cut) {
+    for (var w = o.w0 + o.eligibleDone; w < o.w0 + CFG.EXPIRY_BARS; w++) { var st = winStart(o, w); if (st < cut) return st; }
+    return null;
+  }
 
   // ---------- step 7: issuance (§4.1, §5.3, §5.4) ----------
   function inZone(cand) { var ez = cand.entryEconomics && cand.entryEconomics.entryZone; return !!(ez && num(ez[0]) && num(ez[1]) && num(cand.price) && cand.price >= ez[0] && cand.price <= ez[1]); }
@@ -330,28 +490,61 @@
     // 3. capacity
     var why = capacityOk(pend, open, a.cash, reservedSum(a), Eissue, notional(qLots, lotsInv, L - S), res);
     if (why) { attempt.outcome = 'skipped-capacity'; attempt.reason = why; results.push({ episodeId: cand.episodeId, outcome: attempt.outcome, consumed: true, reason: why }); return; }
+    // ---- freeze B / Q / L / S / T at t_dec (done above); only then take the submission-time snapshot (Amendment §2) ----
     b.seq++;
+    var q = cfg && cfg.quotes ? cfg.quotes[cand.pair] : null, tDec = num(capture.issueSec) ? capture.issueSec : null;
+    if (!q && cfg && cfg.needs && cand.pair) needOncePair(cfg.needs, cand.pair);
+    var qOk = !!q && !q.missing && num(q.tSubSec) && num(q.quoteObservedAtSec) && num(q.ask) && q.ask > 0 && q.quoteObservedAtSec <= q.tSubSec && q.tSubSec - q.quoteObservedAtSec <= CFG.QUOTE_MAX_AGE_SEC && (tDec == null || q.tSubSec >= tDec);
+    var tSub = q && num(q.tSubSec) && (tDec == null || q.tSubSec >= tDec) ? q.tSubSec : (tDec != null ? tDec : capture.inputCutoffSec);   // never earlier than t_dec; never "midnight"
     var o = { id: pid + '-' + capture.date + '-' + cand.cgId, seq: b.seq, policyId: pid, policyVersion: policy.version, episodeId: cand.episodeId, cgId: cand.cgId, pair: cand.pair || null,
-      captureId: capture.captureId, issueDate: capture.date, issueTimeUtc: capture.issueTimeUtc || null, dId: capture.inputCutoffSec,
+      captureId: capture.captureId, issueDate: capture.date, issueTimeUtc: capture.issueTimeUtc || null, tDecSec: tDec, dId: capture.inputCutoffSec,
+      submittedAtSec: tSub, quoteObservedAtSec: qOk ? q.quoteObservedAtSec : (q && num(q.quoteObservedAtSec) ? q.quoteObservedAtSec : null), quoteStatus: qOk ? 'ok' : 'quote-missing',
+      quote: qOk ? { ask: q.ask, bid: num(q.bid) ? q.bid : null, last: num(q.last) ? q.last : null } : null,
       L: L, S: S, T: T, tick: tick, lot: lot, lotsInv: lotsInv, minOrder: minOrder, Bcents: Bc, Eissue: Eissue, Q: qLots, qty: qLots / lotsInv, Ncents: N, feeReserveCents: feeReserve, sizeClipped: sizeClipped,
       stopBasis: ee.stopBasis, targetSource: ee.targetSource, score: num(cand.score) ? cand.score : null,
       charges: { makerBp: CFG.MAKER_BP, takerBp: CFG.TAKER_BP, frictionBaseBp: CFG.FRICTION_BASE_BP, frictionAdverseBp: CFG.FRICTION_ADVERSE_BP }, expiryBar: CFG.EXPIRY_BARS,
-      status: 'issued', events: [], bars: [], eligibleDone: 0, nextBarId: null, hDone: 0, fill: null, exit: null, sens: { exit: null }, marks: [], stale: null, cancelCutoffSec: null };
+      status: 'resting', events: [], bars: [], intraday: null, w0: 0, eligibleDone: 0, nextBarId: capture.inputCutoffSec, cursorSec: tSub, hDone: 0, fill: null, exit: null, sens: { exit: null }, marks: [], stale: null, cancelCutoffSec: null, unresolved: null, proxy: null };
+    if (cfg && cfg.dailyProxy) { o.w0 = 1; o.cursorSec = o.dId + DAY; o.nextBarId = o.dId + DAY; o.proxy = 'daily-no-intraday'; }   // replay / calibration only: windows D+1..D+3, counterfactual
+    o.expiryAtSec = o.dId + (o.w0 + CFG.EXPIRY_BARS) * DAY;   // expiry time (end of D+2) is recorded apart from the capture that adjudicates it
     a.reservations.push({ orderId: o.id, cents: res });
     addEv(o, capture, 'issued', { step: 7 }); addEv(o, capture, 'reservation-made', { cents: res, step: 7 });
+    addEv(o, capture, 'submitted', { barId: tSub, k: o.quoteStatus, step: 7 });
     b.orders.push(o); attempt.outcome = 'order'; attempt.orderId = o.id;
-    results.push({ episodeId: cand.episodeId, outcome: 'order', consumed: true, orderId: o.id });
+    var result = { episodeId: cand.episodeId, outcome: 'order', consumed: true, orderId: o.id };
+    if (!cfg || !cfg.dailyProxy) {
+      // a. quote missing / stale: the order rests at L from the attempted-fetch time, no immediate fill; b. already through its stop; c. ask at/below L: fill now at the ask (taker, adverse); d. rest
+      if (qOk && q.ask <= S) {
+        terminate(b, o, capture, 'rejected-invalid-at-submission', 'ask at/below S at submission', 7); attempt.outcome = 'rejected-invalid-at-submission'; result.outcome = 'rejected-invalid-at-submission'; results.push(result); return;
+      }
+      if (qOk && q.ask <= L) {
+        applyFill(b, o, { price: q.ask, reason: 'fill-crossing-ask', kind: 'taker', adverse: true, tSec: tSub, barId: tSub, dayId: dayOf(tSub), daily: false, sizeProxy: 'top-of-book' }, capture, 7);
+        o.marks.push({ date: capture.date, captureId: capture.captureId, mark: q.ask, valueCents: notional(o.Q, o.lotsInv, q.ask), staleCount: 0 });   // marked at its fill price
+        valuationInPlace(b, pid, capture, {});                                                                                                          // cash, marked, E, HWM, drawdown, risk flag, series row
+        result.filled = 'fill-crossing-ask';
+        suspendInPlace(b, pid, capture, tSub);                                                                                                          // in-sequence suspension: cutoff = this fill's t_sub
+      }
+    }
+    results.push(result);
   }
+  function needOncePair(needs, pair) { for (var i = 0; i < needs.length; i++) if (needs[i].kind === 'ticker' && needs[i].pair === pair) return; needs.push({ kind: 'ticker', pair: pair }); }
   // candidates: [{ episodeId, cgId, pair, screen:{pass}, price, score, entryEconomics:{entryZone,stop,target,stopBasis,targetSource,netRR}, venueEligible, meta:{tick,lot,minOrder} }]
+  // cfg.quotes[pair] = { tSubSec, quoteObservedAtSec, ask, bid, last } | { tSubSec, missing: true }. Sequence per order: freeze -> snapshot -> checks -> account update -> next candidate.
   function issueBatch(book, policy, candidates, capture, cfg) {
     var b = cloneBook(book), a = b.accounts[policy.id], results = [];
     if (!a.lastValuation || a.lastValuation.captureId !== capture.captureId) throw new Error('valuation() must run at step 4 of this capture before issueBatch()');
     var blocked = a.suspended ? 'suspended' : (staleBlocked(b, policy.id) ? 'skipped-stale-mark' : null);
     var row = a.series[a.series.length - 1]; if (row && row.captureId === capture.captureId) row.blockedReason = blocked;
     if (blocked) return { book: b, results: [], blockedReason: blocked };
+    curStep = 7;
     var list = (candidates || []).slice().sort(function (x, y) { var sx = num(x.score) ? x.score : -Infinity, sy = num(y.score) ? y.score : -Infinity; return sy - sx || (x.cgId < y.cgId ? -1 : x.cgId > y.cgId ? 1 : 0); });
-    list.forEach(function (c) { issueOne(b, policy, c, capture, cfg || {}, results); });
-    return { book: b, results: results, blockedReason: null };
+    var midSuspended = false;
+    for (var i = 0; i < list.length; i++) {
+      if (a.suspended) { midSuspended = true; break; }   // suspension fired in-sequence: later candidates in this capture are not issued (no attempt consumed)
+      issueOne(b, policy, list[i], capture, cfg || {}, results);
+    }
+    if (a.suspended) { var r2 = a.series[a.series.length - 1]; if (r2 && r2.captureId === capture.captureId) r2.blockedReason = 'suspended-mid-capture'; }
+    curStep = null;
+    return { book: b, results: results, blockedReason: midSuspended ? 'suspended-mid-capture' : null };
   }
 
   // ---------- obligations (§3) ----------
@@ -359,9 +552,8 @@
     var out = [];
     book.orders.forEach(function (o) {
       var rem = 0;
-      if (o.status === 'issued') rem = CFG.EXPIRY_BARS;
-      else if (o.status === 'resting' || o.status === 'pending-unresolved') rem = CFG.EXPIRY_BARS - o.eligibleDone;
-      else if (o.status === 'cancel-pending') { rem = 0; for (var k = o.eligibleDone + 1; k <= CFG.EXPIRY_BARS; k++) if (o.dId + k * DAY < o.cancelCutoffSec) rem++; }
+      if (o.status === 'resting' || o.status === 'pending-unresolved') rem = CFG.EXPIRY_BARS - o.eligibleDone;
+      else if (o.status === 'cancel-pending') { rem = 0; for (var k = o.w0 + o.eligibleDone; k < o.w0 + CFG.EXPIRY_BARS; k++) if (winStart(o, k) < o.cancelCutoffSec) rem++; }
       else if (o.fill) rem = CFG.RETAIN_BARS - o.hDone;
       if (rem > 0) out.push({ orderId: o.id, episodeId: o.episodeId, cgId: o.cgId, policyId: o.policyId, remainingBars: rem });
     });
@@ -370,26 +562,43 @@
   function exposureCoins(book) { var s = {}; book.orders.forEach(function (o) { if (isPending(o) || isOpen(o)) s[o.cgId] = 1; }); return Object.keys(s).sort(); }
 
   // ---------- §6 scenarios (counterfactual namespace; the factual book is never modified) ----------
-  // Unresolved at the deadline: still `issued`, pending-unresolved / cancel-pending, or open with the bars needed for an exit not usable.
+  // Unresolved at the deadline: pending-unresolved / cancel-pending (unknown ENTRY), or an OPEN position whose exit interval is not usable (unknown EXIT; fill, charge and exposure stand).
   // Factual resolution from bars usable by the deadline (S3) is applied first by the caller (adjudicateAll on the lock dataset).
   function barOf(o, id) { for (var i = 0; i < o.bars.length; i++) if (o.bars[i].id === id) return o.bars[i]; return null; }
   function classifyUnresolved(o, ctx) {
-    if (o.status === 'issued') return { row: 1, kind: 'issued' };
-    if (o.status === 'pending-unresolved' || o.status === 'cancel-pending') return { row: 2, kind: o.status, missingBarId: o.nextBarId };
+    if (o.status === 'pending-unresolved' || o.status === 'cancel-pending') {
+      // the unknown ENTRY interval: from the unresolved cursor to the end of its window (clipped at a cancellation cutoff)
+      var w = o.w0 + o.eligibleDone, from = o.unresolved ? o.unresolved.fromSec : (o.cursorSec == null ? winStart(o, w) : o.cursorSec), to = o.unresolved ? o.unresolved.toSec : winEnd(o, w);
+      return { row: 2, kind: o.status, missingBarId: dayOf(from), fromSec: from, toSec: to };
+    }
     if (o.status === 'open') {
-      var nb = o.fill.barId + o.hDone * DAY;
+      if (o.hDone === 0) {   // known fill, fill-day exit interval not yet resolved: an OPEN position with an unresolved-exit cursor (no purchase, no reservation, no unfilled-expiry reclassification)
+        var dayEnd = o.fill.dayId + DAY, cur = o.cursorSec == null ? o.fill.tSec : o.cursorSec;
+        if (dayEnd <= ctx.deadlineSec) return { row: 3, kind: 'open-exit-unresolved', intraday: true, fromSec: cur, toSec: dayEnd, missingBarId: null, lastUsableId: null };
+        return { row: 4, kind: 'open-horizon-not-reached', intraday: true, fromSec: cur, toSec: dayEnd, lastUsableId: null };
+      }
+      var nb = o.fill.dayId + o.hDone * DAY;
       if (nb + DAY <= ctx.deadlineSec) return { row: 3, kind: 'open-exit-unresolved', missingBarId: nb, lastUsableId: nb - DAY };
       return { row: 4, kind: 'open-horizon-not-reached', lastUsableId: nb - DAY };
     }
     return null;
   }
-  // Resolution of one unresolved order under scenario S ('S1' stress | 'S2' primary): { kind, tsSec, exit? , entry? }
+  // last adjudicated 5-minute close at/after the fill (never a bar that predates the position)
+  function lastIntradayClose(o) { var it = o.intraday ? o.intraday.bars : []; for (var i = it.length - 1; i >= 0; i--) if (it[i].id + BAR5 > o.fill.tSec) return { price: it[i].close, tSec: it[i].id + BAR5 }; return null; }
+  // Resolution of one unresolved order under scenario S ('S1' stress | 'S2' primary): { kind, tsSec, exit? , entry? }. Every timestamp is >= the order's submission instant.
   function resolveOrder(o, cls, S, ctx) {
     var dl = ctx.deadlineSec;
-    if (cls.row === 1) return { kind: 'skipped-missing-input', tsSec: dl };
     if (cls.row === 2) {
-      if (S === 'S1') return { kind: 'filled-stopped', tsSec: cls.missingBarId + DAY, entryPrice: o.L, exitPrice: o.S, barId: cls.missingBarId };
+      if (S === 'S1') return { kind: 'filled-stopped', tsSec: cls.toSec, entryPrice: o.L, exitPrice: o.S, barId: cls.missingBarId };
       return { kind: o.status === 'cancel-pending' ? 'cancelled-suspension' : 'expired', tsSec: dl };
+    }
+    if (cls.intraday) {
+      var li = lastIntradayClose(o);
+      if (cls.row === 3) {
+        if (S === 'S1') return { kind: 'exit-at-zero', tsSec: cls.toSec, exitPrice: 0, barId: null };
+        return { kind: 'exit-at-last-usable-close', tsSec: li ? li.tSec : o.fill.tSec, exitPrice: li ? li.price : o.fill.price, barId: null };
+      }
+      return { kind: 'exit-at-last-usable-close', tsSec: li ? li.tSec : o.fill.tSec, exitPrice: li ? li.price : o.fill.price, barId: null, row4: true };
     }
     var lastBar = barOf(o, cls.lastUsableId);
     if (cls.row === 3) {
@@ -424,7 +633,7 @@
     function resSum() { var s = 0; Object.keys(st.resv).forEach(function (k) { s += st.resv[k]; }); return s; }
     function listOf(m) { return Object.keys(m).map(function (k) { return byId[k]; }); }
     function exclude(o, reason, date) { if (!st.excl[o.id]) { st.excl[o.id] = reason; out.inadmissible.push({ orderId: o.id, reason: reason, date: date }); } releaseRes(o.id); delete st.open[o.id]; }
-    function entryCharges(o) { var f = o.fill; return sideCharges(f.notionalCents, f.reason === 'fill-gap-open' ? 'taker' : 'maker', f.adverse, mode); }
+    function entryCharges(o) { var f = o.fill; return sideCharges(f.notionalCents, f.kind, f.adverse, mode); }   // kind / adverse RECORDED on the fill, never inferred from the reason
     function applyFill(o, date) { var f = o.fill, ch = entryCharges(o); st.cash -= f.notionalCents + ch.feeCents + ch.frictionCents; delete st.pend[o.id]; st.open[o.id] = { entry: ch }; }
     function applyExit(o, date, e, kind) {   // factual exit e = o.exit
       var ch = sideCharges(e.notionalCents, e.kind, e.adverse, mode), en = st.open[o.id] ? st.open[o.id].entry : entryCharges(o);
@@ -450,10 +659,10 @@
     }
     for (var ri = 0; ri < rows.length; ri++) {
       var row = rows[ri], date = row.date;
-      // steps 2 and 3: factual adjudication events in order-seq order
+      // step 2: factual adjudication events in order-seq order (step 3 is retired in v1.4.3)
       orders.forEach(function (o) {
         if (st.excl[o.id]) return;
-        evsAt(o, date, [2, 3]).forEach(function (e) {
+        evsAt(o, date, [2]).forEach(function (e) {
           if (e.type === 'reservation-released') releaseRes(o.id);
           else if (e.type === 'filled') applyFill(o, date);
           else if (e.type === 'exited') applyExit(o, date, o.exit, 'factual');
@@ -485,11 +694,13 @@
       });
       // step 7: factual issuance decisions, admitted only if admissible against this path's own state
       orders.forEach(function (o) {
-        if (o.issueDate !== date || st.excl[o.id]) return;
+        if (o.issueDate !== date || st.excl[o.id] || o.status === 'rejected-invalid-at-submission') return;   // a rejected submission never reaches the market
         var coinsHeld = {}; Object.keys(st.pend).concat(Object.keys(st.open)).forEach(function (k) { coinsHeld[byId[k].cgId] = 1; });
         var why = pathAdmission(listOf(st.pend), listOf(st.open), st.cash, resSum(), E, o, st.suspended, coinsHeld);
         if (why) { st.excl[o.id] = why; out.inadmissible.push({ orderId: o.id, reason: why, date: date }); return; }
         st.resv[o.id] = o.Ncents + o.feeReserveCents; st.pend[o.id] = 1;
+        // submission-time events of this order (immediate ask fill): the reservation is released and the fill applied exactly as the factual book did, in event order
+        o.events.forEach(function (e) { if (e.date === date && e.step === 7) { if (e.type === 'reservation-released') releaseRes(o.id); else if (e.type === 'filled') applyFill(o, date); } });
       });
       deferred.forEach(function (x) { applyResolution(x, date); });
       out.series.push({ date: date, cutoffSec: row.cutoffSec, cash: st.cash, reserved: resSum(), marked: marked, E: E, HWM: st.hwm, drawdown: st.hwm > 0 ? (st.hwm - E) / st.hwm : 0, suspended: st.suspended, riskLimitExceeded: risk * 10000 > E * CFG.RISK_LIMIT_BP });
@@ -513,8 +724,8 @@
   return {
     predicateHolds: predicateHolds, qualify: qualify, validateChallenger: validateChallenger, challengerActive: challengerActive,
     buildScenarios: buildScenarios, unresolvedOf: unresolvedOf, replayPath: replayPath, pathAdmission: pathAdmission, rowIndexAtOrAfter: rowIndexAtOrAfter,
-    ORDERS_SCHEMA_VERSION: ORDERS_SCHEMA_VERSION, CFG: CFG, DAY: DAY, newBook: newBook, cents: cents, bpOf: bpOf, floorTo: floorTo, ceilTo: ceilTo, notional: notional,
-    adjudicateAll: adjudicateAll, activateAll: activateAll, activateOrder: activateOrder, valuation: valuation, suspend: suspend, issueBatch: issueBatch,
+    ORDERS_SCHEMA_VERSION: ORDERS_SCHEMA_VERSION, CFG: CFG, DAY: DAY, BAR5: BAR5, newBook: newBook, cents: cents, bpOf: bpOf, floorTo: floorTo, ceilTo: ceilTo, notional: notional,
+    adjudicateAll: adjudicateAll, valuation: valuation, suspend: suspend, issueBatch: issueBatch,
     setInPlace: function (v) { inPlace = !!v; }, obligations: obligations, exposureCoins: exposureCoins, exitRules: exitRules, sideCharges: sideCharges, admittedRiskCents: admittedRiskCents, capacityOk: capacityOk,
     isPending: isPending, isOpen: isOpen, plannedRiskCents: plannedRiskCents, clone: clone, indexBars: indexBars, reservedSum: reservedSum, ordersOf: ordersOf
   };

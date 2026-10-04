@@ -1151,7 +1151,10 @@ function fwdReadDelistings(d, root) {
 // with the gate ids a real verdict emits so it cannot drift silently.
 var FWD_KNOWN_GATE_IDS = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C1.trend', 'C3.fresh-touch', 'C3.no-recent-break', 'C7.floor', 'C2.width', 'C2.entry-zone', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
 // Configuration errors abort the capture as an extra capture at startup (nothing is ever issued under a bad configuration).
-function fwdConfigErrors(d, cfg) { return cfg ? d.OC.validateChallenger(cfg.challenger, FWD_KNOWN_GATE_IDS) : []; }
+// v1.4.3: the protocolVersion check is a STRICT EQUALITY list (no prefix match, no pattern): v1.4.2 and unknown strings are errors, i.e. every capture is an extra capture.
+var FWD_ACCEPTED_PROTOCOLS = ['forward-experiment-v1.4.3'];
+function fwdProtocolErrors(cfg) { return cfg && FWD_ACCEPTED_PROTOCOLS.indexOf(cfg.protocolVersion) < 0 ? ['protocolVersion ' + JSON.stringify(cfg.protocolVersion) + ' is not accepted by this capture.js (accepted: ' + FWD_ACCEPTED_PROTOCOLS.join(', ') + ')'] : []; }
+function fwdConfigErrors(d, cfg) { return cfg ? fwdProtocolErrors(cfg).concat(d.OC.validateChallenger(cfg.challenger, FWD_KNOWN_GATE_IDS)) : []; }
 function fwdHistory(d, P) {   // JSON lines, append-only: { generationId, captureId, date } and { pin: true, generationId, sha }
   var txt = ''; try { txt = d.fs.readFileSync(P.history, 'utf8'); } catch (e) { return []; }
   var out = []; txt.split('\n').forEach(function (l) { if (!l.trim()) return; try { out.push(JSON.parse(l)); } catch (e) { /* torn last line from a crash: ignored, never rewritten */ } });
@@ -1302,9 +1305,94 @@ function fwdParseAssetPairs(json) {
   });
   return out;
 }
-function fwdParseTicker(json, assetPairs) {   // -> { ALTNAME: last trade price }
+function fwdParseTicker(json, assetPairs) {   // -> { ALTNAME: { last, ask, bid } }  (last = c[0], ask = a[0], bid = b[0]; ask / bid null when not a positive number; an entry needs a valid last, exactly as before)
   var out = {}, r = json && json.result; if (!r || (json.error && json.error.length)) return out;
-  Object.keys(assetPairs).forEach(function (alt) { var t = r[assetPairs[alt].key]; if (t && t.c && isFinite(+t.c[0]) && +t.c[0] > 0) out[alt] = +t.c[0]; });
+  function px(x) { return x && isFinite(+x[0]) && +x[0] > 0 ? +x[0] : null; }
+  Object.keys(assetPairs).forEach(function (alt) { var t = r[assetPairs[alt].key]; if (t && px(t.c) != null) out[alt] = { last: px(t.c), ask: px(t.a), bid: px(t.b) }; });
+  return out;
+}
+
+// ---- v1.4.3 evidence adapters (Kraken public endpoints). Every function takes an injected fetchFn(url) -> parsed JSON (throws on transport / HTTP failure) so tests replay recorded responses. ----
+var FWD_BAR5 = 300;
+var FWD_TRADES_PAGE = 1000;       // Kraken Recent Trades returns at most 1,000 trades per page
+var FWD_TRADES_MAX_PAGES = 30;
+// Submission-time snapshot (Amendment §1/§2): ONE Ticker request for the pairs of the orders being issued. Kraken's Ticker carries no server timestamp, so
+//   quoteObservedAtSec = request-start time rounded DOWN, tSubSec = response time rounded UP: the modelled submission instant is never earlier than the observation and never earlier than the true instant,
+//   so a later print can never be moved before submission by rounding. A failed fetch / absent pair is recorded as missing with the attempted-fetch time.
+async function fwdFetchQuotes(fetchFn, pairIds, assetPairs, clock) {
+  var out = {}, t0 = clock(), json = null, err = null;
+  try { json = await fetchFn('https://api.kraken.com/0/public/Ticker?pair=' + pairIds.join(',')); } catch (e) { err = e.message || String(e); }
+  var t1 = clock(), tSub = Math.ceil(t1 / 1000), obs = Math.floor(t0 / 1000), tk = err ? {} : fwdParseTicker(json, assetPairs);
+  pairIds.forEach(function (p) {
+    var q = tk[p];
+    if (q && q.ask != null) out[p] = { tSubSec: tSub, quoteObservedAtSec: obs, ask: q.ask, bid: q.bid, last: q.last };
+    else out[p] = { tSubSec: tSub, missing: true, error: err || (json && json.error && json.error.length ? json.error.join(';') : 'pair absent or no ask in Ticker response') };
+  });
+  return out;
+}
+// OHLC interval=5: result[pairKey] = [[time, o, h, l, c, vwap, volume, count], ...] ascending, the last row is the bar in progress (the engine only uses bars with id + 300 <= issueSec).
+function fwdParseOhlc5(json) {
+  if (!json || (json.error && json.error.length)) return { ok: false, error: json && json.error ? json.error.join(';') : 'no response', bars: [] };
+  var r = json.result, key = r ? Object.keys(r).filter(function (k) { return k !== 'last'; })[0] : null, rows = key ? r[key] : null;
+  if (!Array.isArray(rows)) return { ok: false, error: 'no OHLC rows', bars: [] };
+  var bars = [];
+  for (var i = 0; i < rows.length; i++) {
+    var x = rows[i], t = +x[0], o = +x[1], h = +x[2], l = +x[3], c = +x[4];
+    if (!isFinite(t) || t % FWD_BAR5 !== 0 || !isFinite(o) || !isFinite(h) || !isFinite(l) || !isFinite(c) || l > h || o < l || o > h || c < l || c > h) return { ok: false, error: 'malformed bar at row ' + i, bars: [] };
+    if (bars.length && t <= bars[bars.length - 1].id) return { ok: false, error: 'bars not strictly ascending at row ' + i, bars: [] };
+    bars.push({ id: t, open: o, high: h, low: l, close: c });
+  }
+  return { ok: true, bars: bars, last: r.last };
+}
+async function fwdFetchBars5(fetchFn, pairId, sinceSec) {
+  try { var pr = fwdParseOhlc5(await fetchFn('https://api.kraken.com/0/public/OHLC?pair=' + pairId + '&interval=5&since=' + sinceSec)); return pr.ok ? { ok: true, bars: pr.bars } : { ok: false, error: pr.error, bars: [] }; }
+  catch (e) { return { ok: false, error: e.message || String(e), bars: [] }; }
+}
+// Trades: result[pairKey] = [[price, volume, time(float s), side, type, misc, trade_id], ...] ascending, result.last = continuation id (nanosecond string) to pass back verbatim as `since`.
+function fwdParseTrades(json) {
+  if (!json || (json.error && json.error.length)) return { ok: false, error: json && json.error ? json.error.join(';') : 'no response', trades: [] };
+  var r = json.result, key = r ? Object.keys(r).filter(function (k) { return k !== 'last'; })[0] : null, rows = key ? r[key] : (r && typeof r.last === 'string' ? [] : null);
+  if (!Array.isArray(rows) || !r || typeof r.last !== 'string' || !/^[0-9]+$/.test(r.last)) return { ok: false, error: 'malformed Trades response', trades: [] };
+  var out = [];
+  for (var i = 0; i < rows.length; i++) { var x = rows[i], p = +x[0], t = +x[2], n = x[6] == null ? null : +x[6]; if (!isFinite(p) || !isFinite(t) || (n != null && !isFinite(n))) return { ok: false, error: 'malformed trade at row ' + i, trades: [] }; out.push({ t: t, p: p, n: n }); }
+  return { ok: true, trades: out, last: r.last };
+}
+// A slice { fromSec, toSec, complete, trades:[{t,p,n}] } claims coverage of [fromSec, toSec) ONLY when complete === true. Pagination: `since` starts one second before fromSec (nanosecond string), then each page's `last` is passed back verbatim.
+//   Complete requires a venue-proven end: a print at/after toSec (coverage past the interval end), or a short last page (end of data) fetched when nowSec >= toSec. Anything else is incomplete with a reason, never an assumed no-event:
+//   failed / malformed page, page budget exhausted (truncated), continuation that does not advance (continuation-stalled), trade-id gap (id-gap), time going backwards (out-of-order), a page that starts before the requested instant
+//   (out-of-range: the venue answered with a different range, e.g. the most recent page - never substituted). Duplicate boundary records (same trade id on consecutive pages) are dropped; order is (time, id).
+//   Precision: venue times are float seconds and compared as floats against the integer, rounded-UP submission instant, so no pre-submission print can be rounded into eligibility. The 1 s look-back only guards the boundary; prints before fromSec are discarded.
+async function fwdFetchTradesSlice(fetchFn, pairId, fromSec, toSec, opts) {
+  opts = opts || {}; var pageSize = opts.pageSize || FWD_TRADES_PAGE, maxPages = opts.maxPages || FWD_TRADES_MAX_PAGES, nowSec = opts.nowSec;
+  var out = { fromSec: fromSec, toSec: toSec, complete: false, trades: [], pages: 0 }, seen = {}, lastId = null, maxT = -Infinity, since = String((BigInt(Math.floor(fromSec)) - 1n) * 1000000000n);
+  for (var page = 1; page <= maxPages; page++) {
+    var json; try { json = await fetchFn('https://api.kraken.com/0/public/Trades?pair=' + pairId + '&since=' + since); } catch (e) { out.reason = 'page-' + page + '-failed: ' + (e.message || e); return out; }
+    var pr = fwdParseTrades(json); out.pages = page;
+    if (!pr.ok) { out.reason = 'page-' + page + '-failed: ' + pr.error; return out; }
+    var covered = false, added = 0;
+    for (var i = 0; i < pr.trades.length; i++) {
+      var x = pr.trades[i];
+      if (x.n != null && seen[x.n]) continue;                      // overlapping boundary record: already taken
+      if (x.t < maxT) { out.reason = 'out-of-order at page ' + page; return out; }
+      if (page === 1 && i === 0 && x.t < fromSec - 1) { out.reason = 'out-of-range: first print ' + x.t + ' precedes the requested instant ' + fromSec; return out; }
+      maxT = x.t;
+      if (x.n != null) {
+        if (lastId != null && x.n !== lastId + 1) { out.reason = 'id-gap: ' + lastId + ' -> ' + x.n + ' at page ' + page; return out; }
+        seen[x.n] = 1; lastId = x.n;
+      }
+      if (x.t >= toSec) { covered = true; continue; }
+      if (x.t >= fromSec) { out.trades.push({ t: x.t, p: x.p, n: x.n }); added++; }
+    }
+    if (covered) { out.complete = true; break; }
+    if (pr.trades.length < pageSize) {                            // end of data: the interval is covered only if it is already in the past
+      if (isFinite(nowSec) && nowSec >= toSec) { out.complete = true; break; }
+      out.reason = 'end of data before the interval end (interval not yet over)'; return out;
+    }
+    if (!(BigInt(pr.last) > BigInt(since))) { out.reason = 'continuation-stalled at page ' + page; return out; }
+    since = pr.last;                                              // verbatim
+  }
+  if (!out.complete && !out.reason) out.reason = 'truncated: ' + maxPages + ' pages without reaching the interval end';
+  out.trades.sort(function (a, b) { return a.t - b.t || ((a.n == null ? 0 : a.n) - (b.n == null ? 0 : b.n)); });
   return out;
 }
 
@@ -1328,10 +1416,11 @@ function fwdResearchRow(fit, res, summary, price, structuralFit) {
 // inputs.coins = { cgId: { pair, venueEligible, metadataEligible, meta:{tick,lot,minOrder}|null, candles:[usable at issueTimeUtc], research: row|null } }
 function fwdRunUpdate(d, prior, capture, inputs, cfg) {
   var EC = d.EC, OC = d.OC, bars = {}, i;
-  Object.keys(inputs.coins).forEach(function (cg) { var c = inputs.coins[cg]; bars[cg] = { pair: c.pair, venueEligible: c.venueEligible, metadataEligible: c.metadataEligible, candles: c.candles }; });
-  var book = OC.adjudicateAll(prior.book, capture, bars);                       // step 2
-  book = OC.activateAll(book, capture, bars);                                   // step 3
-  ['N0', 'C1'].forEach(function (p) { book = OC.valuation(book, p, capture, bars); book = OC.suspend(book, p, capture); });   // steps 4, 5
+  var evBars = {};   // orders-core evidence: daily candles plus (v1.4.3) 5-minute bars and Trades slices; episodes-core keeps seeing the daily-only objects
+  Object.keys(inputs.coins).forEach(function (cg) { var c = inputs.coins[cg]; bars[cg] = { pair: c.pair, venueEligible: c.venueEligible, metadataEligible: c.metadataEligible, candles: c.candles }; evBars[cg] = { candles: c.candles, bars5: c.bars5 || [], trades: c.trades || [] }; });
+  var needs = cfg.needs || [];
+  var book = OC.adjudicateAll(prior.book, capture, evBars, { needs: needs });   // step 2 (step 3, activation, is retired in v1.4.3: an order is submitted at issuance)
+  ['N0', 'C1'].forEach(function (p) { book = OC.valuation(book, p, capture, evBars); book = OC.suspend(book, p, capture); });   // steps 4, 5
   var rows = {}; Object.keys(inputs.coins).forEach(function (cg) { if (inputs.coins[cg].research) rows[cg] = inputs.coins[cg].research; });
   var eu = EC.updateEpisodes(prior.episodes, capture, rows, bars, inputs.universeIds || [], OC.obligations(book), { manualDelistings: cfg.manualDelistings || [] });   // step 6
   var cands = eu.episodeDays.map(function (ed) {
@@ -1340,7 +1429,7 @@ function fwdRunUpdate(d, prior, capture, inputs, cfg) {
   });
   var results = {};
   ['N0', 'C1'].forEach(function (p) {                                           // step 7
-    var r = OC.issueBatch(book, { id: p, version: p === 'N0' ? 'N0-v1' : ((cfg.challenger && cfg.challenger.version) || 'C1-unconfigured') }, cands, capture, { challenger: cfg.challenger || null });
+    var r = OC.issueBatch(book, { id: p, version: p === 'N0' ? 'N0-v1' : ((cfg.challenger && cfg.challenger.version) || 'C1-unconfigured') }, cands, capture, { challenger: cfg.challenger || null, quotes: cfg.quotes || {}, needs: needs });
     book = r.book; results[p] = { results: r.results, blockedReason: r.blockedReason };
   });
   return { episodes: eu.state, book: book, episodeDays: eu.episodeDays, episodeDayRows: eu.episodeDayRows, results: results, obligations: eu.obligations };
@@ -1460,14 +1549,15 @@ function fwdRealGit() {
 function fwdRealDeps() { return { fs, path, crypto, EC, OC, now: () => Date.now(), pid: process.pid, hooks: null, git: fwdRealGit() }; }
 // Kraken AssetPairs (tick_size, lot_decimals, ordermin) + Ticker (last trade) for the designated pairs, fetched once per capture.
 async function fwdFetchKrakenInfo(pairIds) {
-  const info = { assetPairs: {}, prices: {}, priceFetchedAt: null, errors: [] };
+  const info = { assetPairs: {}, prices: {}, quotes: {}, priceFetchedAt: null, errors: [] };
   if (!pairIds.length) return info;
   try {
     const r = await fetch('https://api.kraken.com/0/public/AssetPairs'); const all = fwdParseAssetPairs(await r.json());
     pairIds.forEach(p => { if (all[p]) info.assetPairs[p] = all[p]; });
   } catch (e) { info.errors.push('AssetPairs: ' + e.message); }
   try {
-    const r = await fetch('https://api.kraken.com/0/public/Ticker?pair=' + pairIds.join(',')); info.prices = fwdParseTicker(await r.json(), info.assetPairs);
+    const r = await fetch('https://api.kraken.com/0/public/Ticker?pair=' + pairIds.join(',')); info.quotes = fwdParseTicker(await r.json(), info.assetPairs);   // decision input only (never execution evidence)
+    Object.keys(info.quotes).forEach(alt => { info.prices[alt] = info.quotes[alt].last; });
     info.priceFetchedAt = new Date().toISOString();
   } catch (e) { info.errors.push('Ticker: ' + e.message); }
   return info;
@@ -1953,7 +2043,38 @@ async function main() {
           coinsIn[cg] = { pair: venueOk ? pid : null, venueEligible: venueOk, metadataEligible: !!meta, meta: meta,
             candles: (cache && venueOk) ? fwdUsableCandles(cache.ohlcDaily, fwdCandlePair(pid), capture.issueSec) : [], research: fwdResearchByCoin[cg] || null };
         }
-        const upd = fwdRunUpdate(fwdDeps, fwdPrior, capture, { coins: coinsIn, universeIds: pulls.map(p => p.coin.id) }, { manualDelistings: fwdReadDelistings(fwdDeps, DATA_DIR), challenger: fwdCfg.challenger });
+        // v1.4.3 evidence loop. The pipeline is pure: it reports what it needed and did not have (submission-time Ticker snapshots for issuing orders, 5-minute bars for unresolved day-D intervals of orders AND open positions,
+        // Trades for a touched straddling bar); each need is fetched ONCE (a failure leaves the interval unresolved, never assumed), then the pure pipeline is re-run on the same prior state until no new need appears.
+        const fwdEv = { quotes: {}, bars5: {}, trades: {} }, fwdAttempted = new Set(), fwdErrs = (fwdInfo && fwdInfo.errors) || [];
+        const fwdFetchJson = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); };
+        const fwdNeedKey = n => [n.kind, n.cgId || '', n.pair || '', n.fromSec || '', n.toSec || ''].join('|');
+        let upd = null;
+        for (let iter = 0; iter < 8; iter++) {
+          const needs = [];
+          for (const cg of Object.keys(coinsIn)) { coinsIn[cg].bars5 = fwdEv.bars5[cg] || []; coinsIn[cg].trades = fwdEv.trades[cg] || []; }
+          upd = fwdRunUpdate(fwdDeps, fwdPrior, capture, { coins: coinsIn, universeIds: pulls.map(p => p.coin.id) }, { manualDelistings: fwdReadDelistings(fwdDeps, DATA_DIR), challenger: fwdCfg.challenger, quotes: fwdEv.quotes, needs: needs });
+          const todo = needs.filter(n => !fwdAttempted.has(fwdNeedKey(n))); if (!todo.length) break;
+          todo.forEach(n => fwdAttempted.add(fwdNeedKey(n)));
+          const tickers = Array.from(new Set(todo.filter(n => n.kind === 'ticker').map(n => n.pair)));
+          if (tickers.length) {   // one request, the pairs of the orders being issued, made AFTER t_dec (issueTimeUtc was read before step 1)
+            const q = await fwdFetchQuotes(fwdFetchJson, tickers, (fwdInfo && fwdInfo.assetPairs) || {}, () => Date.now());
+            Object.keys(q).forEach(pr => { fwdEv.quotes[pr] = q[pr]; if (q[pr].missing) { fwdErrs.push('Ticker@issuance ' + pr + ': ' + q[pr].error); console.warn('forward: submission-time Ticker missing for', pr, '-', q[pr].error); } });
+          }
+          for (const n of todo.filter(n => n.kind === 'bars5')) {
+            const r = await fwdFetchBars5(fwdFetchJson, n.pair, n.fromSec - FWD_BAR5);
+            if (!r.ok) { fwdErrs.push('OHLC5 ' + n.pair + ': ' + r.error); console.warn('forward: 5-min OHLC failed for', n.pair, '-', r.error); continue; }
+            const have = {}; (fwdEv.bars5[n.cgId] || []).forEach(b => { have[b.id] = b; }); r.bars.forEach(b => { have[b.id] = b; });
+            fwdEv.bars5[n.cgId] = Object.keys(have).map(Number).sort((a, b) => a - b).map(k => have[k]);
+            await sleep(EXCHANGE_DELAY_MS);
+          }
+          for (const n of todo.filter(n => n.kind === 'trades')) {
+            const sl = await fwdFetchTradesSlice(fwdFetchJson, n.pair, n.fromSec, n.toSec, { nowSec: Math.floor(Date.now() / 1000) });
+            if (!sl.complete) { fwdErrs.push('Trades ' + n.pair + ' [' + n.fromSec + ',' + n.toSec + '): ' + sl.reason); console.warn('forward: Trades incomplete for', n.pair, '-', sl.reason); }
+            (fwdEv.trades[n.cgId] = fwdEv.trades[n.cgId] || []).push(sl);
+            await sleep(EXCHANGE_DELAY_MS);
+          }
+        }
+        if (fwdInfo && fwdErrs !== fwdInfo.errors) fwdInfo.errors = fwdErrs;
         const gen = { episodes: upd.episodes, orders: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, orders: upd.book.orders, attempts: upd.book.attempts }, accounts: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, seq: upd.book.seq, accounts: upd.book.accounts },
           scenarios: { schemaVersion: 1, label: 'counterfactual', built: false }, pairs: fwdUpdatePairs(fwdPrior.pairs, capture, pairsNow),
           episodeDays: { schemaVersion: 1, captureId: capture.captureId, date: capture.date, rows: upd.episodeDayRows } };
