@@ -6,7 +6,7 @@
    "status": "open",
    "openedAt": "2026-10-03",
    "openPrice": 767.09,
-   "lastSeenAt": "2026-10-03",
+   "lastSeenAt": "2026-10-04",
    "cgId": "binancecoin",
    "timeframe": "1d",
    "entryZone": [
@@ -27,9 +27,9 @@
    ],
    "invalidation": 748.3973066869178,
    "invalidationRaises": 0,
-   "raisesSuppressed": 0,
-   "liveInvalidation": 748.3973066869178,
-   "liveFitId": "binancecoin|1d|kraken|458|528|1790899200",
+   "raisesSuppressed": 1,
+   "liveInvalidation": 766.0441055287523,
+   "liveFitId": "binancecoin|1d|kraken|458|529|1790985600",
    "liveLifecycleState": "re-qualified",
    "stop": 739.2898870818497,
    "target": 851.0362264150945,
@@ -41,9 +41,22 @@
    "failedGates": [],
    "openBarId": 1790899200,
    "unscorable": null,
-   "bars": [],
-   "lastBarId": null,
-   "barSource": null,
+   "bars": [
+    {
+     "id": 1790985600,
+     "date": "2026-10-03",
+     "open": 768.21,
+     "high": 792.25,
+     "low": 764.72,
+     "close": 787.2,
+     "entryDay": true
+    }
+   ],
+   "lastBarId": 1790985600,
+   "barSource": {
+    "venue": "kraken",
+    "pair": "BNB/usd"
+   },
    "barSourceMismatches": 0,
    "lastMismatchBarId": null,
    "breachBarIds": [],
@@ -55,7 +68,7 @@
    "status": "open",
    "openedAt": "2026-10-03",
    "openPrice": 546.17,
-   "lastSeenAt": "2026-10-03",
+   "lastSeenAt": "2026-10-04",
    "cgId": "monero",
    "timeframe": "1d",
    "entryZone": [
@@ -74,11 +87,11 @@
     1789516800,
     1790553600
    ],
-   "invalidation": 516.7521886159107,
-   "invalidationRaises": 0,
+   "invalidation": 520.2855092004851,
+   "invalidationRaises": 1,
    "raisesSuppressed": 0,
-   "liveInvalidation": 516.7521886159107,
-   "liveFitId": "monero|1d|kraken|668|734|1790899200",
+   "liveInvalidation": 520.2855092004851,
+   "liveFitId": "monero|1d|kraken|668|735|1790985600",
    "liveLifecycleState": "intact",
    "stop": 509.2497829748193,
    "target": 637.3356521739133,
@@ -90,9 +103,22 @@
    "failedGates": [],
    "openBarId": 1790899200,
    "unscorable": null,
-   "bars": [],
-   "lastBarId": null,
-   "barSource": null,
+   "bars": [
+    {
+     "id": 1790985600,
+     "date": "2026-10-03",
+     "open": 540,
+     "high": 563.5,
+     "low": 538.01,
+     "close": 554.66,
+     "entryDay": true
+    }
+   ],
+   "lastBarId": 1790985600,
+   "barSource": {
+    "venue": "kraken",
+    "pair": "XMR/usd"
+   },
    "barSourceMismatches": 0,
    "lastMismatchBarId": null,
    "breachBarIds": [],
