@@ -2063,7 +2063,7 @@ function step14OperationalReport(d, gen, cohort) {
     const fills = os.filter(o => o.fill);
     rep.execution[p] = { gapOpenFills: fills.filter(o => o.fill.reason === 'fill-gap-open').length, ambiguousStopExits: os.filter(o => o.exit && o.exit.reason === 'ambiguous-stop').length, gapStopExits: os.filter(o => o.exit && (o.exit.reason === 'gap-stop' || o.exit.reason === 'gap-stop-on-fill')).length,
       sizeClippedOrders: os.filter(o => o.sizeClipped).length, capturesRiskLimitExceeded: a.series.filter(r => r.riskLimitExceeded).length, capturesWithStaleMark: a.series.filter(r => r.staleMark).length, staleMarkPersistentPositions: os.filter(o => o.stale && o.stale.persistent).length };
-    rep.unresolved[p] = { issued: os.filter(o => o.status === 'issued').length, pendingUnresolved: os.filter(o => o.status === 'pending-unresolved').length, cancelPending: os.filter(o => o.status === 'cancel-pending').length, openPositions: os.filter(o => o.status === 'open').length };
+    rep.unresolved[p] = { pendingUnresolved: os.filter(o => o.status === 'pending-unresolved').length, cancelPending: os.filter(o => o.status === 'cancel-pending').length, openPositions: os.filter(o => o.status === 'open').length };
     const fm = {}; fills.forEach(o => { const m = String(o.fill.date).slice(0, 7); fm[m] = (fm[m] || 0) + 1; }); rep.fillsPerMonth[p] = fm;
     const dds = a.series.map(r => r.drawdown || 0);
     rep.accounts[p] = { drawdownNow: dds.length ? dds[dds.length - 1] : 0, drawdownMax: dds.length ? Math.max.apply(null, dds) : 0, suspended: !!a.suspended, suspendedAt: a.suspendedAt || null };
@@ -2169,9 +2169,12 @@ function runStep14Confirmatory(depsOver, opts) {
 }
 
 // ---- FEASIBILITY BEGIN (Protocol §8, labelled entry-feasibility model). Stand-alone: takes candles and episode-days, returns funnel counts. It has no access to any execution or account code. ----
+const STEP14_PROXY_LABEL = 'feasibility-proxy: daily-no-intraday';
 function step14FeasibilityFunnel(days, series, cfg) {
+  // Protocol v1.4.3 Amendment section 4: historical data is daily-only, so this funnel cannot reproduce intraday submission. DECLARED PROXY (label above): the order rests from bar D+1 (windows D+1..D+3);
+  // a bar opening below L fills at that open on ANY of the three bars; no crossing rejection and no gap rejection exist any more.
   // days[i] = { candidates: [{ cgId, episodeId, score, L, S, T }] } for capture day i; series[cgId] = { [dayIdx]: { open, high, low, close } } (candle whose open time is day dayIdx 00:00 UTC)
-  cfg = cfg || {}; const HOLD = cfg.holdBars || 10, MAXSLOTS = 3, f = { eligibleEpisodeDays: 0, predicateHolds: 0, skippedExposure: 0, rejectedLevels: 0, occupancySkipped: 0, issued: 0, skippedMissingInput: 0, rejectedGap: 0, rejectedCrossing: 0, resting: 0, penetratedWithin3: 0, filled: 0, expired: 0, censored: 0 };
+  cfg = cfg || {}; const HOLD = cfg.holdBars || 10, MAXSLOTS = 3, f = { eligibleEpisodeDays: 0, predicateHolds: 0, skippedExposure: 0, rejectedLevels: 0, occupancySkipped: 0, issued: 0, resting: 0, penetratedWithin3: 0, filled: 0, expired: 0, censored: 0 };
   const held = [], attempted = {}, byCoinBusyUntil = {}, fillsByDay = [];
   const tickOf = L => Math.pow(10, Math.floor(Math.log10(L)) - 4);   // proxy: five significant digits
   days.forEach((day, i) => {
@@ -2183,23 +2186,19 @@ function step14FeasibilityFunnel(days, series, cfg) {
       if (!(c.S > 0 && c.S < c.L && c.L < c.T)) { f.rejectedLevels++; return; }
       const inUse = held.filter(u => u > i).length;
       if (inUse >= MAXSLOTS) { f.occupancySkipped++; return; }
-      f.issued++;
-      const px = series[c.cgId] || {}, D = px[i], b1 = px[i + 1];
-      if (!D || !b1) { f.censored++; return; }
-      if (D.close < c.S) { f.rejectedGap++; held.push(i + 1); byCoinBusyUntil[c.cgId] = i + 1; return; }
-      if (b1.open < c.L) { f.rejectedCrossing++; held.push(i + 2); byCoinBusyUntil[c.cgId] = i + 2; return; }
-      f.resting++;
+      f.issued++; f.resting++;
+      const px = series[c.cgId] || {};
       let filledOn = null, unknown = false; const tick = tickOf(c.L);
       for (let k = 1; k <= 3; k++) {
         const bar = px[i + k]; if (!bar) { unknown = true; break; }
-        if ((k >= 2 && bar.open < c.L) || bar.low <= c.L - tick) { filledOn = i + k; break; }
+        if (bar.open < c.L || bar.low <= c.L - tick) { filledOn = i + k; break; }
       }
       if (filledOn == null && unknown) { f.censored++; return; }
       if (filledOn == null) { f.expired++; held.push(i + 4); byCoinBusyUntil[c.cgId] = i + 4; return; }
       f.penetratedWithin3++; f.filled++; held.push(filledOn + HOLD); byCoinBusyUntil[c.cgId] = filledOn + HOLD; fillsByDay.push(filledOn);
     });
   });
-  return { funnel: f, fillDays: fillsByDay };
+  return { funnel: f, fillDays: fillsByDay, proxy: STEP14_PROXY_LABEL };
 }
 // ---- FEASIBILITY END ----
 // Fixture replay: the detector (research mode) is run on the fixtures' daily candles for every capture day of a trailing window, the fits go through episodes-core
@@ -2238,14 +2237,15 @@ function step14FixtureReplay(current, dailyCaches, opts) {
   const eps = state.episodes, count = (a, fn) => { const m = {}; a.forEach(x => { const k = fn(x); m[k] = (m[k] || 0) + 1; }); return m; };
   const rowCount = allRows.length, stateBytes = JSON.stringify(state).length, rowBytes = allRows.reduce((a, r) => a + JSON.stringify(r).length + 1, 0);   // v1.3: episodes.json carries no rows; the episode-day rows are the separate per-day files
   return { window: { firstDate: perDate[0].date, lastDate: perDate[R - 1].date, days: R, coins: coins.length }, episodes: { total: eps.length, byStatus: count(eps, e => e.status), byCloseReason: count(eps.filter(e => e.status === 'closed'), e => e.closeReason), openedPerDay: eps.length / R },
-    funnel: fun.funnel, fillDays: fun.fillDays, daysSeries: days.map(x => x.candidates.length), storage: { episodeDayRows: rowCount, episodesJsonBytes: stateBytes, episodeDayBytes: rowBytes }, seconds: (Date.now() - t0) / 1000 };
+    funnel: fun.funnel, fillDays: fun.fillDays, proxy: fun.proxy, daysSeries: days.map(x => x.candidates.length), storage: { episodeDayRows: rowCount, episodesJsonBytes: stateBytes, episodeDayBytes: rowBytes }, seconds: (Date.now() - t0) / 1000 };
 }
 function runStep14Feasibility(current, dailyCaches, opts) {
   const r = step14FixtureReplay(current, dailyCaches, opts), F = r.funnel;
   console.log('\n=== STEP 14 FEASIBILITY (Protocol §8) - entry-feasibility model, LABELLED: fixed notional, no compounding, no charges, first-come occupancy <= 3; no path is computed after the fill ===');
   console.log('replay: ' + r.window.coins + ' fixture coins, ' + r.window.days + ' capture days ' + r.window.firstDate + ' .. ' + r.window.lastDate + ' (detector research pass per coin per day, then episodes-core.updateEpisodes); quote proxy = the capture date\'s own candle open; tick proxy = 5 significant digits; occupancy proxy = pending until resolved, filled orders hold a slot 10 bars; ' + r.seconds.toFixed(0) + ' s');
   console.log('episodes: ' + r.episodes.total + ' opened (' + r.episodes.openedPerDay.toFixed(2) + ' per day) | by status ' + JSON.stringify(r.episodes.byStatus) + ' | by close reason ' + JSON.stringify(r.episodes.byCloseReason));
-  console.log('N0 entry-feasibility funnel: eligible episode-days ' + F.eligibleEpisodeDays + ' -> predicate holds (attempts) ' + F.predicateHolds + ' -> skipped-exposure ' + F.skippedExposure + ', rejected-levels ' + F.rejectedLevels + ', occupancy-skipped ' + F.occupancySkipped + ' -> issued ' + F.issued + ' -> skipped-missing-input ' + F.skippedMissingInput + ' (replay assumes every bar usable), rejected-gap ' + F.rejectedGap + ', rejected-crossing ' + F.rejectedCrossing + ' -> resting ' + F.resting + ' -> penetrated within 3 eligible bars ' + F.penetratedWithin3 + ' -> filled ' + F.filled + ' | expired ' + F.expired + ' | censored (bars beyond the fixtures) ' + F.censored);
+  console.log(r.proxy + ' (historical data is daily-only: intraday submission cannot be reproduced; windows D+1..D+3, a bar opening below L fills at that open, no crossing / gap rejection)');
+  console.log('N0 entry-feasibility funnel: eligible episode-days ' + F.eligibleEpisodeDays + ' -> predicate holds (attempts) ' + F.predicateHolds + ' -> skipped-exposure ' + F.skippedExposure + ', rejected-levels ' + F.rejectedLevels + ', occupancy-skipped ' + F.occupancySkipped + ' -> issued ' + F.issued + ' -> resting from bar D+1 ' + F.resting + ' -> penetrated within 3 eligible bars ' + F.penetratedWithin3 + ' -> filled ' + F.filled + ' | expired ' + F.expired + ' | censored (bars beyond the fixtures) ' + F.censored);
   const R = r.window.days, mb = x => (x / 1048576).toFixed(2), scale = STEP14.N / R, epj = r.storage.episodesJsonBytes, edb = r.storage.episodeDayBytes;
   console.log('storage (Protocol v1.3 layout: episode records only in episodes.json; one immutable episode-day file per canonical capture; fixture replay, ' + r.storage.episodeDayRows + ' rows):');
   console.log('  episodes.json per generation: ' + mb(epj) + ' MB after ' + R + ' days -> ' + mb(epj * scale) + ' MB projected at day ' + STEP14.N + '; ' + STEP14.N + ' retained generations ~ ' + (epj * scale * STEP14.N / 2 / 1073741824).toFixed(2) + ' GB of working-tree files');
@@ -2309,6 +2309,7 @@ function runStep14Calibrate(current, dailyCaches, opts) {
   const fwdCfg = step14ReadForwardConfig(dLike), confirmatoryPolicy = step14ConfirmatoryPolicy(dLike, fwdCfg), portApplicable = confirmatoryPolicy === 'C1';
   const r = step14Calibrate(rep.fillDays, Object.assign({}, opts, { dailyCounts: series, confirmatoryPolicy: confirmatoryPolicy }));
   console.log('\n=== STEP 14 CALIBRATION (Protocol §8, v1.4) - ' + r.runs + ' runs per null, ' + r.reps + ' bootstrap replications, b = 20; gate: a false-pass rate above ' + STEP14.CAL_GATE + ' blocks freeze; shock parameters ' + JSON.stringify(r.params) + ' are PROVISIONAL; confirmatoryPolicy: ' + confirmatoryPolicy + ' ===');
+  console.log(rep.proxy + ' (fill counts are the daily-proxy replay: ' + rep.fillDays.length + ' fills in ' + rep.window.days + ' capture days; funnel ' + JSON.stringify(rep.funnel) + ')');
   console.log('null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate ' + r.cond1.rate.toFixed(4) + ' +/- ' + r.cond1.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond1.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
   console.log('null (i), adverse-charge path  same generative model as condition 1, independently drawn: condition 6 false-pass rate ' + r.cond6.rate.toFixed(4) + ' +/- ' + r.cond6.se.toFixed(4) + ' (Monte Carlo SE; nominal 0.1000) ' + (r.cond6.blocks ? 'BLOCKS FREEZE' : 'below the gate'));
   if (portApplicable) {
