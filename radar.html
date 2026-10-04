@@ -5601,10 +5601,10 @@ function setFilter(f) {
 /* item 30 — news section */
 (function () {
   'use strict';
-  var FEED_URL = 'data/news/alerts.json', STALE_MS = 3 * 3600 * 1000, TV_WAIT_MS = 8000;
-  var TV_SRC = 'https://s3.tradingview.com/external-embedding/embed-widget-timeline.js';
+  var FEED_URL = 'data/news/alerts.json', HL_URL = 'data/news/headlines.json', STALE_MS = 3 * 3600 * 1000;
   var feed = { state: 'idle', data: null, promise: null };   // state: idle | loading | ok | failed (one fetch per page load; no storage)
-  var cur = { key: null, r: null, tvSym: null, tvTimer: null };
+  var hl = { state: 'idle', data: null, promise: null };   // headlines.json: one fetch per page load, in memory only
+  var cur = { key: null, r: null };
   var NS = 'http://www.w3.org/2000/svg';
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
@@ -5728,50 +5728,82 @@ function setFilter(f) {
     }
     freshness(r, live).forEach(function (f) { var p = document.createElement('div'); p.className = 'dpn-fresh' + (f.warn ? ' warn' : ''); p.textContent = f.t; host.appendChild(p); });
   }
-  function renderTv(r, host) {
+  // ---- Latest Coin News: headlines.json (Google News RSS, produced hourly by radar_tools/news-fetch.js) ----
+  function validateHl(j) {
+    if (!j || typeof j !== 'object' || j.schemaVersion !== 1 || !j.coins || typeof j.coins !== 'object' || ms(j.generatedAt) == null) return null;
+    return { generatedAt: j.generatedAt, failed: j.coverage && Array.isArray(j.coverage.failed) ? j.coverage.failed : [], coins: j.coins };
+  }
+  function loadHeadlines() {
+    if (hl.promise) return hl.promise;
+    hl.state = 'loading';
+    hl.promise = fetch(HL_URL, { cache: 'no-store' }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function (j) {
+      var v = validateHl(j); if (!v) throw new Error('invalid headlines feed'); hl.data = v; hl.state = 'ok';
+    }).catch(function () { hl.state = 'failed'; });
+    return hl.promise;
+  }
+  function hlEntry(r) {
+    if (!hl.data) return null;
+    if (r.cgId && hl.data.coins[r.cgId]) return { id: r.cgId, e: hl.data.coins[r.cgId] };
+    if (!r.cgId) { var ks = Object.keys(hl.data.coins); for (var i = 0; i < ks.length; i++) { var e = hl.data.coins[ks[i]]; if (e && e.symbol && String(e.symbol).toUpperCase() === String(r.symbol).toUpperCase()) return { id: ks[i], e: e }; } }
+    return null;
+  }
+  function renderHlBody(r, host) {
     host.textContent = '';
-    if (cur.tvTimer) { clearTimeout(cur.tvTimer); cur.tvTimer = null; }
-    var sym = tvSymbol(r), loaded = false;
-    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dpn-tvbox');
+    function line(t, warn) { var p = document.createElement('div'); p.className = 'dpn-fresh' + (warn ? ' warn' : ''); p.textContent = t; host.appendChild(p); }
+    if (hl.state === 'idle' || hl.state === 'loading') { line('Loading headlines…', false); return; }
+    if (hl.state !== 'ok') { line('Headlines unavailable or stale (never)', true); return; }
+    var gen = ms(hl.data.generatedAt), stale = Date.now() - gen > STALE_MS;
+    line(stale ? 'Headlines unavailable or stale (' + local(hl.data.generatedAt) + ')' : 'Headlines via Google News — updated ' + rel(gen), stale);
+    var ent = hlEntry(r), items = ent && Array.isArray(ent.e.items) ? ent.e.items.filter(function (it) { return it && it.title && safeUrl(it.link); }) : [];
+    if (ent && hl.data.failed.indexOf(ent.id) >= 0) line('last fetch for this coin failed; showing earlier items', true);
+    if (!items.length) { if (!stale) line('No headlines in the last 7 days', false); return; }
+    var ul = document.createElement('ul');
+    items.forEach(function (it) {
+      var li = document.createElement('li'); li.className = 'dpn-item';
+      var h = document.createElement('div'); h.className = 'dpn-h';
+      var a = document.createElement('a'); a.href = safeUrl(it.link); a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = it.title; h.appendChild(a); li.appendChild(h);
+      var m = document.createElement('div'); m.className = 'dpn-meta'; m.textContent = (it.source ? it.source + ' · ' : '') + (ms(it.publishedAt) != null ? local(it.publishedAt) : 'time unknown'); li.appendChild(m);
+      ul.appendChild(li);
+    });
+    host.appendChild(ul);
+  }
+  function renderHeadlines(r, host) {
+    host.textContent = '';
+    var sym = tvSymbol(r);
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dpn-hlbox');
     var lb = document.createElement('span'); lb.textContent = 'Latest Coin News'; btn.appendChild(lb);
     var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
-    var box = document.createElement('div'); box.id = 'dpn-tvbox'; box.className = 'dpn-tvbox'; box.hidden = true;
+    var box = document.createElement('div'); box.id = 'dpn-hlbox'; box.className = 'dpn-tvbox'; box.hidden = true;
+    var body = document.createElement('div'); body.id = 'dpn-hl'; box.appendChild(body);
     btn.addEventListener('click', function () {
       var open = btn.getAttribute('aria-expanded') !== 'true';
       btn.setAttribute('aria-expanded', open ? 'true' : 'false'); box.hidden = !open; caret.textContent = open ? '▴' : '▾';
-      if (open && !loaded) { loaded = true; cur.tvSym = sym; injectTv(box, sym); }
     });
     var head = document.createElement('div'); head.className = 'dpn-tvhead';
     var ci = sym.indexOf(':'), lk = document.createElement('a'); lk.className = 'dpn-flow';
     lk.href = 'https://www.tradingview.com/symbols/' + encodeURIComponent(sym.slice(ci + 1)) + '/news/?exchange=' + encodeURIComponent(sym.slice(0, ci));
-    lk.target = '_blank'; lk.rel = 'noopener noreferrer'; lk.textContent = 'Full news flow on TradingView \u2197'; head.appendChild(lk);
+    lk.target = '_blank'; lk.rel = 'noopener noreferrer'; lk.textContent = 'Full news flow on TradingView ↗'; head.appendChild(lk);
     host.appendChild(head); host.appendChild(btn); host.appendChild(box);
-  }
-  function injectTv(box, sym) {
-    box.textContent = '';
-    var wrap = document.createElement('div'); wrap.className = 'tradingview-widget-container';
-    var inner = document.createElement('div'); inner.className = 'tradingview-widget-container__widget'; wrap.appendChild(inner);
-    var s = document.createElement('script'); s.type = 'text/javascript'; s.src = TV_SRC; s.async = true;
-    s.text = JSON.stringify({ feedMode: 'symbol', symbol: sym, colorTheme: 'dark', isTransparent: true, displayMode: 'regular', width: '100%', height: 400, locale: 'en' });
-    wrap.appendChild(s); box.appendChild(wrap);
-    if (cur.tvTimer) clearTimeout(cur.tvTimer);
-    cur.tvTimer = setTimeout(function () {
-      cur.tvTimer = null;
-      if (cur.tvSym !== sym || !box.isConnected) return;
-      if (!box.querySelector('iframe')) { box.textContent = ''; var p = document.createElement('div'); p.className = 'dpn-note'; p.textContent = 'No TradingView briefs for ' + sym + " \u2014 the widget shows TradingView's curated briefs only; see the full news flow link above."; box.appendChild(p); }
-    }, TV_WAIT_MS);
+    renderHlBody(r, body);
   }
 
   function open(r) {
     try {
       var root = document.getElementById('dp-news'); if (!root || !r) return;
       css();
-      cur.key = (r.boardRow ? r.cgId : r.symbol) + '|' + (r.cgId || ''); cur.r = r; cur.tvSym = null;
+      cur.key = (r.boardRow ? r.cgId : r.symbol) + '|' + (r.cgId || ''); cur.r = r;
       root.textContent = '';
       var title = document.createElement('div'); title.className = 'ds-title'; title.textContent = 'Material news'; root.appendChild(title);
       var fh = document.createElement('div'); fh.id = 'dpn-feed'; root.appendChild(fh);
       var tw = document.createElement('div'); tw.className = 'dpn-tvwrap'; var th = document.createElement('div'); th.id = 'dpn-tv'; tw.appendChild(th); root.appendChild(tw);
-      renderTv(r, th); renderFeed(r, fh);
+      renderHeadlines(r, th); renderFeed(r, fh);
+      if (hl.state === 'idle' || hl.state === 'loading') {
+        var hkey = cur.key;
+        loadHeadlines().then(function () { if (cur.key === hkey) { var hb = document.getElementById('dpn-hl'); if (hb) { try { renderHlBody(r, hb); } catch (e) { } } } });
+      }
       if (feed.state === 'idle' || feed.state === 'loading') {
         var key = cur.key;
         loadFeed().then(function () { if (cur.key === key) { var h = document.getElementById('dpn-feed'); if (h) { try { renderFeed(r, h); } catch (e) { } } } });
