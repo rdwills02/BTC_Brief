@@ -1,0 +1,28 @@
+name: Headlines
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: headlines
+  cancel-in-progress: false
+jobs:
+  headlines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node radar_tools/news-fetch.js
+      - name: Commit
+        run: |
+          git config user.name radar-news-bot
+          git config user.email actions@github.com
+          git add data/news/headlines.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Headlines — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git pull --rebase origin main && git push || { git pull --rebase origin main && git push; }
+          fi
