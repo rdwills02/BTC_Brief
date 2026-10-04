@@ -472,6 +472,7 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
         <div class="inv-box"><div><div class="inv-label">Channel breaks below</div><div class="inv-value" id="dp-inv"></div><div class="inv-sub" id="dp-inv-pct"></div></div><div style="font-size:22px">!</div></div>
       </div>
       <div class="ds"><a class="tv-btn-lg" id="dp-tv" href="#" target="_blank">Open in TradingView</a><a class="tv-btn-lg" id="dp-cg" href="#" target="_blank" style="margin-top:8px;background:rgba(0,200,150,.1);color:var(--bull);border-color:rgba(0,200,150,.3)">View on CoinGecko</a></div>
+      <div class="ds" id="dp-news"></div>
     </div>
   </div>
 </div>
@@ -5597,6 +5598,196 @@ function setFilter(f) {
   });
   applyFilters();
 }
+/* item 30 — news section */
+(function () {
+  'use strict';
+  var FEED_URL = 'data/news/alerts.json', STALE_MS = 3 * 3600 * 1000, TV_WAIT_MS = 8000;
+  var TV_SRC = 'https://s3.tradingview.com/external-embedding/embed-widget-timeline.js';
+  var feed = { state: 'idle', data: null, promise: null };   // state: idle | loading | ok | failed (one fetch per page load; no storage)
+  var cur = { key: null, r: null, tvSym: null, tvTimer: null };
+  var NS = 'http://www.w3.org/2000/svg';
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  function ms(iso) { var t = iso ? Date.parse(iso) : NaN; return isFinite(t) ? t : null; }
+  function local(iso) { var t = ms(iso); return t == null ? '' : new Date(t).toLocaleString(); }
+  function rel(t) {
+    var d = Math.max(0, Date.now() - t), m = Math.round(d / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.floor(m / 60); if (h < 48) return h + ' h ' + (m % 60) + ' min ago';
+    return Math.floor(h / 24) + ' d ago';
+  }
+  function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
+  function safeUrl(u) { try { var x = new URL(u); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : null; } catch (e) { return null; } }
+  function tvSymbol(r) { return (r.tvExchange || 'KRAKEN') + ':' + (r.tvPair || r.symbol + 'USD'); }
+
+  function css() {
+    if (document.getElementById('dpn-style')) return;
+    var s = document.createElement('style'); s.id = 'dpn-style';
+    s.textContent = '#dp-news [hidden]{display:none!important}' +
+      '#dp-news .dpn-btn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}' +
+      '#dp-news .dpn-btn:focus-visible{outline:2px solid var(--neut);outline-offset:2px}' +
+      '#dp-news .dpn-btn.alert{border-color:var(--neut)}' +
+      '#dp-news .dpn-btn .caret{margin-left:auto;color:var(--muted)}' +
+      '#dp-news .dpn-note{font-size:11px;color:var(--text2);margin:6px 0}' +
+      '#dp-news .dpn-fresh{font-size:11px;color:var(--muted);margin:8px 0 0}' +
+      '#dp-news .dpn-fresh.warn{color:var(--neut)}' +
+      '#dp-news ul{list-style:none;margin:8px 0 0;padding:0}' +
+      '#dp-news li.dpn-item{border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:12px;line-height:1.45}' +
+      '#dp-news li.live{border-color:var(--neut)}' +
+      '#dp-news .dpn-h{font-weight:600;color:var(--text)}' +
+      '#dp-news .dpn-meta{font-size:11px;color:var(--text2);margin-top:3px}' +
+      '#dp-news .dpn-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;border:1px solid var(--neut);color:var(--neut);border-radius:3px;padding:0 4px;margin-right:6px}' +
+      '#dp-news .dpn-sub{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 2px}' +
+      '#dp-news .dpn-tvbox{margin-top:8px;min-height:40px}' +
+      '#dp-news .dpn-tvwrap{margin-top:14px;border-top:1px solid var(--border);padding-top:12px}' +
+      '#dp-news a{color:var(--accent)}';
+    document.head.appendChild(s);
+  }
+  function triangle() {
+    var svg = document.createElementNS(NS, 'svg'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
+    var p = document.createElementNS(NS, 'path'); p.setAttribute('d', 'M8 1.5 15 14H1z'); p.setAttribute('fill', '#f5c518'); p.setAttribute('stroke', '#7a5c00'); p.setAttribute('stroke-linejoin', 'round'); svg.appendChild(p);
+    var b = document.createElementNS(NS, 'path'); b.setAttribute('d', 'M8 6v4M8 11.6v.9'); b.setAttribute('stroke', '#3a2c00'); b.setAttribute('stroke-width', '1.6'); b.setAttribute('stroke-linecap', 'round'); svg.appendChild(b);
+    return svg;
+  }
+
+  // ---- feed ----
+  function validate(j) {
+    if (!j || typeof j !== 'object' || j.schemaVersion !== 1 || !Array.isArray(j.events)) return null;
+    var best = {};   // newest revision per eventId
+    j.events.forEach(function (e) {
+      if (!e || typeof e !== 'object' || !e.eventId || !e.headline || ms(e.highlightUntil) == null || ms(e.firstDetectedAt) == null) return;
+      var p = best[e.eventId]; if (!p || (+e.revision || 0) >= (+p.revision || 0)) best[e.eventId] = e;
+    });
+    return { generatedAt: j.generatedAt || null, lastSuccessfulScanAt: ms(j.lastSuccessfulScanAt) == null ? null : j.lastSuccessfulScanAt, coverage: j.coverage, coverageNote: j.coverageNote || null, events: Object.keys(best).map(function (k) { return best[k]; }) };
+  }
+  function loadFeed() {
+    if (feed.promise) return feed.promise;
+    feed.state = 'loading';
+    feed.promise = fetch(FEED_URL, { cache: 'no-store' }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function (j) {
+      var v = validate(j); if (!v) throw new Error('invalid feed'); feed.data = v; feed.state = 'ok';
+    }).catch(function () { feed.state = 'failed'; });
+    return feed.promise;
+  }
+  function eventsFor(r) {
+    if (!feed.data) return [];
+    return feed.data.events.filter(function (e) { return e.cgId ? e.cgId === r.cgId : (e.symbol && String(e.symbol).toUpperCase() === String(r.symbol).toUpperCase()); })
+      .sort(function (a, b) { return (ms(b.materialUpdateAt) || ms(b.firstDetectedAt)) - (ms(a.materialUpdateAt) || ms(a.firstDetectedAt)); });
+  }
+
+  // ---- rendering ----
+  function itemEl(e, live) {
+    var li = document.createElement('li'); li.className = 'dpn-item' + (live ? ' live' : '');
+    var dir = e.direction === 'up' ? ['▲', 'Direction: up'] : e.direction === 'down' ? ['▼', 'Direction: down'] : ['?', 'Direction: unclear'];
+    var su = safeUrl(e.sourceUrl), name = e.sourceName || hostOf(e.sourceUrl) || 'source';
+    var h = '<div class="dpn-h">' + (live ? '<span class="dpn-tag">NEW</span>' : '') + '<span role="img" aria-label="' + esc(dir[1]) + '">' + dir[0] + '</span> ' + esc(e.headline) + '</div>' +
+      '<div class="dpn-meta">' + esc(e.eventClass || '') + (e.evidence === 'credible-unconfirmed' ? ' · Credible, unconfirmed' : '') + '</div>' +
+      '<div class="dpn-meta">' + (ms(e.publishedAt) != null ? 'Published ' + esc(local(e.publishedAt)) + ' · ' : '') + 'First detected ' + esc(local(e.firstDetectedAt)) + (ms(e.materialUpdateAt) != null ? ' · Updated ' + esc(local(e.materialUpdateAt)) : '') + '</div>' +
+      (e.relevance ? '<div class="dpn-meta">' + esc(e.relevance) + '</div>' : '') +
+      '<div class="dpn-meta">' + (su ? 'Source: <a href="' + esc(su) + '" target="_blank" rel="noopener noreferrer">' + esc(name) + '</a>' : 'Source: ' + esc(name)) + '</div>';
+    li.innerHTML = h; return li;
+  }
+  function freshness(r, live) {
+    var out = [], d = feed.data, now = Date.now();
+    var scan = d ? ms(d.lastSuccessfulScanAt) : null, when = scan == null ? 'never' : local(d.lastSuccessfulScanAt);
+    var stale = feed.state !== 'ok' || scan == null || now - scan > STALE_MS || d.coverage === 'failed';
+    if (feed.state === 'loading' || feed.state === 'idle') { out.push({ t: 'Monitoring: checking feed…', warn: false }); return out; }
+    if (stale) out.push({ t: 'Monitoring unavailable or stale (last scan ' + when + ')', warn: true });
+    else if (d.coverage === 'partial') out.push({ t: 'Monitoring: partial coverage — ' + (d.coverageNote || 'some sources not scanned'), warn: true });
+    else out.push({ t: 'Monitoring: last scan ' + rel(scan), warn: false });
+    if (!stale && d.coverage === 'ok' && !live.length) out.push({ t: 'No new material news (last scan ' + when + ')', warn: false });
+    return out;
+  }
+  function renderFeed(r, host) {
+    host.textContent = '';
+    var evs = eventsFor(r), now = Date.now();
+    var live = evs.filter(function (e) { return ms(e.highlightUntil) > now; }), old = evs.filter(function (e) { return !(ms(e.highlightUntil) > now); });
+    var listId = 'dpn-list', btn = null, list = document.createElement('div'); list.id = listId; list.hidden = true;
+    if (live.length || old.length) {
+      btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn' + (live.length ? ' alert' : ''); btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', listId);
+      if (live.length) { btn.appendChild(triangle()); var lb = document.createElement('span'); lb.textContent = 'New material news'; btn.appendChild(lb); }
+      else { var lb2 = document.createElement('span'); lb2.textContent = 'Earlier material news (' + old.length + ')'; btn.appendChild(lb2); }
+      var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
+      var note = document.createElement('div'); note.className = 'dpn-note'; note.hidden = true; note.textContent = 'Review new information — not a direction call.';
+      if (live.length) {
+        var ul = document.createElement('ul'); live.forEach(function (e) { ul.appendChild(itemEl(e, true)); }); list.appendChild(ul);
+      }
+      if (old.length) {
+        if (live.length) { var sub = document.createElement('div'); sub.className = 'dpn-sub'; sub.textContent = 'Earlier'; list.appendChild(sub); }
+        var ul2 = document.createElement('ul'); old.forEach(function (e) { ul2.appendChild(itemEl(e, false)); }); list.appendChild(ul2);
+      }
+      btn.addEventListener('click', function () {
+        var open = btn.getAttribute('aria-expanded') !== 'true';
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false'); list.hidden = !open; if (live.length) note.hidden = !open;
+        caret.textContent = open ? '▴' : '▾';
+      });
+      host.appendChild(btn); host.appendChild(note); host.appendChild(list);
+    }
+    freshness(r, live).forEach(function (f) { var p = document.createElement('div'); p.className = 'dpn-fresh' + (f.warn ? ' warn' : ''); p.textContent = f.t; host.appendChild(p); });
+  }
+  function renderTv(r, host) {
+    host.textContent = '';
+    if (cur.tvTimer) { clearTimeout(cur.tvTimer); cur.tvTimer = null; }
+    var sym = tvSymbol(r), loaded = false;
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dpn-tvbox');
+    var lb = document.createElement('span'); lb.textContent = 'TradingView headlines'; btn.appendChild(lb);
+    var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
+    var box = document.createElement('div'); box.id = 'dpn-tvbox'; box.className = 'dpn-tvbox'; box.hidden = true;
+    btn.addEventListener('click', function () {
+      var open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false'); box.hidden = !open; caret.textContent = open ? '▴' : '▾';
+      if (open && !loaded) { loaded = true; cur.tvSym = sym; injectTv(box, sym); }
+    });
+    host.appendChild(btn); host.appendChild(box);
+  }
+  function injectTv(box, sym) {
+    box.textContent = '';
+    var wrap = document.createElement('div'); wrap.className = 'tradingview-widget-container';
+    var inner = document.createElement('div'); inner.className = 'tradingview-widget-container__widget'; wrap.appendChild(inner);
+    var s = document.createElement('script'); s.type = 'text/javascript'; s.src = TV_SRC; s.async = true;
+    s.text = JSON.stringify({ feedMode: 'symbol', symbol: sym, colorTheme: 'dark', isTransparent: true, displayMode: 'regular', width: '100%', height: 400, locale: 'en' });
+    wrap.appendChild(s); box.appendChild(wrap);
+    if (cur.tvTimer) clearTimeout(cur.tvTimer);
+    cur.tvTimer = setTimeout(function () {
+      cur.tvTimer = null;
+      if (cur.tvSym !== sym || !box.isConnected) return;
+      if (!box.querySelector('iframe')) { box.textContent = ''; var p = document.createElement('div'); p.className = 'dpn-note'; p.textContent = 'No TradingView headlines available for ' + sym; box.appendChild(p); }
+    }, TV_WAIT_MS);
+  }
+
+  function open(r) {
+    try {
+      var root = document.getElementById('dp-news'); if (!root || !r) return;
+      css();
+      cur.key = (r.boardRow ? r.cgId : r.symbol) + '|' + (r.cgId || ''); cur.r = r; cur.tvSym = null;
+      root.textContent = '';
+      var title = document.createElement('div'); title.className = 'ds-title'; title.textContent = 'Material news'; root.appendChild(title);
+      var fh = document.createElement('div'); fh.id = 'dpn-feed'; root.appendChild(fh);
+      var tw = document.createElement('div'); tw.className = 'dpn-tvwrap'; var th = document.createElement('div'); th.id = 'dpn-tv'; tw.appendChild(th); root.appendChild(tw);
+      renderTv(r, th); renderFeed(r, fh);
+      if (feed.state === 'idle' || feed.state === 'loading') {
+        var key = cur.key;
+        loadFeed().then(function () { if (cur.key === key) { var h = document.getElementById('dpn-feed'); if (h) { try { renderFeed(r, h); } catch (e) { } } } });
+      }
+    } catch (e) { try { console.warn('news section failed:', e && e.message); } catch (e2) { } }
+  }
+
+  // ---- hook the two panel openers; the original runs first and is never altered ----
+  try {
+    var od = openDetail, onf = openDetailNoFit;
+    openDetail = async function (r) {
+      var out = await od.apply(this, arguments);
+      if (r && r.boardRow && r.noResearchFit) return out;   // openDetailNoFit (wrapped below) renders it
+      try { if (typeof selectedKey === 'undefined' || selectedKey === null || selectedKey === (typeof rowKey === 'function' ? rowKey(r) : selectedKey)) open(r); } catch (e) { }
+      return out;
+    };
+    openDetailNoFit = function (r) { var out = onf.apply(this, arguments); try { open(r); } catch (e) { } return out; };
+  } catch (e) { try { console.warn('news section not attached:', e && e.message); } catch (e2) { } }
+  window.__newsSection = { open: open, tvSymbol: tvSymbol, _feed: feed };
+})();
+/* end item 30 — news section */
 </script>
 </body>
 </html>
