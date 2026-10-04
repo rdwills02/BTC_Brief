@@ -5618,7 +5618,7 @@ function setFilter(f) {
   }
   function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
   function safeUrl(u) { try { var x = new URL(u); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : null; } catch (e) { return null; } }
-  function tvSymbol(r) { return (r.tvExchange || 'KRAKEN') + ':' + (r.tvPair || r.symbol + 'USD'); }
+  function tvSymbol(r) { return (r.tvExchange || 'KRAKEN') + ':' + String(r.tvPair || r.symbol + 'USD').replace(/-/g, ''); }   // TradingView's canonical symbol has no hyphen (Coinbase BNB-USD -> BNBUSD); the dp-tv chart link is separate and untouched
 
   function css() {
     if (document.getElementById('dpn-style')) return;
@@ -5639,6 +5639,7 @@ function setFilter(f) {
       '#dp-news .dpn-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;border:1px solid var(--neut);color:var(--neut);border-radius:3px;padding:0 4px;margin-right:6px}' +
       '#dp-news .dpn-sub{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 2px}' +
       '#dp-news .dpn-tvbox{margin-top:8px;min-height:40px}' +
+      '#dp-news .dpn-tvhead{font-size:11px;margin:0 0 6px}' +
       '#dp-news .dpn-tvwrap{margin-top:14px;border-top:1px solid var(--border);padding-top:12px}' +
       '#dp-news a{color:var(--accent)}';
     document.head.appendChild(s);
@@ -5732,7 +5733,7 @@ function setFilter(f) {
     if (cur.tvTimer) { clearTimeout(cur.tvTimer); cur.tvTimer = null; }
     var sym = tvSymbol(r), loaded = false;
     var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dpn-tvbox');
-    var lb = document.createElement('span'); lb.textContent = 'TradingView headlines'; btn.appendChild(lb);
+    var lb = document.createElement('span'); lb.textContent = 'Latest Coin News'; btn.appendChild(lb);
     var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
     var box = document.createElement('div'); box.id = 'dpn-tvbox'; box.className = 'dpn-tvbox'; box.hidden = true;
     btn.addEventListener('click', function () {
@@ -5740,7 +5741,11 @@ function setFilter(f) {
       btn.setAttribute('aria-expanded', open ? 'true' : 'false'); box.hidden = !open; caret.textContent = open ? '▴' : '▾';
       if (open && !loaded) { loaded = true; cur.tvSym = sym; injectTv(box, sym); }
     });
-    host.appendChild(btn); host.appendChild(box);
+    var head = document.createElement('div'); head.className = 'dpn-tvhead';
+    var ci = sym.indexOf(':'), lk = document.createElement('a'); lk.className = 'dpn-flow';
+    lk.href = 'https://www.tradingview.com/symbols/' + encodeURIComponent(sym.slice(ci + 1)) + '/news/?exchange=' + encodeURIComponent(sym.slice(0, ci));
+    lk.target = '_blank'; lk.rel = 'noopener noreferrer'; lk.textContent = 'Full news flow on TradingView \u2197'; head.appendChild(lk);
+    host.appendChild(head); host.appendChild(btn); host.appendChild(box);
   }
   function injectTv(box, sym) {
     box.textContent = '';
@@ -5753,7 +5758,7 @@ function setFilter(f) {
     cur.tvTimer = setTimeout(function () {
       cur.tvTimer = null;
       if (cur.tvSym !== sym || !box.isConnected) return;
-      if (!box.querySelector('iframe')) { box.textContent = ''; var p = document.createElement('div'); p.className = 'dpn-note'; p.textContent = 'No TradingView headlines available for ' + sym; box.appendChild(p); }
+      if (!box.querySelector('iframe')) { box.textContent = ''; var p = document.createElement('div'); p.className = 'dpn-note'; p.textContent = 'No TradingView briefs for ' + sym + " \u2014 the widget shows TradingView's curated briefs only; see the full news flow link above."; box.appendChild(p); }
     }, TV_WAIT_MS);
   }
 
