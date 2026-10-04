@@ -1,0 +1,11 @@
+NOTE: single uninterrupted run (no checkpoint hook). Logic = regression-runner.js sha256 b0944c382058 + orders-core.js sha256 d5b07fec9dba (v1.4.3 final modules). Config = 16-gate ACT-v1, data/forward/config.json protocolVersion forward-experiment-v1.4.3. Fixtures + manifest from repo commit 91d12ec8.
+Manifest verified: 129 fixture files + stable-detector blob, 0 drift.
+Pinned commit: d5f20b4942fe95362d6fea9f895269f5ffe87ab7 | pinned 2026-09-22T17:37:38.119Z
+
+
+=== STEP 14 CALIBRATION (Protocol §8, v1.4) - 10000 runs per null, 10000 bootstrap replications, b = 20; gate: a false-pass rate above 0.15 blocks freeze; shock parameters {"sigmaCommon":0.5,"sigmaIdio":1} are PROVISIONAL; confirmatoryPolicy: C1 ===
+feasibility-proxy: daily-no-intraday (fill counts are the daily-proxy replay: 34 fills in 150 capture days; funnel {"eligibleEpisodeDays":5072,"predicateHolds":342,"skippedExposure":8,"rejectedLevels":0,"occupancySkipped":294,"issued":40,"resting":40,"penetratedWithin3":34,"filled":34,"expired":6,"censored":0})
+null (i)  mean budget-R = 0 per trade, common-shock clustering, fill counts from the feasibility replay: condition 1 false-pass rate 0.1178 +/- 0.0032 (Monte Carlo SE; nominal 0.1000) below the gate
+null (i), adverse-charge path  same generative model as condition 1, independently drawn: condition 6 false-pass rate 0.1065 +/- 0.0031 (Monte Carlo SE; nominal 0.1000) below the gate
+null (ii) equal C1/N0 daily-return paths, independent noise: condition 3 false-pass rate 0.1104 +/- 0.0031 (Monte Carlo SE; nominal 0.1000) below the gate
+wrote /sessions/rcw-018wpfzlgyti7gdiskauzwah/w143/cal/data/forward/calibration.json
