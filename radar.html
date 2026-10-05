@@ -306,19 +306,39 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
   </div>
 </header>
 
-<!-- Indicator Upgrades Group 5, item 3 (2026-09-21), CONFIRMED: open by default instead of
+<div class="state-strip" id="state-strip" role="group" aria-label="Filter the table by research state" hidden></div>
+
+<!-- item 32: collapsed by default again (Ryan's 2026-10-05 ruling).
+     Indicator Upgrades Group 5, item 3 (2026-09-21), CONFIRMED: open by default instead of
      display:none until the first #diag-btn click - Ryan's observation, the panel's contents are
      wanted on first look, not hidden behind an extra click every session. The #diag-btn click
      handler below is unchanged (classList.toggle('visible')), so this is purely the starting
      state; the button still opens/closes it same as before. See loadCachedOrResting's own
      comment (Backlog #13's cached-load branch) for the paired fix this needed. -->
-<div class="diag-panel visible" id="diag-panel">
+<div class="diag-panel" id="diag-panel">
   <div class="diag-title" id="diag-title">Scan Details — live updating</div>
   <div class="diag-grid" id="diag-grid"></div>
   <div class="diag-funnel" id="diag-funnel"></div>
   <div id="verdict-note" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+  <div id="cached-bar" style="display:none;font-size:11px;color:var(--muted);margin-top:8px"><span id="cached-bar-text"></span></div>
 </div>
 
+<div class="flt-wrap" id="flt-wrap">
+  <div class="flt-head" id="flt-head">
+    <button type="button" class="flt-toggle" id="flt-toggle" aria-expanded="false" aria-controls="flt-body"><span class="flt-name">Filters</span><span class="flt-summary" id="flt-summary"></span><span class="flt-caret" aria-hidden="true">&#9662;</span></button>
+    <span class="scan-count" id="scan-count"></span>
+    <span class="pin-chip" id="pin-chip" style="display:none"></span>
+    <button type="button" class="flt-gear" id="flt-gear" aria-haspopup="true" aria-expanded="false" aria-controls="flt-pop" aria-label="Display options" title="Display options">&#9881;</button>
+    <div class="flt-pop" id="flt-pop" hidden>
+  <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
+    <input type="checkbox" id="show-all"> Show all
+  </label>
+  <label id="glow-cursor-label" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Replaces the mouse pointer with a white arrow (and hand) that has a soft glow, easier to follow on the dark chart. Display only; off by default. Safari keeps its native pointer.">
+    <input type="checkbox" id="glow-cursor"> Glow cursor
+  </label>
+    </div>
+  </div>
+  <div class="flt-body" id="flt-body" hidden>
 <div class="filters">
   <span class="filter-label">Channel Status</span>
   <div class="bucket-filter">
@@ -338,8 +358,6 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
     <option value="containment">Sort: Containment</option>
     <option value="supportRailAgeDays">Sort: Rail Age (freshest first)</option>
   </select>
-  <span class="pin-chip" id="pin-chip" style="display:none"></span>
-  <span class="scan-count" id="scan-count"></span>
 </div>
 
 <div class="thresh-bar">
@@ -362,23 +380,14 @@ tr.pin-row td:first-child{box-shadow:inset 2px 0 0 #f5c542}
   <div class="tgroup"><span class="tlabel" title="How old the support rail's most recent touch is. Fresh <=14d, Aging 15-28d, Stale >28d.">Rail age</span>
     <select class="tsel" id="t-railage"><option value="any" selected>Any</option><option value="fresh">Fresh only</option><option value="fresh-aging">Fresh + Aging</option></select>
   </div>
-  <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer">
-    <input type="checkbox" id="show-all"> Show all
-  </label>
   <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Shows the previous scanner's verdicts (the pre-audit rules) instead of the research states. Same as ?legacy=1.">
     <input type="checkbox" id="research-mode"> Legacy verdicts
   </label>
  <label id="hide-struct-label" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Hides rows whose only fit is structural (a channel exists but the policy found no tradable one). Off by default.">
     <input type="checkbox" id="hide-struct"> Hide structure-only
   </label>
-  <label id="glow-cursor-label" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Replaces the mouse pointer with a white arrow (and hand) that has a soft glow, easier to follow on the dark chart. Display only; off by default. Safari keeps its native pointer.">
-    <input type="checkbox" id="glow-cursor"> Glow cursor
-  </label>
 </div>
-
-<div class="cached-bar" id="cached-bar" style="display:none">
-  <span class="filter-label" style="color:var(--neut)">Cached</span>
-  <span id="cached-bar-text"></span>
+  </div>
 </div>
 
 <div class="sincelast-bar" id="sincelast-bar" style="display:none">
@@ -5638,6 +5647,10 @@ function setFilter(f) {
       '#dp-news .dpn-meta{font-size:11px;color:var(--text2);margin-top:3px}' +
       '#dp-news .dpn-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;border:1px solid var(--neut);color:var(--neut);border-radius:3px;padding:0 4px;margin-right:6px}' +
       '#dp-news .dpn-sub{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 2px}' +
+      '#dp-news .dpn-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}' +
+      '#dp-news .dpn-head .ds-title{margin-bottom:0}' +
+      '#dp-news .dpn-more{display:inline-flex;align-items:center;gap:6px;background:none;color:var(--text2);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;font:inherit;font-size:11px;cursor:pointer}' +
+      '#dp-news .dpn-more:focus-visible{outline:2px solid var(--neut);outline-offset:2px}' +
       '#dp-news .dpn-tvbox{margin-top:8px;min-height:40px}' +
       '#dp-news .dpn-tvhead{font-size:11px;margin:0 0 6px}' +
       '#dp-news .dpn-tvwrap{margin-top:14px;border-top:1px solid var(--border);padding-top:12px}' +
@@ -5771,23 +5784,17 @@ function setFilter(f) {
     });
     host.appendChild(ul);
   }
-  function renderHeadlines(r, host) {
+  function renderHeadlines(r, host) {   // item 32 (7): lives inside the collapsible #dpn-nested under the Key News header; no toggle of its own
     host.textContent = '';
     var sym = tvSymbol(r);
-    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dpn-hlbox');
-    var lb = document.createElement('span'); lb.textContent = 'Latest Coin News'; btn.appendChild(lb);
-    var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
-    var box = document.createElement('div'); box.id = 'dpn-hlbox'; box.className = 'dpn-tvbox'; box.hidden = true;
-    var body = document.createElement('div'); body.id = 'dpn-hl'; box.appendChild(body);
-    btn.addEventListener('click', function () {
-      var open = btn.getAttribute('aria-expanded') !== 'true';
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false'); box.hidden = !open; caret.textContent = open ? '▴' : '▾';
-    });
+    var sub = document.createElement('div'); sub.className = 'dpn-sub'; sub.textContent = 'Latest Coin News'; host.appendChild(sub);
     var head = document.createElement('div'); head.className = 'dpn-tvhead';
     var ci = sym.indexOf(':'), lk = document.createElement('a'); lk.className = 'dpn-flow';
     lk.href = 'https://www.tradingview.com/symbols/' + encodeURIComponent(sym.slice(ci + 1)) + '/news/?exchange=' + encodeURIComponent(sym.slice(0, ci));
     lk.target = '_blank'; lk.rel = 'noopener noreferrer'; lk.textContent = 'Full news flow on TradingView ↗'; head.appendChild(lk);
-    host.appendChild(head); host.appendChild(btn); host.appendChild(box);
+    var box = document.createElement('div'); box.id = 'dpn-hlbox'; box.className = 'dpn-tvbox';
+    var body = document.createElement('div'); body.id = 'dpn-hl'; box.appendChild(body);
+    host.appendChild(head); host.appendChild(box);
     renderHlBody(r, body);
   }
 
@@ -5797,9 +5804,15 @@ function setFilter(f) {
       css();
       cur.key = (r.boardRow ? r.cgId : r.symbol) + '|' + (r.cgId || ''); cur.r = r;
       root.textContent = '';
-      var title = document.createElement('div'); title.className = 'ds-title'; title.textContent = 'Key News'; root.appendChild(title);
+      var hd = document.createElement('div'); hd.className = 'dpn-head';
+      var title = document.createElement('div'); title.className = 'ds-title'; title.textContent = 'Key News'; hd.appendChild(title);
+      var mb = document.createElement('button'); mb.type = 'button'; mb.id = 'dpn-more'; mb.className = 'dpn-more'; mb.setAttribute('aria-expanded', 'false'); mb.setAttribute('aria-controls', 'dpn-nested');
+      var ml = document.createElement('span'); ml.textContent = 'Latest Coin News'; mb.appendChild(ml);
+      var mc = document.createElement('span'); mc.className = 'caret'; mc.setAttribute('aria-hidden', 'true'); mc.textContent = '▾'; mb.appendChild(mc);
+      hd.appendChild(mb); root.appendChild(hd);
       var fh = document.createElement('div'); fh.id = 'dpn-feed'; root.appendChild(fh);
-      var tw = document.createElement('div'); tw.className = 'dpn-tvwrap'; var th = document.createElement('div'); th.id = 'dpn-tv'; tw.appendChild(th); root.appendChild(tw);
+      var tw = document.createElement('div'); tw.id = 'dpn-nested'; tw.className = 'dpn-tvwrap'; tw.hidden = true; var th = document.createElement('div'); th.id = 'dpn-tv'; tw.appendChild(th); root.appendChild(tw);
+      mb.addEventListener('click', function () { var op = mb.getAttribute('aria-expanded') !== 'true'; mb.setAttribute('aria-expanded', op ? 'true' : 'false'); tw.hidden = !op; mc.textContent = op ? '▴' : '▾'; });
       renderHeadlines(r, th); renderFeed(r, fh);
       if (hl.state === 'idle' || hl.state === 'loading') {
         var hkey = cur.key;
@@ -5826,6 +5839,287 @@ function setFilter(f) {
   window.__newsSection = { open: open, tvSymbol: tvSymbol, _feed: feed };
 })();
 /* end item 30 — news section */
+
+/* item 32 — header declutter + coin search */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // ---- styles (injected; this block owns its own CSS) ----
+  (function () {
+    if ($('item32-style')) return;
+    var s = document.createElement('style'); s.id = 'item32-style';
+    s.textContent =
+      '.state-strip,.flt-wrap{background:var(--surface);border-bottom:1px solid var(--border)}' +
+      '.state-strip[hidden],.flt-body[hidden],.flt-pop[hidden],#cs-pop[hidden]{display:none!important}' +
+      '.state-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 20px;font-size:11px}' +
+      '.ss-btn .vbadge{padding:1px 6px}' +
+      '.ss-btn{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);color:var(--text2);border:1px solid var(--border2);border-radius:5px;padding:1px 8px;line-height:1.3;font:inherit;font-size:11px;font-weight:600;cursor:pointer}' +
+      '.ss-btn:hover{color:var(--text)}' +
+      '.ss-btn[aria-pressed="true"]{border-color:var(--accent);color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}' +
+      '.ss-btn:focus-visible,.flt-toggle:focus-visible,.flt-gear:focus-visible,.cs-clear:focus-visible{outline:2px solid var(--accent);outline-offset:2px}' +
+      '.ss-n{font-variant-numeric:tabular-nums;color:var(--text)}' +
+      '.ss-shown{color:var(--muted);font-weight:500}' +
+      '.ss-sep{color:var(--muted)}' +
+      '.ss-btc{margin-left:auto;display:inline-flex;align-items:center}' +
+      '.flt-head{position:relative;display:flex;align-items:center;gap:10px;padding:6px 20px}' +
+      '.flt-toggle{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:10px;background:none;border:none;color:var(--text2);font:inherit;font-size:11px;text-align:left;cursor:pointer;padding:3px 0}' +
+      '.flt-name{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);flex:none}' +
+      '.flt-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}' +
+      '.flt-caret{margin-left:auto;color:var(--muted);flex:none}' +
+      '.flt-gear{flex:none;background:var(--surface2);color:var(--text2);border:1px solid var(--border2);border-radius:5px;padding:2px 8px;font-size:13px;line-height:1.2;cursor:pointer}' +
+      '.flt-gear:hover,.flt-gear[aria-expanded="true"]{color:var(--text);border-color:var(--accent)}' +
+      '.flt-pop{position:absolute;right:20px;top:100%;z-index:300;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 6px 18px rgba(0,0,0,.45)}' +
+      '.flt-body .filters,.flt-body .thresh-bar{border-bottom:none}' +
+      '#th-coin{z-index:6}' +
+      '#th-coin .cs-wrap{display:flex;align-items:center;gap:8px;width:100%}' +
+      '#th-coin .cs-lab{flex:none}' +
+      '#th-coin .cs-field{position:relative;flex:1 1 0;min-width:0;width:0;display:flex;align-items:center}' +
+      '#th-coin .cs-in{width:100%;min-width:0;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:2px 20px 2px 6px;color:var(--text);font:inherit;font-size:10px;letter-spacing:.06em;text-transform:uppercase;outline:none;cursor:text}' +
+      '#th-coin .cs-in::placeholder{color:var(--muted);opacity:1}' +
+      '#th-coin .cs-in:focus{border-color:var(--accent)}' +
+      '#th-coin .cs-clear{position:absolute;right:2px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:13px;line-height:1;padding:0 4px;cursor:pointer}' +
+      '#th-coin .cs-clear[hidden]{display:none!important}' +
+      '#cs-pop{position:absolute;left:0;top:100%;min-width:250px;z-index:310;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.45);text-transform:none;letter-spacing:0;font-weight:500;font-size:12px;white-space:nowrap;margin-top:2px}' +
+      '#cs-pop ul{list-style:none;margin:0;padding:3px}' +
+      '#cs-pop li{padding:5px 9px;border-radius:4px;color:var(--text2);cursor:pointer}' +
+      '#cs-pop li[aria-selected="true"],#cs-pop li:hover{background:var(--surface3);color:var(--text)}' +
+      '#cs-pop .cs-msg{padding:7px 10px;color:var(--text2)}' +
+      '.radar-table tbody tr.cs-hit>td{background:rgba(110,165,255,.18)}';
+    document.head.appendChild(s);
+  })();
+
+  // ---- 1. header: the cached-state subtitle is dropped (the dot keeps the state; the dated capture line on the right stays) ----
+  try {
+    var oSS = setStatus;
+    setStatus = function (state, text) {
+      var dropped = /^Showing 4-Day grid/.test(text || '');
+      oSS.call(this, state, dropped ? '' : text);
+      var d = $('status-dot'); if (d) { if (dropped) d.title = text; else d.removeAttribute('title'); }
+    };
+  } catch (e) { try { console.warn('item 32 header not attached:', e && e.message); } catch (e2) { } }
+
+  // ---- 2. Scan Details: collapsed by default; heading and funnel tiles from the 1D capture; one 4-day grid line; no coloured funnel line ----
+  (function () {
+    var btn = $('diag-btn'), panel = $('diag-panel'); if (!btn || !panel) return;
+    btn.setAttribute('aria-controls', 'diag-panel');
+    var sync = function () { btn.setAttribute('aria-expanded', panel.classList.contains('visible') ? 'true' : 'false'); };
+    sync(); try { new MutationObserver(sync).observe(panel, { attributes: true, attributeFilter: ['class'] }); } catch (e) { }
+  })();
+  function dailyDiag() {
+    var title = $('diag-title'), grid = $('diag-grid'), fun = $('diag-funnel'); if (!grid || !fun) return;
+    // the coloured funnel line duplicates the tiles: drop every top-level node except the <div> lines (exclusions, breadth, BTC regime)
+    Array.prototype.slice.call(fun.childNodes).forEach(function (n) { if (!(n.nodeType === 1 && n.tagName === 'DIV')) fun.removeChild(n); });
+    var dc = (typeof LAST_DAILY_CAP !== 'undefined') ? LAST_DAILY_CAP : null;
+    var line = $('diag-gridpass');
+    if (typeof captureMode !== 'undefined' && captureMode && dc && dc.funnel && typeof dc.funnel === 'object') {
+      if (title) title.textContent = 'Scan details — 1D capture ' + (dc.date || '') + (dc.captureTime ? ' ' + String(dc.captureTime).slice(11, 16) + ' UTC' : '');
+      var tiles = Array.prototype.slice.call(grid.querySelectorAll('.diag-item')), cand = null;
+      tiles.forEach(function (t) { var l = t.querySelector('.diag-label'); if (!cand && l && l.textContent === 'Candidates') cand = t; });
+      if (cand) {
+        var pre = []; for (var n = grid.firstElementChild; n && n !== cand; n = n.nextElementSibling) pre.push(n);
+        pre.forEach(function (n) { grid.removeChild(n); });
+        var f = dc.funnel, items = [{ label: 'Universe', value: dc.universe_count != null ? dc.universe_count : (typeof cachedUniverseCount !== 'undefined' ? cachedUniverseCount : null), c: 'var(--text)' }];
+        [['ohlcOk', 'OHLC loaded', 'var(--bull)'], ['railPairs', 'Rail pairs', 'var(--text2)'], ['posSlope', 'Positive slope', 'var(--neut)'], ['touches', '3+ touches', 'var(--neut)'], ['containment', 'Contain 55%+', 'var(--neut)']]
+          .forEach(function (k) { if (typeof f[k[0]] === 'number') items.push({ label: k[1], value: f[k[0]], c: k[2] }); });
+        items.forEach(function (i) {
+          if (i.value == null) return;
+          var d = document.createElement('div'); d.className = 'diag-item'; d.innerHTML = '<div class="diag-label">' + esc(i.label) + '</div><div class="diag-value" style="color:' + i.c + '">' + esc(i.value) + '</div>';
+          grid.insertBefore(d, cand);
+        });
+      }
+    }
+    var gd = (typeof cachedFunnelDate !== 'undefined' && cachedFunnelDate) ? cachedFunnelDate : null;
+    if (typeof captureMode !== 'undefined' && captureMode && gd && typeof gridBarSpanLabel === 'function') {
+      var n4 = (typeof LEGACY_ROWS !== 'undefined' ? LEGACY_ROWS : []).filter(function (r) { return r && r.source !== 'daily'; }).length;
+      if (!line) { line = document.createElement('div'); line.id = 'diag-gridpass'; line.style.cssText = 'font-size:11px;color:var(--text2);margin:0 0 8px'; fun.parentNode.insertBefore(line, fun); }
+      line.textContent = '4-day grid pass: ' + gridBarSpanLabel(gd) + ', ' + n4 + ' candidates';
+    } else if (line && line.parentNode) line.parentNode.removeChild(line);
+  }
+  try {
+    var oRD = renderDiag;
+    renderDiag = function () { var out = oRD.apply(this, arguments); try { dailyDiag(); } catch (e) { try { console.warn('item 32 scan details:', e && e.message); } catch (e2) { } } return out; };
+  } catch (e) { try { console.warn('item 32 scan details not attached:', e && e.message); } catch (e2) { } }
+
+  // ---- 3. state strip: counts and the state filter ride the existing pipeline (passesBoard / applyFilters) ----
+  var STATES = [['ACT', 'ACT', 'va-act'], ['NEAR', 'NEAR', 'va-near'], ['DEVELOPING', 'DEVELOPING', 'va-dev'], ['WAIT', 'WAIT', 'va-wait'], ['STRUCT', 'Structure-only', ''], ['NOFIT', 'No fit', '']];
+  var chip = null, memo = null, tally = null, strip = null, btns = {}, btcEl = null;
+  function stateKey(r) {
+    if (!memo) memo = new Map();
+    var k = memo.get(r);
+    if (k === undefined) { var rs = researchStateFor(r); k = rs.structural ? 'STRUCT' : rs.state; memo.set(r, k); }
+    return k;
+  }
+  function stripBuild() {
+    strip = $('state-strip'); if (!strip || strip.firstChild) return;
+    STATES.forEach(function (d, i) {
+      if (i) { var sp = document.createElement('span'); sp.className = 'ss-sep'; sp.setAttribute('aria-hidden', 'true'); sp.textContent = '·'; strip.appendChild(sp); }
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'ss-btn'; b.setAttribute('aria-pressed', 'false'); b.setAttribute('data-state', d[0]);
+      var l = document.createElement('span'); l.className = 'ss-lab' + (d[2] ? ' vbadge ' + d[2] : ''); l.textContent = d[1]; b.appendChild(l); b.appendChild(document.createTextNode(' '));
+      var n = document.createElement('span'); n.className = 'ss-n'; n.textContent = '0'; b.appendChild(n);
+      var sh = document.createElement('span'); sh.className = 'ss-shown'; sh.hidden = true; b.appendChild(document.createTextNode(' ')); b.appendChild(sh);
+      b.addEventListener('click', function () { chip = (chip === d[0]) ? null : d[0]; applyFilters(); });
+      strip.appendChild(b); btns[d[0]] = b;
+    });
+    btcEl = document.createElement('span'); btcEl.className = 'ss-btc'; btcEl.id = 'ss-btc'; strip.appendChild(btcEl);
+  }
+  function stripRender(t, tot) {
+    stripBuild(); if (!strip) return;
+    if (!RESEARCH_MODE_UI || !allResults.length) { strip.hidden = true; chip = null; return; }
+    strip.hidden = false;
+    STATES.forEach(function (d) {
+      var b = btns[d[0]]; if (!b) return;
+      var all = tot[d[0]] || 0, shown = t[d[0]] || 0, sh = b.querySelector('.ss-shown');
+      b.querySelector('.ss-n').textContent = String(all); b.setAttribute('data-n', String(all)); b.setAttribute('data-shown', String(shown));
+      sh.hidden = shown >= all; sh.textContent = shown >= all ? '' : '(' + shown + ' shown)';   // only when the current filters hide some rows of this state
+      b.setAttribute('aria-pressed', chip === d[0] ? 'true' : 'false');
+    });
+    try {
+      var ok = !!(BTC_REGIME && BTC_REGIME.aboveEma50 && BTC_REGIME.ema50Slope >= 0);
+      btcEl.innerHTML = '<span class="vbadge ' + (ok ? 'va-act' : 'va-watch') + '" style="font-size:10px">' + esc(btcRegimeLabel(BTC_REGIME)) + '</span>';
+    } catch (e) { btcEl.textContent = ''; }
+  }
+  try {
+    var oPB = passesBoard;
+    passesBoard = function (r, t) {
+      if (!oPB(r, t)) return false;
+      var k = null; try { k = stateKey(r); } catch (e) { k = null; }
+      if (tally && k) tally[k] = (tally[k] || 0) + 1;   // counted before the chip test: every count is what that chip would show with the current filters
+      return !(chip && k !== chip);
+    };
+    var oAF = applyFilters;
+    applyFilters = function () {
+      memo = new Map(); tally = { ACT: 0, NEAR: 0, DEVELOPING: 0, WAIT: 0, STRUCT: 0, NOFIT: 0, BUG: 0 }; var t = tally;
+      try { return oAF.apply(this, arguments); }
+      finally {
+        var tot = { ACT: 0, NEAR: 0, DEVELOPING: 0, WAIT: 0, STRUCT: 0, NOFIT: 0, BUG: 0 };   // whole loaded universe: the same basis as the Scan Details tiles
+        try { allResults.forEach(function (r) { var k = null; try { k = stateKey(r); } catch (e) { k = null; } if (k) tot[k] = (tot[k] || 0) + 1; }); } catch (e) { }
+        tally = null; memo = null; try { stripRender(t, tot); fltSummary(); } catch (e) { try { console.warn('item 32 strip:', e && e.message); } catch (e2) { } } }
+    };
+  } catch (e) { try { console.warn('item 32 state strip not attached:', e && e.message); } catch (e2) { } }
+
+  // ---- 4. one collapsible Filters row (collapsed header shows the active settings as text) ----
+  function selText(id) { var e = $(id); return e && e.options && e.options[e.selectedIndex] ? e.options[e.selectedIndex].text : ''; }
+  function lowOpt(t) { return t === 'Any' ? 'any' : t === 'Off' ? 'off' : t; }
+  function fltSummary() {
+    var el = $('flt-summary'); if (!el) return;
+    var fl = document.querySelector('.filters .filter-label'), parts = [];
+    var bandBtn = $('fb-' + activeFilter);
+    parts.push((fl ? fl.textContent : 'Score band') + ': ' + (activeFilter === 'all' ? 'All' : (bandBtn ? bandBtn.textContent : activeFilter)));
+    if ($('cat-filter')) { var cs = []; for (var k in CAT_FILTER) if (CAT_FILTER[k]) cs.push(k); parts.push('Category: ' + (cs.length ? cs.join(', ') : 'all')); }
+    parts.push('Min touches ' + lowOpt(selText('t-touches')));
+    parts.push('Contain ' + lowOpt(selText('t-contain')));
+    var sl = $('t-slope') ? $('t-slope').value : 'any'; parts.push('Slope ' + (sl === 'positive' ? 'positive' : sl === 'flat' ? 'flat or positive' : 'any'));
+    parts.push('Min score ' + lowOpt(selText('t-score')));
+    var dg = $('daily-thresh-group'); if (dg && dg.style.display !== 'none') parts.push('Daily-only min ' + lowOpt(selText('t-score-daily')));
+    var ra = $('t-railage') ? $('t-railage').value : 'any'; parts.push('Rail age ' + (ra === 'fresh' ? 'fresh' : ra === 'fresh-aging' ? 'fresh + aging' : 'any'));
+    var hs = $('hide-struct'); if (hs && hs.checked) parts.push('Hide structure-only');
+    var sa = $('show-all'); if (sa && sa.checked) parts.push('Show all');
+    parts.push(selText('sort-sel').replace(/\s*\(.*$/, ''));
+    el.textContent = parts.join(' · ');
+  }
+  (function () {
+    var wrap = $('flt-wrap'), tg = $('flt-toggle'), body = $('flt-body'), gear = $('flt-gear'), pop = $('flt-pop'); if (!wrap || !tg || !body) return;
+    tg.addEventListener('click', function () {
+      var open = tg.getAttribute('aria-expanded') !== 'true';
+      tg.setAttribute('aria-expanded', open ? 'true' : 'false'); body.hidden = !open; tg.querySelector('.flt-caret').innerHTML = open ? '&#9652;' : '&#9662;';
+    });
+    function popSet(open) { if (!pop || !gear) return; pop.hidden = !open; gear.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    if (gear && pop) {
+      gear.addEventListener('click', function (e) { e.stopPropagation(); popSet(pop.hidden); });
+      document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target) && e.target !== gear) popSet(false); });
+      pop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { popSet(false); gear.focus(); } });
+      gear.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !pop.hidden) popSet(false); });
+    }
+    var later = function () { setTimeout(fltSummary, 0); };
+    wrap.addEventListener('change', later); wrap.addEventListener('click', later);
+    fltSummary();
+  })();
+
+  // ---- 5. coin search inside the COIN header cell ----
+  var COIN_HIT_MS = 2000;
+  (function () {
+    var th = document.querySelector('.radar-table thead th'); if (!th || $('coin-search')) return;
+    th.id = 'th-coin';
+    var label = th.textContent.trim() || 'Coin'; th.textContent = '';
+    var wrap = document.createElement('div'); wrap.className = 'cs-wrap';
+    var lab = document.createElement('span'); lab.className = 'cs-lab'; lab.textContent = label; wrap.appendChild(lab);
+    var field = document.createElement('span'); field.className = 'cs-field';
+    var inp = document.createElement('input'); inp.type = 'text'; inp.id = 'coin-search'; inp.className = 'cs-in'; inp.placeholder = 'COIN SEARCH'; inp.autocomplete = 'off'; inp.spellcheck = false;
+    inp.setAttribute('role', 'combobox'); inp.setAttribute('aria-label', 'Coin search'); inp.setAttribute('aria-autocomplete', 'list'); inp.setAttribute('aria-expanded', 'false'); inp.setAttribute('aria-controls', 'cs-pop');
+    var clr = document.createElement('button'); clr.type = 'button'; clr.className = 'cs-clear'; clr.id = 'coin-search-clear'; clr.setAttribute('aria-label', 'Clear coin search'); clr.textContent = '×'; clr.hidden = true;
+    field.appendChild(inp); field.appendChild(clr); wrap.appendChild(field); th.appendChild(wrap);
+    var pop = document.createElement('div'); pop.id = 'cs-pop'; pop.hidden = true; th.appendChild(pop);
+
+    var hits = [], act = -1, hitTimer = null;
+    function pool() { return (typeof RESEARCH_MODE_UI !== 'undefined' && RESEARCH_MODE_UI && BOARD_ROWS.length) ? BOARD_ROWS : (LEGACY_ROWS.length ? LEGACY_ROWS : allResults); }
+    function find(q) {
+      q = q.trim().toLowerCase(); if (!q) return [];
+      var t1 = [], t2 = [], t3 = [], t4 = [];
+      pool().forEach(function (r) {
+        if (!r || !r.symbol) return;
+        var s = String(r.symbol).toLowerCase(), n = String(r.name || '').toLowerCase(), c = String(r.cgId || '').toLowerCase();
+        if (s.indexOf(q) === 0) t1.push(r); else if (n.indexOf(q) >= 0) t2.push(r); else if (s.indexOf(q) > 0) t3.push(r); else if (c.indexOf(q) >= 0) t4.push(r);
+      });
+      var bySym = function (a, b) { return a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0; };
+      t1.sort(function (a, b) { return a.symbol.length - b.symbol.length || bySym(a, b); }); t2.sort(bySym); t3.sort(bySym); t4.sort(bySym);
+      return t1.concat(t2, t3, t4).slice(0, 6);
+    }
+    function close() { pop.hidden = true; pop.textContent = ''; inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); hits = []; act = -1; }
+    function message(t) { pop.textContent = ''; var m = document.createElement('div'); m.className = 'cs-msg'; m.setAttribute('role', 'status'); m.textContent = t; pop.appendChild(m); pop.hidden = false; inp.setAttribute('aria-expanded', 'false'); }
+    function paint() {
+      Array.prototype.forEach.call(pop.querySelectorAll('li'), function (li, i) { li.setAttribute('aria-selected', i === act ? 'true' : 'false'); });
+      if (act >= 0) inp.setAttribute('aria-activedescendant', 'cs-opt-' + act); else inp.removeAttribute('aria-activedescendant');
+    }
+    function show() {
+      var q = inp.value; clr.hidden = !q;
+      if (!q.trim()) { close(); return; }
+      hits = find(q);
+      if (!hits.length) { hits = []; act = -1; message('Coin not listed'); return; }
+      pop.textContent = ''; var ul = document.createElement('ul'); ul.setAttribute('role', 'listbox'); ul.id = 'cs-list';
+      hits.forEach(function (r, i) {
+        var li = document.createElement('li'); li.id = 'cs-opt-' + i; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', 'false'); li.setAttribute('data-i', String(i));
+        li.textContent = r.symbol + ' — ' + (r.name || r.cgId || ''); ul.appendChild(li);
+      });
+      pop.appendChild(ul); pop.hidden = false; inp.setAttribute('aria-expanded', 'true'); act = -1; paint();
+    }
+    function pick(r) {
+      var key = rowKey(r), shown = filtered.some(function (x) { return rowKey(x) === key; });
+      var body = $('table-body'), tr = null;
+      if (shown && body) Array.prototype.some.call(body.querySelectorAll('tr[data-key]'), function (t) { if (t.getAttribute('data-key') === key) { tr = t; return true; } return false; });
+      if (!tr) { hits = []; act = -1; message('Coin is hidden by the current filter'); return; }
+      close(); inp.value = r.symbol; clr.hidden = false;
+      tr.click();   // the same handler a row click uses: selectedKey, .selected, openDetail(r)
+      tr.scrollIntoView({ block: 'center', inline: 'nearest' });
+      var apply = function () {
+        Array.prototype.forEach.call(document.querySelectorAll('.radar-table tbody tr.cs-hit'), function (t) { t.classList.remove('cs-hit'); });
+        Array.prototype.some.call($('table-body').querySelectorAll('tr[data-key]'), function (t) { if (t.getAttribute('data-key') === key) { t.classList.add('cs-hit'); return true; } return false; });
+      };
+      apply(); if (hitTimer) clearTimeout(hitTimer);
+      hitTimer = setTimeout(function () { hitTimer = null; Array.prototype.forEach.call(document.querySelectorAll('.radar-table tbody tr.cs-hit'), function (t) { t.classList.remove('cs-hit'); }); }, COIN_HIT_MS);
+    }
+    inp.addEventListener('input', show);
+    inp.addEventListener('focus', function () { if (inp.value.trim()) show(); });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!hits.length) return; e.preventDefault();
+        act = e.key === 'ArrowDown' ? (act + 1) % hits.length : (act <= 0 ? hits.length - 1 : act - 1); paint();
+      } else if (e.key === 'Enter') {
+        if (!hits.length) return; e.preventDefault(); pick(hits[act >= 0 ? act : 0]);
+      } else if (e.key === 'Escape') {
+        if (!pop.hidden) { e.preventDefault(); close(); }
+      }
+    });
+    inp.addEventListener('click', function (e) { e.stopPropagation(); });
+    clr.addEventListener('click', function (e) { e.stopPropagation(); inp.value = ''; clr.hidden = true; close(); inp.focus(); });
+    pop.addEventListener('mousedown', function (e) { e.preventDefault(); });   // keep focus in the input while a match is clicked
+    pop.addEventListener('click', function (e) { e.stopPropagation(); var li = e.target.closest ? e.target.closest('li[data-i]') : null; if (li && hits[+li.getAttribute('data-i')]) pick(hits[+li.getAttribute('data-i')]); });
+    wrap.addEventListener('focusout', function (e) { if (!wrap.contains(e.relatedTarget) && !pop.contains(e.relatedTarget)) setTimeout(function () { if (document.activeElement !== inp) close(); }, 0); });
+    window.__coinSearch = { find: find, pick: pick };
+  })();
+})();
+/* end item 32 — header declutter + coin search */
 </script>
 </body>
 </html>
