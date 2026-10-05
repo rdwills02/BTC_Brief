@@ -5602,7 +5602,7 @@ function setFilter(f) {
 (function () {
   'use strict';
   var FEED_URL = 'data/news/alerts.json', HL_URL = 'data/news/headlines.json', STALE_MS = 3 * 3600 * 1000;
-  var feed = { state: 'idle', data: null, promise: null };   // state: idle | loading | ok | failed (one fetch per page load; no storage)
+  var feed = { state: 'idle', data: null, promise: null, missing: false };   // state: idle | loading | ok | failed (one fetch per page load; no storage)
   var hl = { state: 'idle', data: null, promise: null };   // headlines.json: one fetch per page load, in memory only
   var cur = { key: null, r: null };
   var NS = 'http://www.w3.org/2000/svg';
@@ -5665,7 +5665,7 @@ function setFilter(f) {
     if (feed.promise) return feed.promise;
     feed.state = 'loading';
     feed.promise = fetch(FEED_URL, { cache: 'no-store' }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) { if (res.status === 404) feed.missing = true; throw new Error('HTTP ' + res.status); }
       return res.json();
     }).then(function (j) {
       var v = validate(j); if (!v) throw new Error('invalid feed'); feed.data = v; feed.state = 'ok';
@@ -5695,10 +5695,11 @@ function setFilter(f) {
     var scan = d ? ms(d.lastSuccessfulScanAt) : null, when = scan == null ? 'never' : local(d.lastSuccessfulScanAt);
     var stale = feed.state !== 'ok' || scan == null || now - scan > STALE_MS || d.coverage === 'failed';
     if (feed.state === 'loading' || feed.state === 'idle') { out.push({ t: 'Monitoring: checking feed…', warn: false }); return out; }
-    if (stale) out.push({ t: 'Monitoring unavailable or stale (last scan ' + when + ')', warn: true });
+    if (feed.state === 'failed' && feed.missing) out.push({ t: 'Key-news monitoring not yet active', warn: false });
+    else if (stale) out.push({ t: 'Key-news monitoring unavailable or stale (last scan ' + when + ')', warn: true });
     else if (d.coverage === 'partial') out.push({ t: 'Monitoring: partial coverage — ' + (d.coverageNote || 'some sources not scanned'), warn: true });
     else out.push({ t: 'Monitoring: last scan ' + rel(scan), warn: false });
-    if (!stale && d.coverage === 'ok' && !live.length) out.push({ t: 'No new material news (last scan ' + when + ')', warn: false });
+    if (!stale && d.coverage === 'ok' && !live.length) out.push({ t: 'No new key news (last scan ' + when + ')', warn: false });
     return out;
   }
   function renderFeed(r, host) {
@@ -5708,7 +5709,7 @@ function setFilter(f) {
     var listId = 'dpn-list', btn = null, list = document.createElement('div'); list.id = listId; list.hidden = true;
     if (live.length || old.length) {
       btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn' + (live.length ? ' alert' : ''); btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', listId);
-      if (live.length) { btn.appendChild(triangle()); var lb = document.createElement('span'); lb.textContent = 'New material news'; btn.appendChild(lb); }
+      if (live.length) { btn.appendChild(triangle()); var lb = document.createElement('span'); lb.textContent = 'New key news'; btn.appendChild(lb); }
       else { var lb2 = document.createElement('span'); lb2.textContent = 'Earlier material news (' + old.length + ')'; btn.appendChild(lb2); }
       var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
       var note = document.createElement('div'); note.className = 'dpn-note'; note.hidden = true; note.textContent = 'Review new information — not a direction call.';
@@ -5796,7 +5797,7 @@ function setFilter(f) {
       css();
       cur.key = (r.boardRow ? r.cgId : r.symbol) + '|' + (r.cgId || ''); cur.r = r;
       root.textContent = '';
-      var title = document.createElement('div'); title.className = 'ds-title'; title.textContent = 'Material news'; root.appendChild(title);
+      var title = document.createElement('div'); title.className = 'ds-title'; title.textContent = 'Key News'; root.appendChild(title);
       var fh = document.createElement('div'); fh.id = 'dpn-feed'; root.appendChild(fh);
       var tw = document.createElement('div'); tw.className = 'dpn-tvwrap'; var th = document.createElement('div'); th.id = 'dpn-tv'; tw.appendChild(th); root.appendChild(tw);
       renderHeadlines(r, th); renderFeed(r, fh);
