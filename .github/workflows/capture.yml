@@ -9,7 +9,11 @@ on:
     # open). Fine for a "roughly after open" goal. NOTE: the 4-day OHLC candle is already closed
     # regardless of capture time; this timing mainly sharpens the live 24h-volume snapshot.
     - cron: '20 0 * * *'
-  workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab
+    # Retries (2026-10-05): run again at 06:20 and 12:20 UTC ONLY if the day's daily file is still
+    # missing (the "Skip if already captured" step below). A successful 00:20 run makes these no-ops.
+    - cron: '20 6 * * *'
+    - cron: '20 12 * * *'
+  workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab (always runs; no skip)
 
 permissions:
   contents: write          # lets the built-in GITHUB_TOKEN commit captured data
@@ -25,17 +29,31 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Skip if already captured today (scheduled runs only)
+        id: guard
+        run: |
+          TODAY=$(date -u +%F)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -f "data/daily/${TODAY}.json" ]; then
+            echo "data/daily/${TODAY}.json already exists — scheduled retry not needed."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'   # Node 20 has global fetch built in
 
       - name: Run capture
+        if: steps.guard.outputs.skip != 'true'
         env:
           CG_KEY: ${{ secrets.CG_KEY }}
         run: node capture.js
 
       - name: Commit captured data
+        if: steps.guard.outputs.skip != 'true'
         run: |
           git config user.name  "radar-capture-bot"
           git config user.email "actions@github.com"
@@ -44,5 +62,11 @@ jobs:
             echo "No new data to commit."
           else
             git commit -m "Daily capture — $(date -u +'%Y-%m-%d %H:%M UTC')"
-            git push
+            # Push with a bounded retry: if main moved during the run (a page push, the headlines
+            # bot), rebase this data-only commit onto it and push again instead of failing the day.
+            for i in 1 2 3; do
+              git push && break
+              echo "push rejected (attempt $i) — rebasing onto origin/main"
+              git pull --rebase --autostash origin main || exit 1
+            done
           fi
