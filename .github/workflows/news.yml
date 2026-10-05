@@ -6,7 +6,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: headlines
+  group: radar-capture
   cancel-in-progress: false
 jobs:
   headlines:
