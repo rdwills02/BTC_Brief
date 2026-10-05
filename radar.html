@@ -5710,7 +5710,7 @@ function setFilter(f) {
     if (live.length || old.length) {
       btn = document.createElement('button'); btn.type = 'button'; btn.className = 'dpn-btn' + (live.length ? ' alert' : ''); btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', listId);
       if (live.length) { btn.appendChild(triangle()); var lb = document.createElement('span'); lb.textContent = 'New key news'; btn.appendChild(lb); }
-      else { var lb2 = document.createElement('span'); lb2.textContent = 'Earlier material news (' + old.length + ')'; btn.appendChild(lb2); }
+      else { var lb2 = document.createElement('span'); lb2.textContent = 'Earlier key news (' + old.length + ')'; btn.appendChild(lb2); }
       var caret = document.createElement('span'); caret.className = 'caret'; caret.setAttribute('aria-hidden', 'true'); caret.textContent = '▾'; btn.appendChild(caret);
       var note = document.createElement('div'); note.className = 'dpn-note'; note.hidden = true; note.textContent = 'Review new information — not a direction call.';
       if (live.length) {
