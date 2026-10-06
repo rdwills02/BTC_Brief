@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "updated": "Tuesday, October 6, 2026 at 06:30 AM CT",
+  "dateShort": "Oct 6 2026",
+  "testRun": false,
+  "btc": {
+    "price": "$85,961",
+    "composite": "🟡 NEUTRAL",
+    "confidence": "LOW",
+    "line": "📉 24hr −0.16% · 📈 7day +2.6% · Alignment 1🟢 / 7🟡 / 0🔴 · Fresh lenses 4/8",
+    "stats": [
+      {"label": "24hr Range", "value": "$85.0K–$86.7K", "sub": "200-day EMA ~$75K (10/06) · above"},
+      {"label": "Fear & Greed", "glossary": true, "value": "73 — Greed", "sub": "70 yesterday"},
+      {"label": "ETF Flows 7d", "glossary": true, "value": "+$286M", "sub": "09/25–10/05 · 10/05 −$89.8M"},
+      {"label": "DXY", "glossary": true, "value": "101.997", "sub": "near 18-month high"},
+      {"label": "Realized Price", "glossary": true, "value": "$53,734", "sub": "BTC ~60% above"},
+      {"label": "LTH SOPR", "glossary": true, "value": "1.344 ⚡", "sub": ">1.3 — LTH profit-taking"},
+      {"label": "Whale Accumulation", "value": "+41K BTC / 10d", "sub": "09/30 ⏸️ stale"},
+      {"label": "Miner Cost vs Spot", "value": "~$78,000", "sub": "carried 09/18 · spot above cost"}
+    ],
+    "resistance": "$86.7K → $87K (rejected) → $90K",
+    "support": "$85K → $79.5K → $75K",
+    "cycle": ["Villaverde low ~01/03/2027 (89d) ⏸️ stale", "Brandt: Oct 4 date passed; $65–66K warning open"],
+    "macro": ["Fed 3.75–4.00% (hiked Sept) · next FOMC Oct 28", "Oct hike odds ~22%, CPI pending"],
+    "lenses": [
+      {"name": "1. Halving/Cycle", "signal": "neutral", "stale": true, "finding": "Check: low ~$58K likely formed (09/18)."},
+      {"name": "2. Macro/Liquidity", "weight": "2× weight", "signal": "neutral", "finding": "DXY ~102, Oct hike odds 22%, ETF 10/05 outflow — ➡️"},
+      {"name": "3. Adoption/Reserve", "signal": "neutral", "stale": true, "finding": "CLARITY rejected (09/16)."},
+      {"name": "4. Wright", "signal": "neutral", "stale": true, "finding": "No dated statement."},
+      {"name": "5. Fogle Technical", "signal": "neutral", "finding": "Above 200-day, rejected at $87K — ➡️"},
+      {"name": "6. Villaverde Cycles", "signal": "neutral", "stale": true, "finding": "High ~11/02, low ~01/03/2027."},
+      {"name": "7. Woo On-Chain", "weight": "2× weight", "signal": "bull", "finding": "MVRV Z 1.08, 60% above realized; SOPR 1.344 caution; hard rule not fired — ➡️"},
+      {"name": "8. Brandt Classical", "weight": "Bear lens", "signal": "neutral", "finding": "Oct 4 passed, $65–66K warning open — ➡️"}
+    ],
+    "bottomLine": "Neutral, low confidence. On-chain is the only fresh bullish lens, but LTH SOPR 1.344 shows holders selling into the $87K rejection. A close above $87K with inflows is the upgrade trigger; loss of $85K the downgrade."
+  },
+  "critical": [
+    {"signal": "neutral", "title": "⚡ LTH SOPR 1.344 (>1.3)", "text": "Long-term holders realizing ~34% profit (1.165 yesterday). Caution on Woo conviction; hard rule not fired (HODL/whale data >72h)."}
+  ],
+  "bah": {
+    "caption": "Tracking only — no shares available",
+    "price": "$68.61",
+    "composite": "🟢 TOO EARLY",
+    "confidence": "MEDIUM",
+    "line": "Prior close 10/05 · 1d +1.87% · 5d ❓ · YTD ❓",
+    "stats": [
+      {"label": "52-wk Range / Percentile", "value": "18th", "sub": "$59.50–$109.10"},
+      {"label": "vs ATH", "glossary": true, "value": "−62.6%", "sub": "ATH $183.51"},
+      {"label": "% Drawdown Recovered", "value": "21.3%", "sub": "trough $59.50 · the thesis in one number"},
+      {"label": "vs 200-day MA", "glossary": true, "value": "🔴 Below", "sub": "$77.71 · 50-day $74.38"},
+      {"label": "Consensus Target", "value": "$85.23", "sub": "+24.2% upside"},
+      {"label": "Fwd P/E vs 3yr avg", "value": "11.10x / ~20.6x", "sub": "3yr avg carried"},
+      {"label": "Peer Discount", "value": "10.3%", "sub": "peer median 12.37x"},
+      {"label": "Next Vest", "value": "~237 days", "sub": "June 2027 · shares ❓"}
+    ],
+    "lenses": [
+      {"name": "1. Price Zone", "weight": "2× weight", "signal": "bull", "finding": "18th percentile, −33% vs pre-disclosure — too early."},
+      {"name": "2. Upside Left", "weight": "2× weight", "signal": "bull", "finding": "+24.2% to consensus, multiple compressed — ➡️"},
+      {"name": "3. Peer Group", "signal": "neutral", "finding": "10.3% discount to peer median."},
+      {"name": "4. Trend & Momentum", "signal": "neutral", "finding": "Below 50- and 200-day — 📈 +1.9% Mon."},
+      {"name": "5. Catalysts Ahead", "signal": "neutral", "finding": "Earnings 10/23; budget / tax matter ❓."}
+    ],
+    "bottomLine": "Too early. 21.3% of drawdown recovered, 33% under pre-disclosure, 10.3% peer discount, ~24% to consensus. Nothing to do before the June 2027 vest."
+  },
+  "k401": {"text": ""},
+  "watchlist": [
+    "BTC close >$87K / <$85K",
+    "LTH SOPR >1.3",
+    "US CPI (date ❓) / FOMC Oct 28",
+    "BAH earnings Oct 23",
+    "Brandt $65–66K warning"
+  ]
+}
