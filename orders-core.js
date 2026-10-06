@@ -449,6 +449,29 @@
     if (policy.id === 'N0') return true;
     return qualify(cfg && cfg.challenger, cand);   // C1: no configuration -> never qualifies
   }
+  // Protocol v1.4.4 R5: observation only - the same three tests as predicateHolds, evaluated WITHOUT short-circuit so a silent non-attempt can be recorded with its inputs.
+  // Never read by the engine; issueOne calls it only when cfg.observeSilent is set.
+  function predicateDiagnosis(policy, cand, cfg) {
+    var ee = cand.entryEconomics, ez = ee && ee.entryZone, lo = ez && num(ez[0]) ? ez[0] : null, hi = ez && num(ez[1]) ? ez[1] : null, px = num(cand.price) ? cand.price : null;
+    var dist = null; if (px != null && lo != null && hi != null) dist = px < lo ? (px - lo) / lo * 100 : (px > hi ? (px - hi) / hi * 100 : 0);
+    var screenPass = !!(cand.screen && cand.screen.pass), zone = inZone(cand), q = null, failed = [];
+    if (policy.id !== 'N0') {
+      var ch = cfg && cfg.challenger, active = challengerActive(ch), fails = [];
+      if (active) {
+        if (num(ch.minScore) && !(num(cand.score) && cand.score >= ch.minScore)) fails.push('minScore');
+        if (num(ch.minNetRR) && !(ee && num(ee.netRR) && ee.netRR >= ch.minNetRR)) fails.push('minNetRR');
+        if (Array.isArray(ch.requiredGates)) {
+          var gates = Array.isArray(cand.gates) ? cand.gates : [];
+          ch.requiredGates.forEach(function (id) { var g = null; for (var j = 0; j < gates.length; j++) if (gates[j] && gates[j].id === id) { g = gates[j]; break; } if (!g || g.pass !== true) fails.push(id); });
+        }
+        if (Array.isArray(ch.excludeStopBasis) && ch.excludeStopBasis.length && ee && ch.excludeStopBasis.indexOf(ee.stopBasis) >= 0) fails.push('excludeStopBasis');
+      }
+      q = { active: active, pass: active && fails.length === 0, failing: fails };
+    }
+    if (!screenPass) failed.push('screen'); if (!zone) failed.push('in-zone'); if (q && !q.pass) failed.push('qualify');
+    return { failed: failed, screen: { pass: screenPass, reasons: (cand.screen && cand.screen.reasons) || [], widthPrice: cand.screen && cand.screen.widthPrice !== undefined ? cand.screen.widthPrice : null, width: cand.screen && cand.screen.width !== undefined ? cand.screen.width : null },
+      zone: { pass: zone, price: px, entryLow: lo, entryHigh: hi, distancePct: dist }, qualify: q };
+  }
   function staleBlocked(book, pid) {
     return ordersOf(book, pid).some(function (o) { return isOpen(o) && o.stale && o.stale.count >= 1 && !o.stale.persistent; });
   }
@@ -466,8 +489,14 @@
 
   function issueOne(b, policy, cand, capture, cfg, results) {
     var pid = policy.id, a = b.accounts[pid];
-    for (var i = 0; i < b.attempts.length; i++) if (b.attempts[i].policyId === pid && b.attempts[i].episodeId === cand.episodeId) return;   // one attempt per (policy, episode)
-    if (!predicateHolds(policy, cand, cfg)) return;                                   // no consumption
+    for (var i = 0; i < b.attempts.length; i++) if (b.attempts[i].policyId === pid && b.attempts[i].episodeId === cand.episodeId) {   // one attempt per (policy, episode)
+      if (cfg && cfg.observeSilent) { var pa = b.attempts[i]; results.push({ episodeId: cand.episodeId, outcome: 'attempt-already-consumed', consumed: false, prior: { captureId: pa.captureId, date: pa.date, outcome: pa.outcome, orderId: pa.orderId || null } }); }
+      return;
+    }
+    if (!predicateHolds(policy, cand, cfg)) {                                         // no consumption
+      if (cfg && cfg.observeSilent) results.push({ episodeId: cand.episodeId, outcome: 'predicate-false', consumed: false, diagnosis: predicateDiagnosis(policy, cand, cfg) });
+      return;
+    }
     if (cand.venueEligible === false || !metaOk(cand.meta)) { results.push({ episodeId: cand.episodeId, outcome: cand.venueEligible === false ? 'ineligible-venue' : 'ineligible-metadata', consumed: false }); return; }
     var ee = cand.entryEconomics;
     if (ee.stopBasis == null || ee.targetSource == null) throw new Error('log row lacks stopBasis/targetSource for ' + cand.cgId);
@@ -722,7 +751,7 @@
   }
 
   return {
-    predicateHolds: predicateHolds, qualify: qualify, validateChallenger: validateChallenger, challengerActive: challengerActive,
+    predicateHolds: predicateHolds, predicateDiagnosis: predicateDiagnosis, qualify: qualify, validateChallenger: validateChallenger, challengerActive: challengerActive,
     buildScenarios: buildScenarios, unresolvedOf: unresolvedOf, replayPath: replayPath, pathAdmission: pathAdmission, rowIndexAtOrAfter: rowIndexAtOrAfter,
     ORDERS_SCHEMA_VERSION: ORDERS_SCHEMA_VERSION, CFG: CFG, DAY: DAY, BAR5: BAR5, newBook: newBook, cents: cents, bpOf: bpOf, floorTo: floorTo, ceilTo: ceilTo, notional: notional,
     adjudicateAll: adjudicateAll, valuation: valuation, suspend: suspend, issueBatch: issueBatch,

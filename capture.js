@@ -1152,7 +1152,8 @@ function fwdReadDelistings(d, root) {
 var FWD_KNOWN_GATE_IDS = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C1.trend', 'C3.fresh-touch', 'C3.no-recent-break', 'C7.floor', 'C2.width', 'C2.entry-zone', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
 // Configuration errors abort the capture as an extra capture at startup (nothing is ever issued under a bad configuration).
 // v1.4.3: the protocolVersion check is a STRICT EQUALITY list (no prefix match, no pattern): v1.4.2 and unknown strings are errors, i.e. every capture is an extra capture.
-var FWD_ACCEPTED_PROTOCOLS = ['forward-experiment-v1.4.3'];
+var FWD_V144 = 'forward-experiment-v1.4.4';   // Protocol v1.4.4 (item 37): every v1.4.4 semantic below is gated on protocolVersion === FWD_V144, so a deploy between code and config leaves a v1.4.3 capture byte-identical
+var FWD_ACCEPTED_PROTOCOLS = ['forward-experiment-v1.4.3', 'forward-experiment-v1.4.4'];   // literal strings on ONE line: orders-core-exec-tests extracts this line in isolation
 function fwdProtocolErrors(cfg) { return cfg && FWD_ACCEPTED_PROTOCOLS.indexOf(cfg.protocolVersion) < 0 ? ['protocolVersion ' + JSON.stringify(cfg.protocolVersion) + ' is not accepted by this capture.js (accepted: ' + FWD_ACCEPTED_PROTOCOLS.join(', ') + ')'] : []; }
 function fwdConfigErrors(d, cfg) { return cfg ? fwdProtocolErrors(cfg).concat(d.OC.validateChallenger(cfg.challenger, FWD_KNOWN_GATE_IDS)) : []; }
 function fwdHistory(d, P) {   // JSON lines, append-only: { generationId, captureId, date } and { pin: true, generationId, sha }
@@ -1402,14 +1403,16 @@ async function fwdFetchTradesSlice(fetchFn, pairId, fromSec, toSec, opts) {
 // (the caller guarantees this; see capture.js's forward-update wiring). `fit` null + `structuralFit` present still
 // means: no policy fit this capture - the §3 screen, opening and every predicate (which read row.fit only) see NOFIT
 // exactly as before v1.4. A caller that never passes `structuralFit` gets byte-identical v1.3 rows.
-function fwdResearchRow(fit, res, summary, price, structuralFit) {
+function fwdResearchRow(fit, res, summary, price, structuralFit, widthPrice) {   // widthPrice (v1.4.4 R1/R4): undefined = legacy row (no key); otherwise fit.detectionPrice or null
   if (!fit && !structuralFit) return null;
   var ee = fit && fit.entryEconomics || null;
   function lean(f) { return { fitId: f.fitId, pivotIds: f.pivotIds || [], supSlope: f.supSlope, supIntercept: f.supIntercept, supportNow: f.supportNow, invalidation: f.invalidation, atr14: f.atr14, resistNow: f.resistNow,
     channelH: f.channelH, supportTouches: f.supportTouches, lifecycleState: f.lifecycleState }; }
-  return { fit: fit ? lean(fit) : null, structuralFit: (!fit && structuralFit) ? lean(structuralFit) : null,
+  var row = { fit: fit ? lean(fit) : null, structuralFit: (!fit && structuralFit) ? lean(structuralFit) : null,
     price: price, gates: (summary && summary.gates) || null, score: fit && typeof fit.score === 'number' ? fit.score : null,
     entryEconomics: ee ? { entryZone: ee.entryZone, entryRef: ee.entryRef, defendedLow: ee.defendedLow, stop: ee.stop, stopBasis: ee.stopBasis, target: ee.target, targetSource: ee.targetSource, netRR: ee.netRR, grossRR: ee.grossRR, atr14: ee.atr14 } : null };
+  if (widthPrice !== undefined) row.widthPrice = (typeof widthPrice === 'number' && isFinite(widthPrice)) ? widthPrice : null;
+  return row;
 }
 
 // ---- one canonical capture's forward update (Protocol §4.0 steps 1-7). Pure given its inputs. ----
@@ -1422,17 +1425,76 @@ function fwdRunUpdate(d, prior, capture, inputs, cfg) {
   var book = OC.adjudicateAll(prior.book, capture, evBars, { needs: needs });   // step 2 (step 3, activation, is retired in v1.4.3: an order is submitted at issuance)
   ['N0', 'C1'].forEach(function (p) { book = OC.valuation(book, p, capture, evBars); book = OC.suspend(book, p, capture); });   // steps 4, 5
   var rows = {}; Object.keys(inputs.coins).forEach(function (cg) { if (inputs.coins[cg].research) rows[cg] = inputs.coins[cg].research; });
-  var eu = EC.updateEpisodes(prior.episodes, capture, rows, bars, inputs.universeIds || [], OC.obligations(book), { manualDelistings: cfg.manualDelistings || [] });   // step 6
+  var v144 = capture.protocolVersion === FWD_V144, ecfg = { manualDelistings: cfg.manualDelistings || [] };
+  if (v144) ecfg.gateFaithful = true;                                          // v1.4.4 R1: screen width on widthPrice; per-coin outcomes returned for R5
+  var eu = EC.updateEpisodes(prior.episodes, capture, rows, bars, inputs.universeIds || [], OC.obligations(book), ecfg);   // step 6
   var cands = eu.episodeDays.map(function (ed) {
     var c = inputs.coins[ed.cgId] || {};
     return { episodeId: ed.episodeId, cgId: ed.cgId, pair: ed.pair, screen: ed.screen, price: ed.price, score: ed.score, entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible !== false, gates: ed.gates || null, meta: c.metadataEligible === false ? null : (c.meta || null) };
   });
   var results = {};
   ['N0', 'C1'].forEach(function (p) {                                           // step 7
-    var r = OC.issueBatch(book, { id: p, version: p === 'N0' ? 'N0-v1' : ((cfg.challenger && cfg.challenger.version) || 'C1-unconfigured') }, cands, capture, { challenger: cfg.challenger || null, quotes: cfg.quotes || {}, needs: needs });
+    var r = OC.issueBatch(book, { id: p, version: p === 'N0' ? 'N0-v1' : ((cfg.challenger && cfg.challenger.version) || 'C1-unconfigured') }, cands, capture, v144 ? { challenger: cfg.challenger || null, quotes: cfg.quotes || {}, needs: needs, observeSilent: true } : { challenger: cfg.challenger || null, quotes: cfg.quotes || {}, needs: needs });
     book = r.book; results[p] = { results: r.results, blockedReason: r.blockedReason };
   });
-  return { episodes: eu.state, book: book, episodeDays: eu.episodeDays, episodeDayRows: eu.episodeDayRows, results: results, obligations: eu.obligations };
+  var outUpd = { episodes: eu.state, book: book, episodeDays: eu.episodeDays, episodeDayRows: eu.episodeDayRows, results: results, obligations: eu.obligations };
+  if (eu.coinOutcomes) outUpd.coinOutcomes = eu.coinOutcomes;   // v1.4.4 only
+  return outUpd;
+}
+
+// ---- Protocol v1.4.4 R5: ACT accounting. Every coin whose research verdict is ACT in a canonical capture yields exactly one of: a C1 attempt created in THIS capture, or one row of act-rejections.json. ----
+// actCoins: [{ cgId, pair, score }]; upd: the FINAL fwdRunUpdate result (v1.4.4: carries coinOutcomes and the observeSilent results); returns the file object. Pure.
+function fwdActRejections(capture, actCoins, upd) {
+  var book = upd.book, outc = upd.coinOutcomes || {}, edBy = {}, att = {}, c1 = (upd.results && upd.results.C1) || { results: [], blockedReason: null }, resBy = {}, rows = [];
+  (upd.episodeDays || []).forEach(function (ed) { edBy[ed.cgId] = ed; });
+  (book.attempts || []).forEach(function (a) { if (a.policyId === 'C1' && a.captureId === capture.captureId) att[a.cgId] = a; });
+  (c1.results || []).forEach(function (r) { resBy[r.episodeId] = r; });
+  actCoins.slice().sort(function (a, b) { return a.cgId < b.cgId ? -1 : a.cgId > b.cgId ? 1 : 0; }).forEach(function (ac) {
+    if (att[ac.cgId]) return;                                                  // (a) a C1 attempt of this capture; its outcome lives in orders.json attempts
+    var o = outc[ac.cgId] || null, ed = edBy[ac.cgId] || null, reason = null, detail = null;
+    var snap = function () { return { candidate: ed ? { episodeId: ed.episodeId, screen: ed.screen, price: ed.price, widthPrice: ed.widthPrice === undefined ? null : ed.widthPrice, width: ed.width === undefined ? null : ed.width, score: ed.score, entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible, metadataEligible: ed.metadataEligible } : null,
+      outcome: o, result: ed ? (resBy[ed.episodeId] || null) : null, blockedReason: c1.blockedReason || null }; };
+    if (!o) {
+      if (!ac.pair) { reason = 'no-episode-day:not-opened:venue'; detail = { pair: null, note: 'no Kraken designation: the coin is outside the forward pipeline' }; }
+    } else if (!o.hasPolicyFit) { reason = 'no-fit'; detail = { venueOk: o.venueOk, usableEval: o.usableEval }; }
+    else if (!ed) {
+      var states = (o.openEpisodes || []).map(function (e) { return e.lastMatchState; });
+      if (!o.venueOk) { reason = 'no-episode-day:not-opened:venue'; detail = { pair: ac.pair }; }
+      else if (!o.usableEval) { reason = o.dataUnavailable ? 'no-episode-day:not-opened:data-unavailable' : 'no-episode-day:not-opened:unusable-eval'; detail = { openEpisodes: o.openEpisodes }; }
+      else if (states.length) { reason = 'no-episode-day:not-matched:' + (states.indexOf('possible-continuation') >= 0 ? 'possible-continuation' : 'no-match'); detail = { openEpisodes: o.openEpisodes, openBlockedBy: o.openBlocked, screen: o.screen }; }
+      else if (o.openBlocked === 'screen') { reason = 'screen-failed'; detail = { reasons: o.screen ? o.screen.reasons : null, widthPrice: o.screen ? o.screen.widthPrice : null, width: o.screen ? o.screen.width : null, openingBlocked: true, episodeDay: false }; }
+      else if (o.openBlocked === 'pivot-lb') { reason = 'no-episode-day:not-opened:pivot-lb'; detail = { screen: o.screen }; }
+    } else if (ed.screen && ed.screen.pass === false) { reason = 'screen-failed'; detail = { reasons: ed.screen.reasons, widthPrice: ed.widthPrice === undefined ? null : ed.widthPrice, width: ed.width === undefined ? null : ed.width, price: ed.price, openingBlocked: false, episodeDay: true }; }
+    else if (c1.blockedReason === 'suspended' || c1.blockedReason === 'skipped-stale-mark') { reason = 'account-blocked:' + c1.blockedReason; detail = { episodeId: ed.episodeId }; }
+    else {
+      var r = resBy[ed.episodeId] || null;
+      if (r && r.outcome === 'attempt-already-consumed') { reason = 'attempt-already-consumed'; detail = r.prior; }
+      else if (r && r.outcome === 'predicate-false') {
+        var dg = r.diagnosis, f0 = dg && dg.failed && dg.failed[0];
+        if (f0 === 'in-zone') { reason = 'not-in-zone'; detail = { price: dg.zone.price, entryLow: dg.zone.entryLow, entryHigh: dg.zone.entryHigh, distancePct: dg.zone.distancePct, alsoFailed: dg.failed.slice(1) }; }
+        else if (f0 === 'qualify') { reason = dg.qualify && dg.qualify.active ? 'challenger-unqualified' : 'challenger-inactive'; detail = { failingGates: dg.qualify ? dg.qualify.failing : null }; }
+        else if (f0 === 'screen') { reason = 'screen-failed'; detail = { reasons: dg.screen.reasons, widthPrice: dg.screen.widthPrice, width: dg.screen.width }; }
+      }
+      else if (r && (r.outcome === 'ineligible-venue' || r.outcome === 'ineligible-metadata')) { reason = r.outcome; detail = { episodeId: ed.episodeId, venueEligible: ed.venueEligible, metadataEligible: ed.metadataEligible }; }
+      else if (!r && c1.blockedReason === 'suspended-mid-capture') { reason = 'account-blocked:suspended-mid-capture'; detail = { episodeId: ed.episodeId }; }
+    }
+    if (!reason) { reason = 'unclassified-no-attempt'; detail = snap(); }
+    rows.push({ cgId: ac.cgId, pair: ac.pair || null, score: ac.score == null ? null : ac.score, episodeId: ed ? ed.episodeId : ((o && o.episodeId) || null), policyId: 'C1', reason: reason, detail: detail });
+  });
+  return { schemaVersion: 1, captureId: capture.captureId, date: capture.date, protocolVersion: capture.protocolVersion, rows: rows };
+}
+// T7 invariant (the SAME function the capture runs and the tests call). Counts current-capture C1 attempt RECORDS (never collapsed to a coin set). ok requires: (i) no current-capture C1 attempt on a non-ACT coin, (ii) at most one current-capture C1 attempt per ACT coin,
+// (iii) every ACT coin has exactly one of {attempt, rejection row}, (iv) no duplicate / stray rejection rows. A correctly accounted 'unclassified-no-attempt' row is an anomaly (counted in nUnclassified), NOT a failure.
+function fwdActInvariant(capture, actCoins, book, file) {
+  var act = {}, attN = {}, rowBy = {}, dup = [], stray = [], both = [], missing = [], multi = [], nonActAttempts = [], rows = (file && file.rows) || [], allC1 = 0;
+  actCoins.forEach(function (c) { act[c.cgId] = 1; });
+  (book.attempts || []).forEach(function (a) { if (a.policyId === 'C1' && a.captureId === capture.captureId) { allC1++; if (act[a.cgId]) attN[a.cgId] = (attN[a.cgId] || 0) + 1; else nonActAttempts.push(a.cgId); } });
+  rows.forEach(function (r) { if (!act[r.cgId]) stray.push(r.cgId); if (rowBy[r.cgId]) dup.push(r.cgId); rowBy[r.cgId] = 1; });
+  Object.keys(attN).forEach(function (c) { if (attN[c] > 1) multi.push(c); if (rowBy[c]) both.push(c); });
+  Object.keys(act).forEach(function (c) { if (!attN[c] && !rowBy[c]) missing.push(c); });
+  var nAtt = Object.keys(attN).length, nAct = Object.keys(act).length, nUn = rows.filter(function (r) { return r.reason === 'unclassified-no-attempt'; }).length;
+  var ok = nAct === nAtt + rows.length && !dup.length && !stray.length && !both.length && !missing.length && !multi.length && !nonActAttempts.length && allC1 === nAtt;
+  return { ok: ok, nAct: nAct, nAttempts: nAtt, nRows: rows.length, nC1AttemptsAllCoins: allC1, nUnclassified: nUn, dup: dup, stray: stray, both: both, missing: missing, multiAttempt: multi, nonActAttempts: nonActAttempts };
 }
 function fwdUpdatePairs(pairs, capture, coinsWithPair) {   // pair fixed at the coin's first eligible canonical capture and never changes
   var have = {}; pairs.forEach(function (p) { have[p.cgId] = p; });
@@ -1467,6 +1529,11 @@ function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
   fwdCrash(d, 'after-episode-days-write');
   // generation files: episodes, orders, accounts, scenarios, pairs, then checksums (each written tmp+rename)
   var gdir = P.gen(capture.captureId), texts = {}, files = {};
+  if (gen.actRejections) {   // v1.4.4 R5: written first so its sha256 is in checksums.json `files`; absent (no key, no file) under v1.4.3
+    var arTxt = JSON.stringify(gen.actRejections);
+    files['act-rejections.json'] = fwdSha256(d, Buffer.from(arTxt, 'utf8')); fwdAtomicWrite(d, d.path.join(gdir, 'act-rejections.json'), arTxt);
+    fwdCrash(d, 'after-act-rejections-write');
+  }
   var body = { 'episodes.json': gen.episodes, 'orders.json': gen.orders, 'accounts.json': gen.accounts, 'scenarios.json': gen.scenarios, 'pairs.json': gen.pairs };
   FWD_GEN_FILES.forEach(function (f, n) {
     var txt;
@@ -1478,6 +1545,7 @@ function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
   // verify: recompute every checksum from disk
   var bad = [];
   FWD_GEN_FILES.forEach(function (f) { if (f === 'checksums.json') return; var b; try { b = d.fs.readFileSync(d.path.join(gdir, f)); } catch (e) { bad.push(f); return; } if (fwdSha256(d, b) !== files[f]) bad.push(f); });
+  if (files['act-rejections.json']) { var ab; try { ab = d.fs.readFileSync(d.path.join(gdir, 'act-rejections.json')); } catch (e) { bad.push('act-rejections.json'); ab = null; } if (ab && fwdSha256(d, ab) !== files['act-rejections.json']) bad.push('act-rejections.json'); }
   Object.keys(cacheSha).forEach(function (rel) { var b; try { b = d.fs.readFileSync(d.path.join(root, '..', rel)); } catch (e) { bad.push(rel); return; } if (fwdSha256(d, b) !== cacheSha[rel]) bad.push(rel); });
   (function () { var b; try { b = d.fs.readFileSync(edTmp); } catch (e) { bad.push('episode-days'); return; } if (fwdSha256(d, b) !== edSha) bad.push('episode-days'); })();
   if (bad.length) return abort('checksum-verify-failed: ' + bad.join(','));
@@ -1690,7 +1758,7 @@ async function main() {
 
   // ---- Forward experiment fetch phase (Protocol §3 fetch list = universe UNION obligations UNION pending/open orders) and the capture object ----
   let fwdPrior = null, fwdInfo = null;
-  const fwdLight = {}, fwdPairIdOf = {}, fwdResearchByCoin = {};
+  const fwdLight = {}, fwdPairIdOf = {}, fwdResearchByCoin = {}, fwdActByCoin = {};
   let fwdFetchIds = [];
   if (fwdCfg && fwdStart) {
     try {
@@ -1893,8 +1961,11 @@ async function main() {
         // `fit` null in that case, so episodes-core's screen/opening/predicates are untouched (they read `fit` only).
         if (fwdCfg && (fit || st)) {
           const pid = fwdPairIdOf[row.cgId], px = pid && fwdInfo && fwdInfo.prices[pid];
-          fwdResearchByCoin[row.cgId] = fwdResearchRow(fit, res, row.research, typeof px === 'number' ? px : null, st);
+          if (fwdCfg.protocolVersion === FWD_V144) {   // v1.4.4 R1/R2/R4: the row carries the universe snapshot price (zone) and fit.detectionPrice (width); the Kraken last is not a decision input
+            fwdResearchByCoin[row.cgId] = fwdResearchRow(fit, res, row.research, (typeof row.price === 'number' && isFinite(row.price)) ? row.price : null, st, fit ? fit.detectionPrice : null);
+          } else fwdResearchByCoin[row.cgId] = fwdResearchRow(fit, res, row.research, typeof px === 'number' ? px : null, st);
         }
+        if (fwdCfg && res.verdict === 'ACT') fwdActByCoin[row.cgId] = { cgId: row.cgId, pair: fwdPairIdOf[row.cgId] || null, score: fit && typeof fit.score === 'number' ? fit.score : null };
         if (fit) researchFits++;
         if (res.verdict === 'ACT') researchAct++;
         researchRows.push({ cgId: row.cgId, timeframe: '1d', verdict: res.verdict, lifecycleState: fit ? fit.lifecycleState : null, price: row.price,
@@ -2078,10 +2149,25 @@ async function main() {
         const gen = { episodes: upd.episodes, orders: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, orders: upd.book.orders, attempts: upd.book.attempts }, accounts: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, seq: upd.book.seq, accounts: upd.book.accounts },
           scenarios: { schemaVersion: 1, label: 'counterfactual', built: false }, pairs: fwdUpdatePairs(fwdPrior.pairs, capture, pairsNow),
           episodeDays: { schemaVersion: 1, captureId: capture.captureId, date: capture.date, rows: upd.episodeDayRows } };
+        let fwdInvariantAbort = false;
+        if (fwdCfg.protocolVersion === FWD_V144) {   // R5: generated from the FINAL update of this capture
+          const actCoins = Object.keys(fwdActByCoin).sort().map(k => fwdActByCoin[k]);
+          gen.actRejections = fwdActRejections(capture, actCoins, upd);
+          const inv = fwdActInvariant(capture, actCoins, upd.book, gen.actRejections);
+          const un = inv.nUnclassified;
+          console.log('forward: ACT coins', inv.nAct, '| C1 attempts', inv.nAttempts, '| act-rejections rows', inv.nRows + (un ? ' (' + un + ' UNCLASSIFIED - anomaly)' : ''));
+          if (!inv.ok) {   // same abort as a bad challenger configuration / failed startup: an EXTRA CAPTURE - nothing committed (fwdCommitSequence is never called, CURRENT not advanced); the daily/detection files above are already written
+            console.error('forward: ACT ACCOUNTING INVARIANT VIOLATED', JSON.stringify(inv));
+            console.warn('forward: EXTRA CAPTURE — no forward update (aborted: act-invariant-violated); forward state did not advance');
+            fwdInvariantAbort = true;
+          }
+        }
+        if (!fwdInvariantAbort) {
         const r = fwdCommitSequence(fwdDeps, DATA_DIR, capture, fwdStart.current, gen, {});
         if (r.status === 'canonical') console.log('forward: CANONICAL capture', capture.captureId, 'committed', r.sha || '(no git)', '| episodes', gen.episodes.episodes.length, 'orders', gen.orders.orders.length);
         else if (r.status === 'push-rejected') { console.error('forward: PUSH REJECTED - this run is an extra capture (no rebase, no force):', r.reason); process.exitCode = 1; }
         else console.warn('forward: EXTRA CAPTURE — no forward update (aborted: ' + r.reason + '); this run\'s own partial generation was removed');
+        }
       }
     } catch (e) {
       console.error('forward: EXTRA CAPTURE — no forward update (update failed; capture files above are unaffected):', e);
