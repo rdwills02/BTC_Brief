@@ -77,12 +77,21 @@
     var reasons = [], fit = row && row.fit;
     if (!fit) return { pass: false, reasons: ['no-fit'] };
     if (!(fit.lifecycleState === 'intact' || fit.lifecycleState === 're-qualified')) reasons.push('lifecycle');
-    var price = row.price;
-    if (!num(price) || !(price > 0)) reasons.push('no-price');
-    else if (!(num(fit.channelH) && fit.channelH / price <= cfg.MAX_WIDTH)) reasons.push('width');
+    var price = row.price, widthPrice = null, width = null;
+    if (cfg.gateFaithful) {
+      // Protocol v1.4.4 R1: the screen width uses widthPrice (= fit.detectionPrice, the input of C2.width) and nothing else; a missing or non-positive widthPrice never falls back to another price.
+      if (!num(price) || !(price > 0)) reasons.push('no-price');
+      widthPrice = row.widthPrice;
+      if (!num(widthPrice) || !(widthPrice > 0)) { reasons.push('no-width-price'); widthPrice = null; }
+      else { width = num(fit.channelH) ? fit.channelH / widthPrice : null; if (!(width != null && width <= cfg.MAX_WIDTH)) reasons.push('width'); }
+    } else {
+      if (!num(price) || !(price > 0)) reasons.push('no-price');
+      else if (!(num(fit.channelH) && fit.channelH / price <= cfg.MAX_WIDTH)) reasons.push('width');
+    }
     if (!(num(fit.supportTouches) && fit.supportTouches >= cfg.MIN_SUPPORT_TOUCHES)) reasons.push('touches');
     if (!inUniverse) reasons.push('not-in-universe');
     if (delisted) reasons.push('delisted-confirmed');
+    if (cfg.gateFaithful) return { pass: reasons.length === 0, reasons: reasons, widthPrice: widthPrice, width: width };
     return { pass: reasons.length === 0, reasons: reasons };
   }
 
@@ -159,6 +168,7 @@
     if (!state.coinState) state.coinState = {};
     researchRows = researchRows || {}; barsByCoin = barsByCoin || {};
     var events = [], episodeDays = [], rows = [], universe = {}, i;
+    var outcomes = cfg.gateFaithful ? {} : null;   // v1.4.4: per-coin evidence for act-rejections.json (R5); never read by this module
     (universeIds || []).forEach(function (id) { universe[id] = 1; });
 
     // Coins to process: every coin with an episode, plus every coin with a research row in this capture (bars alone never open or touch an episode).
@@ -173,7 +183,7 @@
       var venueOk = meta.venueEligible !== false && mapped;
       var eps = state.episodes.filter(function (e) { return e.cgId === cgId; });   // stable: openedAt ascending by construction
       // ineligible-venue coins: logged only, no episodes, no coinState.
-      if (!venueOk && !eps.length) return;
+      if (!venueOk && !eps.length) { if (outcomes) outcomes[cgId] = { hasPolicyFit: !!(researchRows[cgId] && researchRows[cgId].fit), venueOk: false, usableEval: false, dataUnavailable: false, openEpisodes: [], screen: null, opened: false, openBlocked: null, episodeId: null, episodeDay: false }; return; }
       var cs = state.coinState[cgId] || (state.coinState[cgId] = { consecutiveNoEval: 0, dataUnavailable: false, pair: meta.pair || null });
       var openEps = function () { return eps.filter(function (e) { return e.status === 'open'; }); };
       var d1Id = capture.inputCutoffSec - DAY, inCandles = inputCandles(allCandles, capture.inputCutoffSec);
@@ -207,10 +217,10 @@
       if (!inUniverse && delisted) { /* precedence: left-universe first */ }
 
       // ---- 3. matching ----
-      var matched = null, possible = null, opened = null, tests = null, candAnchors = null, screen = null;
+      var matched = null, possible = null, opened = null, tests = null, candAnchors = null, screen = null, openBlocked = null, epStates = [];
       if (!usableEval) {
         openEps().forEach(function (e) {
-          e.lastMatchState = 'gap'; e.gapDays = (e.gapDays || 0) + 1;
+          e.lastMatchState = 'gap'; e.gapDays = (e.gapDays || 0) + 1; epStates.push({ episodeId: e.id, lastMatchState: 'gap' });
           rows.push({ episodeId: e.id, captureId: capture.captureId, matchState: 'gap', fitId: null, fitKind: null, evidenceAnchors: null, geometry: null, geomPartial: false, state: null, price: null });
         });
       } else {
@@ -226,6 +236,7 @@
           if (!matched && firstPossible) { possible = firstPossible; tests = firstPossibleTests; }
           if (!matched && !possible) {
             // new episode (screen and PIVOT_LB gate opening only)
+            if (!screen.pass) openBlocked = 'screen'; else if (!pivotLbOk(candAnchors, inCandles, cfg)) openBlocked = 'pivot-lb';
             if (screen.pass && pivotLbOk(candAnchors, inCandles, cfg)) {
               var pred = eps.length ? eps[eps.length - 1].id : null;   // most recently opened on the coin
               opened = {
@@ -233,7 +244,7 @@
                 openCutoffSec: capture.inputCutoffSec, status: 'open', lastMatchState: 'matched', closeReason: null, closedAt: null,
                 closeCaptureId: null, closeCutoffSec: null, predecessorId: pred,
                 anchorAudit: candAnchors.slice(), anchorLive: candAnchors.slice(), refLine: refLineOf(fit, candAnchors, inCandles),
-                openGeometry: { slope: fit.supSlope, intercept: fit.supIntercept, supportNow: fit.supportNow, atr14: fit.atr14, channelH: fit.channelH, width: (num(row.price) && row.price > 0) ? fit.channelH / row.price : null },
+                openGeometry: { slope: fit.supSlope, intercept: fit.supIntercept, supportNow: fit.supportNow, atr14: fit.atr14, channelH: fit.channelH, width: cfg.gateFaithful ? screen.width : ((num(row.price) && row.price > 0) ? fit.channelH / row.price : null) },
                 frozenInvalidation: fit.invalidation, barIds: [], lastBarId: null, lastCountedBarId: null, breakCount: 0,
                 K: 0, gapDays: 0, obligationCandles: 0, venueEligible: venueOk, metadataEligible: meta.metadataEligible !== false, dataUnavailable: !!cs.dataUnavailable,
                 lastMatchedAt: capture.date
@@ -250,7 +261,7 @@
           if (isMatched) { ms = 'matched'; e.K = 0; e.lastMatchedAt = capture.date; }
           else if (isPossible) { ms = 'possible-continuation'; }
           else { ms = 'no-match'; e.K++; }
-          e.lastMatchState = ms;
+          e.lastMatchState = ms; epStates.push({ episodeId: e.id, lastMatchState: ms });
           if (isMatched && e !== opened) {
             e.anchorLive = candAnchors.slice(); e.anchorAudit = unionAnchors(e.anchorAudit, candAnchors);
             e.refLine = refLineOf(contFit, candAnchors, inCandles);
@@ -265,8 +276,9 @@
           rows.push({ episodeId: e.id, captureId: capture.captureId, matchState: ms, fitId: contFit ? contFit.fitId : null, fitKind: fitKind,
             evidenceAnchors: (fitKind === 'structural' && candAnchors) ? candAnchors.map(function (a) { return a.id; }) : null,
             geometry: contFit ? { supportNow: num(contFit.supportNow) ? contFit.supportNow : null, invalidation: num(contFit.invalidation) ? contFit.invalidation : null, resistNow: num(contFit.resistNow) ? contFit.resistNow : null, atr14: num(contFit.atr14) ? contFit.atr14 : null,
-              width: (px && px > 0 && num(contFit.channelH)) ? contFit.channelH / px : null } : null,
+              width: cfg.gateFaithful ? ((row && num(row.widthPrice) && row.widthPrice > 0 && num(contFit.channelH)) ? contFit.channelH / row.widthPrice : null) : ((px && px > 0 && num(contFit.channelH)) ? contFit.channelH / px : null) } : null,
             geomPartial: !!(tests && tests.geomPartial && (isMatched || isPossible)), state: contFit ? contFit.lifecycleState : null, price: px });
+          if (cfg.gateFaithful) { var rw = rows[rows.length - 1], wpx = (row && num(row.widthPrice) && row.widthPrice > 0) ? row.widthPrice : null; rw.widthPrice = wpx; rw.width = (wpx && contFit && num(contFit.channelH)) ? contFit.channelH / wpx : null; }
           if (e.K >= cfg.K_FADE) closeEp(e, 'faded', capture, events);
         });
         // v1.4 §3 rule 2: an episode-day for ISSUANCE exists only when this capture also has a POLICY fit (`fit`).
@@ -279,8 +291,12 @@
           episodeDays.push({ episodeId: matched.id, cgId: cgId, pair: matched.pair, captureId: capture.captureId, date: capture.date, opening: isOpening, screen: screen,
             fitId: fit.fitId, venueEligible: venueOk, metadataEligible: meta.metadataEligible !== false, price: row.price, entryEconomics: row.entryEconomics || null,
             score: row.score != null ? row.score : (fit.score != null ? fit.score : null), gates: row.gates || null });
+          if (cfg.gateFaithful) { var edn = episodeDays[episodeDays.length - 1]; edn.widthPrice = screen.widthPrice; edn.width = screen.width; }
         }
       }
+      if (outcomes) outcomes[cgId] = { hasPolicyFit: !!fit, venueOk: venueOk, usableEval: usableEval, dataUnavailable: !!cs.dataUnavailable,
+        openEpisodes: epStates, screen: screen, opened: !!opened, openBlocked: openBlocked,
+        episodeId: matched ? matched.id : null, episodeDay: !!(matched && fit) };
       // pass rows must be recorded on closed-this-capture episodes only as above; non-open episodes get no new day.
     });
 
@@ -301,7 +317,9 @@
     });
 
     state.episodes.sort(function (a, b) { return a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
-    return { state: state, episodeDays: episodeDays, episodeDayRows: rows, obligations: obl, events: events };
+    var out = { state: state, episodeDays: episodeDays, episodeDayRows: rows, obligations: obl, events: events };
+    if (outcomes) out.coinOutcomes = outcomes;   // v1.4.4 only: the key is absent under v1.4.3 so every v1.4.3 output is byte-identical
+    return out;
   }
 
   return { EPISODES_SCHEMA_VERSION: EPISODES_SCHEMA_VERSION, DEFAULT_CFG: DEFAULT_CFG, emptyState: emptyState, updateEpisodes: updateEpisodes,
