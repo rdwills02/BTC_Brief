@@ -1,91 +1,97 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Full Brief</title>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Finance Agent V4 — Full Brief</title>
+<!-- STATIC TEMPLATE v3 (design = 2026-09-26 reference). Do not regenerate this file. The morning task writes brief.json (schema 2) only. -->
 <style>
-  :root{
-    --bg:#0b0c14; --surface:#13141f; --border:#1e2035; --text:#e2e4ef; --muted:#6b7280;
-    --bull:#00c896; --bear:#e8754a; --neutral:#f5a623; --accent:#7b6ef6;
-  }
-  *{box-sizing:border-box;}
-  body{background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; margin:0;}
-  .wrap{max-width:900px; margin:0 auto; padding:20px;}
-  nav{display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px; font-size:13px;}
-  nav a{color:var(--accent); text-decoration:none;}
-  .updated-top{color:var(--muted);}
-  .card{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px; margin-bottom:16px;}
-  .header-card{border-left:4px solid var(--neutral);}
-  h1{font-size:20px; margin:0 0 6px 0;}
-  h2{font-size:16px; border-bottom:1px solid var(--border); padding-bottom:8px; margin-top:30px;}
-  h3{font-size:14px; margin-bottom:4px;}
-  .badge{display:inline-block; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:700; margin-left:8px;}
-  .badge.neutral{background:rgba(245,166,35,0.15); color:var(--neutral);}
-  .badge.bull{background:rgba(0,200,150,0.15); color:var(--bull);}
-  .badge.bear{background:rgba(232,117,74,0.15); color:var(--bear);}
-  .lens-block{border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px;}
-  .lens-title{font-weight:700; font-size:14px; margin-bottom:6px;}
-  .weight-badge{background:rgba(123,110,246,0.15); color:var(--accent); font-size:10px; padding:2px 7px; border-radius:10px; margin-left:6px;}
-  .stale-badge{background:rgba(107,114,128,0.2); color:var(--muted); font-size:10px; padding:2px 7px; border-radius:10px; margin-left:6px;}
-  .finding{font-size:13px; margin:4px 0;}
-  .source{font-size:11px; color:var(--muted);}
-  .source a{color:var(--accent);}
-  .delta{font-size:13px; margin:6px 0;}
-  .crit{border-left:4px solid var(--neutral); background:var(--surface); border-radius:8px; padding:14px; margin-bottom:10px; font-size:13px;}
-  table{width:100%; border-collapse:collapse; font-size:12px;}
-  td, th{border-bottom:1px solid var(--border); padding:6px 8px; text-align:left;}
-  .snapshot-toggle{background:var(--border); color:var(--text); border:none; border-radius:6px; padding:8px 14px; cursor:pointer; font-size:13px;}
-  #snapshot-body{display:none; margin-top:12px;}
-  footer{text-align:center; color:var(--muted); font-size:12px; margin-top:30px; padding-top:20px; border-top:1px solid var(--border);}
-  footer a{color:var(--accent); text-decoration:none; margin:0 6px;}
-  ol{font-size:12px; color:var(--muted); padding-left:20px;}
-  ol a{color:var(--accent);}
-  a.glossary{color:var(--accent); text-decoration:none;}
-  ul.watchlist li{font-size:13px; margin-bottom:6px;}
-  .bottom-line{font-size:13px; line-height:1.6;}
-
-  .sec{margin-top:26px}
-  .para{font-size:13px;line-height:1.6;margin:6px 0}
-  .para.src{font-size:11px;color:var(--muted)}
-  .para.crit{border-left:4px solid var(--neutral);background:var(--surface);border-radius:8px;padding:10px 14px}
-  .lead{font-size:14px;line-height:1.6}
-  .err{background:#2a1215;border:1px solid #5a1f24;color:#ffb4b4;padding:12px;border-radius:8px;font-size:13px}
-  ul.b{font-size:13px;line-height:1.6;margin:6px 0 6px 0;padding-left:22px}
-</style></head>
-<body><div class="wrap">
-<nav><a href="https://rdwills02.github.io/BTC_Brief/">← Dashboard</a><a href="https://rdwills02.github.io/BTC_Brief/glossary.html" target="_blank">Glossary →</a><span class="updated-top" id="upd"></span></nav>
-<div id="app"><div class="card">Loading brief.md…</div></div>
-<footer id="foot"></footer>
-</div>
+:root{--bg:#0b0c14;--surface:#13141f;--border:#1e2035;--text:#e2e4ef;--muted:#6b7280;--bull:#00c896;--bear:#e8754a;--neutral:#f5a623;--accent:#7b6ef6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;padding:24px}
+.wrap{max-width:900px;margin:0 auto}
+nav{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:18px;font-size:12.5px}
+nav a{color:var(--accent);text-decoration:none;font-weight:600;margin-right:16px}
+nav .ts{color:var(--muted)}
+a{color:var(--accent)}
+h2{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.hdr{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--bull);border-radius:10px;padding:18px 20px;margin-bottom:14px}
+.hdr.bah{border-left-color:var(--neutral)}
+.hdr .big{font-size:24px;font-weight:700}
+.hdr .meta{color:var(--muted);font-size:12.5px;margin-top:6px}
+.badge{display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;vertical-align:middle}
+.b-neutral{background:rgba(245,166,35,.14);color:var(--neutral)}.b-bull{background:rgba(0,200,150,.14);color:var(--bull)}.b-bear{background:rgba(232,117,74,.14);color:var(--bear)}.b-2x{background:rgba(123,110,246,.16);color:var(--accent)}
+.bull{color:var(--bull)}.bear{color:var(--bear)}.neu{color:var(--neutral)}.mut{color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px 18px;margin-bottom:12px}
+.panel p{margin-bottom:8px}
+.panel ul{list-style:none}.panel li{padding:6px 0;border-bottom:1px solid rgba(30,32,53,.6);font-size:13px}.panel li:last-child{border-bottom:none}
+.lens{padding:14px 0;border-bottom:1px solid var(--border)}.lens:last-child{border-bottom:none}
+.lens .name{font-weight:700;font-size:14px;margin-bottom:5px}
+.lens .f{font-size:13px;margin-bottom:5px}
+.lens .src{font-size:11.5px;color:var(--muted);word-break:break-word}
+.crit{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--neutral);border-radius:9px;padding:14px 16px;margin-bottom:10px}
+.crit .t{font-weight:700;margin-bottom:5px}.crit .d{font-size:13px;color:var(--muted)}
+pre.count{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:12px 14px;font-size:12.5px;line-height:1.55;overflow-x:auto;white-space:pre-wrap}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td{padding:6px 8px;border-bottom:1px solid rgba(30,32,53,.6);vertical-align:top}
+td:first-child{color:var(--muted);width:42%}
+.tgl{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 10px;font-size:11px;cursor:pointer;margin-bottom:10px}
+#snap{display:none}#snap.open{display:block}
+ol{padding-left:22px;font-size:12.5px}ol li{margin-bottom:5px;word-break:break-word}
+footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+footer a{margin-left:14px;text-decoration:none}
+.g{font-size:11px}
+.err{background:var(--surface);border:1px solid var(--bear);border-radius:9px;padding:16px 18px;color:var(--bear)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="panel mut">Loading brief…</div></div>
 <script>
-/* Finance Agent V4 full brief — STATIC TEMPLATE (2026-10-07). The morning task writes ONLY brief.md (= BTC Brief Current.md);
-   this file renders it. Rendering rules: a short line in CAPITALS (emoji allowed) = section heading; lines starting with
-   • - * = bullets; | a | b | rows = table; blank line = paragraph break; [text](url), bare https URLs and **bold** are inline;
-   a line starting "Source:" is muted; a line starting ⚡ is a callout; the first three lines are the header card. */
-function esc(s){return s.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-function inline(s){s=esc(s);s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');s=s.replace(/(^|[\s(])(https?:\/\/[^\s)\]<]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>');return s;}
-function isHeading(l){var t=l.replace(/[^A-Za-z]/g,'');return l.length<=70&&t.length>=3&&t===t.toUpperCase()&&!/\|/.test(l)&&!/^https?:/.test(l);}
-function render(md){
-  var lines=md.replace(/\r/g,'').split('\n'),i=0,o='',head=[];
-  while(i<lines.length&&head.length<3){if(lines[i].trim())head.push(lines[i].trim());i++;}
-  var bad=/BRIEF READY|TEST RUN/.test(head[0]||'');
-  o+='<div class="card header-card"><h1>'+inline(head[0]||'')+'</h1><div class="lead">'+inline(head[1]||'')+'</div><p class="finding">'+inline(head[2]||'')+'</p></div>';
-  var inList=false,inTable=false;
-  function closeAll(){if(inList){o+='</ul>';inList=false;}if(inTable){o+='</table>';inTable=false;}}
-  for(;i<lines.length;i++){var l=lines[i].trim();
-    if(!l){closeAll();continue;}
-    if(/^\|.*\|$/.test(l)){if(!inTable){closeAll();o+='<table>';inTable=true;}var cells=l.slice(1,-1).split('|').map(function(c){return c.trim();});if(/^:?-{2,}/.test(cells[0]))continue;o+='<tr>'+cells.map(function(c){return '<td>'+inline(c)+'</td>';}).join('')+'</tr>';continue;}
-    if(/^[•\-\*]\s+/.test(l)){if(!inList){closeAll();o+='<ul class="b">';inList=true;}o+='<li>'+inline(l.replace(/^[•\-\*]\s+/,''))+'</li>';continue;}
-    closeAll();
-    if(isHeading(l)){o+='<h2 class="sec">'+inline(l)+'</h2>';continue;}
-    if(/^\W{0,6}\d{1,2}\.\s+[A-Z]/.test(l)&&l.length<=90){o+='<h3 class="lens-title" style="margin-top:16px">'+inline(l)+'</h3>';continue;}
-    var cls='para';if(/^Source:/i.test(l)||/^\(.*retrieved/i.test(l))cls+=' src';else if(/^⚡/.test(l))cls+=' crit';
-    o+='<div class="'+cls+'">'+inline(l)+'</div>';
-  }
-  closeAll();
-  document.getElementById('app').innerHTML=o;
-  var m=(head[0]||'').match(/—\s*(.+)$/);var upd=m?m[1]:'';
-  document.getElementById('upd').textContent=upd?'Last updated: '+upd:'';
-  document.getElementById('foot').innerHTML='Finance Agent V4'+(upd?' · Last updated: '+esc(upd):'')+'<br><a href="https://rdwills02.github.io/BTC_Brief/">Dashboard</a> · <a href="https://rdwills02.github.io/BTC_Brief/glossary.html">Glossary</a> · <a href="https://rdwills02.github.io/BTC_Brief/calculator.html">Calculator</a>';
-  document.title='Full Brief'+(upd?' — '+upd:'');
+var DASH='https://rdwills02.github.io/BTC_Brief/',GLOSS=DASH+'glossary.html';
+function esc(s){return String(s==null?'❓':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+/* inline markup: **bold**, [label](url) links, [→ Glossary] / [Glossary] tokens → glossary link, newline → <br>; colour tokens {bull:…} {bear:…} {neu:…} */
+function inl(s){s=esc(s);
+ s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+ s=s.replace(/\[(→ Glossary|Glossary)\]\((https?:\/\/[^)\s]+)\)/g,'<a class="g" href="$2" target="_blank">[→ Glossary]</a>');
+ s=s.replace(/\[→ Glossary\]/g,'<a class="g" href="'+GLOSS+'" target="_blank">[→ Glossary]</a>');
+ s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank">$1</a>');
+ s=s.replace(/\{(bull|bear|neu|mut):([^}]*)\}/g,'<span class="$1">$2</span>');
+ return s.replace(/\n/g,'<br>');}
+function tone(t){t=String(t||'').toLowerCase();return t==='bull'?'bull':(t==='bear'?'bear':(t==='neutral'||t==='neu'?'neu':''));}
+function bcls(t){t=String(t||'').toLowerCase();return t==='2x'?'b-2x':(tone(t)==='bull'?'b-bull':(tone(t)==='bear'?'b-bear':'b-neutral'));}
+function tvar(t){t=tone(t);return t==='bull'?'var(--bull)':(t==='bear'?'var(--bear)':'var(--neutral)');}
+function badges(arr){return (arr||[]).map(function(b){return ' <span class="badge '+bcls(b.tone)+'">'+esc(b.text)+'</span>';}).join('');}
+function srcs(arr){ /* [{label,url,date}] → "Label (date) · Label (date)" */
+ return (arr||[]).map(function(s){return (s.url?'<a href="'+esc(s.url)+'" target="_blank">'+esc(s.label||s.url)+'</a>':esc(s.label))+(s.date?' ('+esc(s.date)+')':'');}).join(' · ');}
+function hdr(h,cls,mt){if(!h)return '';return '<div class="hdr'+(cls?' '+cls:'')+'" style="border-left-color:'+tvar(h.badgeTone)+(mt?';margin-top:28px':'')+'"><div class="big">'+esc(h.price)+' <span class="badge '+bcls(h.badgeTone)+'">'+esc(h.badge)+'</span> <span class="badge '+bcls(h.confidenceTone||'neutral')+'">CONFIDENCE: '+esc(h.confidence)+'</span></div>'+(h.meta||[]).map(function(m){return '<div class="meta">'+inl(m)+'</div>';}).join('')+'</div>';}
+function ulPanel(items){ /* items: string | {text, sources[]} */
+ return '<div class="panel"><ul>'+(items||[]).map(function(i){if(typeof i==='string')return '<li>'+inl(i)+'</li>';return '<li>'+inl(i.text)+(i.sources&&i.sources.length?' '+srcs(i.sources):'')+'</li>';}).join('')+'</ul></div>';}
+function lensBlock(arr){return '<div class="panel">'+(arr||[]).map(function(l){return '<div class="lens"><div class="name">'+esc(l.name)+badges(l.badges)+'</div><div class="f">'+inl(l.finding)+'</div>'+(l.sources&&l.sources.length?'<div class="src">Sources: '+srcs(l.sources)+'</div>':'')+'</div>';}).join('')+'</div>';}
+function paras(arr){return '<div class="panel">'+(arr||[]).map(function(p){return '<p>'+inl(p)+'</p>';}).join('')+'</div>';}
+function snapRows(title,rows){if(!rows||!rows.length)return '';return '<tr><td colspan="2"><strong>── '+esc(title)+' ──</strong></td></tr>'+rows.map(function(r){return '<tr><td>'+esc(r[0])+'</td><td>'+inl(r[1])+'</td></tr>';}).join('');}
+function render(d){
+ var h=[];
+ h.push('<nav><div><a href="'+DASH+'">← Dashboard</a><a href="'+GLOSS+'" target="_blank">Glossary →</a></div><div class="ts">Last updated: '+esc(d.updated)+(d.testRun?' · ⚠️ TEST RUN — not a live pull':'')+'</div></nav>');
+ document.title='Finance Agent V4 — Full Brief — '+(d.dateLong||'');
+ h.push(hdr(d.header));
+ if(d.critical&&d.critical.length){h.push('<h2>⚡ Critical Developments</h2>');d.critical.forEach(function(c){h.push('<div class="crit"><div class="t">'+inl(c.title)+'</div><div class="d">'+inl(c.text)+(c.sources&&c.sources.length?' '+srcs(c.sources):'')+'</div></div>');});}
+ if(d.delta){h.push('<h2>📊 Delta vs Prior Brief'+(d.delta.vs?' ('+esc(d.delta.vs)+')':'')+'</h2>');h.push(ulPanel(d.delta.items));}
+ h.push('<h2>🔍 BTC Lens Scorecard</h2>');h.push(lensBlock(d.lenses));
+ h.push('<h2>📊 BTC Signal Count</h2><div class="panel"><pre class="count">'+esc(d.signalCount)+'</pre>'+(d.confidenceRationale?'<p><strong>Confidence rationale:</strong> '+inl(d.confidenceRationale)+'</p>':'')+(d.tension?'<p>⚠️ <strong>SIGNAL TENSION:</strong> '+inl(d.tension)+'</p>':'')+'</div>');
+ if(d.bah){var b=d.bah;h.push(hdr(b.header,'bah',true));
+  h.push('<h2>🔍 '+esc(b.sectionTitle||'BAH Sell-Zone Assessment')+'</h2>');h.push(lensBlock(b.lenses));
+  if(b.signalCount)h.push('<div class="panel"><pre class="count">'+esc(b.signalCount)+'</pre></div>');}
+ if(d.k401&&d.k401.length){h.push('<h2>🏦 401(k) / S&amp;P 500</h2>');h.push(paras(d.k401));}
+ if(d.keyDevelopments&&d.keyDevelopments.length){h.push('<h2>🆕 Key Developments Since Last Brief</h2>');h.push(ulPanel(d.keyDevelopments));}
+ if(d.watchlist&&d.watchlist.length){h.push('<h2>🔍 Watch List</h2>');h.push(ulPanel(d.watchlist));}
+ if(d.bottom&&d.bottom.length){h.push('<h2>📋 Bottom Line</h2>');h.push(paras(d.bottom));}
+ if(d.weeklyOutlook&&d.weeklyOutlook.length){h.push('<h2>📅 Weekly Outlook</h2>');h.push(paras(d.weeklyOutlook));}
+ if(d.snapshot){h.push('<h2>📸 Data Snapshot</h2><button class="tgl" onclick="var s=document.getElementById(\'snap\');s.classList.toggle(\'open\');this.textContent=s.classList.contains(\'open\')?\'▾ Hide snapshot\':\'▸ Show snapshot\'">▸ Show snapshot</button><div id="snap" class="panel"><table>'+snapRows('BTC',d.snapshot.btc)+snapRows('BAH',d.snapshot.bah)+snapRows('401(k) / S&P 500',d.snapshot.k401)+'</table></div>');}
+ if(d.verification){var v=d.verification;h.push('<h2>🔗 Data Verification Footer</h2><div class="panel">'+(v.intro?'<p class="mut" style="font-size:12.5px">'+inl(v.intro)+'</p>':'')+'<ol>'+(v.items||[]).map(function(s){return '<li>'+inl(s.text)+(s.url?': <a href="'+esc(s.url)+'" target="_blank">'+esc(s.label||s.url)+'</a>':'')+(s.date?' — '+esc(s.date):'')+'</li>';}).join('')+'</ol>'+(v.flags?'<p class="mut" style="font-size:12.5px;margin-top:10px">⚠️ Flags: '+inl(v.flags)+'</p>':'')+'</div>');}
+ h.push('<footer><div>Finance Agent V4 · Last updated: '+esc(d.updated)+'</div><div><a href="'+DASH+'">Dashboard</a><a href="'+GLOSS+'" target="_blank">Glossary</a></div></footer>');
+ document.getElementById('app').innerHTML=h.join('\n');
 }
-fetch('brief.md',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text();}).then(render).catch(function(e){document.getElementById('app').innerHTML='<div class="err">Brief unavailable: '+esc(e.message)+'. The page structure is fixed; the morning task writes brief.md.</div>';});
+fetch('brief.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){if(!d||d.schema!==2||!d.header||!d.lenses)throw new Error('brief.json: expected schema 2');render(d);}).catch(function(e){document.getElementById('app').innerHTML='<div class="err">Brief data unavailable: '+esc(e.message)+'. The page structure is fixed; the morning task writes brief.json.</div>';});
 </script>
-</body></html>
+</body>
+</html>
