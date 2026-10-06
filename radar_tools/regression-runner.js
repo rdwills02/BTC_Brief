@@ -195,7 +195,7 @@ function run() {
   if (a14.indexOf('--confirmatory') >= 0) { runStep14Confirmatory(over14, {}); return; }
   if (a14.indexOf('--feasibility') >= 0 || a14.indexOf('--calibrate') >= 0) {
     verifyManifestOrAbort();
-    const cur14 = require(path.join(REPO_ROOT, 'channel-core.js')), dc14 = loadDailyCaches(), o14 = { windowDays: opt14('--window') ? +opt14('--window') : undefined, runs: opt14('--runs') ? +opt14('--runs') : undefined, reps: opt14('--reps') ? +opt14('--reps') : undefined, dataDir: over14 && over14.dataDir };
+    const cur14 = require(path.join(REPO_ROOT, 'channel-core.js')), dc14 = loadDailyCaches(), o14 = { windowDays: opt14('--window') ? +opt14('--window') : undefined, runs: opt14('--runs') ? +opt14('--runs') : undefined, reps: opt14('--reps') ? +opt14('--reps') : undefined, dataDir: over14 && over14.dataDir, legacyWidthBasis: a14.indexOf('--legacy-width') >= 0 };
     if (a14.indexOf('--calibrate') >= 0) runStep14Calibrate(cur14, dc14, o14); else runStep14Feasibility(cur14, dc14, o14);
     return;
   }
@@ -2204,7 +2204,7 @@ function step14FeasibilityFunnel(days, series, cfg) {
 // Fixture replay: the detector (research mode) is run on the fixtures' daily candles for every capture day of a trailing window, the fits go through episodes-core
 // (updateEpisodes) exactly as capture.js drives it, and the episode-days feed the funnel above. Quote proxy: the open of the capture date's own candle.
 function step14FixtureReplay(current, dailyCaches, opts) {
-  opts = opts || {}; const EC = opts.EC || require(path.join(REPO_ROOT, 'episodes-core.js')), DAYSEC = 86400;
+  opts = opts || {}; const EC = opts.EC || require(path.join(REPO_ROOT, 'episodes-core.js')), DAYSEC = 86400, LEGACY_WIDTH = !!opts.legacyWidthBasis;   // legacyWidthBasis reproduces the v1.4.3 width basis (quote proxy) for the before/after comparison only
   const coins = Object.keys(dailyCaches).filter(c => dailyCaches[c].length >= 200).sort();
   const lastTime = Math.max.apply(null, coins.map(c => dailyCaches[c][dailyCaches[c].length - 1].time));
   const R = opts.windowDays || 150, lastCapture = lastTime - 4 * DAYSEC + DAYSEC, firstCapture = lastCapture - (R - 1) * DAYSEC;
@@ -2222,8 +2222,12 @@ function step14FixtureReplay(current, dailyCaches, opts) {
       let fit = null; try { fit = current.detectChannel(cands, undefined, { coinId: cg, timeframe: '1d', source: 'fixture', research: true }); } catch (e) { fit = null; }
       const quote = arr[n] && arr[n].time === cutoff ? arr[n].open : null;
       if (fit) rows[cg] = { fit: { fitId: fit.fitId, pivotIds: fit.pivotIds || [], supSlope: fit.supSlope, supIntercept: fit.supIntercept, supportNow: fit.supportNow, invalidation: fit.invalidation, atr14: fit.atr14, channelH: fit.channelH, supportTouches: fit.supportTouches, lifecycleState: fit.lifecycleState }, price: quote, gates: null, score: fit.score, entryEconomics: fit.entryEconomics || null };
+      if (!LEGACY_WIDTH) {   // Protocol v1.4.4 R1/R4: widthPrice = the stored fit's detectionPrice (the input of C2.width); a replay without it fails loudly, never falls back to the quote proxy
+        if (fit && !(typeof fit.detectionPrice === 'number' && isFinite(fit.detectionPrice) && fit.detectionPrice > 0)) throw new Error('step14FixtureReplay: fit for ' + cg + ' on ' + date + ' has no finite positive detectionPrice (widthPrice) - v1.4.4 replay refuses to substitute another price');
+        if (fit) rows[cg].widthPrice = fit.detectionPrice;
+      }
     });
-    const up = EC.updateEpisodes(state, cap, rows, bars, universe, [], {}); state = up.state; up.episodeDayRows.forEach(r => allRows.push(r));
+    const up = EC.updateEpisodes(state, cap, rows, bars, universe, [], LEGACY_WIDTH ? {} : { gateFaithful: true }); state = up.state; up.episodeDayRows.forEach(r => allRows.push(r));
     const cand = [];
     up.episodeDays.forEach(ed => {
       const ee = ed.entryEconomics, ez = ee && ee.entryZone;
