@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Channel Radar - Automation Test</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{
+  --bg:#0b0c14;--surface:#13141f;--surface2:#1a1b2a;--surface3:#20223a;
+  --border:#1e2035;--border2:#2a2b3d;--text:#e2e4ef;--text2:#9da3b4;--muted:#6b7280;
+  --bull:#00c896;--bear:#e8754a;--bear-bg:rgba(232,117,74,0.1);
+  --neut:#f5a623;--accent:#7b6ef6;--accent-bg:rgba(123,110,246,0.12);--accent-border:rgba(123,110,246,0.3);
+  --red:#ff5d6c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden}
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.logo{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.nav-links{display:flex;gap:8px}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2)}
+.nav-link.accent{color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+.nav-link.current{color:var(--text);border-color:var(--accent);background:var(--surface3)}
+main{padding:16px 20px 60px;max-width:1500px;margin:0 auto}
+.strip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px 22px;align-items:center;margin-bottom:12px}
+.strip.amber{border-color:var(--neut);background:rgba(245,166,35,.07)}
+.strip.red{border-color:var(--red)}
+.kv{display:flex;flex-direction:column}
+.kv .k{font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.kv .v{font-size:13px;font-weight:600}
+.health{flex-basis:100%;font-size:12px}
+.ok{color:var(--bull)} .bad{color:var(--red);font-weight:600} .warn{color:var(--neut)} .mut{color:var(--muted)}
+h2{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:22px 0 8px}
+h2 small{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none;margin-left:8px;font-size:11px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.card.flag{border-color:var(--red)}
+.card h3{font-size:14px;margin-bottom:2px}
+.card .sub{font-size:11px;color:var(--text2);margin-bottom:8px}
+.grid2{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px;align-items:center}
+.chip{padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);font-family:inherit}
+.chip.on{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
+.chiplabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface2)}
+td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+tr.row{cursor:pointer} tr.row:hover td{background:var(--surface2)}
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);white-space:nowrap}
+.b-resting{color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+.b-open{color:var(--bull);border-color:rgba(0,200,150,.3);background:rgba(0,200,150,.12)}
+.b-exited{color:var(--text);border-color:var(--border2)}
+.b-pending-unresolved,.b-cancel-pending{color:var(--neut);border-color:rgba(245,166,35,.4);background:rgba(245,166,35,.1)}
+.b-expired,.b-cancelled-suspension,.b-rejected-invalid-at-submission{color:var(--muted)}
+.b-anomaly{color:#fff;background:var(--red);border-color:var(--red)}
+.pos{color:var(--bull)} .neg{color:var(--bear)}
+.flagtxt{color:var(--red);font-weight:700;font-size:10px}
+.chartbox{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px}
+#eq-chart{height:240px}
+details{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
+details>summary{cursor:pointer;padding:8px 12px;font-weight:600;font-size:12px}
+details>.inner{padding:0 0 4px}
+.unavail{background:var(--surface);border:1px dashed var(--red);border-radius:8px;padding:30px;text-align:center;color:var(--red);font-size:15px;font-weight:700}
+.secerr{color:var(--red);font-size:12px;padding:8px 0}
+/* detail pane */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:300}
+#scrim.on{display:block}
+#pane{position:fixed;top:0;right:0;bottom:0;width:min(640px,100vw);background:var(--surface);border-left:1px solid var(--border2);transform:translateX(102%);transition:transform .18s;z-index:310;display:flex;flex-direction:column}
+#pane.on{transform:translateX(0)}
+#pane-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+#pane-title{font-size:14px;font-weight:700}
+#pane-body{overflow-y:auto;padding:10px 14px 40px;flex:1}
+.xbtn{background:var(--surface2);border:1px solid var(--border2);color:var(--text2);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:inherit}
+#dchart{height:330px;margin:6px 0}
+.note{font-size:11px;color:var(--text2);margin:4px 0 8px}
+.rec{width:100%;margin-bottom:10px}
+.rec td{padding:3px 6px;border-bottom:1px solid var(--border);font-size:12px}
+.rec td:first-child{color:var(--muted);width:42%;white-space:nowrap}
+.rec th{color:var(--accent);background:transparent;border-bottom:1px solid var(--border2)}
+.tl{list-style:none;font-size:12px;border-left:2px solid var(--border2);padding-left:10px;margin:4px 0 10px}
+.tl li{margin-bottom:3px}
+a.lnk{color:var(--accent);text-decoration:none;font-size:12px;margin-right:12px}
+.pill{font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--border2);color:var(--text2)}
+.gpass{color:var(--bull)} .gfail{color:var(--bear)} .gnull{color:var(--muted)}
+@media(max-width:700px){.grid2{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="logo"><div class="logo-dot"></div>Channel Radar &middot; Automation Test</div>
+  <div class="nav-links">
+    <a href="https://rdwills02.github.io/BTC_Brief/" class="nav-link">Dashboard</a>
+    <a href="radar.html" class="nav-link">Radar</a>
+    <a href="radar-test.html" class="nav-link current" aria-current="page">Automation Test</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html#channel-radar" class="nav-link accent">Methodology</a>
+    <a href="https://rdwills02.github.io/BTC_Brief/glossary.html" class="nav-link">Glossary</a>
+  </div>
+</header>
+<main id="main"><div class="mut">Loading forward ledger&hellip;</div></main>
+<div id="scrim"></div>
+<aside id="pane" aria-hidden="true">
+  <div id="pane-head"><div id="pane-title"></div><button class="xbtn" id="pane-x" title="Close (Esc)">Close &#x2715;</button></div>
+  <div id="pane-body"></div>
+</aside>
+<script>
+(function(){
+'use strict';
+/* Reads the forward ledger (data/forward/**). It never computes accounting, fills, exits, P&L or states:
+   every number and state shown is a field from the files. */
+var DAY0_MS = Date.UTC(2026, 9, 5);
+var DAY = 86400;
+var FILES = ['orders', 'accounts', 'episodes', 'checksums'];
+var KNOWN_STATUS = ['resting', 'pending-unresolved', 'open', 'cancel-pending', 'exited', 'expired', 'cancelled-suspension', 'rejected-invalid-at-submission'];
+var GROUPS = KNOWN_STATUS.concat(['unknown']);
+var PENDING = { resting: 1, 'pending-unresolved': 1, 'cancel-pending': 1 };
+var OPEN_STATES = { resting: 1, 'pending-unresolved': 1, 'cancel-pending': 1, open: 1 };
+var RETIRED = { issued: 1, 'rejected-gap': 1, 'rejected-crossing': 1, 'skipped-missing-input': 1, 'expired-unresolved': 1 };
+var OUTCOME_TEXT = {
+  'order': 'Order created.',
+  'skipped-exposure': 'The coin already has a pending or open order; one position per coin.',
+  'rejected-levels': 'Levels invalid: the engine requires 0 < S < L < T.',
+  'rejected-min-order': 'Sized quantity is below the pair minimum order (under 1 lot or below minOrder).',
+  'skipped-capacity': 'Capacity check failed (see reason: slots / risk / cash).',
+  'rejected-invalid-at-submission': 'Ask at or below S at submission; the order was rejected as invalid.'
+};
+var REASON_TEXT = { slots: 'all position slots in use', risk: 'planned risk exceeds the risk limit', cash: 'unreserved cash is below the reservation needed' };
+var POLICY_LABEL = {
+  N0: 'N0 - base-rate REFERENCE: screen passed and price inside [entryLow, entryHigh] at issue.',
+  C1: 'C1 - ACT-v1: capture-time research verdict ACT (all 16 research gates).'
+};
+var S = { cur: null, files: {}, err: {}, nowOverride: null, fChart: null, daily: undefined, dailyErr: null, candle: {}, filt: { policy: 'all', group: 'all' }, chartLog: null };
+var charts = { eq: null, d: null };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function nowMs() { return S.nowOverride != null ? S.nowOverride : Date.now(); }
+function isNum(x) { return typeof x === 'number' && isFinite(x); }
+function dash(v) { return v == null || v === '' ? '—' : v; }
+function usd(cents) { return isNum(cents) ? (cents < 0 ? '-$' : '$') + (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; }
+function pr(v) { if (!isNum(v)) return '—'; var a = Math.abs(v); var d = a >= 100 ? 2 : a >= 1 ? 3 : a >= 0.01 ? 5 : 7; return String(parseFloat(v.toFixed(d))); }
+function iso(sec) { return isNum(sec) ? new Date(sec * 1000).toISOString() : null; }
+function hms(sec) { return isNum(sec) ? new Date(sec * 1000).toISOString().slice(11, 19) + ' UTC' : '—'; }
+function dateOf(sec) { return isNum(sec) ? new Date(sec * 1000).toISOString().slice(0, 10) : '—'; }
+function dayOf(sec) { return Math.floor(sec / DAY) * DAY; }
+function dateToSec(d) { return Date.parse(d + 'T00:00:00Z') / 1000; }
+function local(isoStr) { if (!isoStr) return '—'; var d = new Date(isoStr); if (isNaN(d)) return '—'; try { return d.toLocaleString(); } catch (e) { return d.toString().slice(0, 24); } }
+function shortGen(g) { return g && g.length > 20 ? g.slice(0, 13) + '…' + g.slice(-6) : (g || '—'); }
+function captureMs(captureId) { var m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z/.exec(captureId || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]) : null; }
+
+function getJSON(url) {
+  return fetch(url, { cache: 'no-store' }).then(function (r) {
+    if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    return r.json();
+  });
+}
+
+/* ---------- classification (status / outcome vocab from orders-core.js) ---------- */
+function statusInfo(st) {
+  if (KNOWN_STATUS.indexOf(st) >= 0) return { group: st, cls: 'b-' + st, text: st, anomaly: false };
+  if (RETIRED[st]) return { group: 'unknown', cls: 'b-anomaly', text: 'ANOMALY: ' + st + ' (retired state)', anomaly: true };
+  return { group: 'unknown', cls: 'b-anomaly', text: 'unknown state: ' + st, anomaly: true };
+}
+function outcomeInfo(a) {
+  var o = a.outcome;
+  if (!Object.prototype.hasOwnProperty.call(OUTCOME_TEXT, o)) return { known: false, text: 'unknown state: ' + o };
+  var t = OUTCOME_TEXT[o];
+  if (o === 'skipped-capacity' && a.reason) t = 'Capacity: ' + (REASON_TEXT[a.reason] || a.reason) + '.';
+  return { known: true, text: t };
+}
+
+/* ---------- support line: the engine's refAt (episodes-core.js) ----------
+   refAt(k) = ref.intercept + ref.slope * (k - oIdx), k = candle index, oIdx = index of ref.originCandleId.
+   Resistance = support + openGeometry.channelH. */
+function supportAt(ref, candles, id) {
+  if (!ref || !isNum(ref.slope) || !isNum(ref.intercept)) return null;
+  var k = -1, o = -1, i;
+  for (i = 0; i < candles.length; i++) { if (candles[i].time === id) k = i; if (candles[i].time === ref.originCandleId) o = i; }
+  if (k >= 0 && o >= 0) return ref.intercept + ref.slope * (k - o);
+  return ref.intercept + ref.slope * ((id - ref.originCandleId) / DAY);
+}
+
+/* ---------- load ---------- */
+function load() {
+  S.files = {}; S.err = {}; S.cur = null;
+  return getJSON('data/forward/CURRENT').then(function (cur) {
+    if (!cur || typeof cur.generationId !== 'string' || !cur.generationId) throw new Error('CURRENT has no generationId');
+    S.cur = cur;
+    var base = 'data/forward/gen-' + cur.generationId + '/';
+    return Promise.all(FILES.map(function (f) {
+      return getJSON(base + f + '.json').then(function (j) { S.files[f] = j; }, function (e) { S.err[f] = e.message || String(e); });
+    }));
+  }).catch(function (e) { S.cur = null; S.err.CURRENT = e.message || String(e); });
+}
+
+/* ---------- derived (display only) ---------- */
+function ordersList() { var o = S.files.orders; return o && Array.isArray(o.orders) ? o.orders : []; }
+function attemptsList() { var o = S.files.orders; return o && Array.isArray(o.attempts) ? o.attempts : []; }
+function episodesList() { var e = S.files.episodes; return e && Array.isArray(e.episodes) ? e.episodes : []; }
+function acctMap() { var a = S.files.accounts; return a && a.accounts ? a.accounts : {}; }
+function sortedOrders() {
+  return ordersList().slice().sort(function (a, b) {
+    var x = a.issueTimeUtc || '', y = b.issueTimeUtc || '';
+    if (x !== y) return x < y ? 1 : -1;
+    return (b.seq || 0) - (a.seq || 0);
+  });
+}
+function groupCounts(list) { var c = {}; GROUPS.forEach(function (g) { c[g] = 0; }); list.forEach(function (o) { c[statusInfo(o.status).group]++; }); return c; }
+function latestCaptureIso() {
+  var best = null; ordersList().forEach(function (o) { if (o.issueTimeUtc && (!best || o.issueTimeUtc > best)) best = o.issueTimeUtc; });
+  if (best) return { iso: best, src: 'orders.issueTimeUtc' };
+  var ms = S.cur ? captureMs(S.cur.captureId) : null;
+  return ms != null ? { iso: new Date(ms).toISOString(), src: 'CURRENT.captureId' } : null;
+}
+function health() {
+  var out = [], c = S.cur, k = S.files.checksums;
+  if (!k) out.push({ ok: false, t: 'checksums.json not loaded' });
+  else {
+    out.push(k.generationId === c.generationId ? { ok: true, t: 'checksums.generationId = CURRENT.generationId' } : { ok: false, t: 'checksums.generationId ≠ CURRENT.generationId (' + esc(k.generationId) + ' vs ' + esc(c.generationId) + ')' });
+    out.push(k.protocolVersion === c.protocolVersion ? { ok: true, t: 'checksums.protocolVersion = CURRENT.protocolVersion' } : { ok: false, t: 'checksums.protocolVersion ≠ CURRENT.protocolVersion (' + esc(k.protocolVersion) + ' vs ' + esc(c.protocolVersion) + ')' });
+  }
+  var loaded = FILES.filter(function (f) { return S.files[f]; }).length;
+  out.push(loaded === FILES.length ? { ok: true, t: 'files loaded 4/4' } : { ok: false, t: 'files loaded ' + loaded + '/4 (missing: ' + FILES.filter(function (f) { return !S.files[f]; }).map(function (f) { return f + ' ' + (S.err[f] || ''); }).join(', ') + ')' });
+  return out;
+}
+
+/* ---------- render ---------- */
+function render() {
+  var main = $('main');
+  if (charts.eq) { try { charts.eq.remove(); } catch (e) {} charts.eq = null; }
+  if (!S.cur) {
+    main.innerHTML = '<div class="unavail" id="unavail">Forward ledger unavailable</div><div class="secerr">' + esc(S.err.CURRENT || '') + '</div>';
+    return;
+  }
+  var h = [];
+  h.push(renderStrip());
+  h.push(renderAccounts());
+  h.push('<section id="sec-orders">' + renderOrders() + '</section>');
+  h.push(renderAttempts());
+  h.push(renderEpisodes());
+  main.innerHTML = h.join('');
+  drawEquity();
+}
+
+function renderStrip() {
+  var c = S.cur, lc = latestCaptureIso(), ageH = null;
+  if (lc) ageH = (nowMs() - Date.parse(lc.iso)) / 3600000;
+  var testDay = Math.floor((nowMs() - DAY0_MS) / 86400000);
+  var hl = health(), bad = hl.some(function (x) { return !x.ok; });
+  var amber = ageH != null && ageH > 30;
+  var cls = 'strip' + (bad ? ' red' : '') + (amber && !bad ? ' amber' : '');
+  var cap = lc ? esc(c.date) + ' · ' + esc(local(lc.iso)) + ' local · ' + esc(lc.iso) + ' UTC' : esc(c.date) + ' · —';
+  return '<div class="' + cls + '" id="strip">' +
+    kv('Protocol', esc(c.protocolVersion)) + kv('Generation', '<span title="' + esc(c.generationId) + '">' + esc(shortGen(c.generationId)) + '</span>') +
+    kv('Latest capture', cap) + kv('Test day', testDay >= 0 ? 'day ' + testDay : '— (before day 0)') +
+    kv('Data age', ageH == null ? '—' : '<span id="age" class="' + (amber ? 'warn' : '') + '">' + ageH.toFixed(1) + ' h' + (amber ? ' (stale &gt; 30 h)' : '') + '</span>') +
+    '<div class="health" id="health">' + hl.map(function (x) { return '<span class="' + (x.ok ? 'ok' : 'bad') + '">' + (x.ok ? '✓ ' : '✗ ') + x.t + '</span>'; }).join(' &nbsp; ') + '</div></div>';
+}
+function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+
+function renderAccounts() {
+  var h = ['<h2>Accounts</h2>'];
+  if (!S.files.accounts) return h.join('') + '<div class="secerr" id="err-accounts">accounts.json unavailable (' + esc(S.err.accounts || 'not loaded') + ')</div>';
+  var am = acctMap(), ids = Object.keys(am).sort(function (x, y) { return x === 'N0' ? -1 : y === 'N0' ? 1 : (x < y ? -1 : 1); }), orders = ordersList();
+  h.push('<div class="cards" id="cards">');
+  ids.forEach(function (pid) {
+    var a = am[pid], ser = a.series && a.series.length ? a.series[a.series.length - 1] : null;
+    var reserved = (a.reservations || []).reduce(function (s, r) { return s + (isNum(r.cents) ? r.cents : 0); }, 0);
+    var mine = orders.filter(function (o) { return o.policyId === pid && OPEN_STATES[o.status]; });
+    var by = {}; mine.forEach(function (o) { by[o.status] = (by[o.status] || 0) + 1; });
+    var open = Object.keys(by).sort().map(function (k) { return by[k] + ' ' + k; }).join(', ') || 'none';
+    var flag = a.suspended || a.riskLimitExceeded;
+    h.push('<div class="card' + (flag ? ' flag' : '') + '" data-policy="' + esc(pid) + '"><h3>' + esc(pid) + '</h3><div class="sub">' + esc(POLICY_LABEL[pid] || '—') + '</div><div class="grid2">' +
+      kv('Start cash', usd(a.startCash)) + kv('Cash', '<span data-f="cash">' + usd(a.cash) + '</span>') + kv('Reserved', '<span data-f="reserved">' + usd(reserved) + '</span>') +
+      kv('Marked', '<span data-f="marked">' + (ser ? usd(ser.marked) : '—') + '</span>') + kv('E', '<span data-f="E">' + (ser ? usd(ser.E) : '—') + '</span>') + kv('HWM', '<span data-f="hwm">' + usd(a.hwm) + '</span>') +
+      kv('Drawdown', ser && isNum(ser.drawdown) ? (ser.drawdown * 100).toFixed(2) + '%' : '—') +
+      kv('Suspended', '<span class="' + (a.suspended ? 'bad' : '') + '" data-f="suspended">' + (a.suspended ? 'YES' : 'no') + '</span>') +
+      kv('Risk limit exceeded', '<span class="' + (a.riskLimitExceeded ? 'bad' : '') + '" data-f="risk">' + (a.riskLimitExceeded ? 'YES' : 'no') + '</span>') +
+      '</div><div class="sub" style="margin-top:8px" data-f="open">Open orders: ' + esc(open) + '</div></div>');
+  });
+  h.push('</div>');
+  h.push('<h2>Equity<small>E in dollars from accounts.series[]; ● = suspension point</small></h2><div class="chartbox"><div id="eq-chart"></div></div>');
+  return h.join('');
+}
+
+function drawEquity() {
+  var el = $('eq-chart');
+  if (!el || !window.LightweightCharts || !S.files.accounts) return;
+  var am = acctMap();
+  var chart = LightweightCharts.createChart(el, { width: el.clientWidth || 600, height: 240, layout: { background: { color: '#13141f' }, textColor: '#6b7280' }, grid: { vertLines: { color: '#1e2035' }, horzLines: { color: '#1e2035' } }, rightPriceScale: { borderColor: '#1e2035' }, timeScale: { borderColor: '#1e2035' } });
+  charts.eq = chart;
+  var colors = { N0: '#7b6ef6', C1: '#00c896' }, log = { series: {} };
+  Object.keys(am).sort().forEach(function (pid) {
+    var ser = am[pid].series || [];
+    if (!ser.length) return;
+    var ls = chart.addLineSeries({ color: colors[pid] || '#f5a623', lineWidth: 2, title: pid, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
+    var pts = ser.filter(function (r) { return isNum(r.E); }).map(function (r) { return { time: r.date, value: r.E / 100 }; });
+    ls.setData(pts);
+    var mk = [];
+    ser.forEach(function (r) { if (r.suspended) mk.push({ time: r.date, position: 'aboveBar', shape: 'circle', color: '#ff5d6c', text: 'suspended' }); });
+    if (pts.length === 1) mk.push({ time: pts[0].time, position: 'inBar', shape: 'circle', color: colors[pid] || '#f5a623', text: pts[0].time === '2026-10-05' ? 'day 0' : pts[0].time });
+    mk.sort(function (a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+    if (mk.length) ls.setMarkers(mk);
+    log.series[pid] = { points: pts.length, markers: mk.length };
+  });
+  chart.timeScale().fitContent();
+  S.eqLog = log;
+}
+
+function renderOrders() {
+  var h = ['<h2>Orders<small>' + ordersList().length + ' in this generation, newest first. Click a row for the detail pane.</small></h2>'];
+  if (!S.files.orders) return h.join('') + '<div class="secerr" id="err-orders">orders.json unavailable (' + esc(S.err.orders || 'not loaded') + ')</div>';
+  var list = sortedOrders(), pols = {}; list.forEach(function (o) { pols[o.policyId] = 1; });
+  var gc = groupCounts(list);
+  h.push('<div class="chips" id="chips-policy"><span class="chiplabel">Policy</span>' + chip('policy', 'all', 'All ' + list.length) + Object.keys(pols).sort().map(function (p) { return chip('policy', p, p); }).join('') + '</div>');
+  h.push('<div class="chips" id="chips-group"><span class="chiplabel">Status</span>' + chip('group', 'all', 'All') + GROUPS.map(function (g) { return chip('group', g, g + ' ' + gc[g]); }).join('') + '</div>');
+  h.push('<div class="tablewrap"><table id="orders-table"><thead><tr><th>Policy</th><th>Coin</th><th>Issued</th><th>L / S / T</th><th>Ask vs L</th><th>Status</th><th>Window</th><th>Fill</th><th>Exit</th><th>Result</th><th>Flags</th></tr></thead><tbody>');
+  var shown = 0;
+  list.forEach(function (o) {
+    var si = statusInfo(o.status);
+    if (S.filt.policy !== 'all' && o.policyId !== S.filt.policy) return;
+    if (S.filt.group !== 'all' && si.group !== S.filt.group) return;
+    shown++;
+    h.push(orderRow(o, si));
+  });
+  if (!shown) h.push('<tr><td colspan="11" class="mut">No orders match the filter.</td></tr>');
+  h.push('</tbody></table></div>');
+  return h.join('');
+}
+function chip(kind, val, label) { var on = S.filt[kind] === val; return '<button class="chip' + (on ? ' on' : '') + '" data-chip="' + kind + '" data-val="' + esc(val) + '">' + esc(label) + '</button>'; }
+
+function resultOf(o) {
+  var e = o.exit, f = o.fill;
+  if (!e || !f || !isNum(e.pnlCents)) return null;
+  var basis = (f.notionalCents || 0) + (f.feeCents || 0) + (f.frictionCents || 0);
+  return { cents: e.pnlCents, pct: basis > 0 ? e.pnlCents / basis * 100 : null };
+}
+function orderRow(o, si) {
+  var q = o.quote || {}, askTxt = '—';
+  if (isNum(q.ask) && isNum(o.L) && o.L > 0) { var p = (q.ask / o.L - 1) * 100; askTxt = 'ask ' + pr(q.ask) + ' (' + (p >= 0 ? '+' : '') + p.toFixed(1) + '% ' + (p >= 0 ? 'above' : 'below') + ' L)'; }
+  var win = 'w0 ' + dash(o.w0) + ' · h ' + dash(o.hDone) + ' · elig ' + dash(o.eligibleDone) + '/' + dash(o.expiryBar) + (isNum(o.expiryAtSec) ? '<br><span class="mut">expires ' + dateOf(o.expiryAtSec) + '</span>' : '');
+  var f = o.fill, e = o.exit, r = resultOf(o);
+  var fillT = f ? pr(f.price) + ' <span class="mut">' + esc(dash(f.kind)) + ' · ' + esc(dash(f.reason)) + ' · fee ' + usd(f.feeCents) + '</span>' : '—';
+  var exitT = e ? pr(e.price) + ' <span class="mut">' + esc(dash(e.reason)) + ' · fee ' + usd(e.feeCents) + '</span>' : '—';
+  var resT = '—';
+  if (r) resT = '<span class="' + (r.cents >= 0 ? 'pos' : 'neg') + '" title="exit.pnlCents; % = exit.pnlCents / (fill.notionalCents + fill.feeCents + fill.frictionCents)">' + usd(r.cents) + (r.pct != null ? ' (' + (r.pct >= 0 ? '+' : '') + r.pct.toFixed(2) + '%)' : '') + '</span>';
+  var flags = [];
+  if (o.unresolved) flags.push('<span class="flagtxt" title="' + esc(JSON.stringify(o.unresolved)) + '">UNRESOLVED</span>');
+  if (o.stale && o.stale.persistent) flags.push('<span class="flagtxt" title="' + esc(JSON.stringify(o.stale)) + '">STALE (persistent)</span>');
+  return '<tr class="row" data-order="' + esc(o.id) + '"><td>' + esc(o.policyId) + '</td><td>' + esc(o.cgId) + ' <span class="mut">' + esc(dash(o.pair)) + '</span></td><td>' + esc(local(o.issueTimeUtc)) + '</td>' +
+    '<td>' + pr(o.L) + ' / ' + pr(o.S) + ' / ' + pr(o.T) + '</td><td>' + askTxt + '</td><td><span class="badge ' + si.cls + '">' + esc(si.text) + '</span></td><td>' + win + '</td><td>' + fillT + '</td><td>' + exitT + '</td><td>' + resT + '</td><td>' + (flags.join(' ') || '') + '</td></tr>';
+}
+
+function renderAttempts() {
+  var h = ['<h2>Attempts<small>one row per candidate per capture, including ACTs that produced no order</small></h2>'];
+  if (!S.files.orders) return h.join('') + '<div class="secerr">orders.json unavailable</div>';
+  var at = attemptsList(), caps = {};
+  at.forEach(function (a) { (caps[a.captureId] = caps[a.captureId] || []).push(a); });
+  var ids = Object.keys(caps).sort(function (x, y) { var dx = caps[x][0].date, dy = caps[y][0].date; return dx !== dy ? (dx < dy ? 1 : -1) : (x < y ? 1 : -1); });
+  if (!ids.length) return h.join('') + '<div class="mut">No attempts recorded.</div>';
+  ids.forEach(function (cid, i) {
+    var rows = caps[cid];
+    h.push('<details class="att"' + (i === 0 ? ' open' : '') + '><summary>' + esc(rows[0].date) + ' · ' + esc(shortGen(cid)) + ' · ' + rows.length + ' attempt' + (rows.length === 1 ? '' : 's') + '</summary><div class="inner tablewrap"><table><thead><tr><th>Date</th><th>Policy</th><th>Coin</th><th>Outcome</th><th>Order</th></tr></thead><tbody>');
+    rows.forEach(function (a) {
+      var oi = outcomeInfo(a);
+      h.push('<tr data-outcome="' + esc(a.outcome) + '"><td>' + esc(a.date) + '</td><td>' + esc(a.policyId) + '</td><td>' + esc(a.cgId) + '</td><td>' + (oi.known ? '<span class="badge">' + esc(a.outcome) + '</span> <span class="mut">' + esc(oi.text) + '</span>' : '<span class="badge b-anomaly">' + esc(oi.text) + '</span>') + '</td><td>' + esc(dash(a.orderId)) + '</td></tr>');
+    });
+    h.push('</tbody></table></div></details>');
+  });
+  return h.join('');
+}
+
+function ordersOnEp(epId) { return ordersList().filter(function (o) { return o.episodeId === epId; }).length; }
+function renderEpisodes() {
+  var h = ['<h2>Episodes</h2>'];
+  if (!S.files.episodes) return h.join('') + '<div class="secerr" id="err-episodes">episodes.json unavailable (' + esc(S.err.episodes || 'not loaded') + ')</div>';
+  var eps = episodesList(), bs = {}, bm = {};
+  eps.forEach(function (e) { bs[e.status] = (bs[e.status] || 0) + 1; bm[e.lastMatchState] = (bm[e.lastMatchState] || 0) + 1; });
+  h.push('<div class="note" id="ep-counts">' + eps.length + ' episodes · status: ' + Object.keys(bs).sort().map(function (k) { return esc(k) + ' ' + bs[k]; }).join(', ') + ' · match state: ' + Object.keys(bm).sort().map(function (k) { return esc(dash(k)) + ' ' + bm[k]; }).join(', ') + '</div>');
+  h.push('<details id="ep-details"><summary>Episode table (' + eps.length + ')</summary><div class="inner tablewrap"><table><thead><tr><th>Coin</th><th>Opened</th><th>Status</th><th>Match state</th><th>breakCount</th><th>K</th><th>Width</th><th>supportNow</th><th>Invalidation</th><th>Orders</th></tr></thead><tbody>');
+  eps.forEach(function (e) {
+    var g = e.openGeometry || {};
+    h.push('<tr class="row" data-episode="' + esc(e.id) + '"><td>' + esc(e.cgId) + '</td><td>' + esc(dash(e.openedAt)) + '</td><td>' + esc(dash(e.status)) + '</td><td>' + esc(dash(e.lastMatchState)) + '</td><td>' + dash(e.breakCount) + '</td><td>' + dash(e.K) + '</td><td>' + pr(g.width) + '</td><td>' + pr(g.supportNow) + '</td><td>' + pr(e.frozenInvalidation) + '</td><td>' + ordersOnEp(e.id) + '</td></tr>');
+  });
+  h.push('</tbody></table></div></details>');
+  return h.join('');
+}
+
+/* ---------- detail pane ---------- */
+function fetchCandles(cg) {
+  if (S.candle[cg]) return S.candle[cg];
+  S.candle[cg] = getJSON('data/cache/' + encodeURIComponent(cg) + '.json').then(function (j) {
+    var full = (j && j.ohlcDaily) || [];
+    if (!full.length) throw new Error('no ohlcDaily in cache');
+    return { candles: full.map(function (c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, date: c.date }; }) };
+  }).catch(function (e) { return { candles: null, error: e.message || String(e) }; });
+  return S.candle[cg];
+}
+function fetchDaily() {
+  if (S.daily === undefined) {
+    S.daily = getJSON('data/latest-daily.json').then(function (j) { return { coins: (j && j.coins) || [], date: j && j.date }; })
+      .catch(function (e) { return { coins: null, error: e.message || String(e) }; });
+  }
+  return S.daily;
+}
+function tvUrl(pair) { return 'https://www.tradingview.com/chart/?symbol=KRAKEN:' + encodeURIComponent(pair || '') + '&interval=D'; }
+function cgUrl(cg) { return 'https://www.coingecko.com/en/coins/' + encodeURIComponent(cg); }
+
+function valCell(k, v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'object') return '<code>' + esc(JSON.stringify(v)) + '</code>';
+  if (/Cents$/.test(k) || k === 'E' || k === 'Eissue' || k === 'Bcents' || k === 'cents') return usd(v) + ' <span class="mut">(' + esc(v) + ')</span>';
+  if (/Sec$/.test(k) && isNum(v)) return esc(iso(v)) + ' <span class="mut">(' + esc(v) + ')</span>';
+  return esc(v);
+}
+function rec(title, pairs) {
+  return '<table class="rec"><thead><tr><th colspan="2">' + esc(title) + '</th></tr></thead><tbody>' + pairs.map(function (p) { return '<tr><td>' + esc(p[0]) + '</td><td>' + p[1] + '</td></tr>'; }).join('') + '</tbody></table>';
+}
+function objPairs(obj, prefix) { return Object.keys(obj || {}).map(function (k) { return [(prefix || '') + k, valCell(k, obj[k])]; }); }
+function pick(o, keys) { return keys.map(function (k) { return [k, valCell(k, o[k])]; }); }
+function hmsPair(o, k) { return [k, isNum(o[k]) ? esc(hms(o[k])) + ' <span class="mut">(' + o[k] + ')</span>' : '—']; }
+
+function orderRecordHtml(o) {
+  var out = [], q = o.quote || {};
+  out.push(rec('Identity', [['id', esc(o.id)], ['policyId', esc(o.policyId)], ['policyVersion', esc(dash(o.policyVersion))], ['seq', valCell('seq', o.seq)], ['episodeId', esc(dash(o.episodeId))], ['captureId', esc(dash(o.captureId))],
+    ['issueDate', esc(dash(o.issueDate))], ['issueTimeUtc', esc(dash(o.issueTimeUtc))], hmsPair(o, 'tDecSec'), hmsPair(o, 'submittedAtSec'), hmsPair(o, 'quoteObservedAtSec'), ['dId', isNum(o.dId) ? esc(dateOf(o.dId)) + ' <span class="mut">(' + o.dId + ')</span>' : '—'], ['cgId / pair', esc(o.cgId) + ' / ' + esc(dash(o.pair))]]));
+  out.push(rec('Levels', pick(o, ['L', 'S', 'T', 'stopBasis', 'targetSource', 'score'])));
+  out.push(rec('Sizing', pick(o, ['Q', 'qty', 'Ncents', 'feeReserveCents', 'Bcents', 'Eissue', 'sizeClipped', 'tick', 'lot', 'lotsInv', 'minOrder'])));
+  out.push(rec('Execution', [['quote.ask', valCell('ask', q.ask)], ['quote.bid', valCell('bid', q.bid)], ['quote.last', valCell('last', q.last)], ['quoteStatus', esc(dash(o.quoteStatus))], ['status', esc(dash(o.status))], ['w0', valCell('w0', o.w0)], ['hDone', valCell('hDone', o.hDone)],
+    ['eligibleDone', valCell('eligibleDone', o.eligibleDone)], ['expiryBar', valCell('expiryBar', o.expiryBar)], ['nextBarId', isNum(o.nextBarId) ? esc(dateOf(o.nextBarId)) + ' <span class="mut">(' + o.nextBarId + ')</span>' : '—'],
+    ['cursorSec', isNum(o.cursorSec) ? esc(iso(o.cursorSec)) + ' <span class="mut">(' + o.cursorSec + ')</span>' : '—'], ['expiryAtSec', isNum(o.expiryAtSec) ? esc(dateOf(o.expiryAtSec)) + ' <span class="mut">(' + o.expiryAtSec + ')</span>' : '—'],
+    ['cancelCutoffSec', valCell('cancelCutoffSec', o.cancelCutoffSec)], ['unresolved', valCell('unresolved', o.unresolved)], ['proxy', valCell('proxy', o.proxy)], ['stale', valCell('stale', o.stale)], ['bars', valCell('bars', Array.isArray(o.bars) ? o.bars.length + ' item(s)' : o.bars)], ['intraday', valCell('intraday', o.intraday)]]));
+  out.push(rec('Fill', o.fill ? objPairs(o.fill) : [['fill', '—']]));
+  out.push(rec('Exit', o.exit ? objPairs(o.exit) : [['exit', '—']]));
+  out.push(rec('sens.exit', o.sens && o.sens.exit ? objPairs(o.sens.exit) : [['sens.exit', '—']]));
+  out.push(rec('Charges', objPairs(o.charges)));
+  var handled = { id: 1, policyId: 1, policyVersion: 1, seq: 1, episodeId: 1, captureId: 1, issueDate: 1, issueTimeUtc: 1, tDecSec: 1, submittedAtSec: 1, quoteObservedAtSec: 1, dId: 1, cgId: 1, pair: 1, L: 1, S: 1, T: 1, stopBasis: 1, targetSource: 1, score: 1, Q: 1, qty: 1, Ncents: 1, feeReserveCents: 1, Bcents: 1, Eissue: 1, sizeClipped: 1, tick: 1, lot: 1, lotsInv: 1, minOrder: 1,
+    quote: 1, quoteStatus: 1, status: 1, w0: 1, hDone: 1, eligibleDone: 1, expiryBar: 1, nextBarId: 1, cursorSec: 1, expiryAtSec: 1, cancelCutoffSec: 1, unresolved: 1, proxy: 1, stale: 1, bars: 1, intraday: 1, fill: 1, exit: 1, sens: 1, charges: 1, events: 1, marks: 1 };
+  var other = Object.keys(o).filter(function (k) { return !handled[k]; });
+  if (other.length) out.push(rec('Other fields', other.map(function (k) { return [k, valCell(k, o[k])]; })));
+  var ev = (o.events || []).map(function (e) {
+    var rest = {}; Object.keys(e).forEach(function (k) { if (k !== 'key' && k !== 'type' && k !== 'captureId' && k !== 'date') rest[k] = e[k]; });
+    return '<li><b>' + esc(dash(e.date)) + '</b> · ' + esc(dash(e.type)) + ' <span class="mut">' + esc(JSON.stringify(rest)) + '</span></li>';
+  });
+  out.push('<table class="rec"><thead><tr><th>Events (' + (o.events || []).length + ')</th></tr></thead></table><ul class="tl" id="events">' + (ev.join('') || '<li class="mut">—</li>') + '</ul>');
+  var mk = (o.marks || []).map(function (m) { return '<tr><td>' + esc(dash(m.date)) + '</td><td>' + pr(m.mark) + '</td><td>' + usd(m.valueCents) + '</td><td>' + dash(m.staleCount) + '</td></tr>'; });
+  out.push('<table class="rec" id="marks"><thead><tr><th>Marks (' + (o.marks || []).length + ')</th><th>mark</th><th>value</th><th>staleCount</th></tr></thead><tbody>' + (mk.join('') || '<tr><td colspan="4" class="mut">—</td></tr>') + '</tbody></table>');
+  return out.join('');
+}
+function episodeRecordHtml(e) {
+  if (!e) return '<div class="mut">Episode record not found in episodes.json.</div>';
+  var g = e.openGeometry || {}, anchors = e.anchorLive || [];
+  return rec('Episode', [['id', esc(e.id)], ['cgId / pair', esc(e.cgId) + ' / ' + esc(dash(e.pair))], ['openedAt', esc(dash(e.openedAt))], ['status', esc(dash(e.status))], ['lastMatchState', esc(dash(e.lastMatchState))], ['closeReason', esc(dash(e.closeReason))],
+    ['K', valCell('K', e.K)], ['breakCount', valCell('breakCount', e.breakCount)], ['gapDays', valCell('gapDays', e.gapDays)], ['obligationCandles', valCell('obligationCandles', e.obligationCandles)],
+    ['anchors (anchorLive)', anchors.length + ': ' + esc(anchors.map(function (a) { return dateOf(a.id); }).join(', '))], ['frozenInvalidation', pr(e.frozenInvalidation)]]
+    .concat(Object.keys(g).map(function (k) { return ['openGeometry.' + k, valCell(k, g[k])]; }))
+    .concat(Object.keys(e.refLine || {}).map(function (k) { return ['refLine.' + k, valCell(k, e.refLine[k])]; })));
+}
+
+function researchHtml(cg, d) {
+  if (!d || !d.coins) return '<div class="secerr" id="research">latest-daily.json unavailable (' + esc((d && d.error) || 'not loaded') + ')</div>';
+  var c = null; d.coins.forEach(function (x) { if (x.cgId === cg) c = x; });
+  if (!c) return '<div class="note" id="research">Coin ' + esc(cg) + ' is absent from latest-daily.json (' + esc(dash(d.date)) + ').</div>';
+  var r = c.research, rd = c.researchDaily || {};
+  var h = ['<div id="research">'];
+  if (!r) h.push('<div class="note">No research row for this coin in latest-daily.json.</div>');
+  else {
+    h.push(rec('Research (latest-daily.json ' + esc(dash(d.date)) + ')', [['verdict', esc(dash(r.verdict))], ['score', valCell('score', r.score)], ['gate', esc(dash(r.gate))], ['reason', esc(dash(r.reason))], ['lifecycleState', esc(dash(r.lifecycleState))]]));
+    var gs = (r.gates || []).map(function (g) { var st = g.pass === true ? '<span class="gpass">pass</span>' : g.pass === false ? '<span class="gfail">fail</span>' : '<span class="gnull">null</span>'; return '<tr><td>' + esc(g.id) + '</td><td>' + st + (g.value !== undefined && g.value !== null ? ' <span class="mut">' + esc(typeof g.value === 'object' ? JSON.stringify(g.value) : g.value) + '</span>' : '') + '</td></tr>'; });
+    h.push('<table class="rec" id="gates"><thead><tr><th>Gates (' + (r.gates || []).length + ')</th><th>result</th></tr></thead><tbody>' + gs.join('') + '</tbody></table>');
+  }
+  h.push(rec('researchDaily', ['lifecycleState', 'supportTouches', 'channelH', 'atr14'].map(function (k) { return [k, valCell(k, rd[k])]; })));
+  h.push('</div>');
+  return h.join('');
+}
+
+function terminalDay(o) {
+  var d = null;
+  (o.events || []).forEach(function (e) { if (e.type === 'status' && e.to === o.status && e.date) d = e.date; });
+  return d ? dateToSec(d) : null;
+}
+function chartBuild(cg, ep, ords, all) {
+  var el = $('dchart'); S.chartLog = { markers: [], lines: [], support: null, resistance: null, inval: null, shade: [] };
+  if (!el || !window.LightweightCharts) return;
+  var win = all.slice(-150), lastT = win.length ? win[win.length - 1].time : 0;
+  if (charts.d) { try { charts.d.remove(); } catch (e) {} charts.d = null; }
+  var chart = LightweightCharts.createChart(el, { width: el.clientWidth || 600, height: 330, layout: { background: { color: '#0b0c14' }, textColor: '#6b7280' }, grid: { vertLines: { color: '#1e2035' }, horzLines: { color: '#1e2035' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal }, rightPriceScale: { borderColor: '#1e2035' }, timeScale: { borderColor: '#1e2035', timeVisible: true, rightOffset: 4 } });
+  charts.d = chart;
+  var ref = ep && ep.refLine, g = (ep && ep.openGeometry) || {};
+  var ref0 = ords.length && ords[0].L ? ords[0].L : (win.length ? win[win.length - 1].close : 1), pp = ref0 >= 100 ? 2 : ref0 >= 1 ? 4 : 6;
+  var cs = chart.addCandlestickSeries({ upColor: '#00c896', downColor: '#e8754a', borderUpColor: '#00c896', borderDownColor: '#e8754a', wickUpColor: '#00c896', wickDownColor: '#e8754a', priceFormat: { type: 'price', precision: pp, minMove: Math.pow(10, -pp) } });
+  cs.setData(win);
+  var hasC = {}; win.forEach(function (c) { hasC[c.time] = 1; });
+  var LS = LightweightCharts.LineStyle;
+  function lineSeries(color, style, title, noScale) { return chart.addLineSeries({ color: color, lineWidth: 1, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: title, autoscaleInfoProvider: noScale ? function () { return null; } : undefined }); }
+  if (ref && isNum(ref.slope)) {
+    var sup = win.map(function (c) { return { time: c.time, value: supportAt(ref, all, c.time) }; });
+    var sl = lineSeries('#7b6ef6', LS.Solid, 'support', true); sl.setData(sup);
+    S.chartLog.support = { points: sup.length, first: sup[0], last: sup[sup.length - 1] };
+    if (isNum(g.channelH)) {
+      var rs = lineSeries('#9da3b4', LS.Solid, 'resistance', true); rs.setData(sup.map(function (p) { return { time: p.time, value: p.value + g.channelH }; }));
+      S.chartLog.resistance = { channelH: g.channelH };
+    }
+  }
+  if (ep && isNum(ep.frozenInvalidation)) { cs.createPriceLine({ price: ep.frozenInvalidation, color: '#6b7280', lineStyle: LS.Dashed, lineWidth: 1, axisLabelVisible: true, title: 'invalidation' }); S.chartLog.inval = ep.frozenInvalidation; }
+  var shade = {};
+  ords.forEach(function (o) {
+    var t0 = isNum(o.dId) ? o.dId : (isNum(o.tDecSec) ? dayOf(o.tDecSec) : null);
+    if (t0 == null) return;
+    [[0, 'rgba(123,110,246,0.16)'], [1, 'rgba(123,110,246,0.07)'], [2, 'rgba(123,110,246,0.07)']].forEach(function (x) { if (!shade[t0 + x[0] * DAY]) shade[t0 + x[0] * DAY] = x[1]; });
+    var st = statusInfo(o.status), t1;
+    if (o.exit && isNum(o.exit.barId)) t1 = dayOf(o.exit.barId);
+    else if (st.group === 'expired' || st.group === 'cancelled-suspension' || st.group === 'rejected-invalid-at-submission') t1 = terminalDay(o) || t0;
+    else t1 = Math.max(lastT, t0);
+    if (t1 <= t0) t1 = t0 + (OPEN_STATES[o.status] ? 2 * DAY : DAY);
+    var days = {}; days[t0] = 1; days[t1] = 1;
+    var fillT = o.fill ? (isNum(o.fill.dayId) ? o.fill.dayId : dayOf(o.fill.tSec || o.fill.barId || t0)) : null;
+    var exitT = o.exit ? dayOf(o.exit.barId || o.exit.tSec || t1) : null;
+    if (fillT != null) days[fillT] = 1; if (exitT != null) days[exitT] = 1;
+    var times = Object.keys(days).map(Number).sort(function (a, b) { return a - b; });
+    var lv = [['L', o.L, '#7b6ef6'], ['S', o.S, '#e8754a'], ['T', o.T, '#00c896']], ser = {};
+    lv.forEach(function (x) {
+      if (!isNum(x[1])) return;
+      var l = lineSeries(x[2], LS.Dashed, x[0]); l.setData(times.map(function (t) { return { time: t, value: x[1] }; })); ser[x[0]] = l;
+      S.chartLog.lines.push({ orderId: o.id, kind: x[0], price: x[1], t0: t0, t1: t1 });
+    });
+    var mkL = [], mkC = [];
+    function add(m, t, kind) { var tgt = (hasC[t] && kind !== 'issue' && kind !== 'term') ? mkC : mkL; tgt.push(Object.assign({ time: t }, m)); S.chartLog.markers.push({ orderId: o.id, kind: kind, time: t, text: m.text, shape: m.shape, position: m.position, color: m.color }); }
+    add({ position: 'inBar', shape: 'circle', color: '#7b6ef6', text: 'ask ' + pr((o.quote || {}).ask), size: 1 }, t0, 'issue');
+    if (o.fill) add({ position: 'belowBar', shape: 'arrowUp', color: '#00c896', text: 'BUY ' + pr(o.fill.price) + ' · ' + dash(o.fill.kind) }, fillT, 'fill');
+    if (o.exit) { var rr = resultOf(o); add({ position: 'aboveBar', shape: 'arrowDown', color: rr && rr.cents < 0 ? '#e8754a' : '#00c896', text: dash(o.exit.reason) + ' ' + pr(o.exit.price) }, exitT, 'exit'); }
+    else if (st.group === 'expired' || st.group === 'cancelled-suspension' || st.group === 'rejected-invalid-at-submission') add({ position: 'inBar', shape: 'square', color: '#6b7280', text: o.status, size: 1 }, t1 > t0 && terminalDay(o) ? terminalDay(o) : t0, 'term');
+    var anchor = ser.L || ser.S || ser.T;
+    mkL.sort(function (a, b) { return a.time - b.time; }); mkC.sort(function (a, b) { return a.time - b.time; });
+    if (anchor && mkL.length) anchor.setMarkers(mkL);
+    if (mkC.length) { var prev = cs._pdMarks || []; cs._pdMarks = prev.concat(mkC).sort(function (a, b) { return a.time - b.time; }); cs.setMarkers(cs._pdMarks); }
+  });
+  var sk = Object.keys(shade).map(Number).sort(function (a, b) { return a - b; });
+  if (sk.length) {
+    var hs = chart.addHistogramSeries({ priceScaleId: 'win', priceLineVisible: false, lastValueVisible: false, autoscaleInfoProvider: function () { return { priceRange: { minValue: 0, maxValue: 1 } }; } });
+    chart.priceScale('win').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
+    hs.setData(sk.map(function (t) { return { time: t, value: 1, color: shade[t] }; }));
+    S.chartLog.shade = sk;
+  }
+  chart.timeScale().fitContent();
+}
+
+function paneShell(title) {
+  $('pane-title').textContent = title;
+  $('pane').classList.add('on'); $('scrim').classList.add('on'); $('pane').setAttribute('aria-hidden', 'false');
+}
+function closePane() {
+  $('pane').classList.remove('on'); $('scrim').classList.remove('on'); $('pane').setAttribute('aria-hidden', 'true');
+  if (charts.d) { try { charts.d.remove(); } catch (e) {} charts.d = null; }
+  S.pane = null;
+}
+function openDetail(kind, id) {
+  var o = null, ep = null, cg, pair;
+  if (kind === 'order') { o = ordersList().filter(function (x) { return x.id === id; })[0]; if (!o) return Promise.resolve(); ep = episodesList().filter(function (e) { return e.id === o.episodeId; })[0] || null; cg = o.cgId; pair = o.pair; }
+  else { ep = episodesList().filter(function (e) { return e.id === id; })[0]; if (!ep) return Promise.resolve(); cg = ep.cgId; pair = ep.pair; }
+  var ords = ep ? ordersList().filter(function (x) { return x.episodeId === ep.id; }) : (o ? [o] : []);
+  if (o && ords.indexOf(o) < 0) ords.push(o);
+  var token = {}; S.pane = token;
+  paneShell((kind === 'order' ? o.id : ep.id));
+  var body = $('pane-body');
+  body.innerHTML = '<div><a class="lnk" href="radar.html" id="lnk-radar">Open in Radar</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(tvUrl(pair)) + '" id="lnk-tv">TradingView</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(cgUrl(cg)) + '" id="lnk-cg">CoinGecko</a></div>' +
+    '<div id="dchart"></div><div class="note" id="chartnote">Loading candles…</div>' +
+    '<div class="note">Intraday limitation: fills in window 0 resolved on 5-minute bars are drawn on the fill day’s daily candle; the exact <code>fill.tSec</code> is in the order record below. Window shading: issue day darker, D+1 and D+2 lighter. Lines run from the issue day to the exit / terminal day, or to the last candle (minimum one day; open orders show the D+2 window).</div>' +
+    (o ? orderRecordHtml(o) : '') + (o ? '' : '') + '<div id="eprec">' + episodeRecordHtml(ep) + '</div><div id="rsec"><div class="mut">Loading research…</div></div>';
+  var pc = fetchCandles(cg).then(function (c) {
+    if (S.pane !== token) return;
+    if (!c.candles) { $('chartnote').innerHTML = '<span class="bad">Candles unavailable for ' + esc(cg) + ' (' + esc(c.error) + ')</span>'; $('dchart').style.display = 'none'; return; }
+    $('chartnote').textContent = c.candles.length + ' daily candles in cache (last ' + Math.min(150, c.candles.length) + ' drawn). Support = refLine; resistance = support + openGeometry.channelH (both extrapolated back over the drawn candles and clipped to the candle/level price range); dashed grey = frozenInvalidation; per order: L (purple), S (orange), T (green).';
+    chartBuild(cg, ep, ords, c.candles);
+  });
+  var pd = fetchDaily().then(function (d) { if (S.pane === token) $('rsec').innerHTML = researchHtml(cg, d); });
+  return Promise.all([pc, pd]);
+}
+
+/* ---------- wiring ---------- */
+document.addEventListener('click', function (ev) {
+  var t = ev.target;
+  var chipEl = t.closest && t.closest('[data-chip]');
+  if (chipEl) { S.filt[chipEl.getAttribute('data-chip')] = chipEl.getAttribute('data-val'); $('sec-orders').innerHTML = renderOrders(); return; }
+  var row = t.closest && t.closest('tr[data-order]');
+  if (row) { openDetail('order', row.getAttribute('data-order')); return; }
+  var erow = t.closest && t.closest('tr[data-episode]');
+  if (erow) { openDetail('episode', erow.getAttribute('data-episode')); return; }
+  if (t.id === 'scrim' || t.id === 'pane-x') closePane();
+});
+document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closePane(); });
+
+window.RT = {
+  S: S, load: load, render: render, closePane: closePane,
+  setNow: function (ms) { S.nowOverride = ms; },
+  openOrder: function (id) { return openDetail('order', id); },
+  openEpisode: function (id) { return openDetail('episode', id); },
+  supportAt: supportAt, statusInfo: statusInfo, outcomeInfo: outcomeInfo, resultOf: resultOf, groupCounts: groupCounts, ordersList: ordersList,
+  ready: null
+};
+window.RT.ready = load().then(render);
+})();
+</script>
+</body>
+</html>
