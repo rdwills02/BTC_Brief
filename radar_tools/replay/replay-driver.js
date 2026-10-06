@@ -255,19 +255,42 @@ function captureFor(dateStr) {
 // bar-close fit/ctx instead of a live one. Checkpoint 7b: `structuralFit` param added (v1.4 §3 rule 1) — accepted
 // ONLY as continuity evidence and ONLY when `fit` is null, exactly as fwdResearchRow guards it; a caller that never
 // passes structuralFit gets byte-identical pre-7b rows (no other field or caller changed).
-function researchRowOf(fit, res, price, structuralFit) {
+// Protocol v1.4.4 R4: `widthPrice` (optional 5th arg; undefined = legacy row without the key) is the stored fit's detectionPrice, the input C2.width used.
+// Replay protocol mode (item 37b). Default = forward-experiment-v1.4.4 (gate-faithful: the width screen uses the fit's detectionPrice, the zone test uses the row price). `--legacy` (or `--protocol legacy-v1.4.3`) reproduces older studies on the v1.4.3 basis.
+// Selected per process by main() (--protocol <name> | --legacy) or setReplayMode(); every entry point (simulateFamily -> sharedDayStep -> episodes-core) reads it via replayCfg(), so a v1.4.4 run can never fall back to EC.DEFAULT_CFG.
+var REPLAY_MODE_144 = 'forward-experiment-v1.4.4', REPLAY_MODE_LEGACY = 'legacy-v1.4.3', REPLAY_MODES = [REPLAY_MODE_144, REPLAY_MODE_LEGACY];
+var replayMode = REPLAY_MODE_144;
+function setReplayMode(m) { if (REPLAY_MODES.indexOf(m) < 0) throw new Error('replay: unknown protocol mode ' + m + ' (expected ' + REPLAY_MODES.join(' | ') + ')'); replayMode = m; return replayMode; }
+function getReplayMode() { return replayMode; }
+function replayModeFromArgv(argv) {
+  var pi = argv.indexOf('--protocol'), legacy = argv.indexOf('--legacy') >= 0;
+  if (pi >= 0) { var v = argv[pi + 1]; if (REPLAY_MODES.indexOf(v) < 0) throw new Error('--protocol requires one of: ' + REPLAY_MODES.join(', ')); if (legacy && v !== REPLAY_MODE_LEGACY) throw new Error('--legacy conflicts with --protocol ' + v); return v; }
+  return legacy ? REPLAY_MODE_LEGACY : REPLAY_MODE_144;
+}
+function replayCfg(cfg) {   // the episodes-core cfg for the selected mode; an explicit gateFaithful in a caller-supplied cfg wins
+  var base = cfg || EC.DEFAULT_CFG;
+  if (base.gateFaithful !== undefined) return base;
+  return replayMode === REPLAY_MODE_144 ? Object.assign({}, base, { gateFaithful: true }) : base;
+}
+function requireWidthPrice(fit, cgId, dateStr) {
+  if (!fit || !(typeof fit.detectionPrice === 'number' && isFinite(fit.detectionPrice) && fit.detectionPrice > 0)) throw new Error('replay: fit for ' + cgId + ' on ' + dateStr + ' has no finite positive detectionPrice (widthPrice) - v1.4.4 replay refuses to substitute another price');
+  return fit.detectionPrice;
+}
+function researchRowOf(fit, res, price, structuralFit, widthPrice) {
   if (!fit && !structuralFit) return null;
   function lean(f) {
     return { fitId: f.fitId, pivotIds: f.pivotIds || [], supSlope: f.supSlope, supIntercept: f.supIntercept, supportNow: f.supportNow,
       invalidation: f.invalidation, atr14: f.atr14, resistNow: f.resistNow, channelH: f.channelH, supportTouches: f.supportTouches, lifecycleState: f.lifecycleState };
   }
-  return {
+  var row = {
     fit: fit ? lean(fit) : null, structuralFit: (!fit && structuralFit) ? lean(structuralFit) : null,
     price: price, gates: (res && res.details && res.details.gates) || null, score: (fit && num(fit.score)) ? fit.score : null,
     entryEconomics: (fit && fit.entryEconomics) ? { entryZone: fit.entryEconomics.entryZone, entryRef: fit.entryEconomics.entryRef, defendedLow: fit.entryEconomics.defendedLow,
       stop: fit.entryEconomics.stop, stopBasis: fit.entryEconomics.stopBasis, target: fit.entryEconomics.target, targetSource: fit.entryEconomics.targetSource,
       netRR: fit.entryEconomics.netRR, grossRR: fit.entryEconomics.grossRR, atr14: fit.entryEconomics.atr14 } : null
   };
+  if (widthPrice !== undefined) row.widthPrice = widthPrice;
+  return row;
 }
 
 // The 16 research gate ids, channel-core.js order (mirrors capture.js's FWD_KNOWN_GATE_IDS verbatim — a test
@@ -296,6 +319,7 @@ function warmupCandlesFromArgv(argv) {
 // optimize, unlike the live cohort), so the episode state is provably policy-independent and is computed once.
 function sharedDayStep(universe, dateStr, priorEpisodesState, cfg, warmupCandles) {
   var wc = warmupCandles == null ? WARMUP_CANDLES_DEFAULT : warmupCandles;
+  var cfgE = replayCfg(cfg);   // item 37b: the selected replay mode, never a silent EC.DEFAULT_CFG
   var capture = captureFor(dateStr), cutoffSec = capture.inputCutoffSec;
   var btcUsable = usableSlice(universe.btcCandles, cutoffSec);
   var btcRegime = btcUsable.length ? C.btcRegimeFromCandles(btcUsable) : null;
@@ -318,7 +342,7 @@ function sharedDayStep(universe, dateStr, priorEpisodesState, cfg, warmupCandles
     var last = usable[usable.length - 1];
     if (fit) {
       var res = C.researchVerdict(fit, { price: last.close, volume24h: num(last.quoteVolumeUsd) ? last.quoteVolumeUsd : null, btc: btcRegime, quote: null, floor: C.ACT_SCORE_FLOOR_1D });
-      researchRows[cgId] = researchRowOf(fit, res, last.close, null);
+      researchRows[cgId] = researchRowOf(fit, res, last.close, null, cfgE.gateFaithful ? requireWidthPrice(fit, cgId, dateStr) : undefined);
     } else {
       // Checkpoint 7b (Protocol v1.4 §3 rule 1): mirrors capture.js ecd41806 exactly — the structural
       // winner is computed on the SAME candles the (null) policy-fit attempt just used, and is accepted
@@ -331,7 +355,7 @@ function sharedDayStep(universe, dateStr, priorEpisodesState, cfg, warmupCandles
     }
   });
 
-  var eu = EC.updateEpisodes(priorEpisodesState, capture, researchRows, bars, universeIds, [], cfg || EC.DEFAULT_CFG);
+  var eu = EC.updateEpisodes(priorEpisodesState, capture, researchRows, bars, universeIds, [], cfgE);
   var candidates = eu.episodeDays.map(function (ed) {
     var coin = universe.byCgId[ed.cgId];
     // _channelH: episodeDays (episodes-core.js) carries fitId/entryEconomics/score/gates but never the fit's own
@@ -417,7 +441,7 @@ function applyTargetOverride(candidates, kind) {
 // the acceptance-2 pipeline-order test). issuanceAllowed(dateStr) gates step 7 only (steps 1-6 always run,
 // so orders issued near a split's end still adjudicate/exit during a following embargo/continuation range). ----
 function simulateFamily(universe, dateList, policies, issuanceAllowedFn, cfgBase, onDay, warmupCandles) {
-  var books = {}, priorEpisodes = null, cfgB = cfgBase || EC.DEFAULT_CFG;
+  var books = {}, priorEpisodes = null, cfgB = replayCfg(cfgBase);
   policies.forEach(function (p) { books[p.label] = OC.newBook(); });
   dateList.forEach(function (dateStr) {
     var shared = sharedDayStep(universe, dateStr, priorEpisodes, cfgB, warmupCandles);
@@ -646,6 +670,7 @@ function firstEligibilityInfo(universe, warmupCandles) {
 function runHeader(universe, extra, warmupCandles) {
   var elig = firstEligibilityInfo(universe, warmupCandles);
   return Object.assign({
+    replayMode: replayMode, replayModeNote: replayMode === REPLAY_MODE_144 ? 'forward-experiment-v1.4.4 gate-faithful: C2.width screen at the fit detectionPrice (widthPrice), entry-zone test at the row price (D-1 close)' : 'legacy-v1.4.3: width screen at the row price (older studies only)',
     engineVersion: ENGINE_VERSION, baseCommit: BASE_COMMIT, storeHash: universe.storeHash, metadataSnapshotSha256: universe.metadataSnapshotSha256,
     warmupCandlesUsed: elig.warmupCandles,
     firstAvailableCandle: elig.firstAvailableCandle, firstAvailableCandleCoin: elig.firstAvailableCandleCoin,
@@ -673,9 +698,11 @@ function runDevelopment(warmupCandles) {
   // warmupCandles is included in the runId: it only changes header/reporting fields (see firstEligibilityInfo),
   // never the simulation itself, but checkpoint 7c's authoritative (153) and sensitivity (30) runs must land in
   // distinct run directories, so it must distinguish the id even though it doesn't distinguish the sim result.
-  var rid = sha256Of({ kind: 'development', storeHash: universe.storeHash, metadataSnapshotSha256: universe.metadataSnapshotSha256,
+  var ridInput = { kind: 'development', storeHash: universe.storeHash, metadataSnapshotSha256: universe.metadataSnapshotSha256,
     policies: policyKey, devStart: DEV_START, devEnd: DEV_END, embargoEnd: EMBARGO_END, seed: SEED, engineVersion: ENGINE_VERSION,
-    warmupCandles: wc }).slice(0, 16);
+    warmupCandles: wc };
+  if (replayMode !== REPLAY_MODE_LEGACY) ridInput.replayMode = replayMode;   // legacy runIds are unchanged; a v1.4.4 run gets a distinct id
+  var rid = sha256Of(ridInput).slice(0, 16);
 
   var books = simulateFamily(universe, simDates, fam.eligibleFamily, function (d) { return d <= DEV_END; }, null, null, wc);
 
@@ -835,7 +862,7 @@ function runValidationGuard(runDir) {
 }
 
 module.exports.internal = { sha256Hex, stableStringify, sha256Of, ymdToSec, secToYmd, addDays, dateRange, computeStore, normSym, slugPair,
-  usableSlice, captureFor, researchRowOf, GATE_IDS, MIN_CANDLES_FOR_FIT, WARMUP_CANDLES_DEFAULT, warmupCandlesFromArgv, firstEligibilityInfo,
+  usableSlice, captureFor, researchRowOf, requireWidthPrice, setReplayMode, getReplayMode, replayModeFromArgv, replayCfg, REPLAY_MODE_144, REPLAY_MODE_LEGACY, GATE_IDS, MIN_CANDLES_FOR_FIT, WARMUP_CANDLES_DEFAULT, warmupCandlesFromArgv, firstEligibilityInfo,
   runHeader, sharedDayStep, policyDayStep, buildPolicyFamily, subsetsOf,
   simulateFamily, applyTargetOverride, splitmix32Next, makeXoshiro128ss, goldenVector, drawIndex, blockResampleIndices, percentileBound,
   bootstrapMeanBudgetR, combinations, pboCscv, statsForPolicy, bootstrapReportFor, CONTEXT_DIFFERENCES, fillsPerMonthAvg,
@@ -851,6 +878,8 @@ module.exports.runValidationGuard = runValidationGuard;
 function main() {
   var argv = process.argv.slice(2);
   try {
+    setReplayMode(replayModeFromArgv(argv));
+    if (argv.indexOf('--build-store') < 0) console.log('replay mode:', getReplayMode());
     if (argv.indexOf('--build-store') >= 0) { buildStore(); return; }
     if (argv.indexOf('--dev') >= 0) {
       var wcArg = warmupCandlesFromArgv(argv);
@@ -878,7 +907,7 @@ function main() {
       runValidationGuard(path.resolve(vRunDir));
       return;
     }
-    console.log('Usage: node replay-driver.js --build-store | --dev | --contaminated [--policy LABEL] | --select <runDir> | --validation <runDir>');
+    console.log('Usage: node replay-driver.js --build-store | --dev | --contaminated [--policy LABEL] | --select <runDir> | --validation <runDir>   [--protocol forward-experiment-v1.4.4 (default) | --legacy]');
   } catch (e) {
     console.error(e.message);
     process.exitCode = 1;
