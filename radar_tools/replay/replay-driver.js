@@ -836,6 +836,44 @@ function runContaminated(policyLabel) {
   return { runDir: runDir, doc: doc };
 }
 
+// ---- Item 40: --shadow. The two near-zone-study shadow policies (CTRL = the live challenger block, NZ = the same with zoneTolerancePct 3) replayed on the DAILY PROXY (orders rest from D+1, no intraday).
+// CONTEXT ONLY - "daily-proxy context, not the primary": the study's endpoint is the forward intraday shadow books (Spec v0.3 section 5). Each policy gets its own book; nothing is written to disk. ----
+function shadowPolicyDefs() {
+  var cfg = null; try { cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'forward', 'config.json'), 'utf8')); } catch (e) { cfg = null; }
+  var sp = cfg && cfg.shadowPolicies, base = cfg && cfg.challenger;
+  if (!sp && !base) throw new Error('--shadow: data/forward/config.json carries neither shadowPolicies nor a challenger block');
+  var ctrl = (sp && sp.CTRL) || base, nz = (sp && sp.NZ) || Object.assign({}, base, { zoneTolerancePct: 3 });
+  return [{ id: 'CTRL', block: ctrl }, { id: 'NZ', block: nz }].map(function (p) { return { id: p.id, version: p.block.version || p.id, block: p.block, zoneTolerancePct: num(p.block.zoneTolerancePct) ? p.block.zoneTolerancePct : 0 }; });
+}
+function simulateShadowProxy(universe, dateList, issueThrough, warmupCandles) {
+  var defs = shadowPolicyDefs(), books = {}, priorEpisodes = null, cfgB = replayCfg(null);
+  defs.forEach(function (p) { books[p.id] = OC.newShadowBook([p.id]); });
+  dateList.forEach(function (dateStr) {
+    var shared = sharedDayStep(universe, dateStr, priorEpisodes, cfgB, warmupCandles);
+    priorEpisodes = shared.nextEpisodesState;
+    defs.forEach(function (p) {   // steps 2, 4, 5, 7 per book (step 3 no longer exists in orders-core)
+      var b = OC.adjudicateAll(books[p.id], shared.capture, shared.bars, {});
+      b = OC.valuation(b, p.id, shared.capture, shared.bars); b = OC.suspend(b, p.id, shared.capture);
+      if (dateStr <= issueThrough) b = OC.issueBatch(b, { id: p.id, version: p.version, zoneTolerancePct: p.zoneTolerancePct }, shared.candidates, shared.capture, { challenger: p.block, dailyProxy: true }).book;
+      books[p.id] = b;
+    });
+  });
+  return { defs: defs, books: books };
+}
+function runShadowProxy(which) {
+  var universe = loadUniverse(), dev = which === 'dev', from = dev ? DEV_START : CONTAM_START, to = dev ? DEV_END : CONTAM_END, endSim = dev ? EMBARGO_END : addDays(CONTAM_END, 31);
+  var sim = simulateShadowProxy(universe, dateRange(from, endSim), to, WARMUP_CANDLES_DEFAULT), windowDates = dateRange(from, to);
+  console.log('SHADOW STUDY - daily-proxy context, not the primary (Spec v0.3 section 5 is decided on the forward intraday shadow books). Window ' + from + ' .. ' + to + ' (' + (dev ? 'development split' : 'contaminated window') + '), orders rest D+1..D+3, no intraday.');
+  var rows = {};
+  sim.defs.forEach(function (p) {
+    var st = statsForPolicy(sim.books[p.id], p.id, windowDates); rows[p.id] = st;
+    console.log('  ' + p.id + ' (zoneTolerancePct ' + p.zoneTolerancePct + '): issued ' + st.issued + ' | filled ' + st.filled + ' | exited ' + st.exited + ' | mean net budget-R per exited ' + (st.meanBudgetR == null ? 'n/a' : st.meanBudgetR.toFixed(4)) + ' | funnel ' + JSON.stringify(st.funnel) + (st.suspended ? ' | SUSPENDED' : ''));
+  });
+  var added = sim.books.NZ.orders.filter(function (o) { return sim.books.NZ.attempts.some(function (a) { return a.orderId === o.id && a.zoneOverride && a.zoneOverride.loggedPass === false; }); });
+  console.log('  NZ orders that exist only through the tolerance: ' + added.length + ' (filled ' + added.filter(function (o) { return o.fill; }).length + ')');
+  return { rows: rows, added: added.length };
+}
+
 // ---- deliverable 7: --select. IMPLEMENTED, NEVER INVOKED by this build (v0.1 §8 / user instruction). ----
 function assertDevelopmentTableWritten(runDir) {
   var tablePath = path.join(runDir, 'development-table.json'), hashPath = path.join(runDir, 'development-table.sha256');
@@ -895,6 +933,11 @@ function main() {
       console.log('contaminated-window run written:', cres.runDir);
       return;
     }
+    if (argv.indexOf('--shadow') >= 0) {
+      var wi = argv.indexOf('--window');
+      runShadowProxy(wi >= 0 ? argv[wi + 1] : 'contaminated');
+      return;
+    }
     if (argv.indexOf('--select') >= 0) {
       var si = argv.indexOf('--select'), runDir = argv[si + 1];
       if (!runDir) throw new Error('--select requires a run directory argument');
@@ -914,6 +957,8 @@ function main() {
   }
 }
 if (require.main === module) main();
+module.exports.runShadowProxy = runShadowProxy;
+module.exports.simulateShadowProxy = simulateShadowProxy;
 module.exports.buildStore = buildStore;
 module.exports.loadMetadataSnapshot = loadMetadataSnapshot;
 module.exports.loadUniverse = loadUniverse;
