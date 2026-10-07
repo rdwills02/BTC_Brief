@@ -1429,6 +1429,19 @@ async function fwdFetchTradesSlice(fetchFn, pairId, fromSec, toSec, opts) {
   return out;
 }
 
+// Item 41 (B7): evidence the provisional producer retained under data/forward/evidence/<pair>/<YYYY-MM-DD>.json (append-only, firstObservedAt per bar / slice). The daily capture may use ONLY items the producer observed
+// by this capture's own issue time (firstObservedAt <= issueSec); Kraken's answer always takes precedence over a retained bar. Returns { bars: [{id,open,high,low,close}], slices: [{fromSec,toSec,complete,trades:[{t,p,n}]}] }.
+function fwdRetainedEvidence(d, root, pair, fromSec, toSec, issueSec) {
+  var out = { bars: [], slices: [] }; if (!pair || !/^[A-Z0-9]{3,20}$/.test(pair)) return out;
+  for (var t = Math.floor(fromSec / 86400) * 86400; t <= toSec; t += 86400) {
+    var f = fwdReadJson(d, d.path.join(root, 'forward', 'evidence', pair, new Date(t * 1000).toISOString().slice(0, 10) + '.json')); if (!f) continue;
+    var seen = function (x) { var o = Date.parse(x && x.firstObservedAt); return isFinite(o) && o / 1000 <= issueSec; };
+    (f.bars5 || []).forEach(function (b) { if (seen(b) && b.id + FWD_BAR5 <= issueSec) out.bars.push({ id: b.id, open: b.open, high: b.high, low: b.low, close: b.close }); });
+    (f.trades || []).forEach(function (sl) { if (seen(sl) && sl.complete === true) out.slices.push({ fromSec: sl.fromSec, toSec: sl.toSec, complete: true, trades: (sl.trades || []).map(function (x) { return { t: x[0], p: x[1], n: x[2] }; }) }); });
+  }
+  return out;
+}
+
 // ---- research row for D1/D2, built from the detector's own fit and verdict as logged ----
 // v1.4: `structuralFit` (structure-core's winner, whatever its positionBand) is accepted ONLY as continuity evidence
 // for episodes-core - it is written to the row's `structuralFit` field, never `fit`, and only when `fit` is null
@@ -2227,14 +2240,19 @@ async function main() {
           }
           for (const n of todo.filter(n => n.kind === 'bars5')) {
             const r = await fwdFetchBars5(fwdFetchJson, n.pair, n.fromSec - FWD_BAR5);
-            if (!r.ok) { fwdErrs.push('OHLC5 ' + n.pair + ': ' + r.error); console.warn('forward: 5-min OHLC failed for', n.pair, '-', r.error); continue; }
-            const have = {}; (fwdEv.bars5[n.cgId] || []).forEach(b => { have[b.id] = b; }); r.bars.forEach(b => { have[b.id] = b; });
+            const ret = fwdRetainedEvidence(fwdDeps, DATA_DIR, n.pair, n.fromSec - FWD_BAR5, capture.issueSec, capture.issueSec);   // item 41: bars the provisional producer observed before this capture's issue time
+            if (!r.ok) { fwdErrs.push('OHLC5 ' + n.pair + ': ' + r.error); console.warn('forward: 5-min OHLC failed for', n.pair, '-', r.error); if (!ret.bars.length) continue; console.warn('forward: using', ret.bars.length, 'retained 5-min bars for', n.pair); }
+            const have = {}; (fwdEv.bars5[n.cgId] || []).forEach(b => { have[b.id] = b; }); ret.bars.forEach(b => { have[b.id] = b; }); r.bars.forEach(b => { have[b.id] = b; });
             fwdEv.bars5[n.cgId] = Object.keys(have).map(Number).sort((a, b) => a - b).map(k => have[k]);
             await sleep(EXCHANGE_DELAY_MS);
           }
           for (const n of todo.filter(n => n.kind === 'trades')) {
-            const sl = await fwdFetchTradesSlice(fwdFetchJson, n.pair, n.fromSec, n.toSec, { nowSec: Math.floor(Date.now() / 1000) });
-            if (!sl.complete) { fwdErrs.push('Trades ' + n.pair + ' [' + n.fromSec + ',' + n.toSec + '): ' + sl.reason); console.warn('forward: Trades incomplete for', n.pair, '-', sl.reason); }
+            let sl = await fwdFetchTradesSlice(fwdFetchJson, n.pair, n.fromSec, n.toSec, { nowSec: Math.floor(Date.now() / 1000) });
+            if (!sl.complete) {   // item 41: a complete slice the producer retained (observed before this capture's issue time) covering the whole interval stands in for the failed fetch
+              fwdErrs.push('Trades ' + n.pair + ' [' + n.fromSec + ',' + n.toSec + '): ' + sl.reason); console.warn('forward: Trades incomplete for', n.pair, '-', sl.reason);
+              const rs = fwdRetainedEvidence(fwdDeps, DATA_DIR, n.pair, n.fromSec, n.toSec, capture.issueSec).slices.find(x => x.fromSec <= n.fromSec && x.toSec >= n.toSec);
+              if (rs) { sl = rs; console.warn('forward: using a retained complete Trades slice for', n.pair, '[' + rs.fromSec + ',' + rs.toSec + ')'); }
+            }
             (fwdEv.trades[n.cgId] = fwdEv.trades[n.cgId] || []).push(sl);
             await sleep(EXCHANGE_DELAY_MS);
           }

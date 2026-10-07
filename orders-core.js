@@ -132,7 +132,7 @@
     });
     return out;
   }
-  function ctxOf(barsByCoin, capture, opts) { return { daily: indexBars(barsByCoin), ev: indexIntraday(barsByCoin, capture), needs: (opts && opts.needs) || [] }; }
+  function ctxOf(barsByCoin, capture, opts) { return { daily: indexBars(barsByCoin), ev: indexIntraday(barsByCoin, capture), needs: (opts && opts.needs) || [], prov: opts && opts.provisional === true ? { cut: Math.floor(capture.evidenceCutoffSec / BAR5) * BAR5 } : null }; }
   function needOnce(ctx, n) {
     for (var i = 0; i < ctx.needs.length; i++) { var x = ctx.needs[i]; if (x.kind === n.kind && x.cgId === n.cgId && x.fromSec === n.fromSec && x.toSec === n.toSec && x.pair === n.pair) return; }
     ctx.needs.push(n);
@@ -293,10 +293,11 @@
 
   // Fill-day exit evidence from 5-minute bars (holding day 1). Returns 'done' | 'wait' | 'unresolved'. The first bar after an ask / trades fill is partial: its range decides, Trades when the range touches S or T.
   function positionIntraday(book, o, ctx, capture) {
-    var dayEnd = o.fill.dayId + DAY;
-    if (dayEnd > capture.inputCutoffSec) return 'wait';
+    var dayEnd = o.fill.dayId + DAY, limEnd = dayEnd;
+    if (ctx.prov) limEnd = Math.min(dayEnd, ctx.prov.cut);   // item 41 provisional: only intervals covered by evidence up to the cutoff
+    else if (dayEnd > capture.inputCutoffSec) return 'wait';
     var ev = ctx.ev[o.cgId] || { bars: {}, slices: [] }, cur = o.cursorSec == null ? o.fill.tSec : o.cursorSec, guard = 0;
-    while (cur < dayEnd && guard++ < 400) {
+    while (cur < limEnd && guard++ < 400) {
       var b = Math.floor(cur / BAR5) * BAR5, bend = b + BAR5, bar = ev.bars[b];
       if (!bar) { o.cursorSec = cur; markUnresolved(book, o, capture, 'exit', cur, dayEnd, 'bars5-missing', ctx); return 'unresolved'; }
       if (cur === b) {   // full bar: the normal open-first / stop-first race
@@ -316,6 +317,7 @@
       cur = bend; o.cursorSec = cur;
     }
     clearUnresolved(o, capture);
+    if (limEnd < dayEnd) return 'wait';   // provisional: the rest of the fill day is not yet observed
     o.hDone = 1; o.cursorSec = dayEnd;
     return 'done';
   }
@@ -335,9 +337,91 @@
   // opts.needs (optional array) collects evidence the pipeline asked for and did not have: { kind: 'bars5' | 'trades', cgId, pair, fromSec, toSec }.
   function adjudicateAll(book, capture, barsByCoin, opts) {
     if (book.schemaVersion !== ORDERS_SCHEMA_VERSION) throw new Error('orders book schemaVersion ' + book.schemaVersion + ' != ' + ORDERS_SCHEMA_VERSION + ' (a v1.4.2 book is never carried into v1.4.3: the cohort restart resets)');
+    if (opts && opts.provisional === true) return adjudicateProvisional(book, capture, barsByCoin, opts);
     var b = cloneBook(book), ctx = ctxOf(barsByCoin, capture, opts); curStep = 2;
     b.orders.forEach(function (o) { adjudicateOrder(b, o, ctx, capture); });
     curStep = null; return b;
+  }
+
+  // ---------- item 41: provisional adjudication (visibility only; Spec v0.1 P4) ----------
+  // capture = { kind: 'provisional', captureId, date, inputCutoffSec, evidenceCutoffSec, ... }. Only intervals fully covered by bars (bar end <= evidenceCutoffSec) are adjudicated; later intervals are "not yet observed"
+  // (o.provisional.notYetObservedFrom, written on the COPY only - never a canonical field, never `unresolved`). A pending order is only searched for a fill up to its frozen expiryAtSec (or its cancellation cutoff);
+  // an expiry STATUS is never written, no cancellation, no valuation, no suspension, no issuance. An already-filled position is still adjudicated for stop / target after expiryAtSec.
+  // Days not yet closed in the daily candles are built from the retained 5-minute bars (every bar of the day present, else the exit interval is unresolved) and judged by the same exitRules as a daily candle.
+  function adjudicateProvisional(book, capture, barsByCoin, opts) {
+    if (capture.kind !== 'provisional' || !num(capture.evidenceCutoffSec)) throw new Error('provisional adjudication needs a capture { kind: "provisional", evidenceCutoffSec }');
+    var b = cloneBook(book), pcap = Object.assign({}, capture, { issueSec: Math.floor(capture.evidenceCutoffSec / BAR5) * BAR5 }), ctx = ctxOf(barsByCoin, pcap, opts); curStep = 2;
+    b.orders.forEach(function (o) { if (isPending(o) || isOpen(o)) adjudicateOrderProv(b, o, ctx, pcap); });
+    curStep = null; return b;
+  }
+  function adjudicateOrderProv(book, o, ctx, capture) {
+    var cut = ctx.prov.cut, guard = 0, pr = o.provisional = { notYetObservedFrom: null, windowsExhausted: false, partialDay: false };
+    while (guard++ < 64) {
+      if (isPending(o)) {
+        if (o.status === 'cancel-pending' && o.cursorSec >= o.cancelCutoffSec) return;   // resolved unfilled: the daily capture writes the cancellation
+        if (o.eligibleDone >= CFG.EXPIRY_BARS) { pr.windowsExhausted = true; return; }   // expiry reached: no further entry search, no status written
+        var w = o.w0 + o.eligibleDone, ws = winStart(o, w), we = winEnd(o, w);
+        var clipped = o.status === 'cancel-pending' && o.cancelCutoffSec < we, endEff = Math.min(clipped ? o.cancelCutoffSec : we, o.expiryAtSec);
+        var cur = o.cursorSec == null ? ws : o.cursorSec;
+        if (cur >= endEff) { if (clipped) return; o.eligibleDone++; o.cursorSec = we; continue; }   // window already fully observed
+        if (cur >= cut) { pr.notYetObservedFrom = cur; return; }
+        var lim = Math.min(endEff, cut), res = entryIntraday(book, o, ctx, capture, cur, lim);
+        if (res === 'unresolved') return;
+        if (res === 'filled') { positionPhaseProv(book, o, ctx, capture); return; }
+        if (o.unresolved || o.status === 'pending-unresolved') clearUnresolved(o, capture);
+        if (lim < endEff) { pr.notYetObservedFrom = lim; return; }
+        if (clipped) return;
+        o.eligibleDone++; o.cursorSec = we; continue;
+      }
+      if (o.fill) positionPhaseProv(book, o, ctx, capture);
+      return;
+    }
+  }
+  // The exit's display time inside a day built from 5-minute bars: the first bar whose range produced the daily rule's reason (the rule itself is exitRules on the day's aggregate, unchanged).
+  function touchTimeProv(ev, o, id, lim, r) {
+    if (r.reason === 'gap-stop' || r.reason === 'gap-target') return id;
+    if (r.reason === 'horizon') return lim - BAR5;
+    var up = clean(o.T + o.tick);
+    for (var t = id; t < lim; t += BAR5) { var bb = ev.bars[t]; if (!bb) break; if (r.reason === 'target' ? bb.high >= up : bb.low <= o.S) return t; }
+    return id;
+  }
+  function positionPhaseProv(book, o, ctx, capture) {
+    var cut = ctx.prov.cut, pr = o.provisional, byId = ctx.daily[o.cgId] || {}, ev = ctx.ev[o.cgId] || { bars: {}, slices: [] }, guard = 0;
+    if (o.exit) return;
+    if (o.hDone === 0) {
+      var pi = positionIntraday(book, o, ctx, capture);
+      if (o.exit) return;
+      if (pi === 'unresolved') return;
+      if (pi === 'wait') { pr.notYetObservedFrom = o.cursorSec == null ? o.fill.tSec : o.cursorSec; return; }
+    }
+    while (o.hDone < CFG.RETAIN_BARS && guard++ < 32 && !o.exit) {
+      var h = o.hDone + 1, id = o.fill.dayId + (h - 1) * DAY, bar = byId[id], lim = Math.min(id + DAY, cut);
+      if (!bar) {
+        if (lim <= id) { pr.notYetObservedFrom = Math.max(id, cut); return; }   // the day has no observed interval yet
+        var agg = null, gapAt = null;
+        for (var t = id; t < lim; t += BAR5) {
+          var bb = ev.bars[t]; if (!bb) { gapAt = t; break; }
+          if (!agg) agg = { id: id, open: bb.open, high: bb.high, low: bb.low, close: bb.close };
+          else { agg.high = Math.max(agg.high, bb.high); agg.low = Math.min(agg.low, bb.low); agg.close = bb.close; }
+        }
+        if (gapAt != null) { markUnresolved(book, o, capture, 'exit', gapAt, id + DAY, 'bars5-missing', ctx); return; }
+        if (o.unresolved) clearUnresolved(o, capture);
+        bar = agg;
+        if (lim < id + DAY) {   // the day is still in progress: judged on the observed part by the daily rule; the holding day does not advance
+          pr.partialDay = true; var rp = exitRules(bar, o, false);
+          if (rp) { rp.tSec = touchTimeProv(ev, o, id, lim, rp); primaryExit(book, o, rp, bar, capture); } else pr.notYetObservedFrom = lim;
+          return;
+        }
+        var rs = exitRules(bar, o, h === CFG.HORIZON_BAR);
+        if (rs) rs.tSec = touchTimeProv(ev, o, id, lim, rs);
+        o.bars.push({ id: bar.id, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+        if (rs) primaryExit(book, o, rs, bar, capture);
+        o.hDone = h; continue;
+      }
+      o.bars.push({ id: bar.id, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+      var r = exitRules(bar, o, h === CFG.HORIZON_BAR); if (r) primaryExit(book, o, r, bar, capture);
+      o.hDone = h;
+    }
   }
 
   // ---------- step 4: valuation ----------
@@ -350,6 +434,7 @@
     return s;
   }
   function valuation(book, pid, capture, barsByCoin) {
+    if (capture && capture.kind === 'provisional') throw new Error('valuation() is not available on a provisional capture (item 41: no valuation series, no HWM)');
     var b = cloneBook(book); valuationInPlace(b, pid, capture, indexBars(barsByCoin)); return b;
   }
   // Also called mid-issuance (same capture) after an immediate fill: marks already written for this capture are reused (no second mark); the capture's series row is re-written.
@@ -379,6 +464,7 @@
 
   // ---------- step 5: suspension (§5.5) ----------
   function suspend(book, pid, capture) {
+    if (capture && capture.kind === 'provisional') throw new Error('suspend() is not available on a provisional capture (item 41: no suspension)');
     var b = cloneBook(book), a = b.accounts[pid], v = a.lastValuation;
     if (!v || v.captureId !== capture.captureId) throw new Error('valuation() must run before suspend()');
     suspendInPlace(b, pid, capture, capture.inputCutoffSec);
@@ -577,6 +663,7 @@
   // candidates: [{ episodeId, cgId, pair, screen:{pass}, price, score, entryEconomics:{entryZone,stop,target,stopBasis,targetSource,netRR}, venueEligible, meta:{tick,lot,minOrder} }]
   // cfg.quotes[pair] = { tSubSec, quoteObservedAtSec, ask, bid, last } | { tSubSec, missing: true }. Sequence per order: freeze -> snapshot -> checks -> account update -> next candidate.
   function issueBatch(book, policy, candidates, capture, cfg) {
+    if (capture && capture.kind === 'provisional') throw new Error('issueBatch() is not available on a provisional capture (item 41: no issuance)');
     var b = cloneBook(book), a = b.accounts[policy.id], results = [];
     if (!a.lastValuation || a.lastValuation.captureId !== capture.captureId) throw new Error('valuation() must run at step 4 of this capture before issueBatch()');
     var blocked = a.suspended ? 'suspended' : (staleBlocked(b, policy.id) ? 'skipped-stale-mark' : null);
