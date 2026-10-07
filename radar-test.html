@@ -190,7 +190,7 @@ function load() {
     var base = 'data/forward/gen-' + cur.generationId + '/';
     return Promise.all(FILES.map(function (f) {
       return getJSON(base + f + '.json').then(function (j) { S.files[f] = j; }, function (e) { S.err[f] = e.message || String(e); });
-    }));
+    })).then(actLoad);
   }).catch(function (e) { S.cur = null; S.err.CURRENT = e.message || String(e); });
 }
 
@@ -222,7 +222,7 @@ function health() {
   }
   var loaded = FILES.filter(function (f) { return S.files[f]; }).length;
   out.push(loaded === FILES.length ? { ok: true, t: 'files loaded 4/4' } : { ok: false, t: 'files loaded ' + loaded + '/4 (missing: ' + FILES.filter(function (f) { return !S.files[f]; }).map(function (f) { return f + ' ' + (S.err[f] || ''); }).join(', ') + ')' });
-  return out;
+  return out.concat(actHealth());
 }
 
 /* ---------- render ---------- */
@@ -236,6 +236,7 @@ function render() {
   var h = [];
   h.push(renderStrip());
   h.push(renderAccounts());
+  h.push(actRender());
   h.push('<section id="sec-orders">' + renderOrders() + '</section>');
   h.push(renderAttempts());
   h.push(renderEpisodes());
@@ -253,7 +254,7 @@ function renderStrip() {
   var cap = lc ? esc(c.date) + ' · ' + esc(local(lc.iso)) + ' local · ' + esc(lc.iso) + ' UTC' : esc(c.date) + ' · —';
   return '<div class="' + cls + '" id="strip">' +
     kv('Protocol', esc(c.protocolVersion)) + kv('Generation', '<span title="' + esc(c.generationId) + '">' + esc(shortGen(c.generationId)) + '</span>') +
-    kv('Latest capture', cap) + kv('Test day', testDay >= 0 ? 'day ' + testDay : '— (before day 0)') +
+    kv('Latest capture', cap) + kv('Test day', testDay >= 0 ? 'day ' + testDay : '— (before day 0)') + actCohortKv() +
     kv('Data age', ageH == null ? '—' : '<span id="age" class="' + (amber ? 'warn' : '') + '">' + ageH.toFixed(1) + ' h' + (amber ? ' (stale &gt; 30 h)' : '') + '</span>') +
     '<div class="health" id="health">' + hl.map(function (x) { return '<span class="' + (x.ok ? 'ok' : 'bad') + '">' + (x.ok ? '✓ ' : '✗ ') + x.t + '</span>'; }).join(' &nbsp; ') + '</div></div>';
 }
@@ -578,6 +579,160 @@ function openDetail(kind, id) {
   var pd = fetchDaily().then(function (d) { if (S.pane === token) $('rsec').innerHTML = researchHtml(cg, d); });
   return Promise.all([pc, pd]);
 }
+
+/* item 38 — ACT accounting */
+/* Display only. Source: gen-<id>/act-rejections.json (capture.js fwdActRejections / fwdActInvariant). The only number the page derives is nAct = rows + this capture's C1 attempt records. */
+var ACT = { state: 'idle', data: null, err: null, filt: 'all', open: {}, daily: null, dailyStarted: false };
+var ACT_EXACT = ['no-fit', 'screen-failed', 'not-in-zone', 'ineligible-venue', 'ineligible-metadata', 'challenger-inactive', 'challenger-unqualified', 'attempt-already-consumed', 'unclassified-no-attempt'];
+var ACT_PREFIX = ['no-episode-day:not-matched:', 'no-episode-day:not-opened:', 'account-blocked:'];
+var ACT_COHORT_DAY0_MS = Date.UTC(2026, 9, 7);
+function actKnown(r) { return ACT_EXACT.indexOf(r) >= 0 || ACT_PREFIX.some(function (p) { return r.indexOf(p) === 0; }); }
+function actIs144() {
+  var m = S.cur ? /v(\d+)\.(\d+)\.(\d+)\s*$/.exec(String(S.cur.protocolVersion || '')) : null;
+  if (!m) return false;
+  var a = +m[1], b = +m[2], c = +m[3];
+  return a > 1 || (a === 1 && (b > 4 || (b === 4 && c >= 4)));
+}
+function actLoad() {
+  ACT.state = 'idle'; ACT.data = null; ACT.err = null; ACT.daily = null; ACT.dailyStarted = false; ACT.open = {};
+  try {
+    if (!S.cur) return Promise.resolve();
+    return fetch('data/forward/gen-' + S.cur.generationId + '/act-rejections.json', { cache: 'no-store' }).then(function (r) {
+      if (r.status === 404) { ACT.state = 'missing'; return; }
+      if (!r.ok) { ACT.state = 'bad'; ACT.err = 'HTTP ' + r.status; return; }
+      return r.text().then(function (t) {
+        var j; try { j = JSON.parse(t); } catch (e) { ACT.state = 'bad'; ACT.err = 'invalid JSON'; return; }
+        if (!j || !Array.isArray(j.rows)) { ACT.state = 'bad'; ACT.err = 'no rows array'; return; }
+        ACT.data = j; ACT.state = 'ok';
+      });
+    }).catch(function (e) { ACT.state = 'bad'; ACT.err = (e && e.message) || String(e); });
+  } catch (e) { ACT.state = 'bad'; ACT.err = (e && e.message) || String(e); return Promise.resolve(); }
+}
+function actHealth() {
+  try {
+    if (ACT.state === 'bad') return [{ ok: false, t: 'act-rejections.json unreadable' }];
+    if (!actIs144()) return [];
+    if (ACT.state === 'ok') return [{ ok: true, t: 'act-rejections.json present' }];
+    if (ACT.state === 'missing') return [{ ok: false, t: 'act-rejections.json missing' }];
+  } catch (e) {}
+  return [];
+}
+function actCohortKv() {
+  try {
+    if (!actIs144()) return '';
+    var d = Math.floor((nowMs() - ACT_COHORT_DAY0_MS) / 86400000);
+    return kv('Cohort', '<span id="cohort" title="CURRENT carries no generation history: day 0 = 2026-10-07, the first v1.4.4 generation">v1.4.4 day ' + (d >= 0 ? d : '—') + '</span>');
+  } catch (e) { return ''; }
+}
+function actInvariant() {
+  var cid = S.cur && S.cur.captureId, rows = ACT.data.rows;
+  var att = attemptsList().filter(function (a) { return a.policyId === 'C1' && a.captureId === cid; }).length;
+  var uncl = rows.filter(function (r) { return r && r.reason === 'unclassified-no-attempt'; }).length;
+  return { nAct: rows.length + att, att: att, rows: rows.length, uncl: uncl };
+}
+function actList(v) { return Array.isArray(v) ? v.map(function (x) { return typeof x === 'string' ? x : JSON.stringify(x); }).join(', ') : (v == null ? '—' : String(v)); }
+function actSummary(r) {
+  var d = r.detail, x = String(r.reason == null ? '' : r.reason);
+  function n(v) { return isNum(v) ? pr(v) : dash(v); }
+  try {
+    if (d == null) return '—';
+    if (x === 'not-in-zone') return 'price ' + n(d.price) + ' vs [' + n(d.entryLow) + ', ' + n(d.entryHigh) + '] · distancePct ' + n(d.distancePct);
+    if (x === 'screen-failed') return 'reasons: ' + actList(d.reasons) + ' · width ' + n(d.width) + ' · widthPrice ' + n(d.widthPrice);
+    if (x.indexOf('no-episode-day:not-matched:') === 0) return 'state: ' + x.slice('no-episode-day:not-matched:'.length);
+    if (x.indexOf('no-episode-day:not-opened:') === 0) return d.note ? String(d.note) : 'not opened: ' + x.slice('no-episode-day:not-opened:'.length);
+    if (x === 'attempt-already-consumed') return 'prior attempt: ' + dash(d.date) + ' · ' + dash(d.outcome);
+    if (x === 'no-fit') return 'venueOk ' + dash(d.venueOk) + ' · usableEval ' + dash(d.usableEval);
+    if (x === 'challenger-inactive' || x === 'challenger-unqualified') return 'failing gates: ' + actList(d.failingGates);
+    if (x === 'ineligible-venue' || x === 'ineligible-metadata') return 'venueEligible ' + dash(d.venueEligible) + ' · metadataEligible ' + dash(d.metadataEligible);
+    if (x.indexOf('account-blocked:') === 0) return 'episode ' + dash(d.episodeId);
+    if (x === 'unclassified-no-attempt') return 'no classification: see the snapshot in the detail';
+    return JSON.stringify(d).slice(0, 100);
+  } catch (e) { return '—'; }
+}
+function actBadge(reason) {
+  var r = String(reason == null ? '' : reason);
+  if (r === 'unclassified-no-attempt') return '<span class="badge b-anomaly">' + esc(r) + '</span>';
+  if (!actKnown(r)) return '<span class="badge b-anomaly">unknown reason: ' + esc(r) + '</span>';
+  return '<span class="badge' + (r === 'attempt-already-consumed' ? ' b-actmuted' : '') + '">' + esc(r) + '</span>';
+}
+function actDailyHtml() {
+  var h = '<span class="mut">Daily-file ACT count is not loaded on page load (latest-daily.json is 1.2 MB); it is checked when the first detail pane opens.</span>', d = ACT.daily;
+  if (!d) return h;
+  if (d.skip) return h + ' <span class="warn" id="act-daily-res">' + esc(d.skip) + '</span>';
+  return h + (d.agree ? ' <span class="ok" id="act-daily-res">✓ daily file agrees</span>' : ' <span class="bad" id="act-daily-res">daily file ACT count ' + d.n + ' ≠ ' + d.nAct + '</span>');
+}
+function actInner() {
+  var h = ['<h2>ACT Accounting<small>every ACT coin has exactly one of: a C1 attempt this capture, or a rejection row below</small></h2>'];
+  if (ACT.state === 'missing') {
+    h.push(actIs144() ? '<div class="secerr" id="act-missing">act-rejections.json is missing for this v1.4.4 generation</div>' : '<div class="mut" id="act-missing">ACT accounting not recorded before v1.4.4</div>');
+    return h.join('');
+  }
+  if (ACT.state === 'bad') { h.push('<div class="secerr" id="err-act">act-rejections.json unreadable (' + esc(ACT.err) + ')</div>'); return h.join(''); }
+  if (ACT.state !== 'ok') { h.push('<div class="mut" id="act-missing">ACT accounting not loaded</div>'); return h.join(''); }
+  var iv = actInvariant(), rows = ACT.data.rows;
+  h.push('<div class="act-inv ' + (iv.uncl ? 'bad' : 'ok') + '" id="act-inv">' + iv.nAct + ' ACT = ' + iv.att + ' attempts + ' + iv.rows + ' rejections</div>');
+  if (iv.uncl) h.push('<div class="act-note bad" id="act-uncl">' + iv.uncl + ' row' + (iv.uncl === 1 ? '' : 's') + ' with reason unclassified-no-attempt</div>');
+  h.push('<div class="act-note" id="act-daily">' + actDailyHtml() + '</div>');
+  if (!rows.length) { h.push('<div class="mut" id="act-empty">No ACT coin was rejected this capture.</div>'); return h.join(''); }
+  var by = {};
+  rows.forEach(function (r) { var k = String(r && r.reason); by[k] = (by[k] || 0) + 1; });
+  var keys = Object.keys(by).sort(function (a, b) { return by[b] - by[a] || (a < b ? -1 : 1); });
+  if (ACT.filt !== 'all' && !by[ACT.filt]) ACT.filt = 'all';
+  function chip(k, label) { return '<button class="chip' + (ACT.filt === k ? ' on' : '') + '" data-actchip="' + esc(k) + '">' + esc(label) + '</button>'; }
+  h.push('<div class="chips" id="act-chips"><span class="chiplabel">Reason</span>' + chip('all', 'all (' + rows.length + ')') + keys.map(function (k) { return chip(k, k + ' (' + by[k] + ')'); }).join('') + '</div>');
+  h.push('<div class="tablewrap"><table id="act-table"><thead><tr><th>Coin</th><th>Score</th><th>Episode</th><th>Reason</th><th>Detail</th><th></th></tr></thead><tbody>');
+  rows.forEach(function (r, i) {
+    if (!r || (ACT.filt !== 'all' && String(r.reason) !== ACT.filt)) return;
+    var open = !!ACT.open[i];
+    h.push('<tr class="act-row" data-actrow="' + i + '" data-reason="' + esc(r.reason) + '"><td>' + esc(r.cgId) + ' <span class="mut">' + esc(dash(r.pair)) + '</span></td><td>' + (isNum(r.score) ? esc(r.score) : '—') + '</td><td>' + esc(dash(r.episodeId)) + '</td><td>' + actBadge(r.reason) + '</td><td>' + esc(actSummary(r)) + '</td><td><button class="chip" data-actexp="' + i + '" aria-expanded="' + open + '">' + (open ? '▾' : '▸') + '</button></td></tr>');
+    h.push('<tr class="act-x" id="act-x-' + i + '"' + (open ? '' : ' hidden') + '><td colspan="6"><pre>' + esc(JSON.stringify(r.detail, null, 2)) + '</pre></td></tr>');
+  });
+  h.push('</tbody></table></div>');
+  return h.join('');
+}
+function actRender() {
+  try { return '<section id="sec-act">' + actInner() + '</section>'; }
+  catch (e) { return '<section id="sec-act"><h2>ACT Accounting</h2><div class="secerr" id="err-act">ACT accounting could not be displayed (' + esc((e && e.message) || e) + ')</div></section>'; }
+}
+function actToggle(i) {
+  ACT.open[i] = !ACT.open[i];
+  var x = $('act-x-' + i); if (x) { if (ACT.open[i]) x.removeAttribute('hidden'); else x.setAttribute('hidden', ''); }
+  var b = document.querySelector('[data-actexp="' + i + '"]'); if (b) { b.textContent = ACT.open[i] ? '▾' : '▸'; b.setAttribute('aria-expanded', String(!!ACT.open[i])); }
+}
+function actDailyCheck() {
+  if (ACT.dailyStarted || ACT.state !== 'ok') return;
+  ACT.dailyStarted = true;
+  fetchDaily().then(function (d) {
+    var iv = actInvariant();
+    if (!d || !Array.isArray(d.coins)) ACT.daily = { skip: 'daily file unavailable (' + ((d && d.error) || 'not loaded') + '): not compared' };
+    else if (d.date && S.cur && S.cur.date && d.date !== S.cur.date) ACT.daily = { skip: 'daily file is dated ' + d.date + ', this generation ' + S.cur.date + ': not compared' };
+    else { var n = d.coins.filter(function (c) { return c && c.research && c.research.verdict === 'ACT'; }).length; ACT.daily = { n: n, nAct: iv.nAct, agree: n === iv.nAct }; }
+    var el = $('act-daily'); if (el) el.innerHTML = actDailyHtml();
+  }).catch(function () {});
+}
+(function () { try {
+  var st = document.createElement('style'); st.id = 'act38-css';
+  st.textContent = '.act-inv{font-size:13px;font-weight:700;margin:4px 0}.act-note{font-size:11px;color:var(--text2);margin:4px 0}.act-row{cursor:pointer}.act-row:hover td{background:var(--surface2)}.act-x td{background:var(--surface2)}.act-x pre{white-space:pre-wrap;word-break:break-word;font-size:11px;margin:0;max-height:260px;overflow:auto}.b-actmuted{color:var(--muted)}';
+  document.head.appendChild(st);
+} catch (e) {} })();
+document.addEventListener('click', function (ev) { try {
+  var t = ev.target; if (!t || !t.closest) return;
+  var chipEl = t.closest('[data-actchip]');
+  if (chipEl) { ACT.filt = chipEl.getAttribute('data-actchip'); var sec = $('sec-act'); if (sec) sec.innerHTML = actInner(); return; }
+  var ex = t.closest('[data-actexp]');
+  if (ex) { actToggle(ex.getAttribute('data-actexp')); return; }
+  var row = t.closest('tr[data-actrow]');
+  if (row) {
+    var i = row.getAttribute('data-actrow'), r = ACT.data && ACT.data.rows[+i];
+    if (r && r.episodeId && episodesList().some(function (e) { return e.id === r.episodeId; })) { openDetail('episode', r.episodeId); return; }
+    actToggle(i);
+  }
+} catch (e) {} });
+(function () { try {
+  var p = $('pane'); if (!p || !window.MutationObserver) return;
+  new MutationObserver(function () { try { if (p.classList.contains('on')) actDailyCheck(); } catch (e) {} }).observe(p, { attributes: true, attributeFilter: ['class'] });
+} catch (e) {} })();
+/* end item 38 */
 
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
