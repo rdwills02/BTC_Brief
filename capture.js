@@ -1141,7 +1141,9 @@ function fwdAtomicWrite(d, file, data) {   // tmp + rename
 function fwdReadConfig(d, root) {
   var cfg = fwdReadJson(d, fwdPaths(d, root).config);
   if (!cfg || typeof cfg.protocolVersion !== 'string' || !cfg.protocolVersion) return null;
-  return { protocolVersion: cfg.protocolVersion, challenger: cfg.challenger || null };
+  var out = { protocolVersion: cfg.protocolVersion, challenger: cfg.challenger || null };
+  if (cfg.shadowPolicies && typeof cfg.shadowPolicies === 'object') out.shadowPolicies = cfg.shadowPolicies;   // item 40: observation only; absent -> the engine is exactly as before
+  return out;
 }
 function fwdReadDelistings(d, root) {
   var j = fwdReadJson(d, fwdPaths(d, root).delistings), a = Array.isArray(j) ? j : (j && Array.isArray(j.delistings) ? j.delistings : []);
@@ -1155,7 +1157,18 @@ var FWD_KNOWN_GATE_IDS = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.
 var FWD_V144 = 'forward-experiment-v1.4.4';   // Protocol v1.4.4 (item 37): every v1.4.4 semantic below is gated on protocolVersion === FWD_V144, so a deploy between code and config leaves a v1.4.3 capture byte-identical
 var FWD_ACCEPTED_PROTOCOLS = ['forward-experiment-v1.4.3', 'forward-experiment-v1.4.4'];   // literal strings on ONE line: orders-core-exec-tests extracts this line in isolation
 function fwdProtocolErrors(cfg) { return cfg && FWD_ACCEPTED_PROTOCOLS.indexOf(cfg.protocolVersion) < 0 ? ['protocolVersion ' + JSON.stringify(cfg.protocolVersion) + ' is not accepted by this capture.js (accepted: ' + FWD_ACCEPTED_PROTOCOLS.join(', ') + ')'] : []; }
-function fwdConfigErrors(d, cfg) { return cfg ? fwdProtocolErrors(cfg).concat(d.OC.validateChallenger(cfg.challenger, FWD_KNOWN_GATE_IDS)) : []; }
+function fwdConfigErrors(d, cfg) {   // item 40: shadow blocks are validated inline (self-contained: the exec suite extracts this function alone); each like a challenger block; ids label shadow accounts and may not shadow a production account
+  if (!cfg) return [];
+  var errs = fwdProtocolErrors(cfg).concat(d.OC.validateChallenger(cfg.challenger, FWD_KNOWN_GATE_IDS)), sp = cfg.shadowPolicies;
+  if (sp == null) return errs;
+  if (typeof sp !== 'object' || Array.isArray(sp)) return errs.concat(['shadowPolicies must be an object of { id: challenger-block }']);
+  Object.keys(sp).forEach(function (id) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(id) || id === 'N0' || id === 'C1') errs.push('shadowPolicies id ' + JSON.stringify(id) + ' is not allowed');
+    else if (!sp[id] || typeof sp[id] !== 'object' || Array.isArray(sp[id])) errs.push('shadowPolicies.' + id + ' must be an object');
+    else d.OC.validateChallenger(sp[id], FWD_KNOWN_GATE_IDS).forEach(function (e) { errs.push('shadowPolicies.' + id + ': ' + e); });
+  });
+  return errs;
+}
 function fwdHistory(d, P) {   // JSON lines, append-only: { generationId, captureId, date } and { pin: true, generationId, sha }
   var txt = ''; try { txt = d.fs.readFileSync(P.history, 'utf8'); } catch (e) { return []; }
   var out = []; txt.split('\n').forEach(function (l) { if (!l.trim()) return; try { out.push(JSON.parse(l)); } catch (e) { /* torn last line from a crash: ignored, never rewritten */ } });
@@ -1253,7 +1266,22 @@ function fwdLoadPrior(d, root, startup, protocolVersion) {
   var g = fwdLoadGenerationFiles(d, startup.paths, cur.generationId);
   if (g.missing.length || g.mismatched.length) return { prior: null, reset: false, verified: false, problems: g.missing.concat(g.mismatched) };
   var acc = g.files['accounts.json'];
-  return { prior: { episodes: g.files['episodes.json'], book: { schemaVersion: g.files['orders.json'].schemaVersion, orders: g.files['orders.json'].orders, attempts: g.files['orders.json'].attempts, seq: acc.seq, accounts: acc.accounts }, pairs: g.files['pairs.json'] || [] }, reset: false, verified: true };
+  var prior = { episodes: g.files['episodes.json'], book: { schemaVersion: g.files['orders.json'].schemaVersion, orders: g.files['orders.json'].orders, attempts: g.files['orders.json'].attempts, seq: acc.seq, accounts: acc.accounts }, pairs: g.files['pairs.json'] || [] };
+  var sh = fwdLoadShadowState(d, startup.paths, cur.generationId, g.files['checksums.json']); if (sh) prior.shadow = sh;   // item 40: absent in the referenced generation -> no key (fresh shadow books)
+  return { prior: prior, reset: false, verified: true };
+}
+// Item 40: the shadow books of the REFERENCED generation (data/forward/gen-<id>/shadow/{orders,accounts}.json, sha256 in checksums.json `files`). null = that generation has none (fresh $15,000 books);
+// { error } = listed but unreadable / mismatched (the shadow block is skipped this capture and production proceeds; it never makes a production capture an extra capture).
+function fwdLoadShadowState(d, P, id, chk) {
+  var f = (chk && chk.files) || {}; if (!f['shadow/orders.json'] && !f['shadow/accounts.json']) return null;
+  var gdir = P.gen(id), got = {}, bad = [];
+  ['orders', 'accounts'].forEach(function (n) {
+    var rel = 'shadow/' + n + '.json', buf; try { buf = d.fs.readFileSync(d.path.join(gdir, 'shadow', n + '.json')); } catch (e) { bad.push(rel); return; }
+    if (fwdSha256(d, buf) !== f[rel]) { bad.push(rel); return; }
+    try { got[n] = JSON.parse(buf.toString('utf8')); } catch (e2) { bad.push(rel); }
+  });
+  if (bad.length) return { error: 'shadow state unreadable or checksum mismatch: ' + bad.join(',') };
+  return { book: { schemaVersion: got.orders.schemaVersion, orders: got.orders.orders, attempts: got.orders.attempts, seq: got.accounts.seq, accounts: got.accounts.accounts }, files: got };
 }
 
 // ---- fetch list (Protocol §3): universe UNION coins with obligationCandles > 0 UNION coins with any pending or open order in either account ----
@@ -1262,6 +1290,10 @@ function fwdFetchList(d, prior, universeIds) {
   prior.episodes.episodes.forEach(function (e) { if (e.obligationCandles > 0) set[e.cgId] = 1; });
   d.OC.exposureCoins(prior.book).forEach(function (c) { set[c] = 1; });
   d.OC.obligations(prior.book).forEach(function (o) { set[o.cgId] = 1; });
+  if (prior.shadow && prior.shadow.book) {   // item 40: shadow orders still need their evidence (pending/open positions of CTRL / NZ); adds coins only, never removes
+    d.OC.exposureCoins(prior.shadow.book).forEach(function (c) { set[c] = 1; });
+    d.OC.obligations(prior.shadow.book).forEach(function (o) { set[o.cgId] = 1; });
+  }
   return Object.keys(set).sort();
 }
 
@@ -1415,6 +1447,14 @@ function fwdResearchRow(fit, res, summary, price, structuralFit, widthPrice) {  
   return row;
 }
 
+// Step-7 candidates from the capture's episode-days (shared by the production update and the item 40 shadow block, so both see the identical candidate objects' content).
+function fwdCandidates(inputs, episodeDays) {
+  return episodeDays.map(function (ed) {
+    var c = inputs.coins[ed.cgId] || {};
+    return { episodeId: ed.episodeId, cgId: ed.cgId, pair: ed.pair, screen: ed.screen, price: ed.price, score: ed.score, entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible !== false, gates: ed.gates || null, meta: c.metadataEligible === false ? null : (c.meta || null) };
+  });
+}
+
 // ---- one canonical capture's forward update (Protocol §4.0 steps 1-7). Pure given its inputs. ----
 // inputs.coins = { cgId: { pair, venueEligible, metadataEligible, meta:{tick,lot,minOrder}|null, candles:[usable at issueTimeUtc], research: row|null } }
 function fwdRunUpdate(d, prior, capture, inputs, cfg) {
@@ -1428,10 +1468,7 @@ function fwdRunUpdate(d, prior, capture, inputs, cfg) {
   var v144 = capture.protocolVersion === FWD_V144, ecfg = { manualDelistings: cfg.manualDelistings || [] };
   if (v144) ecfg.gateFaithful = true;                                          // v1.4.4 R1: screen width on widthPrice; per-coin outcomes returned for R5
   var eu = EC.updateEpisodes(prior.episodes, capture, rows, bars, inputs.universeIds || [], OC.obligations(book), ecfg);   // step 6
-  var cands = eu.episodeDays.map(function (ed) {
-    var c = inputs.coins[ed.cgId] || {};
-    return { episodeId: ed.episodeId, cgId: ed.cgId, pair: ed.pair, screen: ed.screen, price: ed.price, score: ed.score, entryEconomics: ed.entryEconomics, venueEligible: ed.venueEligible !== false, gates: ed.gates || null, meta: c.metadataEligible === false ? null : (c.meta || null) };
-  });
+  var cands = fwdCandidates(inputs, eu.episodeDays);
   var results = {};
   ['N0', 'C1'].forEach(function (p) {                                           // step 7
     var r = OC.issueBatch(book, { id: p, version: p === 'N0' ? 'N0-v1' : ((cfg.challenger && cfg.challenger.version) || 'C1-unconfigured') }, cands, capture, v144 ? { challenger: cfg.challenger || null, quotes: cfg.quotes || {}, needs: needs, observeSilent: true } : { challenger: cfg.challenger || null, quotes: cfg.quotes || {}, needs: needs });
@@ -1444,10 +1481,10 @@ function fwdRunUpdate(d, prior, capture, inputs, cfg) {
 
 // ---- Protocol v1.4.4 R5: ACT accounting. Every coin whose research verdict is ACT in a canonical capture yields exactly one of: a C1 attempt created in THIS capture, or one row of act-rejections.json. ----
 // actCoins: [{ cgId, pair, score }]; upd: the FINAL fwdRunUpdate result (v1.4.4: carries coinOutcomes and the observeSilent results); returns the file object. Pure.
-function fwdActRejections(capture, actCoins, upd) {
-  var book = upd.book, outc = upd.coinOutcomes || {}, edBy = {}, att = {}, c1 = (upd.results && upd.results.C1) || { results: [], blockedReason: null }, resBy = {}, rows = [];
+function fwdActRejections(capture, actCoins, upd, policyId) {   // policyId (item 40): the shadow policy whose attempts/results are accounted; default 'C1' = production, unchanged
+  var pid = policyId || 'C1', book = upd.book, outc = upd.coinOutcomes || {}, edBy = {}, att = {}, c1 = (upd.results && upd.results[pid]) || { results: [], blockedReason: null }, resBy = {}, rows = [];
   (upd.episodeDays || []).forEach(function (ed) { edBy[ed.cgId] = ed; });
-  (book.attempts || []).forEach(function (a) { if (a.policyId === 'C1' && a.captureId === capture.captureId) att[a.cgId] = a; });
+  (book.attempts || []).forEach(function (a) { if (a.policyId === pid && a.captureId === capture.captureId) att[a.cgId] = a; });
   (c1.results || []).forEach(function (r) { resBy[r.episodeId] = r; });
   actCoins.slice().sort(function (a, b) { return a.cgId < b.cgId ? -1 : a.cgId > b.cgId ? 1 : 0; }).forEach(function (ac) {
     if (att[ac.cgId]) return;                                                  // (a) a C1 attempt of this capture; its outcome lives in orders.json attempts
@@ -1479,22 +1516,66 @@ function fwdActRejections(capture, actCoins, upd) {
       else if (!r && c1.blockedReason === 'suspended-mid-capture') { reason = 'account-blocked:suspended-mid-capture'; detail = { episodeId: ed.episodeId }; }
     }
     if (!reason) { reason = 'unclassified-no-attempt'; detail = snap(); }
-    rows.push({ cgId: ac.cgId, pair: ac.pair || null, score: ac.score == null ? null : ac.score, episodeId: ed ? ed.episodeId : ((o && o.episodeId) || null), policyId: 'C1', reason: reason, detail: detail });
+    rows.push({ cgId: ac.cgId, pair: ac.pair || null, score: ac.score == null ? null : ac.score, episodeId: ed ? ed.episodeId : ((o && o.episodeId) || null), policyId: pid, reason: reason, detail: detail });
   });
   return { schemaVersion: 1, captureId: capture.captureId, date: capture.date, protocolVersion: capture.protocolVersion, rows: rows };
 }
 // T7 invariant (the SAME function the capture runs and the tests call). Counts current-capture C1 attempt RECORDS (never collapsed to a coin set). ok requires: (i) no current-capture C1 attempt on a non-ACT coin, (ii) at most one current-capture C1 attempt per ACT coin,
 // (iii) every ACT coin has exactly one of {attempt, rejection row}, (iv) no duplicate / stray rejection rows. A correctly accounted 'unclassified-no-attempt' row is an anomaly (counted in nUnclassified), NOT a failure.
-function fwdActInvariant(capture, actCoins, book, file) {
-  var act = {}, attN = {}, rowBy = {}, dup = [], stray = [], both = [], missing = [], multi = [], nonActAttempts = [], rows = (file && file.rows) || [], allC1 = 0;
+// policyId / opts (item 40): shadow policies. opts.allowNonActAttempts: an NZ attempt on a non-ACT coin (a WATCH row inside the tolerance) is the policy working, so it is counted (nNonActAttempts) and does not fail the invariant.
+function fwdActInvariant(capture, actCoins, book, file, policyId, opts) {
+  var pid = policyId || 'C1', allowNon = !!(opts && opts.allowNonActAttempts), act = {}, attN = {}, rowBy = {}, dup = [], stray = [], both = [], missing = [], multi = [], nonActAttempts = [], rows = (file && file.rows) || [], allC1 = 0;
   actCoins.forEach(function (c) { act[c.cgId] = 1; });
-  (book.attempts || []).forEach(function (a) { if (a.policyId === 'C1' && a.captureId === capture.captureId) { allC1++; if (act[a.cgId]) attN[a.cgId] = (attN[a.cgId] || 0) + 1; else nonActAttempts.push(a.cgId); } });
+  (book.attempts || []).forEach(function (a) { if (a.policyId === pid && a.captureId === capture.captureId) { allC1++; if (act[a.cgId]) attN[a.cgId] = (attN[a.cgId] || 0) + 1; else nonActAttempts.push(a.cgId); } });
   rows.forEach(function (r) { if (!act[r.cgId]) stray.push(r.cgId); if (rowBy[r.cgId]) dup.push(r.cgId); rowBy[r.cgId] = 1; });
   Object.keys(attN).forEach(function (c) { if (attN[c] > 1) multi.push(c); if (rowBy[c]) both.push(c); });
   Object.keys(act).forEach(function (c) { if (!attN[c] && !rowBy[c]) missing.push(c); });
   var nAtt = Object.keys(attN).length, nAct = Object.keys(act).length, nUn = rows.filter(function (r) { return r.reason === 'unclassified-no-attempt'; }).length;
-  var ok = nAct === nAtt + rows.length && !dup.length && !stray.length && !both.length && !missing.length && !multi.length && !nonActAttempts.length && allC1 === nAtt;
-  return { ok: ok, nAct: nAct, nAttempts: nAtt, nRows: rows.length, nC1AttemptsAllCoins: allC1, nUnclassified: nUn, dup: dup, stray: stray, both: both, missing: missing, multiAttempt: multi, nonActAttempts: nonActAttempts };
+  var ok = nAct === nAtt + rows.length && !dup.length && !stray.length && !both.length && !missing.length && !multi.length && (allowNon || (!nonActAttempts.length && allC1 === nAtt));
+  var inv = { ok: ok, nAct: nAct, nAttempts: nAtt, nRows: rows.length, nC1AttemptsAllCoins: allC1, nUnclassified: nUn, dup: dup, stray: stray, both: both, missing: missing, multiAttempt: multi, nonActAttempts: nonActAttempts };
+  if (policyId) inv.nNonActAttempts = nonActAttempts.length;   // shadow policies only: the production return object is unchanged
+  return inv;
+}
+
+// ---- Item 40: Near-Zone Eligibility Study (shadow policies CTRL / NZ; Spec v0.3). OBSERVATION ONLY: own books, own accounts ($15,000 each), the SAME evidence objects and the SAME quote map as production.
+// Nothing here is ever read by, or written into, a production book, episode state or evidence object; production files are byte-identical shadows off vs on. ----
+var FWD_SHADOW_START_CENTS = 1500000;
+function fwdShadowPolicies(cfg) {   // [{ id, version, zoneTolerancePct, block }] sorted by id; none unless config carries a shadowPolicies block AND the protocol is v1.4.4 (observeSilent rows need it)
+  var sp = cfg && cfg.shadowPolicies, out = [];
+  if (!sp || typeof sp !== 'object' || Array.isArray(sp) || cfg.protocolVersion !== FWD_V144) return out;
+  Object.keys(sp).sort().forEach(function (id) {
+    var b = sp[id], tol = b && typeof b.zoneTolerancePct === 'number' && isFinite(b.zoneTolerancePct) && b.zoneTolerancePct > 0 ? b.zoneTolerancePct : 0;
+    out.push({ id: id, version: (b && b.version) || (id + '-unconfigured'), zoneTolerancePct: tol, block: b });
+  });
+  return out;
+}
+// One shadow update on the same prior/inputs as the production update `upd` of this iteration. cfg.needs / cfg.quotes are the SAME array / map production uses: shadow needs join the one Ticker request, and a pair both
+// policies (and production) issue shares one quote. Returns { book, results: { id: { results, blockedReason } } }.
+function fwdRunShadow(d, prior, capture, inputs, cfg, upd, policies) {
+  var OC = d.OC, evBars = {}, needs = cfg.needs || [], ids = policies.map(function (p) { return p.id; });
+  Object.keys(inputs.coins).forEach(function (cg) { var c = inputs.coins[cg]; evBars[cg] = { candles: c.candles, bars5: c.bars5 || [], trades: c.trades || [] }; });
+  var base = prior.shadow && prior.shadow.book ? prior.shadow.book : OC.newShadowBook(ids, FWD_SHADOW_START_CENTS);
+  ids.forEach(function (id) { if (!base.accounts[id]) { base = OC.clone(base); base.accounts[id] = OC.newShadowBook([id], FWD_SHADOW_START_CENTS).accounts[id]; } });
+  var book = OC.adjudicateAll(base, capture, evBars, { needs: needs });
+  ids.forEach(function (id) { book = OC.valuation(book, id, capture, evBars); book = OC.suspend(book, id, capture); });
+  var cands = fwdCandidates(inputs, upd.episodeDays), results = {};
+  policies.forEach(function (p) {
+    var r = OC.issueBatch(book, { id: p.id, version: p.version, zoneTolerancePct: p.zoneTolerancePct }, cands, capture, { challenger: p.block, quotes: cfg.quotes || {}, needs: needs, observeSilent: true });
+    book = r.book; results[p.id] = { results: r.results, blockedReason: r.blockedReason };
+  });
+  return { book: book, results: results };
+}
+// The shadow generation files for this capture: { orders, accounts, actRejections } (same schemas as the production files; rows carry policyId). Pure.
+function fwdShadowGen(capture, actCoins, shd, upd, policies) {
+  var rows = [], inv = {};
+  policies.forEach(function (p) {
+    var view = { book: shd.book, episodeDays: upd.episodeDays, coinOutcomes: upd.coinOutcomes, results: shd.results };
+    var f = fwdActRejections(capture, actCoins, view, p.id);
+    f.rows.forEach(function (r) { rows.push(r); });
+    inv[p.id] = fwdActInvariant(capture, actCoins, shd.book, f, p.id, { allowNonActAttempts: true });
+  });
+  return { orders: { schemaVersion: shd.book.schemaVersion, orders: shd.book.orders, attempts: shd.book.attempts }, accounts: { schemaVersion: shd.book.schemaVersion, seq: shd.book.seq, accounts: shd.book.accounts },
+    actRejections: { schemaVersion: 1, shadow: true, captureId: capture.captureId, date: capture.date, protocolVersion: capture.protocolVersion, rows: rows, invariant: inv } };
 }
 function fwdUpdatePairs(pairs, capture, coinsWithPair) {   // pair fixed at the coin's first eligible canonical capture and never changes
   var have = {}; pairs.forEach(function (p) { have[p.cgId] = p; });
@@ -1534,6 +1615,13 @@ function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
     files['act-rejections.json'] = fwdSha256(d, Buffer.from(arTxt, 'utf8')); fwdAtomicWrite(d, d.path.join(gdir, 'act-rejections.json'), arTxt);
     fwdCrash(d, 'after-act-rejections-write');
   }
+  if (gen.shadow) {   // item 40: shadow files, written before the atomic commit and listed in checksums.json `files` (production files above/below are untouched by them)
+    [['orders', gen.shadow.orders], ['accounts', gen.shadow.accounts], ['act-rejections', gen.shadow.actRejections]].forEach(function (sf) {
+      if (!sf[1]) return; var shTxt = JSON.stringify(sf[1]);
+      files['shadow/' + sf[0] + '.json'] = fwdSha256(d, Buffer.from(shTxt, 'utf8')); fwdAtomicWrite(d, d.path.join(gdir, 'shadow', sf[0] + '.json'), shTxt);
+    });
+    fwdCrash(d, 'after-shadow-write');
+  }
   var body = { 'episodes.json': gen.episodes, 'orders.json': gen.orders, 'accounts.json': gen.accounts, 'scenarios.json': gen.scenarios, 'pairs.json': gen.pairs };
   FWD_GEN_FILES.forEach(function (f, n) {
     var txt;
@@ -1545,6 +1633,7 @@ function fwdCommitSequence(d, root, capture, startupCurrent, gen, opts) {
   // verify: recompute every checksum from disk
   var bad = [];
   FWD_GEN_FILES.forEach(function (f) { if (f === 'checksums.json') return; var b; try { b = d.fs.readFileSync(d.path.join(gdir, f)); } catch (e) { bad.push(f); return; } if (fwdSha256(d, b) !== files[f]) bad.push(f); });
+  Object.keys(files).forEach(function (rel) { if (rel.indexOf('shadow/') !== 0) return; var sb; try { sb = d.fs.readFileSync(d.path.join(gdir, 'shadow', rel.slice(7))); } catch (e) { bad.push(rel); return; } if (fwdSha256(d, sb) !== files[rel]) bad.push(rel); });
   if (files['act-rejections.json']) { var ab; try { ab = d.fs.readFileSync(d.path.join(gdir, 'act-rejections.json')); } catch (e) { bad.push('act-rejections.json'); ab = null; } if (ab && fwdSha256(d, ab) !== files['act-rejections.json']) bad.push('act-rejections.json'); }
   Object.keys(cacheSha).forEach(function (rel) { var b; try { b = d.fs.readFileSync(d.path.join(root, '..', rel)); } catch (e) { bad.push(rel); return; } if (fwdSha256(d, b) !== cacheSha[rel]) bad.push(rel); });
   (function () { var b; try { b = d.fs.readFileSync(edTmp); } catch (e) { bad.push('episode-days'); return; } if (fwdSha256(d, b) !== edSha) bad.push('episode-days'); })();
@@ -2119,11 +2208,16 @@ async function main() {
         const fwdEv = { quotes: {}, bars5: {}, trades: {} }, fwdAttempted = new Set(), fwdErrs = (fwdInfo && fwdInfo.errors) || [];
         const fwdFetchJson = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); };
         const fwdNeedKey = n => [n.kind, n.cgId || '', n.pair || '', n.fromSec || '', n.toSec || ''].join('|');
-        let upd = null;
+        let upd = null, shd = null, shdErr = null;
+        const fwdShadowPols = fwdShadowPolicies(fwdCfg);
         for (let iter = 0; iter < 8; iter++) {
           const needs = [];
           for (const cg of Object.keys(coinsIn)) { coinsIn[cg].bars5 = fwdEv.bars5[cg] || []; coinsIn[cg].trades = fwdEv.trades[cg] || []; }
           upd = fwdRunUpdate(fwdDeps, fwdPrior, capture, { coins: coinsIn, universeIds: pulls.map(p => p.coin.id) }, { manualDelistings: fwdReadDelistings(fwdDeps, DATA_DIR), challenger: fwdCfg.challenger, quotes: fwdEv.quotes, needs: needs });
+          if (fwdShadowPols.length && !(fwdPrior.shadow && fwdPrior.shadow.error)) {   // item 40: shadow step after the production steps, SAME needs array and quote map (one Ticker request below); a shadow fault never touches production
+            try { shd = fwdRunShadow(fwdDeps, fwdPrior, capture, { coins: coinsIn, universeIds: pulls.map(p => p.coin.id) }, { challenger: fwdCfg.challenger, quotes: fwdEv.quotes, needs: needs }, upd, fwdShadowPols); shdErr = null; }
+            catch (e) { shd = null; shdErr = e; console.error('forward: SHADOW block failed (production unaffected):', e && e.message ? e.message : e); }
+          }
           const todo = needs.filter(n => !fwdAttempted.has(fwdNeedKey(n))); if (!todo.length) break;
           todo.forEach(n => fwdAttempted.add(fwdNeedKey(n)));
           const tickers = Array.from(new Set(todo.filter(n => n.kind === 'ticker').map(n => n.pair)));
@@ -2149,6 +2243,18 @@ async function main() {
         const gen = { episodes: upd.episodes, orders: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, orders: upd.book.orders, attempts: upd.book.attempts }, accounts: { schemaVersion: OC.ORDERS_SCHEMA_VERSION, seq: upd.book.seq, accounts: upd.book.accounts },
           scenarios: { schemaVersion: 1, label: 'counterfactual', built: false }, pairs: fwdUpdatePairs(fwdPrior.pairs, capture, pairsNow),
           episodeDays: { schemaVersion: 1, captureId: capture.captureId, date: capture.date, rows: upd.episodeDayRows } };
+        if (fwdShadowPols.length) {   // item 40: shadow files for this generation. A failed / unreadable shadow carries the referenced generation's shadow state forward unchanged (never a silent restart); production is unaffected
+          const actCoinsSh = Object.keys(fwdActByCoin).sort().map(k => fwdActByCoin[k]);
+          if (shd) {
+            try {
+              gen.shadow = fwdShadowGen(capture, actCoinsSh, shd, upd, fwdShadowPols);
+              const iv = gen.shadow.actRejections.invariant;
+              fwdShadowPols.forEach(p => { const v = iv[p.id]; console.log('forward: SHADOW ' + p.id + ' ACT coins', v.nAct, '| attempts on ACT coins', v.nAttempts, '| other attempts', v.nNonActAttempts, '| rejections', v.nRows + (v.ok ? '' : ' - ACCOUNTING INVARIANT VIOLATED ' + JSON.stringify(v))); });
+            } catch (e) { gen.shadow = null; shdErr = e; console.error('forward: SHADOW files failed (production unaffected):', e && e.message ? e.message : e); }
+          }
+          if (!gen.shadow && fwdPrior.shadow && fwdPrior.shadow.files) { gen.shadow = { orders: fwdPrior.shadow.files.orders, accounts: fwdPrior.shadow.files.accounts }; console.error('forward: SHADOW state carried forward unchanged from the referenced generation (no shadow update this capture)'); }
+          else if (!gen.shadow && fwdPrior.shadow && fwdPrior.shadow.error) console.error('forward: SHADOW skipped -', fwdPrior.shadow.error, '- this generation carries no shadow files');
+        }
         let fwdInvariantAbort = false;
         if (fwdCfg.protocolVersion === FWD_V144) {   // R5: generated from the FINAL update of this capture
           const actCoins = Object.keys(fwdActByCoin).sort().map(k => fwdActByCoin[k]);

@@ -61,6 +61,9 @@
   function newAccount(id, cash) { return { policyId: id, startCash: cash, cash: cash, reservations: [], series: [], hwm: null, suspended: false, suspendedAt: null, suspensionCutoffSec: null, riskLimitExceeded: false, lastValuation: null }; }
   function newBook(opts) { var c = (opts && opts.startCash) || CFG.START_CASH; return { schemaVersion: ORDERS_SCHEMA_VERSION, orders: [], attempts: [], seq: 0, accounts: { N0: newAccount('N0', c), C1: newAccount('C1', c) } }; }
 
+  // Item 40 (shadow study): a separate book whose accounts are the listed shadow policy ids (e.g. CTRL, NZ); never merged into a production book.
+  function newShadowBook(ids, startCash) { var c = startCash || 1500000, acc = {}; (ids || []).forEach(function (id) { acc[id] = newAccount(id, c); }); return { schemaVersion: ORDERS_SCHEMA_VERSION, orders: [], attempts: [], seq: 0, accounts: acc }; }
+
   function indexBars(barsByCoin) {
     var out = {};
     Object.keys(barsByCoin || {}).forEach(function (cg) { var m = {}; ((barsByCoin[cg] && barsByCoin[cg].candles) || []).forEach(function (c) { m[c.id] = c; }); out[cg] = m; });
@@ -406,7 +409,11 @@
   }
 
   // ---------- step 7: issuance (§4.1, §5.3, §5.4) ----------
-  function inZone(cand) { var ez = cand.entryEconomics && cand.entryEconomics.entryZone; return !!(ez && num(ez[0]) && num(ez[1]) && num(cand.price) && cand.price >= ez[0] && cand.price <= ez[1]); }
+  // Item 40: tolPct > 0 widens the UPPER edge only: entryLow <= price <= entryHigh x (1 + tolPct/100). tolPct 0 / absent is the original test, bit for bit.
+  function zoneTol(tolPct) { return num(tolPct) && tolPct > 0 ? tolPct : 0; }
+  function policyTol(policy) { return zoneTol(policy && policy.zoneTolerancePct); }
+  function inZoneTol(cand, tolPct) { var ez = cand.entryEconomics && cand.entryEconomics.entryZone, t = zoneTol(tolPct); return !!(ez && num(ez[0]) && num(ez[1]) && num(cand.price) && cand.price >= ez[0] && cand.price <= (t > 0 ? ez[1] * (1 + t / 100) : ez[1])); }
+  function inZone(cand) { return inZoneTol(cand, 0); }
   // Challenger predicate (Protocol v1.3 §5.1): { minScore, minNetRR, requiredGates: [gate ids that must pass], excludeStopBasis: [stopBasis strings] }, inheriting N0's screen AND in-zone
   // condition. An empty or absent configuration never qualifies (C1 not configured). Version and other keys are labels only.
   function challengerActive(ch) {
@@ -423,13 +430,15 @@
       if (!Array.isArray(ch.requiredGates)) errs.push('requiredGates must be an array of gate ids');
       else ch.requiredGates.forEach(function (g) { if (typeof g !== 'string' || (knownGateIds && knownGateIds.indexOf(g) < 0)) errs.push('unknown gate id: ' + JSON.stringify(g)); });
     }
+    if (ch.zoneTolerancePct != null && !(num(ch.zoneTolerancePct) && ch.zoneTolerancePct >= 0)) errs.push('zoneTolerancePct must be a finite number >= 0');
     if (ch.excludeStopBasis != null) {
       if (!Array.isArray(ch.excludeStopBasis)) errs.push('excludeStopBasis must be an array of stopBasis strings');
       else ch.excludeStopBasis.forEach(function (b) { if (typeof b !== 'string') errs.push('excludeStopBasis entries must be strings'); });
     }
     return errs;
   }
-  function qualify(ch, cand) {
+  // tolPct (item 40, optional): when > 0 the required gate C2.entry-zone is decided by inZoneTol(cand, tolPct); the logged gate row is only read (it must exist), never modified.
+  function qualify(ch, cand, tolPct) {
     if (!challengerActive(ch)) return false;
     if (num(ch.minScore) && !(num(cand.score) && cand.score >= ch.minScore)) return false;
     if (num(ch.minNetRR) && !(cand.entryEconomics && num(cand.entryEconomics.netRR) && cand.entryEconomics.netRR >= ch.minNetRR)) return false;
@@ -438,23 +447,26 @@
       for (var i = 0; i < ch.requiredGates.length; i++) {
         var id = ch.requiredGates[i], g = null;
         for (var j = 0; j < gates.length; j++) if (gates[j] && gates[j].id === id) { g = gates[j]; break; }
-        if (!g || g.pass !== true) return false;   // a listed gate that is absent from the log row does not pass
+        if (!g) return false;   // a listed gate that is absent from the log row does not pass
+        if (zoneTol(tolPct) > 0 && id === 'C2.entry-zone') { if (!inZoneTol(cand, tolPct)) return false; continue; }
+        if (g.pass !== true) return false;
       }
     }
     if (Array.isArray(ch.excludeStopBasis) && ch.excludeStopBasis.length && cand.entryEconomics && ch.excludeStopBasis.indexOf(cand.entryEconomics.stopBasis) >= 0) return false;
     return true;
   }
   function predicateHolds(policy, cand, cfg) {
-    if (!(cand.screen && cand.screen.pass) || !inZone(cand)) return false;
+    var tol = policyTol(policy);
+    if (!(cand.screen && cand.screen.pass) || !(tol > 0 ? inZoneTol(cand, tol) : inZone(cand))) return false;
     if (policy.id === 'N0') return true;
-    return qualify(cfg && cfg.challenger, cand);   // C1: no configuration -> never qualifies
+    return tol > 0 ? qualify(cfg && cfg.challenger, cand, tol) : qualify(cfg && cfg.challenger, cand);   // C1: no configuration -> never qualifies
   }
   // Protocol v1.4.4 R5: observation only - the same three tests as predicateHolds, evaluated WITHOUT short-circuit so a silent non-attempt can be recorded with its inputs.
   // Never read by the engine; issueOne calls it only when cfg.observeSilent is set.
   function predicateDiagnosis(policy, cand, cfg) {
     var ee = cand.entryEconomics, ez = ee && ee.entryZone, lo = ez && num(ez[0]) ? ez[0] : null, hi = ez && num(ez[1]) ? ez[1] : null, px = num(cand.price) ? cand.price : null;
     var dist = null; if (px != null && lo != null && hi != null) dist = px < lo ? (px - lo) / lo * 100 : (px > hi ? (px - hi) / hi * 100 : 0);
-    var screenPass = !!(cand.screen && cand.screen.pass), zone = inZone(cand), q = null, failed = [];
+    var tol = policyTol(policy), screenPass = !!(cand.screen && cand.screen.pass), zone = tol > 0 ? inZoneTol(cand, tol) : inZone(cand), q = null, failed = [];
     if (policy.id !== 'N0') {
       var ch = cfg && cfg.challenger, active = challengerActive(ch), fails = [];
       if (active) {
@@ -462,7 +474,7 @@
         if (num(ch.minNetRR) && !(ee && num(ee.netRR) && ee.netRR >= ch.minNetRR)) fails.push('minNetRR');
         if (Array.isArray(ch.requiredGates)) {
           var gates = Array.isArray(cand.gates) ? cand.gates : [];
-          ch.requiredGates.forEach(function (id) { var g = null; for (var j = 0; j < gates.length; j++) if (gates[j] && gates[j].id === id) { g = gates[j]; break; } if (!g || g.pass !== true) fails.push(id); });
+          ch.requiredGates.forEach(function (id) { var g = null; for (var j = 0; j < gates.length; j++) if (gates[j] && gates[j].id === id) { g = gates[j]; break; } if (!g || !(tol > 0 && id === 'C2.entry-zone' ? inZoneTol(cand, tol) : g.pass === true)) fails.push(id); });
         }
         if (Array.isArray(ch.excludeStopBasis) && ch.excludeStopBasis.length && ee && ch.excludeStopBasis.indexOf(ee.stopBasis) >= 0) fails.push('excludeStopBasis');
       }
@@ -470,7 +482,7 @@
     }
     if (!screenPass) failed.push('screen'); if (!zone) failed.push('in-zone'); if (q && !q.pass) failed.push('qualify');
     return { failed: failed, screen: { pass: screenPass, reasons: (cand.screen && cand.screen.reasons) || [], widthPrice: cand.screen && cand.screen.widthPrice !== undefined ? cand.screen.widthPrice : null, width: cand.screen && cand.screen.width !== undefined ? cand.screen.width : null },
-      zone: { pass: zone, price: px, entryLow: lo, entryHigh: hi, distancePct: dist }, qualify: q };
+      zone: tol > 0 ? { pass: zone, price: px, entryLow: lo, entryHigh: hi, distancePct: dist, tolPct: tol } : { pass: zone, price: px, entryLow: lo, entryHigh: hi, distancePct: dist }, qualify: q };
   }
   function staleBlocked(book, pid) {
     return ordersOf(book, pid).some(function (o) { return isOpen(o) && o.stale && o.stale.count >= 1 && !o.stale.persistent; });
@@ -501,6 +513,12 @@
     var ee = cand.entryEconomics;
     if (ee.stopBasis == null || ee.targetSource == null) throw new Error('log row lacks stopBasis/targetSource for ' + cand.cgId);
     var attempt = { policyId: pid, policyVersion: policy.version, episodeId: cand.episodeId, cgId: cand.cgId, captureId: capture.captureId, date: capture.date, outcome: null, orderId: null };
+    var tolPct = policyTol(policy);
+    if (tolPct > 0) {   // item 40: the audit record of the one thing the shadow policy changes
+      var zg = null, gs = Array.isArray(cand.gates) ? cand.gates : []; for (var zi = 0; zi < gs.length; zi++) if (gs[zi] && gs[zi].id === 'C2.entry-zone') { zg = gs[zi]; break; }
+      var zhi = ee.entryZone[1];
+      attempt.zoneOverride = { tolPct: tolPct, loggedPass: !!(zg && zg.pass === true), price: cand.price, entryHigh: zhi, marginPct: (cand.price - zhi) / zhi * 100 };
+    }
     b.attempts.push(attempt);
     var open = [], pend = [];
     ordersOf(b, pid).forEach(function (o) { if (isPending(o)) pend.push(o); else if (isOpen(o)) open.push(o); });
@@ -740,7 +758,7 @@
   // buildScenarios(book, ctx): ctx = { deadlineSec }. Returns the counterfactual namespace; `book` is not modified.
   function buildScenarios(book, ctx) {
     var res = { schemaVersion: 1, label: 'counterfactual', deadlineSec: ctx.deadlineSec, unresolved: {}, paths: { S1: {}, S2: {}, S1adv: {}, S2adv: {} } };
-    ['N0', 'C1'].forEach(function (pid) {
+    (ctx.policies || ['N0', 'C1']).forEach(function (pid) {
       var un = unresolvedOf(book, pid, ctx); res.unresolved[pid] = un;
       res.paths.S1[pid] = replayPath(book, pid, 'S1', 'base', ctx, un);
       res.paths.S2[pid] = replayPath(book, pid, 'S2', 'base', ctx, un);
@@ -751,7 +769,7 @@
   }
 
   return {
-    predicateHolds: predicateHolds, predicateDiagnosis: predicateDiagnosis, qualify: qualify, validateChallenger: validateChallenger, challengerActive: challengerActive,
+    predicateHolds: predicateHolds, predicateDiagnosis: predicateDiagnosis, qualify: qualify, inZoneTol: inZoneTol, inZone: inZone, newShadowBook: newShadowBook, validateChallenger: validateChallenger, challengerActive: challengerActive,
     buildScenarios: buildScenarios, unresolvedOf: unresolvedOf, replayPath: replayPath, pathAdmission: pathAdmission, rowIndexAtOrAfter: rowIndexAtOrAfter,
     ORDERS_SCHEMA_VERSION: ORDERS_SCHEMA_VERSION, CFG: CFG, DAY: DAY, BAR5: BAR5, newBook: newBook, cents: cents, bpOf: bpOf, floorTo: floorTo, ceilTo: ceilTo, notional: notional,
     adjudicateAll: adjudicateAll, valuation: valuation, suspend: suspend, issueBatch: issueBatch,
