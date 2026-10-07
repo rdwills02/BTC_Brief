@@ -52,17 +52,38 @@ const base = { rssBase: 'http://fixture.invalid/rss', delayMs: 0, retryWaitMs: 0
   const fetchFeed = async (u) => { const q = decodeURIComponent(u.split('q=')[1].split('&')[0]); const k = /Monero/.test(q) ? 'monero' : /Sky/.test(q) ? 'sky' : 'bitcoin'; return resp(feed[k]); };
   root = mkRoot(COINS); o = await NF.run(Object.assign({}, base, { root: root, fetchFn: fetchFeed }));
   let t1 = readOut(root), j = JSON.parse(t1);
-  ok(j.schemaVersion === 1 && j.source === 'google-news-rss' && j.generatedAt === NOW && j.coverage.coins === 3 && j.coverage.ok === 3 && j.coverage.failed.length === 0, 'output: header + coverage');
+  ok(j.schemaVersion === 1 && j.source === 'google-news-rss' && j.generatedAt === NOW && j.lastChangedAt === NOW && j.runSeq === 1 && j.coverage.coins === 3 && j.coverage.ok === 3 && j.coverage.failed.length === 0, 'output: header + coverage');
   ok(JSON.stringify(Object.keys(j.coins)) === JSON.stringify(['bitcoin', 'monero', 'sky']), 'output: coins sorted by cgId');
   ok(j.coins.monero.symbol === 'XMR' && j.coins.monero.items.map(i => i.title).join('|') === 'Newest item|Same time a|Same time b|Older item', 'output: items by publishedAt desc then title');
   ok(Object.keys(j.coins.monero.items[0]).join() === 'title,link,source,publishedAt,firstSeenAt' && j.coins.monero.items[0].firstSeenAt === NOW, 'output: item fields');
   ok(j.coins.bitcoin.items[0].publishedAt === null && j.coins.bitcoin.items[0].firstSeenAt === NOW, 'output: missing pubDate -> publishedAt null, firstSeenAt now');
-  const mt = fs.statSync(path.join(root, 'data', 'news', 'headlines.json')).mtimeMs;
-  await NF.run(Object.assign({}, base, { root: root, fetchFn: fetchFeed, now: '2026-10-05T13:00:00.000Z' }));
-  ok(readOut(root) === t1 && fs.statSync(path.join(root, 'data', 'news', 'headlines.json')).mtimeMs === mt, 'determinism: second run, no new items, later clock -> byte-identical, file untouched');
+  // ---- freshness: generatedAt = this run; lastChangedAt = last run whose items changed; runSeq monotonic ----
+  const lines = t => t.split('\n');
+  const T2 = '2026-10-05T13:00:00.000Z', T3 = '2026-10-05T14:00:00.000Z', T4 = '2026-10-05T15:00:00.000Z';
+  await NF.run(Object.assign({}, base, { root: root, fetchFn: fetchFeed, now: T2 }));
+  const t2 = readOut(root); j = JSON.parse(t2);
+  ok(j.generatedAt === T2 && j.lastChangedAt === NOW && j.runSeq === 2, 'unchanged items: generatedAt advances, lastChangedAt does not, runSeq 1 -> 2');
+  const d12 = lines(t1).map((l, n) => l === lines(t2)[n] ? null : n).filter(n => n !== null);
+  ok(lines(t1).length === lines(t2).length && d12.length === 2 && /^"generatedAt"/.test(lines(t2)[d12[0]]) && /^"runSeq"/.test(lines(t2)[d12[1]]), 'unchanged items: diff is exactly the generatedAt and runSeq lines');
+  ok(JSON.stringify(j.coverage) === JSON.stringify(JSON.parse(t1).coverage) && Object.keys(j).join() === 'schemaVersion,generatedAt,lastChangedAt,runSeq,source,coverage,coins', 'header: field order stable, coverage unchanged');
   feed.sky = rss([{ t: 'Sky news - D', p: rfc(-1 * H), s: 'D' }]);
-  await NF.run(Object.assign({}, base, { root: root, fetchFn: fetchFeed, now: '2026-10-05T14:00:00.000Z' }));
-  j = JSON.parse(readOut(root)); ok(j.generatedAt === '2026-10-05T14:00:00.000Z' && j.coins.sky.items.length === 1 && j.coins.monero.items.find(i => i.title === 'Newest item').firstSeenAt === NOW, 'new item changes content: generatedAt advances, earlier firstSeenAt kept');
+  await NF.run(Object.assign({}, base, { root: root, fetchFn: fetchFeed, now: T3 }));
+  j = JSON.parse(readOut(root));
+  ok(j.generatedAt === T3 && j.lastChangedAt === T3 && j.runSeq === 3 && j.coins.sky.items.length === 1 && j.coins.monero.items.find(i => i.title === 'Newest item').firstSeenAt === NOW, 'changed items: generatedAt and lastChangedAt both advance, runSeq 3, earlier firstSeenAt kept');
+  await NF.run(Object.assign({}, base, { root: root, fetchFn: fetchFeed, now: T4 }));
+  j = JSON.parse(readOut(root)); ok(j.generatedAt === T4 && j.lastChangedAt === T3 && j.runSeq === 4, 'unchanged after a change: lastChangedAt holds at the change time, runSeq 4');
+  // coverage-only change (a coin fails, items identical) is not an items change
+  o = await NF.run(Object.assign({}, base, { root: root, now: '2026-10-05T16:00:00.000Z', fetchFn: async (u) => { const q = decodeURIComponent(u.split('q=')[1].split('&')[0]); if (/Bitcoin/.test(q)) throw new Error('boom'); return fetchFeed(u); } }));
+  j = JSON.parse(readOut(root)); ok(JSON.stringify(j.coverage.failed) === '["bitcoin"]' && j.lastChangedAt === T3 && j.runSeq === 5 && o.itemsChanged === false, 'coverage-only change: lastChangedAt not advanced, runSeq 5');
+  // legacy file (no lastChangedAt / runSeq): generatedAt was the change time
+  const rootF = mkRoot(COINS); await NF.run(Object.assign({}, base, { root: rootF, fetchFn: fetchFeed }));   // current feed, fresh file
+  const legacy = readOut(rootF).replace(/"lastChangedAt":.*\n"runSeq":.*\n/, '').replace(NOW, '2026-10-05T09:00:00.000Z');
+  ok(!/lastChangedAt|runSeq/.test(legacy), 'fixture: legacy header has neither new field');
+  const rootL = mkRoot(COINS, legacy); await NF.run(Object.assign({}, base, { root: rootL, fetchFn: fetchFeed, now: T2 }));
+  j = JSON.parse(readOut(rootL)); ok(j.generatedAt === T2 && j.lastChangedAt === '2026-10-05T09:00:00.000Z' && j.runSeq === 1, 'legacy file, items unchanged: lastChangedAt seeded from old generatedAt, runSeq starts at 1');
+  // a non-integer / garbage runSeq restarts the count instead of producing NaN
+  const rootG = mkRoot(COINS, readOut(rootF).replace('"runSeq":1', '"runSeq":"x"')); await NF.run(Object.assign({}, base, { root: rootG, fetchFn: fetchFeed, now: T2 }));
+  ok(JSON.parse(readOut(rootG)).runSeq === 1, 'garbage runSeq in previous file: restarts at 1');
 
   // ---- de-dup ----
   root = mkRoot(COINS.slice(0, 1));

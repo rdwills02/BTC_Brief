@@ -4,7 +4,8 @@
  * 10 s timeout, one retry), merges into data/news/headlines.json (title-normalised de-dup per coin, firstSeenAt kept, 7-day prune, 15/coin cap)
  * and writes it deterministically. Advisory display data only — nothing here feeds detection, gates, orders or the cohort.
  * Exit code is ALWAYS 0: a failed coin keeps its earlier items and is listed in coverage.failed; an unreadable universe writes nothing.
- * generatedAt = the time the CONTENT last changed (an unchanged feed is byte-identical, so the workflow commits nothing).
+ * generatedAt = the time of THIS run, always (the monitor's freshness signal). lastChangedAt = the last run whose items changed. runSeq = monotonic run counter.
+ * An unchanged-items run still rewrites the file, but the diff is only the generatedAt and runSeq lines.
  * Env (tests / local runs only): NEWS_ROOT (repo root), NEWS_RSS_BASE (default Google News search URL), NEWS_DELAY_MS, NEWS_NOW (ISO). */
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -58,7 +59,7 @@ function render(meta, coinsObj, cap) {   // deterministic text: header lines, th
   var ids = Object.keys(coinsObj).sort(), lines = ids.map(function (id) {
     var c = coinsObj[id]; return JSON.stringify(id) + ':' + JSON.stringify({ symbol: c.symbol, items: c.items.slice(0, cap) });
   });
-  return '{\n"schemaVersion":1,\n"generatedAt":' + JSON.stringify(meta.generatedAt) + ',\n"source":"google-news-rss",\n"coverage":' + JSON.stringify(meta.coverage) + ',\n"coins":{\n' + lines.join(',\n') + '\n}\n}\n';
+  return '{\n"schemaVersion":1,\n"generatedAt":' + JSON.stringify(meta.generatedAt) + ',\n"lastChangedAt":' + JSON.stringify(meta.lastChangedAt) + ',\n"runSeq":' + meta.runSeq + ',\n"source":"google-news-rss",\n"coverage":' + JSON.stringify(meta.coverage) + ',\n"coins":{\n' + lines.join(',\n') + '\n}\n}\n';
 }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 async function fetchOnce(fetchFn, url, timeoutMs) {
@@ -100,14 +101,15 @@ async function run(opts) {
     if (i < universe.length - 1 && delay > 0) await sleep(delay);
   }
   var coverage = { coins: universe.length, ok: okN, failed: failed };
-  var cap = CFG.CAP, text;
-  function build(gen) { return render({ generatedAt: gen, coverage: coverage }, coinsObj, cap); }
-  var gen0 = prev && typeof prev.generatedAt === 'string' ? prev.generatedAt : nowIso;
-  text = build(gen0);
-  while (Buffer.byteLength(text) > CFG.MAX_BYTES && cap > CFG.MIN_CAP) { cap--; text = build(gen0); }   // size guard: shrink the per-coin cap uniformly
-  out.coverage = coverage; out.universe = universe.length; out.bytes = Buffer.byteLength(text); out.cap = cap;
-  if (text === prevText) return out;                       // content unchanged -> file untouched, byte-identical
-  text = build(nowIso);                                    // content changed (or first run) -> stamp the change time
+  var prevSeq = prev && Number.isInteger(prev.runSeq) && prev.runSeq >= 0 ? prev.runSeq : 0, runSeq = prevSeq + 1;
+  var prevChanged = prev && typeof prev.lastChangedAt === 'string' ? prev.lastChangedAt : (prev && typeof prev.generatedAt === 'string' ? prev.generatedAt : null);   // legacy file: generatedAt was the change time
+  function build(changed) { return render({ generatedAt: nowIso, lastChangedAt: changed, runSeq: runSeq, coverage: coverage }, coinsObj, cap); }
+  function coinsBlock(t) { var i = typeof t === 'string' ? t.indexOf('\n"coins":{\n') : -1; return i < 0 ? null : t.slice(i); }   // items only: header fields (incl. coverage) are excluded from the change test
+  var cap = CFG.CAP, text = build(prevChanged || nowIso);
+  while (Buffer.byteLength(text) > CFG.MAX_BYTES && cap > CFG.MIN_CAP) { cap--; text = build(prevChanged || nowIso); }   // size guard: shrink the per-coin cap uniformly
+  var changed = coinsBlock(text) !== coinsBlock(prevText) || !prevChanged;
+  if (changed) text = build(nowIso);                       // items changed (or first run) -> stamp the change time
+  out.coverage = coverage; out.universe = universe.length; out.cap = cap; out.itemsChanged = changed; out.runSeq = runSeq;
   fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); out.wrote = true; out.bytes = Buffer.byteLength(text);
   return out;
 }
@@ -115,7 +117,7 @@ module.exports = { parseRss: parseRss, normTitle: normTitle, buildQuery: buildQu
 if (require.main === module) {
   var root = process.env.NEWS_ROOT ? require('path').resolve(process.env.NEWS_ROOT) : require('path').join(__dirname, '..');
   run({ root: root, rssBase: process.env.NEWS_RSS_BASE || undefined, delayMs: process.env.NEWS_DELAY_MS != null ? +process.env.NEWS_DELAY_MS : undefined, now: process.env.NEWS_NOW || undefined })
-    .then(function (o) { console.log('news-fetch: coins ' + o.universe + ', coverage ok ' + (o.coverage ? o.coverage.ok : 0) + '/' + (o.coverage ? o.coverage.coins : 0) + ', failed ' + (o.coverage ? o.coverage.failed.length : 0) + ', bytes ' + o.bytes + ', cap ' + (o.cap || 0) + ', ' + (o.wrote ? 'wrote data/news/headlines.json' : 'no change')); })
+    .then(function (o) { console.log('news-fetch: coins ' + o.universe + ', coverage ok ' + (o.coverage ? o.coverage.ok : 0) + '/' + (o.coverage ? o.coverage.coins : 0) + ', failed ' + (o.coverage ? o.coverage.failed.length : 0) + ', bytes ' + o.bytes + ', cap ' + (o.cap || 0) + ', ' + (o.wrote ? 'wrote data/news/headlines.json (runSeq ' + o.runSeq + ', items ' + (o.itemsChanged ? 'changed' : 'unchanged') + ')' : 'nothing written')); })
     .catch(function (e) { console.log('news-fetch: unexpected error - ' + (e && e.message)); })
     .then(function () { process.exit(0); });
 }
