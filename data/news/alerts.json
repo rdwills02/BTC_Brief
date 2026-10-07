@@ -1,10 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-07T16:12:00Z",
-  "lastSuccessfulScanAt": "2026-10-07T11:09:00Z",
-  "coverage": "partial",
-  "coverageNote": "Headlines feed >3h old; web-search fallback used",
+  "generatedAt": "2026-10-07T17:12:00Z",
+  "lastSuccessfulScanAt": "2026-10-07T17:12:00Z",
+  "coverage": "ok",
+  "coverageNote": null,
   "events": [
+    {
+      "eventId": "morpho:integration:2026-10-07",
+      "revision": 1,
+      "cgId": "morpho",
+      "symbol": "MORPHO",
+      "headline": "Ledger launches Bitcoin-backed loans in Ledger Wallet via Morpho (cbBTC/wBTC collateral, borrow USDC/USDT)",
+      "eventClass": "counterparty integration",
+      "direction": "up",
+      "relevance": "New distribution channel: Ledger's wallet base can now borrow against BTC through Morpho markets, adding protocol usage/fee flow for a held coin.",
+      "sourceUrl": "https://www.ledger.com/blog-ledger-wallet-october-2026",
+      "sourceName": "Ledger (release notes)",
+      "publishedAt": "2026-10-07",
+      "firstDetectedAt": "2026-10-07T17:12:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-10-08T17:12:00Z",
+      "evidence": "verified"
+    },
     {
       "eventId": "hyperliquid:scheduled-unlock:2026-10-06",
       "revision": 1,
