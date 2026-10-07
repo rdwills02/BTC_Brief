@@ -193,6 +193,7 @@ function run() {
   // Step 14 (Forward Experiment Protocol v1.2): the flags select ONE Step 14 section; the default run appends the operational report at its end.
   const a14 = process.argv.slice(2), opt14 = n => { const i = a14.indexOf(n); return i >= 0 ? a14[i + 1] : undefined; }, over14 = (opt14('--data') || opt14('--repo')) ? Object.assign({}, opt14('--data') ? { dataDir: path.resolve(opt14('--data')) } : {}, opt14('--repo') ? { repoRoot: path.resolve(opt14('--repo')) } : {}) : undefined;
   if (a14.indexOf('--confirmatory') >= 0) { runStep14Confirmatory(over14, {}); return; }
+  if (a14.indexOf('--shadow-report') >= 0) { runShadowReport(over14, { reps: opt14('--reps') ? +opt14('--reps') : undefined, extension: a14.indexOf('--extension') >= 0 }); return; }
   if (a14.indexOf('--feasibility') >= 0 || a14.indexOf('--calibrate') >= 0) {
     verifyManifestOrAbort();
     const cur14 = require(path.join(REPO_ROOT, 'channel-core.js')), dc14 = loadDailyCaches(), o14 = { windowDays: opt14('--window') ? +opt14('--window') : undefined, runs: opt14('--runs') ? +opt14('--runs') : undefined, reps: opt14('--reps') ? +opt14('--reps') : undefined, dataDir: over14 && over14.dataDir, legacyWidthBasis: a14.indexOf('--legacy-width') >= 0 };
@@ -2168,6 +2169,113 @@ function runStep14Confirmatory(depsOver, opts) {
   return { lock: L.lock, result: r };
 }
 
+// ---- Item 40: Near-Zone Eligibility Study report (Spec v0.3 section 5). READ-ONLY: prints the shadow policies' accounts and the pre-registered endpoint; it takes NO decision.
+// Cutoffs are hard-coded from the frozen spec (never read from config or arguments, other than the spec's own --extension switch for the extended cohort).
+const SHADOW_STUDY = { IDS: ['CTRL', 'NZ'], START_CENTS: 1500000, NONINF: -0.10, MIN_ORDERS: 10, MIN_COVERAGE: 0.90,
+  PRIMARY: { issuanceThrough: '2026-12-08', valuationDate: '2026-12-31' }, EXTENDED: { issuanceThrough: '2027-01-08', valuationDate: '2027-01-31' } };
+// Paired circular moving-block bootstrap of delta = mean(NZ) - mean(CTRL): ONE generator (seed STEP14.SEED = 20260925, the inner bootstrap seed), the SAME block start indices applied to both policies.
+// A replicate in which either policy has zero orders is UNDEFINED: counted, never excluded and never redrawn (the step14Cell rule). bound = null unless every replicate is defined; the bound on the defined draws
+// is returned as diagnosticBound for printing under a "diagnostic only" label and is never a decision bound.
+function step14DeltaCell(A, B, b, reps, seed) {
+  const N = A.N, next = step14Xoshiro(seed === undefined ? STEP14.SEED : seed), PA = step14Prefix(A.s), PAn = step14Prefix(A.n), PB = step14Prefix(B.s), PBn = step14Prefix(B.n), defined = [];
+  let undef = 0;
+  for (let rep = 0; rep < reps; rep++) {
+    let a1 = 0, c1 = 0, a0 = 0, c0 = 0, remaining = N;
+    while (remaining > 0) {
+      const start = step14Draw(next, N), len = Math.min(b, remaining);
+      a1 += PA[start + len] - PA[start]; c1 += PAn[start + len] - PAn[start]; a0 += PB[start + len] - PB[start]; c0 += PBn[start + len] - PBn[start];
+      remaining -= len;
+    }
+    if (c1 === 0 || c0 === 0) undef++; else defined.push(a1 / c1 - a0 / c0);
+  }
+  let sa = 0, sc = 0, sb = 0, sd = 0; for (let t = 0; t < N; t++) { sa += A.s[t]; sc += A.n[t]; sb += B.s[t]; sd += B.n[t]; }
+  const point = (sc === 0 || sd === 0) ? null : sa / sc - sb / sd;
+  return { kind: 'delta', b, reps, undefinedReplications: undef, validated: undef === 0, bound: undef === 0 ? step14Bound(defined) : null, diagnosticBound: (undef > 0 && defined.length) ? step14Bound(defined) : null, point };
+}
+// One order = one calendar day: its trade's attributionDate if it produced one (a fill and its resolution), else its issue date (a zero-P&L nonfill / submission rejection). Its net budget-R and its count land on the same day.
+function shadowDailySeries(orders, trades, start, N) {
+  const tBy = {}; trades.forEach(t => { tBy[t.orderId] = t; });
+  const s = new Array(N).fill(0), n = new Array(N).fill(0); let late = 0;
+  orders.forEach(o => {
+    const t = tBy[o.id], date = t ? t.attributionDate : o.issueDate, d = step14DayIndex(date, start), idx = Math.min(N - 1, Math.max(0, d));
+    if (d > N - 1) late++;
+    s[idx] += t && typeof t.budgetR === 'number' && isFinite(t.budgetR) ? t.budgetR : 0; n[idx] += 1;
+  });
+  return { N, s, n, late };
+}
+// Spec v0.3 section 5, mechanically. INSUFFICIENT = an information condition only (any undefined replication, < 10 submitted orders in either policy, evidence coverage < 90%); otherwise SUPPORTED
+// iff (lower bound of delta >= -0.10 R) AND (NZ net account return >= CTRL net account return), else NOT SUPPORTED. The sign or size of delta never enters the INSUFFICIENT test.
+function shadowOutcomeOf(x) {
+  const reasons = [];
+  if (x.undefinedReplications > 0) reasons.push('undefined bootstrap replication (' + x.undefinedReplications + ')');
+  if (x.nCT < SHADOW_STUDY.MIN_ORDERS || x.nNZ < SHADOW_STUDY.MIN_ORDERS) reasons.push('fewer than ' + SHADOW_STUDY.MIN_ORDERS + ' submitted orders in a policy (CTRL ' + x.nCT + ', NZ ' + x.nNZ + ')');
+  if (x.coverage == null || x.coverage < SHADOW_STUDY.MIN_COVERAGE) reasons.push('evidence coverage ' + (x.coverage == null ? 'n/a' : (x.coverage * 100).toFixed(1) + '%') + ' < 90% (order-level: resolved cohort orders / cohort orders)');
+  const critBound = !!(x.primaryValidated && x.primaryBound >= SHADOW_STUDY.NONINF), critAcct = x.retNZ != null && x.retCT != null && x.retNZ >= x.retCT;
+  return { outcome: reasons.length ? 'INSUFFICIENT' : ((critBound && critAcct) ? 'SUPPORTED' : 'NOT SUPPORTED'), reasons, critBound, critAcct };
+}
+function shadowLoad(d, cohort) {
+  const cur = cohort.current, out = { problems: [], start: null };
+  if (!cur) { out.problems.push('no forward state'); return out; }
+  const gdir = id => path.join(cohort.dir, 'gen-' + id), readCk = id => step14ReadJson(d, path.join(gdir(id), 'checksums.json'));
+  for (const e of cohort.entries) { const ck = readCk(e.generationId); if (ck && ck.files && ck.files['shadow/orders.json']) { out.start = e.date; break; } }
+  const ck = readCk(cur.generationId);
+  if (!ck || !ck.files || !ck.files['shadow/orders.json'] || !ck.files['shadow/accounts.json']) { out.problems.push('the CURRENT generation carries no shadow files (no shadowPolicies block has been committed yet, or it was dropped)'); return out; }
+  ['orders', 'accounts', 'act-rejections'].forEach(n => {
+    const rel = 'shadow/' + n + '.json'; if (!ck.files[rel]) return;
+    let buf; try { buf = d.fs.readFileSync(path.join(gdir(cur.generationId), 'shadow', n + '.json')); } catch (e) { out.problems.push('missing ' + rel); return; }
+    if (step14Sha(buf) !== ck.files[rel]) out.problems.push('checksum mismatch ' + rel); else out[n] = JSON.parse(buf.toString('utf8'));
+  });
+  return out;
+}
+function runShadowReport(depsOver, opts) {
+  opts = opts || {};
+  const d = step14Deps(depsOver), cohort = step14Cohort(d), W = opts.extension ? SHADOW_STUDY.EXTENDED : SHADOW_STUDY.PRIMARY, reps = opts.reps || STEP14.REPS, out = { problems: [] };
+  const fail = m => { console.log('SHADOW REPORT: ' + m); process.exitCode = 1; out.problems.push(m); return out; };
+  console.log('\n=== NEAR-ZONE ELIGIBILITY STUDY (Spec v0.3) - shadow policies CTRL vs NZ. REPORT ONLY: this tool takes no decision. ===');
+  console.log('cohort: orders issued through ' + W.issuanceThrough + (opts.extension ? ' (EXTENDED cohort)' : '') + '; valuation / evidence cutoff ' + W.valuationDate + ' 00:00Z; decision date = the valuation date; ' + (opts.extension ? '' : 'extension (only after an INSUFFICIENT outcome): --extension -> through ' + SHADOW_STUDY.EXTENDED.issuanceThrough + ', cutoff ' + SHADOW_STUDY.EXTENDED.valuationDate));
+  const L = shadowLoad(d, cohort); if (L.problems.length || !L.orders || !L.accounts) return fail(L.problems.join('; ') || 'no shadow state');
+  const cur = cohort.current, start = L.start || cohort.startDate, ids = SHADOW_STUDY.IDS, book = { orders: L.orders.orders, attempts: L.orders.attempts, seq: L.accounts.seq, accounts: L.accounts.accounts };
+  console.log('shadow state read from generation ' + cur.generationId + ' (captured ' + cur.date + '); study calendar starts ' + start + '; checksums verified');
+  const inCohort = o => o.issueDate <= W.issuanceThrough, lastDate = cur.date < W.valuationDate ? cur.date : W.valuationDate, N = step14DayIndex(lastDate, start) + 1;
+  ids.forEach(id => {
+    const a = book.accounts[id]; if (!a) { console.log('  ' + id + ': no account in the shadow book'); return; }
+    const os = book.orders.filter(o => o.policyId === id), by = {}; os.forEach(o => { by[o.status] = (by[o.status] || 0) + 1; });
+    const at = {}; book.attempts.filter(x => x.policyId === id).forEach(x => { at[x.outcome] = (at[x.outcome] || 0) + 1; });
+    const E = a.lastValuation ? a.lastValuation.E : null;
+    console.log('  ' + id + ': cash $' + (a.cash / 100).toFixed(2) + ' | E $' + (E == null ? 'n/a' : (E / 100).toFixed(2)) + ' | submitted orders ' + os.length + ' | by status ' + JSON.stringify(by) + ' | attempts by outcome (skips before an order exist are reported here, not in the endpoint) ' + JSON.stringify(at) + (a.suspended ? ' | SUSPENDED ' + a.suspendedAt : ''));
+  });
+  const nzAdded = book.orders.filter(o => o.policyId === 'NZ' && book.attempts.some(x => x.orderId === o.id && x.zoneOverride && x.zoneOverride.loggedPass === false)).length;
+  console.log('  NZ orders that exist only through the tolerance (logged C2.entry-zone failed): ' + nzAdded);
+  if (!(N >= 1)) return fail('calendar window is empty (CURRENT ' + cur.date + ' precedes the study start ' + start + ')');
+  const deadlineSec = Math.min(Math.floor(Date.parse(W.valuationDate + 'T00:00:00Z') / 1000), Math.floor(Date.parse(cur.date + 'T00:00:00Z') / 1000));
+  const sc = d.OC.buildScenarios(JSON.parse(JSON.stringify(book)), { deadlineSec, policies: ids });
+  const per = {}; ids.forEach(id => {
+    const os = book.orders.filter(o => o.policyId === id && inCohort(o)), coh = {}; os.forEach(o => { coh[o.id] = 1; });
+    per[id] = { orders: os, S1: shadowDailySeries(os, sc.paths.S1[id].trades.filter(t => coh[t.orderId]), start, N), S2: shadowDailySeries(os, sc.paths.S2[id].trades.filter(t => coh[t.orderId]), start, N),
+      unresolved: sc.unresolved[id].filter(u => coh[u.orderId]).length, retS2: null, retS1: null };
+    ['S1', 'S2'].forEach(S => { const ser = sc.paths[S][id].series, last = ser.length ? ser[ser.length - 1] : null; per[id]['ret' + S] = last ? last.E / SHADOW_STUDY.START_CENTS - 1 : null; });
+  });
+  const A = per.NZ, B = per.CTRL; if (!A || !B) return fail('both CTRL and NZ accounts are required');
+  const nNZ = A.orders.length, nCT = B.orders.length, tot = nNZ + nCT, unres = A.unresolved + B.unresolved, coverage = tot ? 1 - unres / tot : null;
+  const cells = { S1: {}, S2: {} }; ['S1', 'S2'].forEach(S => STEP14.BLOCKS.forEach(b => { cells[S][b] = step14DeltaCell(A[S], B[S], b, reps); }));
+  const prim = cells.S2[STEP14.PRIMARY_B], f = v => v == null ? 'n/a' : (Math.abs(v) < 1e-12 ? '0' : v.toFixed(4)), pc = v => v == null ? 'n/a' : (v * 100).toFixed(2) + '%';
+  const mean = (x) => { let s1 = 0, c = 0; for (let t = 0; t < N; t++) { s1 += x.s[t]; c += x.n[t]; } return c ? s1 / c : null; };
+  console.log('window: ' + N + ' calendar days (' + start + ' .. ' + lastDate + '), trades attributed per runner rule, min(N-1, d) clamp; cohort orders (submitted, incl. zero-P&L nonfills and submission rejections): CTRL ' + nCT + ', NZ ' + nNZ + '; unresolved at ' + (cur.date < W.valuationDate ? 'the data edge ' + cur.date : 'the cutoff') + ': CTRL ' + B.unresolved + ', NZ ' + A.unresolved);
+  console.log('mean net budget-R per submitted order (S2 primary): CTRL ' + f(mean(B.S2)) + ' | NZ ' + f(mean(A.S2)) + ' | delta (NZ - CTRL) point ' + f(prim.point) + '   [S1: CTRL ' + f(mean(B.S1)) + ', NZ ' + f(mean(A.S1)) + ']');
+  console.log('net account return at the cutoff (S2): CTRL ' + pc(B.retS2) + ' | NZ ' + pc(A.retS2) + '   [S1: CTRL ' + pc(B.retS1) + ', NZ ' + pc(A.retS1) + ']');
+  console.log('paired block bootstrap, ' + reps + ' replications, seed ' + STEP14.SEED + ' (the inner bootstrap seed; the 20260926 outer seed belongs to the calibration simulation and has no role on one dataset), blocks ' + STEP14.BLOCKS.join('/') + ', primary S2 b=' + STEP14.PRIMARY_B + ':');
+  ['S1', 'S2'].forEach(S => console.log('  delta ' + S + ': ' + STEP14.BLOCKS.map(b => { const c = cells[S][b]; return 'b=' + b + ' ' + (c.validated ? 'lower ' + f(c.bound) : 'UNVALIDATED (' + c.undefinedReplications + ' undefined of ' + c.reps + ')' + (c.diagnosticBound != null ? ' [lower bound on the defined draws ' + f(c.diagnosticBound) + ' - diagnostic only, never a decision bound]' : '')); }).join(' | ')));
+  const allCells = []; ['S1', 'S2'].forEach(S => STEP14.BLOCKS.forEach(b => allCells.push(cells[S][b])));
+  const undefAny = allCells.reduce((a, c) => a + c.undefinedReplications, 0), validated = undefAny === 0;
+  console.log('bootstrap: ' + (validated ? 'VALIDATED (undefinedReplications 0 in every cell)' : 'INCONCLUSIVE (undefinedReplications ' + undefAny + ' across the cells; validated = false)'));
+  const oc = shadowOutcomeOf({ undefinedReplications: undefAny, nCT, nNZ, coverage, primaryValidated: prim.validated, primaryBound: prim.bound, retNZ: A.retS2, retCT: B.retS2 }), reasons = oc.reasons, critBound = oc.critBound, critAcct = oc.critAcct, outcome = oc.outcome;
+  console.log('criterion (non-inferiority + observed account condition): lower bound of delta >= ' + SHADOW_STUDY.NONINF + ' R: ' + (prim.validated ? (critBound ? 'yes' : 'no') + ' (' + f(prim.bound) + ')' : 'not evaluable') + ' | NZ net account return >= CTRL: ' + (critAcct ? 'yes' : 'no') + '. This supports the adoption rule; it does not prove a statistically positive account improvement.');
+  const decisionOpen = cur.date >= W.valuationDate;
+  console.log((decisionOpen ? 'OUTCOME (spec section 5, mechanical): ' : 'MECHANICAL READING IF EVALUATED NOW - progress only, NOT the decision (decision date ' + W.valuationDate + '; CURRENT is ' + cur.date + '): ') + outcome + (reasons.length ? ' - ' + reasons.join('; ') : ''));
+  console.log('vocabulary: SUPPORTED = criterion met and analysis validated | NOT SUPPORTED = analysis validated and criterion not met (final for this study) | INSUFFICIENT = information condition only (undefined replication, < ' + SHADOW_STUDY.MIN_ORDERS + ' submitted orders in either policy, evidence coverage < 90%). Sign or size never enters the continuation decision.');
+  return Object.assign(out, { outcome, reasons, validated, undefinedReplications: undefAny, cells, orders: { CTRL: nCT, NZ: nNZ }, coverage, retS2: { CTRL: B.retS2, NZ: A.retS2 }, point: prim.point, decisionOpen, window: { start, N, lastDate } });
+}
+
 // ---- FEASIBILITY BEGIN (Protocol §8, labelled entry-feasibility model). Stand-alone: takes candles and episode-days, returns funnel counts. It has no access to any execution or account code. ----
 const STEP14_PROXY_LABEL = 'feasibility-proxy: daily-no-intraday';
 function step14FeasibilityFunnel(days, series, cfg) {
@@ -2339,4 +2447,4 @@ function runStep14Calibrate(current, dailyCaches, opts) {
 
 // Step 13: run when executed; export the pure harness helpers for the local suite when required.
 if (require.main === module) run();
-else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS, STEP14, STEP14_BLACKLIST, step14Splitmix32, step14Xoshiro, step14Draw, step14Golden, step14Bound, step14DayIndex, step14Records, step14Prefix, step14Cell, step14Decide, step14MaxShare, step14Deps, step14Cohort, step14LoadGeneration, step14LockOf, step14CollectKeys, step14OperationalReport, runStep14Operational, step14Analyse, runStep14Confirmatory, step14FeasibilityFunnel, step14FixtureReplay, runStep14Feasibility, step14Calibrate, runStep14Calibrate, step14ReadForwardConfig, step14ConfirmatoryPolicy };
+else module.exports = { mulberry32, extractPageFn, loadPageFlagOffChain, scoreSignal, baselineSignal, forwardLedgerHorizon, runStep13ForwardScore, STEP13_BLOCK_DAYS, STEP13_BLOCK_SENS, step13Stats, step13Cell, step13Bootstrap, STEP13_PAGE_CHAIN_SHA1, STEP13_PAGE_CHAIN_FNS, STEP13_AUDITED, STEP13_MIN_N, STEP13_COST_PCT, STEP13_HORIZONS, STEP14, STEP14_BLACKLIST, step14Splitmix32, step14Xoshiro, step14Draw, step14Golden, step14Bound, step14DayIndex, step14Records, step14Prefix, step14Cell, step14Decide, step14MaxShare, step14Deps, step14Cohort, step14LoadGeneration, step14LockOf, step14CollectKeys, step14OperationalReport, runStep14Operational, step14Analyse, runStep14Confirmatory, step14FeasibilityFunnel, step14FixtureReplay, runStep14Feasibility, step14Calibrate, runStep14Calibrate, step14ReadForwardConfig, step14ConfirmatoryPolicy, SHADOW_STUDY, step14DeltaCell, shadowDailySeries, shadowOutcomeOf, shadowLoad, runShadowReport };
