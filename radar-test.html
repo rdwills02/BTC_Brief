@@ -734,6 +734,111 @@ document.addEventListener('click', function (ev) { try {
 } catch (e) {} })();
 /* end item 38 */
 
+/* item 41 — provisional projection
+   Display only. The projection is produced by radar_tools/provisional.js; this block formats its fields and never computes a fill, exit, mark or P&L.
+   Valid only when its base generation and orders.json checksum (and the shadow checksum when present) equal the CURRENT generation's. */
+var PROV = { state: 'idle', msg: '', ptr: null, proj: null, byEsc: {}, shOrders: null, shAccounts: null, shErr: null };
+var _load41 = load, _renderOrders41 = renderOrders, _renderAccounts41 = renderAccounts;
+(function () { var st = document.createElement('style'); st.id = 'prov41-css'; st.textContent = '.prov41{font-size:12px;line-height:1.5}.prov41-line{margin:6px 0 10px;font-size:13px}.prov41-cov{margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px}.prov41-tag{font-size:11px;letter-spacing:.04em;text-transform:none}'; document.head.appendChild(st); })();
+function provReset() { PROV.state = 'idle'; PROV.msg = ''; PROV.ptr = null; PROV.proj = null; PROV.byEsc = {}; PROV.shOrders = null; PROV.shAccounts = null; PROV.shErr = null; }
+function provSha() { var k = S.files.checksums; return k && k.files && typeof k.files === 'object' ? k.files : null; }
+function provValid(p) {
+  var ck = provSha(), bc = p && p.baseChecksums;
+  if (!p || !S.cur || !ck || !bc || typeof bc !== 'object' || !Array.isArray(p.orders)) return false;
+  if (p.baseGenerationId !== S.cur.generationId) return false;
+  if (!bc['orders.json'] || bc['orders.json'] !== ck['orders.json']) return false;
+  if ((bc['shadow/orders.json'] || null) !== (ck['shadow/orders.json'] || null)) return false;
+  return true;
+}
+function provLoad() {
+  provReset();
+  if (!S.cur) return Promise.resolve();
+  var gen = S.cur.generationId, ck = provSha(), base = 'data/forward/gen-' + gen + '/';
+  var sh = ck && ck['shadow/orders.json'] && ck['shadow/accounts.json']
+    ? Promise.all([getJSON(base + 'shadow/orders.json'), getJSON(base + 'shadow/accounts.json')]).then(function (r) { PROV.shOrders = r[0]; PROV.shAccounts = r[1]; }, function (e) { PROV.shErr = e.message || String(e); })
+    : Promise.resolve();
+  return sh.then(function () { return getJSON('data/forward/PROVISIONAL'); }).then(function (ptr) {
+    PROV.ptr = ptr;
+    if (!ptr || typeof ptr.generationId !== 'string' || !/^[0-9A-Za-z._-]+$/.test(ptr.generationId)) { PROV.state = 'bad'; PROV.msg = 'PROVISIONAL pointer has no generationId'; return; }
+    return getJSON('data/forward/provisional/' + ptr.generationId + '.json').then(function (p) {
+      PROV.proj = p;
+      if (!provValid(p)) { PROV.state = 'stale'; PROV.msg = 'projection stale/invalid (base ' + ((p && p.baseGenerationId) || ptr.generationId) + ')'; return; }
+      PROV.state = 'ok';
+      p.orders.forEach(function (o) { PROV.byEsc[esc(o.id)] = o; });
+    }, function (e) { PROV.state = 'stale'; PROV.msg = 'projection stale/invalid (base ' + ptr.generationId + '): file unreadable (' + (e.message || e) + ')'; });
+  }, function (e) { if (e && e.status === 404) { PROV.state = 'missing'; PROV.msg = 'no provisional projection published'; } else { PROV.state = 'bad'; PROV.msg = 'PROVISIONAL unreadable (' + (e.message || e) + ')'; } }).catch(function (e) { provReset(); PROV.state = 'bad'; PROV.msg = String(e && e.message || e); });
+}
+load = function () { return _load41().then(provLoad); };
+
+function pT(sec) { return isNum(sec) ? local(iso(sec)) : '—'; }
+function provCellHtml(o) {
+  var pj = o && PROV.byEsc[esc(o.id)];
+  if (!pj) return '—';
+  var p = pj.projected || {}, lines = [], canonOpen = o.status === 'open';
+  if (p.fillAt != null && !canonOpen) lines.push('filled ' + esc(pT(p.fillAt)) + ' at ' + pr(p.fillPrice) + ' (' + esc(dash(p.fillReason)) + ')');
+  if (p.exit) lines.push('<span title="' + esc('exit price ' + pr(p.exit.price)) + '">exit ' + esc(dash(p.exit.reason)) + ' ' + esc(pT(p.exit.at)) + '</span>');
+  if (p.status === 'open' && isNum(p.markPrice)) lines.push('mark ' + pr(p.markPrice) + ' <span class="mut">@ ' + esc(pT(p.markAt)) + '</span>' + (isNum(p.unrealisedCents) ? ' · unrealised <span class="' + (p.unrealisedCents >= 0 ? 'pos' : 'neg') + '">' + usd(p.unrealisedCents) + '</span> <span class="mut">' + esc(dash(p.unrealisedLabel)) + '</span>' : ''));
+  if (p.status === 'resting' || p.status === 'pending-unresolved' || p.status === 'cancel-pending') {
+    lines.push(esc(p.status === 'resting' ? 'resting' : p.status) + (p.notYetObservedFrom != null ? ' · not yet observed from ' + esc(pT(p.notYetObservedFrom)) : '') + (p.windowsExhausted ? ' · windows exhausted' : ''));
+  } else if (p.notYetObservedFrom != null) lines.push('<span class="mut">not yet observed from ' + esc(pT(p.notYetObservedFrom)) + '</span>');
+  if (p.partialDay) lines.push('<span class="mut">partial day</span>');
+  var nu = Array.isArray(p.unresolvedIntervals) ? p.unresolvedIntervals.length : 0;
+  if (nu) lines.push('<span class="warn" title="' + esc(JSON.stringify(p.unresolvedIntervals)) + '">unresolved ' + nu + '</span>');
+  return lines.length ? lines.join('<br>') : '—';
+}
+function provLineHtml() {
+  if (PROV.state === 'ok') {
+    var p = PROV.proj, cov = (p.coverage && p.coverage.perPair) || {}, h = [];
+    h.push('<div class="prov41-line prov41" id="prov41-head">Projection: evidence to ' + esc(p.evidenceCutoffSec != null ? pT(p.evidenceCutoffSec) : '—') + ' · produced ' + esc(local(p.producedAt)) + ' · base ' + esc(p.baseGenerationId) + '</div>');
+    var ks = Object.keys(cov).sort();
+    if (ks.length) h.push('<div class="prov41-cov" id="prov41-cov">' + ks.map(function (k) { var c = cov[k] || {}; return '<span class="badge ' + (c.complete ? 'ok' : 'warn') + '" data-pair="' + esc(k) + '">' + esc(k) + ' ' + (c.complete ? 'complete' : 'gaps ' + esc(dash(c.gaps))) + '</span>'; }).join('') + '</div>');
+    if (Array.isArray(p.warnings) && p.warnings.length) h.push('<div class="prov41 mut" id="prov41-warn">' + p.warnings.map(esc).join(' · ') + '</div>');
+    return h.join('');
+  }
+  if (PROV.state === 'stale' || PROV.state === 'bad') return '<div class="prov41-line prov41 warn" id="prov41-head">' + esc(PROV.msg) + '</div>';
+  if (PROV.state === 'missing') return '<div class="prov41-line prov41 mut" id="prov41-head">' + esc(PROV.msg) + '</div>';
+  return '';
+}
+renderOrders = function () {
+  var h = _renderOrders41();
+  if (!S.files.orders) return h;
+  h = h.replace('</h2>', '</h2>' + provLineHtml());
+  if (PROV.state !== 'ok') return h;
+  h = h.replace('<th>Flags</th></tr></thead>', '<th>Flags</th><th>Projected <span class="prov41-tag mut">estimate</span></th></tr></thead>');
+  h = h.replace(/(<tr class="row" data-order="([^"]*)">[\s\S]*?)<\/tr>/g, function (m, body, id) { return body + '<td class="prov41" data-prov="' + id + '">' + provCellHtml({ id: id.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&') }) + '</td></tr>'; });
+  return h.replace('colspan="11"', 'colspan="12"');
+};
+
+function shadowHtml() {
+  var so = PROV.shOrders, sa = PROV.shAccounts;
+  if (!so && !PROV.shErr) return '';
+  var h = ['<h2>Shadow study<small class="prov41-tag">SHADOW STUDY — observation only</small></h2><div id="shadow41">'];
+  if (PROV.shErr || !so || !sa) return h.join('') + '<div class="secerr">shadow files unavailable (' + esc(PROV.shErr || 'not loaded') + ')</div></div>';
+  var am = sa.accounts || {}, ords = Array.isArray(so.orders) ? so.orders : [], att = Array.isArray(so.attempts) ? so.attempts : [];
+  h.push('<div class="cards" id="shadow-cards">');
+  ['CTRL', 'NZ'].forEach(function (pid) {
+    var a = am[pid]; if (!a) return;
+    var by = {}; ords.forEach(function (o) { if (o.policyId === pid) by[o.status] = (by[o.status] || 0) + 1; });
+    var txt = Object.keys(by).sort().map(function (k) { return by[k] + ' ' + k; }).join(', ') || 'none';
+    var extra = '';
+    if (pid === 'NZ') { var n = att.filter(function (x) { return x.policyId === 'NZ' && x.zoneOverride && x.zoneOverride.loggedPass === false; }).length; extra = kv('Tolerance-only', '<span data-f="nz-tol">' + n + '</span>'); }
+    h.push('<div class="card" data-shadow-policy="' + esc(pid) + '"><h3>' + esc(pid) + '</h3><div class="grid2">' + kv('Start cash', usd(a.startCash)) + kv('Cash', '<span data-f="cash">' + usd(a.cash) + '</span>') + extra + '</div><div class="sub" style="margin-top:8px" data-f="orders">Orders: ' + esc(txt) + '</div></div>');
+  });
+  h.push('</div>');
+  var show = PROV.state === 'ok';
+  h.push('<div class="tablewrap"><table id="shadow-table"><thead><tr><th>Policy</th><th>Coin</th><th>Issued</th><th>L / S / T</th><th>Status</th><th>Fill</th><th>Exit</th>' + (show ? '<th>Projected <span class="prov41-tag mut">estimate</span></th>' : '') + '</tr></thead><tbody>');
+  ords.slice().sort(function (a, b) { var x = a.issueTimeUtc || '', y = b.issueTimeUtc || ''; return x !== y ? (x < y ? 1 : -1) : (b.seq || 0) - (a.seq || 0); }).forEach(function (o) {
+    var si = statusInfo(o.status), f = o.fill, e = o.exit;
+    h.push('<tr data-shadow-order="' + esc(o.id) + '"><td>' + esc(o.policyId) + '</td><td>' + esc(o.cgId) + ' <span class="mut">' + esc(dash(o.pair)) + '</span></td><td>' + esc(local(o.issueTimeUtc)) + '</td><td>' + pr(o.L) + ' / ' + pr(o.S) + ' / ' + pr(o.T) + '</td><td><span class="badge ' + si.cls + '">' + esc(si.text) + '</span></td><td>' + (f ? pr(f.price) : '—') + '</td><td>' + (e ? pr(e.price) + ' <span class="mut">' + esc(dash(e.reason)) + '</span>' : '—') + '</td>' + (show ? '<td class="prov41">' + provCellHtml(o) + '</td>' : '') + '</tr>');
+  });
+  if (!ords.length) h.push('<tr><td colspan="' + (show ? 8 : 7) + '" class="mut">No shadow orders.</td></tr>');
+  h.push('</tbody></table></div></div>');
+  return h.join('');
+}
+renderAccounts = function () { return _renderAccounts41() + shadowHtml(); };
+window.RT41 = { PROV: PROV, provValid: provValid, provCellHtml: provCellHtml };
+/* end item 41 */
+
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target;
