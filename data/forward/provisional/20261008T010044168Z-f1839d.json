@@ -6,8 +6,8 @@
   "orders.json": "c86427366959c382fa42acb4d81500c7026b85cb56759b87462c523b2478e028",
   "shadow/orders.json": "c85e2f087b9af568eac9feac9f1172bb2bf2624c2789f8b689dba15418f2d98e"
  },
- "evidenceCutoffSec": 1791475200,
- "producedAt": "2026-10-08T16:07:32.385Z",
+ "evidenceCutoffSec": 1791476100,
+ "producedAt": "2026-10-08T16:22:38.278Z",
  "orders": [
   {
    "id": "N0-2026-10-07-aster-2",
@@ -16,17 +16,21 @@
    "pair": "ASTERUSD",
    "status": "open",
    "projected": {
-    "status": "open",
+    "status": "exited",
     "fillAt": 1791354600,
     "fillPrice": 0.70956,
     "fillReason": "fill-gap-open",
-    "exit": null,
-    "markPrice": 0.68074,
-    "markAt": 1791475200,
-    "unrealisedCents": -20316,
-    "unrealisedLabel": "estimate",
+    "exit": {
+     "reason": "stop",
+     "at": 1791475500,
+     "price": 0.67099
+    },
+    "markPrice": 0.67458,
+    "markAt": 1791476100,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": null,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -47,8 +51,8 @@
      "at": 1791472500,
      "price": 271.7164
     },
-    "markPrice": 263.416,
-    "markAt": 1791475200,
+    "markPrice": 264.1791,
+    "markAt": 1791476100,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -69,12 +73,12 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.50905,
-    "markAt": 1791475200,
-    "unrealisedCents": -9447,
+    "markPrice": 0.51151,
+    "markAt": 1791476100,
+    "unrealisedCents": -8449,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": 1791476100,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -95,8 +99,8 @@
      "at": 1791472500,
      "price": 271.7164
     },
-    "markPrice": 263.416,
-    "markAt": 1791475200,
+    "markPrice": 264.1791,
+    "markAt": 1791476100,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -112,17 +116,21 @@
    "pair": "ASTERUSD",
    "status": "resting",
    "projected": {
-    "status": "open",
+    "status": "exited",
     "fillAt": 1791432900,
     "fillPrice": 0.70218,
     "fillReason": "limit",
-    "exit": null,
-    "markPrice": 0.68074,
-    "markAt": 1791475200,
-    "unrealisedCents": -16992,
-    "unrealisedLabel": "estimate",
+    "exit": {
+     "reason": "stop",
+     "at": 1791475500,
+     "price": 0.67038
+    },
+    "markPrice": 0.67458,
+    "markAt": 1791476100,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": null,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -139,12 +147,12 @@
     "fillPrice": 554.35,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 528.71,
-    "markAt": 1791475200,
-    "unrealisedCents": -14365,
+    "markPrice": 530.85,
+    "markAt": 1791476100,
+    "unrealisedCents": -13262,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": 1791476100,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -156,17 +164,21 @@
    "pair": "ASTERUSD",
    "status": "resting",
    "projected": {
-    "status": "open",
+    "status": "exited",
     "fillAt": 1791432900,
     "fillPrice": 0.70218,
     "fillReason": "limit",
-    "exit": null,
-    "markPrice": 0.68074,
-    "markAt": 1791475200,
-    "unrealisedCents": -17060,
-    "unrealisedLabel": "estimate",
+    "exit": {
+     "reason": "stop",
+     "at": 1791475500,
+     "price": 0.67038
+    },
+    "markPrice": 0.67458,
+    "markAt": 1791476100,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": null,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -183,12 +195,12 @@
     "fillPrice": 554.35,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 528.71,
-    "markAt": 1791475200,
-    "unrealisedCents": -14423,
+    "markPrice": 530.85,
+    "markAt": 1791476100,
+    "unrealisedCents": -13315,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": 1791476100,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -200,17 +212,21 @@
    "pair": "ASTERUSD",
    "status": "resting",
    "projected": {
-    "status": "open",
+    "status": "exited",
     "fillAt": 1791432900,
     "fillPrice": 0.70218,
     "fillReason": "limit",
-    "exit": null,
-    "markPrice": 0.68074,
-    "markAt": 1791475200,
-    "unrealisedCents": -17060,
-    "unrealisedLabel": "estimate",
+    "exit": {
+     "reason": "stop",
+     "at": 1791475500,
+     "price": 0.67038
+    },
+    "markPrice": 0.67458,
+    "markAt": 1791476100,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": null,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -231,8 +247,8 @@
      "at": 1791472800,
      "price": 0.408
     },
-    "markPrice": 0.403,
-    "markAt": 1791475200,
+    "markPrice": 0.402,
+    "markAt": 1791476100,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -253,12 +269,12 @@
     "fillPrice": 554.35,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 528.71,
-    "markAt": 1791475200,
-    "unrealisedCents": -14423,
+    "markPrice": 530.85,
+    "markAt": 1791476100,
+    "unrealisedCents": -13315,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791475200,
+    "notYetObservedFrom": 1791476100,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -267,27 +283,27 @@
  "coverage": {
   "perPair": {
    "ASTERUSD": {
-    "bars": 192,
+    "bars": 195,
     "gaps": 0,
     "complete": true
    },
    "JTOUSD": {
-    "bars": 192,
+    "bars": 195,
     "gaps": 0,
     "complete": true
    },
    "LDOUSD": {
-    "bars": 180,
+    "bars": 183,
     "gaps": 0,
     "complete": true
    },
    "TAOUSD": {
-    "bars": 192,
+    "bars": 195,
     "gaps": 0,
     "complete": true
    },
    "XMRUSD": {
-    "bars": 180,
+    "bars": 183,
     "gaps": 0,
     "complete": true
    }
