@@ -2475,8 +2475,8 @@ function researchActRows(rows) {
   var out = [];
   (rows || []).forEach(function (r) {
     if (!r || !r.researchRow || typeof buildAction !== 'function') return;
-    var a = buildAction(r.researchRow, { research: true });
-    if (a.verdict !== 'ACT') return;
+    var rs43 = researchStateFor(r), a = rs43.action;   /* item 43: the page state over the logged gates */
+    if (!a || rs43.state !== 'ACT') return;
     var g = a.details && a.details.gates ? a.details.gates.filter(function (x) { return x.id === 'C5.btc-regime'; })[0] : null;
     out.push({ symbol: r.symbol, c5Pass: !!(g && g.pass === true) });
   });
@@ -2571,7 +2571,7 @@ function researchStateFor(r) {
     var sact = Object.assign({ details: { gates: [] }, gate: null }, sa || {}, { verdict: 'WAIT', text: stxt, reason: 'structure-only' });
     return { state: 'WAIT', structural: true, historical: hist, gate: sact.gate, verdict: 'WAIT', action: sact, why: hist ? 'historical structure' : 'structure only' };
   }
-  var a = buildAction(rr, { research: true }), g = a.gate;
+  var a = actionFor43(r, rr), g = a.gate;   /* item 43: logged gates, never an in-browser recompute */
   if (a.verdict === 'NONE') {
     var stN = RESEARCH_NOFIT_GATES.hasOwnProperty(g) ? 'NOFIT' : 'BUG';
     if (stN === 'BUG') { try { console.error('Radar BUG: research verdict NONE with unmapped gate ' + g); } catch (e) {} }
@@ -2601,10 +2601,55 @@ function researchStateFor(r) {
     else state = 'NEAR';
   } else state = 'ACT';
   var why = researchDistanceFirst(RESEARCH_REASON_ORDER.filter(function (id) { return fails[id]; })).map(function (id) { return RESEARCH_GATE_WORDS[id]; }).join(', ');   // 13f (c): a failed distance test is named before a failed score test
-  var out = { state: state, gate: g, verdict: a.verdict, action: a, why: why, margins: margins };
+  var out = { state: state, gate: g, verdict: a.verdict, action: a, why: why, margins: margins, capture: capture43(r, state, why) };   /* item 43 */
   if (state === 'NEAR') out.nearClauses = researchNearClauses(r, byId, researchDistanceFirst(actReqFails));   // 17-G: every failed ACT requirement, in words, for the verdict sentence
   return out;
 }
+/* item 43 — gate-faithful page state
+   The page state ladder (17-G) is unchanged; what changed is its INPUT. When the capture logged its gates (data/latest-daily.json: coin.research.gates) the ladder reads those, never an in-browser recompute:
+   the browser has no closes for C6.spike since 17-H Amendment A, so the recompute left it null and the old rule counted null as failed (every ACT row read NEAR). A gate with pass === null/undefined
+   is "not evaluated" - never failed. Such a gate is carried as { pass: true, notEvaluated: true } so no downstream failed()/count treats it as a failure; only the Checks renderer reads notEvaluated.
+   buildAction(rr, { research: true }) remains for rows without logged gates (pre-09-25 files). No engine file, configHash or request is touched. */
+var CAPTURE_FAMILY_43 = { ACT: ['ACT'], WATCH: ['NEAR', 'DEVELOPING', 'WAIT'], WAIT: ['WAIT'], NONE: ['NOFIT', 'BUG'] };   // page states that are a normal reading of each engine verdict
+function gates43(gs) {
+  return gs.map(function (g) { return (g && (g.pass === null || g.pass === undefined)) ? Object.assign({}, g, { pass: true, notEvaluated: true }) : g; });
+}
+function actionFor43(r, rr) {
+  var cs = r && r.captureResearch, lg = cs && Array.isArray(cs.gates) && cs.gates.length ? cs.gates : null, a;
+  if (lg && typeof cs.verdict === 'string') {
+    a = { verdict: cs.verdict, text: '', reason: cs.reason, gate: cs.gate == null ? null : cs.gate, stage: cs.stage, details: { gates: gates43(lg) }, logged: true };
+    try { a.text = researchVerdictText(a, rr); } catch (e) { a.text = ''; }
+    return a;
+  }
+  a = buildAction(rr, { research: true });   // legacy: no logged gates
+  if (a && a.details && Array.isArray(a.details.gates)) {
+    var ne = a.details.gates.filter(function (g) { return g && (g.pass === null || g.pass === undefined); }), real = a.details.gates.filter(function (g) { return g && g.pass === false; });
+    a = Object.assign({}, a, { details: Object.assign({}, a.details, { gates: gates43(a.details.gates) }), logged: false });
+    if (ne.length && !real.length && a.verdict !== 'NONE') { a.reason = 'all-gates'; a.gate = null; a.text = 'Act: every entry check that could be evaluated passed (' + ne.length + ' not evaluated).'; }
+  }
+  return a;
+}
+function capture43(r, state, why) {
+  var cs = r && r.captureResearch;
+  if (!cs || typeof cs.verdict !== 'string') return null;
+  var ok = (CAPTURE_FAMILY_43[cs.verdict] || []).indexOf(state) >= 0;
+  return { verdict: cs.verdict, gate: cs.gate == null ? null : cs.gate, differs: !ok, why: ok ? '' : ('capture verdict ' + cs.verdict + (cs.gate ? ' (' + cs.gate + ')' : '') + '; page state ' + state + (why ? ': ' + why : '')) };
+}
+function capMarker43(rs) {
+  var c = rs && rs.capture;
+  return (c && c.differs) ? '<span class="rs-cap" title="' + String(c.why).replace(/"/g, '&quot;') + '">page ≠ capture</span>' : '';
+}
+function capHeader43(rs) {
+  var c = rs && rs.capture;
+  if (!c) return '';
+  return '<span class="rs-capv" title="the verdict the capture logged for this coin (engine verdict, before the page state ladder)">capture verdict ' + c.verdict + '</span>' + capMarker43(rs);
+}
+(function () { try {
+  var st = document.createElement('style'); st.id = 'item43-css';
+  st.textContent = '.rs-cap{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:var(--neut);border:1px solid var(--neut);border-radius:8px;padding:0 5px;cursor:help;white-space:nowrap}.rs-capv{margin-left:8px;font-size:10px;color:var(--muted,#9aa3b2);white-space:nowrap}.p3-check.ne .p3-ck-i{color:var(--muted,#6b7280)}.p3-check.ne .p3-ck-n,.p3-check.ne .p3-ck-v{color:var(--muted,#6b7280)}';
+  document.head.appendChild(st);
+} catch (e) {} })();
+/* end item 43 */
 // Step 17-G: one clause per failed ACT requirement (17-E lexicon: plain words, no gate ids), every number read off the gate's own value/threshold or the row.
 function researchNearClauses(r, byId, ids) {
   var rr = r.researchRow, d = pricePrecision(r.price), lim = function (t) { var m = String(t == null ? '' : t).match(/[0-9]+(?:\.[0-9]+)?/); return m ? m[0] : '?'; };
@@ -2644,7 +2689,7 @@ function researchStateCellHTML(rs, legacyAction, size) {
   var style = (size === 'detail' ? 'font-size:10px;' : '') + (rs.state === 'NOFIT' ? 'opacity:.55;color:var(--muted,#9aa3b2);' : rs.state === 'BUG' ? 'color:#ff5c8a;' : '');
   var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '"' + (style ? ' style="' + style + '"' : '') + '>' + label + '</span>' +
-    (why ? '<span class="rs-why" title="' + why.replace(/"/g, '&quot;') + '" style="font-size:10px;color:var(--muted,#9aa3b2)">' + why + '</span>' : '') +
+    (why ? '<span class="rs-why" title="' + why.replace(/"/g, '&quot;') + '" style="font-size:10px;color:var(--muted,#9aa3b2)">' + why + '</span>' : '') + capMarker43(rs) +   /* item 43 */
     (legacyAction ? '<span class="rs-legacy" title="legacy: ' + legacyAction.verdict + '" style="font-size:9px;color:var(--muted,#9aa3b2)">legacy: ' + legacyAction.verdict + '</span>' : '');
 }
 function researchStateCounts(rows) {
@@ -3321,7 +3366,7 @@ function researchHeaderStateHTML(rs) {
   var why = rs.why || '';
   return '<span class="vbadge ' + cls + ' cat-tip" data-tip="' + tip.replace(/"/g, '&quot;') + '" style="' + style + '">' + label + '</span>' +
     (rs.structural ? '<span class="p3-hist" style="font-size:10px;font-weight:700;color:var(--neut);margin-left:6px">' + (rs.historical ? 'historical structure' : 'structure only') + '</span>' : '') +
-    (why ? '<span class="p3-why" title="' + why.replace(/"/g, '&quot;') + '">' + why + '</span>' : '');   // 13e: no legacy tag in the research view
+    capHeader43(rs) + (why ? '<span class="p3-why" title="' + why.replace(/"/g, '&quot;') + '">' + why + '</span>' : '');   // 13e: no legacy tag in the research view; item 43: capture verdict + page ≠ capture marker
 }
 // Checks: researchVerdict's details.gates as a compact list, failing (and unknown) first, the engine's own order otherwise.
 function p3GateValue(g, d) {
@@ -3358,11 +3403,11 @@ function p3ChecksHTML(rs, r) {
   var items = gates.map(function (g, i) { return { g: g, i: i, bad: g.pass !== true ? 1 : 0 }; });
   items.sort(function (a, b) { return (b.bad - a.bad) || (a.i - b.i); });
   return items.map(function (x) {
-    var g = x.g, cls = g.pass === true ? 'ok' : (g.pass === false ? 'bad' : 'unk'), fv = p3GateValue(g, d);
-    var name = P3_GATE_WORDS[g.id] || g.id, mgn = mg[g.id] || null;   // 13f (b): signed distance to the threshold, from rs.margins
+    var g = x.g, ne = !!g.notEvaluated, cls = ne ? 'ne' : (g.pass === true ? 'ok' : (g.pass === false ? 'bad' : 'unk')), fv = ne ? { val: 'not evaluated', thr: '' } : p3GateValue(g, d);   /* item 43: pass null = not evaluated (grey), never a red cross */
+    var name = P3_GATE_WORDS[g.id] || g.id, mgn = ne ? null : (mg[g.id] || null);   // 13f (b): signed distance to the threshold, from rs.margins
     var ex = p3xText(g, r);   // Step 17-F part 2: '' (name only, no chevron) when a gate has no explanation
-    return '<div class="p3-check ' + cls + (ex ? ' has-explain' : '') + '" data-gate="' + g.id + '" data-pass="' + String(g.pass) + '"' + (ex ? ' role="button" tabindex="0" aria-expanded="false"' : '') + ' title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '') + (mgn ? '; margin ' + mgn.text + ' (+ clear of the threshold, - short of it)' : '')) + '">' +
-      '<span class="p3-ck-i">' + (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?')) + '</span><span><span class="p3-ck-n">' + name + '</span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '<span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + (mgn ? ' · <span class="p3-ck-m" data-margin="' + researchAttr(mgn.text) + '">margin ' + researchAttr(mgn.text) + '</span>' : '') + '</span></span></div>' +
+    return '<div class="p3-check ' + cls + (ex ? ' has-explain' : '') + '" data-gate="' + g.id + '" data-pass="' + (ne ? 'null' : String(g.pass)) + '"' + (ex ? ' role="button" tabindex="0" aria-expanded="false"' : '') + ' title="' + researchAttr(name + ': ' + fv.val + (fv.thr ? ' (needs ' + fv.thr + ')' : '') + (mgn ? '; margin ' + mgn.text + ' (+ clear of the threshold, - short of it)' : '')) + '">' +
+      '<span class="p3-ck-i">' + (ne ? '–' : (g.pass === true ? '✓' : (g.pass === false ? '✗' : '?'))) + '</span><span><span class="p3-ck-n">' + name + '</span>' + (ex ? '<span class="p3-ck-chev" aria-hidden="true">\u25b8</span>' : '') + '<span class="p3-ck-v">' + researchAttr(fv.val) + (fv.thr ? ' · needs ' + researchAttr(fv.thr) : '') + (mgn ? ' · <span class="p3-ck-m" data-margin="' + researchAttr(mgn.text) + '">margin ' + researchAttr(mgn.text) + '</span>' : '') + '</span></span></div>' +
       (ex ? '<div class="p3-explain ' + cls + '" data-gate-explain="' + g.id + '">' + researchAttr(ex) + '</div>' : '');
   }).join('');
 }
