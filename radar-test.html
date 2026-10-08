@@ -316,7 +316,7 @@ function renderOrders() {
   var gc = groupCounts(list);
   h.push('<div class="chips" id="chips-policy"><span class="chiplabel">Policy</span>' + chip('policy', 'all', 'All ' + list.length) + Object.keys(pols).sort().map(function (p) { return chip('policy', p, p); }).join('') + '</div>');
   h.push('<div class="chips" id="chips-group"><span class="chiplabel">Status</span>' + chip('group', 'all', 'All') + GROUPS.map(function (g) { return chip('group', g, g + ' ' + gc[g]); }).join('') + '</div>');
-  h.push('<div class="tablewrap"><table id="orders-table"><thead><tr><th>Policy</th><th>Coin</th><th>Issued</th><th>L / S / T</th><th>Ask vs L</th><th>Status</th><th>Window</th><th>Fill</th><th>Exit</th><th>Result</th><th>Flags</th></tr></thead><tbody>');
+  h.push('<div class="tablewrap"><table id="orders-table"><thead><tr><th>Policy</th><th>Coin</th><th>Issued</th><th>L / S / T</th><th>Size</th><th>Ask vs L</th><th>Status</th><th>Window</th><th>Fill</th><th>Exit</th><th>Result</th><th>Flags</th></tr></thead><tbody>');
   var shown = 0;
   list.forEach(function (o) {
     var si = statusInfo(o.status);
@@ -338,8 +338,7 @@ function resultOf(o) {
   return { cents: e.pnlCents, pct: basis > 0 ? e.pnlCents / basis * 100 : null };
 }
 function orderRow(o, si) {
-  var q = o.quote || {}, askTxt = '—';
-  if (isNum(q.ask) && isNum(o.L) && o.L > 0) { var p = (q.ask / o.L - 1) * 100; askTxt = 'ask ' + pr(q.ask) + ' (' + (p >= 0 ? '+' : '') + p.toFixed(1) + '% ' + (p >= 0 ? 'above' : 'below') + ' L)'; }
+  var askTxt = askCell(o);   /* item 42 */
   var win = 'w0 ' + dash(o.w0) + ' · h ' + dash(o.hDone) + ' · elig ' + dash(o.eligibleDone) + '/' + dash(o.expiryBar) + (isNum(o.expiryAtSec) ? '<br><span class="mut">expires ' + dateOf(o.expiryAtSec) + '</span>' : '');
   var f = o.fill, e = o.exit, r = resultOf(o);
   var fillT = f ? pr(f.price) + ' <span class="mut">' + esc(dash(f.kind)) + ' · ' + esc(dash(f.reason)) + ' · fee ' + usd(f.feeCents) + '</span>' : '—';
@@ -350,7 +349,7 @@ function orderRow(o, si) {
   if (o.unresolved) flags.push('<span class="flagtxt" title="' + esc(JSON.stringify(o.unresolved)) + '">UNRESOLVED</span>');
   if (o.stale && o.stale.persistent) flags.push('<span class="flagtxt" title="' + esc(JSON.stringify(o.stale)) + '">STALE (persistent)</span>');
   return '<tr class="row" data-order="' + esc(o.id) + '"><td>' + esc(o.policyId) + '</td><td>' + esc(o.cgId) + ' <span class="mut">' + esc(dash(o.pair)) + '</span></td><td>' + esc(local(o.issueTimeUtc)) + '</td>' +
-    '<td>' + pr(o.L) + ' / ' + pr(o.S) + ' / ' + pr(o.T) + '</td><td>' + askTxt + '</td><td><span class="badge ' + si.cls + '">' + esc(si.text) + '</span></td><td>' + win + '</td><td>' + fillT + '</td><td>' + exitT + '</td><td>' + resT + '</td><td>' + (flags.join(' ') || '') + '</td></tr>';
+    '<td>' + pr(o.L) + ' / ' + pr(o.S) + ' / ' + pr(o.T) + '</td>' + sizeCell(o) + '<td>' + askTxt + '</td><td><span class="badge ' + si.cls + '">' + esc(si.text) + '</span></td><td>' + win + '</td><td>' + fillT + '</td><td>' + exitT + '</td><td>' + resT + '</td><td>' + (flags.join(' ') || '') + '</td></tr>';
 }
 
 function renderAttempts() {
@@ -597,6 +596,7 @@ function actLoad() {
   ACT.state = 'idle'; ACT.data = null; ACT.err = null; ACT.daily = null; ACT.dailyStarted = false; ACT.open = {};
   try {
     if (!S.cur) return Promise.resolve();
+    if (!actIs144()) { ACT.state = 'missing'; return Promise.resolve(); }   /* item 42: no request for generations older than v1.4.4 */
     return fetch('data/forward/gen-' + S.cur.generationId + '/act-rejections.json', { cache: 'no-store' }).then(function (r) {
       if (r.status === 404) { ACT.state = 'missing'; return; }
       if (!r.ok) { ACT.state = 'bad'; ACT.err = 'HTTP ' + r.status; return; }
@@ -838,6 +838,324 @@ function shadowHtml() {
 renderAccounts = function () { return _renderAccounts41() + shadowHtml(); };
 window.RT41 = { PROV: PROV, provValid: provValid, provCellHtml: provCellHtml };
 /* end item 41 */
+
+/* item 42 — sizing + terms
+   Display only. Every number is a field of the order or of its projection; the only values the page derives are the stop distance %, target/stop % (from L, S, T),
+   ticks (ask − L)/tick, and qty × price for the filled/exit lines. Failure anywhere in the installation part leaves the rest of the page working. */
+var TERMS = {};
+function D(k, label, short, long) { TERMS[k] = { label: label, short: short, long: long }; }
+/* policies */
+D('policy', 'Policy', 'A fixed rule set for deciding which coins get an order.', 'Each policy is an automated paper-trading account that follows its own rules. They run side by side so their results can be compared.');
+D('N0', 'N0 (reference policy)', 'Reference: fit + in zone, no quality gates. The base rate, not a recommendation.', 'N0 buys any coin whose price channel fits and whose price is inside the buy zone, with no other checks. It shows what happens with no filtering, so the other policies can be compared against it.');
+D('C1', 'C1 / ACT-v1 (tested policy)', 'The tested policy: every gate must pass.', 'C1 only buys when the channel fits, the price is in the buy zone and every extra quality check passes. This is the rule set being tested.');
+D('ACT-v1', 'ACT-v1', 'The tested policy: every gate must pass.', 'ACT-v1 is the rule set that C1 follows. A coin only gets an order when every check passes.');
+D('CTRL', 'CTRL (shadow control)', 'Shadow study control: observation only.', 'CTRL is the comparison account for the near-zone study. It is not traded and exists only to be compared against NZ.');
+D('NZ', 'NZ (near-zone shadow)', 'Shadow study: allows a price up to 3% above the zone top. Observation only.', 'NZ is the same as CTRL except it also accepts a price up to 3% above the top of the buy zone. It is a study and is not traded.');
+D('shadowStudy', 'Shadow study', 'Observation only: nothing here is traded.', 'A shadow study runs extra paper accounts next to the real test to answer a what-if question. Its results never change the real accounts.');
+D('toleranceOnly', 'Tolerance-only order', 'An NZ order that exists only because price was slightly above the zone top.', 'It would not have been placed under the normal rule, because the price was just above the buy zone. The count shows how often the 3% allowance mattered.');
+/* L S T */
+D('L', 'L (limit price)', 'The most you will pay; the order waits at this price.', 'L is the buy price the order is placed at. The order fills when the market comes down to L, or at once if the market is already at or below it.');
+D('S', 'S (stop)', 'The price at which the position is sold to cap the loss.', 'If the price falls to S after buying, the position is sold so the loss stays small. S is always below L.');
+D('T', 'T (target)', 'The price at which the position is sold to take the gain.', 'If the price rises to T after buying, the position is sold and the gain is taken. T is always above L.');
+D('lst', 'L / S / T', 'Limit price, stop, target.', 'L is the price we buy at, S is where we sell to cap the loss, and T is where we sell to take the gain.');
+/* size */
+D('size', 'Size', 'How much the order buys and what is at risk.', 'It shows how many coins the order buys, how many dollars that costs and how many dollars are lost if the stop is hit. The second line shows the cash held for fees and how far the stop sits below the buy price.');
+D('qty', 'Quantity (qty)', 'How many coins the order buys.', 'This is the number of coins in the order, rounded down to the smallest amount the exchange allows for that coin.');
+D('notional', 'Notional', 'Quantity × entry price: the dollars that leave the account.', 'It is the full cost of the coins at the limit price, before fees. This cash is set aside while the order waits.');
+D('risk', 'Risk budget (R)', 'The dollars lost if the stop is hit: 1.5% of the account.', 'The order is sized so that hitting the stop loses about this amount, which is 1.5% of the account. Results are measured in multiples of it, called R.');
+D('R', 'R (risk multiple)', 'One R is the risk budget of an order.', 'A result of +2 R means the trade gained twice the amount we were prepared to lose. A result of -1 R means the stop was hit.');
+D('feeReserve', 'Fee reserve', 'Cash held back to pay exchange fees.', 'This money is set aside next to the order cost so the fees on the buy and the sale can always be paid. Any unused part stays in the account.');
+D('stopDistance', 'Stop distance', 'How far below the entry price the stop sits.', 'It is the gap between the limit price and the stop, as a percentage of the limit price. A bigger gap means a smaller order for the same risk budget.');
+/* ask */
+D('askVsL', 'Ask vs L', 'Current selling price compared with our limit, in ticks.', 'It shows the lowest price anyone was selling at when the order was placed, and how far that is from our limit. A positive number means the market was above our limit.');
+D('ask', 'Ask', 'The lowest price someone is currently selling at.', 'To buy right away you pay the ask. Our order waits at L instead, and only fills sooner if the ask is at or below L.');
+D('ticks', 'Ticks', 'The smallest price step on this pair.', 'A tick is the smallest amount the price of this coin can move on the exchange. Showing the gap in ticks makes it comparable between cheap and expensive coins.');
+D('aboveL', 'Above L / at or below L', 'Ask above L: the order waits. Ask at or below L: fills at once as a taker.', 'When the selling price is higher than our limit, the order sits and waits for the market to fall. When it is at or below our limit, the order fills straight away at the ask.');
+/* status */
+D('status', 'Status', 'Where the order is in its life.', 'An order starts as resting, then either fills and is held as open, or ends as expired, cancelled or rejected. Open positions end as exited.');
+D('resting', 'resting', 'Order placed, not filled yet.', 'The order is waiting at its limit price for the market to come down to it.');
+D('pending-unresolved', 'pending-unresolved', 'We have no price data yet for part of the window.', 'Some price history needed to decide what happened is missing, so the order cannot be marked filled or expired yet. It is checked again on the next capture.');
+D('cancel-pending', 'cancel-pending', 'A cancel was requested and not yet confirmed.', 'The order is being cancelled, but price history up to the cancel time still has to be checked in case it filled first.');
+D('open', 'open', 'Bought and holding.', 'The order filled, so we own the coins. They are held until the stop, the target or the horizon is reached.');
+D('exited', 'exited', 'Sold at the stop, target or horizon.', 'The position was closed. The exit column shows which of the three ended it.');
+D('expired', 'expired', 'The window ended without a fill; nothing was bought.', 'The market never came down to our limit within the allowed days, so the order was dropped and no money was spent.');
+D('cancelled-suspension', 'cancelled-suspension', 'Cancelled because trading was paused by the risk rule.', 'The account hit its loss limit and was suspended, so waiting orders were cancelled before they could fill.');
+D('rejected-invalid-at-submission', 'rejected-invalid-at-submission', 'The order failed a check when it was submitted.', 'Something about the order, such as its levels or size, was not acceptable at the moment it was sent, so it was never placed.');
+D('anomaly', 'Unknown or retired state', 'A status this page does not recognise.', 'The data carries a status that is not in the known list, so it is shown in red instead of being hidden. It needs a look.');
+/* window */
+D('window', 'Window', 'How long the order may wait and how far it has got.', 'The window is the set of days in which the order is allowed to fill. The fields show which day it started, how far along it is and when it ends.');
+D('w0', 'w0', 'The index of the entry window the order started in.', 'It numbers the first day on which the order was allowed to fill, counted from the day it was issued.');
+D('h', 'h (holding day)', 'How many days the position has been held.', 'It counts the days since the order filled. The position is sold at the horizon if neither the stop nor the target was hit before then.');
+D('elig', 'elig (eligible windows)', 'Eligible windows used, out of 3.', 'An order may wait for up to 3 eligible days. This shows how many of those have been used.');
+D('expires', 'Expires', 'The last moment the order can fill.', 'After this time nothing is bought, and an unfilled order is marked expired.');
+D('horizon', 'Horizon', 'D+19 close: the position is sold at the close of day 20.', 'If neither the stop nor the target was hit, the position is sold at the end of the last allowed day. This keeps every trade a fixed maximum length.');
+/* fill and exit */
+D('fill', 'Fill', 'The purchase: price, how it happened and the fee.', 'It shows the price paid, whether the order was a maker or taker, why it filled and the fee charged.');
+D('maker', 'maker', 'Bought at our price when the market came down to it.', 'A maker order waits in the order book and is filled by a seller who reaches our price. Exchanges charge a lower fee for this.');
+D('taker', 'taker', 'Bought at once at the price on offer.', 'A taker order uses a price that is already being offered, so it fills immediately. Exchanges charge a higher fee for this.');
+D('limit', 'limit', 'Maker fill: bought at our limit price.', 'The market came down to our limit, so we bought exactly at the price we set.');
+D('fill-crossing-ask', 'fill-crossing-ask', 'Taker fill: the ask was already at or below our limit.', 'When the order was placed, someone was already selling at or below our limit. We bought at that ask price straight away.');
+D('fill-gap-open', 'fill-gap-open', 'Taker fill: a bar opened below our limit.', 'The price jumped below our limit between two periods, so we bought at the opening price of the new period, which is lower than we asked.');
+D('gap-stop-on-fill', 'gap-stop-on-fill', 'The fill price was already below the stop.', 'The market opened below the stop, so the position was bought and stopped out in the same step.');
+D('fee', 'Fee', 'The exchange fee charged on this fill or exit.', 'The exchange takes a small percentage of each trade. Makers pay less than takers.');
+D('exit', 'Exit', 'The sale: price, reason and fee.', 'It shows the price the position was sold at, why it was sold (stop, target or horizon) and the fee charged.');
+D('result', 'Result', 'Realised gain or loss in dollars and as a percentage of cost.', 'It is the money made or lost after fees once the position is sold. It stays empty until the order has exited.');
+D('stopExit', 'stop (exit reason)', 'Sold because the price fell to the stop.', 'The stop was hit, so the position was sold to cap the loss.');
+D('targetExit', 'target (exit reason)', 'Sold because the price rose to the target.', 'The target was hit, so the position was sold to take the gain.');
+D('flags', 'Flags', 'Warnings about the data behind this order.', 'A flag means some of the information about the order was missing or old. Hover a flag to see the details.');
+D('UNRESOLVED', 'UNRESOLVED', 'Some price data needed for this order is missing.', 'The order cannot be fully judged until the missing price history is available.');
+D('STALE', 'STALE', 'The latest price mark is out of date.', 'The newest price we have for this coin is older than allowed, so values that depend on it may be behind.');
+/* projected */
+D('projected', 'Projected', 'What the 5-minute price history says happened since the last daily capture.', 'It is an estimate built from recent 5-minute prices, and the daily capture, which is the official record, replaces it.');
+D('projection', 'Projection', 'An estimate from 5-minute data; the daily capture replaces it.', 'The projection fills the gap between daily captures using 5-minute price history. When the next daily capture arrives it becomes the record and the projection is discarded.');
+D('estimate', 'Estimate', 'Not the official record yet.', 'This number comes from the projection and may change when the daily capture is written.');
+D('filledP', 'filled (projected)', 'The projection says the order bought this much at this price.', 'It shows the coins bought, the price and the dollars spent, as seen in the 5-minute data. The word in brackets says how the fill happened.');
+D('unrealised', 'Unrealised', 'What the open position is worth now minus what was paid, before exit fees.', 'The gain or loss on paper at the last price. It only becomes real when the position is sold.');
+D('mark', 'Mark', 'The last price used to value the position.', 'It is the most recent price seen for the coin, and the time shows when it was seen.');
+D('evidenceTo', 'Evidence to', 'The time up to which 5-minute data was checked.', 'Everything before this time has been looked at. The projection says nothing about later times.');
+D('notYetObserved', 'Not yet observed from', 'After this time nothing has been checked yet.', 'No price data has been looked at after this moment, so a fill or exit after it would not appear yet.');
+D('partialDay', 'Partial day', 'Today is not closed, so a stop or target seen so far could still change.', 'The current day is still in progress. What the projection shows may change once the whole day is available.');
+D('base', 'Base', 'The daily record this projection is built on.', 'It is the generation of the daily capture that the projection starts from. If the base is not the current one, the projection is not used.');
+D('unresolvedIntervals', 'Unresolved intervals', 'Stretches of time with missing 5-minute data.', 'The projection could not check these periods, so a fill or exit inside one of them might be missed.');
+D('coverage', 'Coverage', 'Whether the 5-minute data for this pair has gaps.', 'Complete means every 5-minute bar needed was available. Gaps means some were missing, so the projection for that pair is less certain.');
+D('windowsExhausted', 'Windows exhausted', 'All allowed days were used without a fill.', 'The order has used every day it was allowed to wait, so it will end as expired.');
+/* ACT accounting */
+D('ACT', 'ACT', 'The page verdict: fit + every gate passed + price in the zone.', 'ACT means the coin has a channel that fits, passes every quality check and is currently priced inside the buy zone. Only an ACT coin can get a C1 order.');
+D('actAccounting', 'ACT accounting', 'Every ACT coin must have an order attempt or a written reason.', 'This section checks that no ACT coin simply disappeared. Each one either became an attempt or is listed with the reason it did not.');
+D('invariant', 'Invariant', 'The check that no ACT coin vanishes silently.', 'It says the number of ACT coins equals the attempts plus the rejections. If the two do not match, the section turns red.');
+D('rejections', 'Rejections', 'ACT coins that did not get an attempt, each with a reason.', 'A rejection is a coin that was an ACT candidate but was stopped before an order attempt. The reason says why.');
+D('no-fit', 'no-fit', 'The coin had no usable channel fit.', 'The shape-fitting step did not produce a channel that could be traded, so the coin was set aside.');
+D('screen-failed', 'screen-failed', 'The coin failed a screening check.', 'One or more quality checks failed, such as the channel being too narrow. The detail lists which ones.');
+D('not-in-zone', 'not-in-zone', 'The price was outside the buy zone.', 'The coin passed the checks but the current price was above or below the zone where buying is allowed.');
+D('ineligible-venue', 'ineligible-venue', 'The coin cannot be traded on the chosen exchange.', 'The exchange does not list this coin in the form the test needs, so no order can be placed.');
+D('ineligible-metadata', 'ineligible-metadata', 'The exchange details needed to size the order are missing.', 'Facts such as the tick size or the smallest order are not known for this pair, so an order cannot be sized safely.');
+D('challenger-inactive', 'challenger-inactive', 'The tested policy was not active for this coin.', 'C1 was not switched on for this coin on this day, so no attempt was made.');
+D('challenger-unqualified', 'challenger-unqualified', 'The coin failed one of the tested policy gates.', 'At least one of the C1 checks did not pass. The detail lists the failing gates.');
+D('attempt-already-consumed', 'attempt-already-consumed', 'This coin episode already used its one attempt.', 'Each channel episode is allowed one order attempt per policy. An earlier day already used it.');
+D('unclassified-no-attempt', 'unclassified-no-attempt', 'A coin with no attempt and no reason: this is a fault.', 'It means the accounting could not explain what happened to the coin. Any such row turns the section red.');
+D('no-episode-day:not-matched', 'no-episode-day: not-matched', 'The coin had no matching channel episode today.', 'The coin was ACT today, but no recorded episode matched it, so no attempt could be made.');
+D('no-episode-day:not-opened', 'no-episode-day: not-opened', 'The matching episode was not opened.', 'An episode was found but it had not been opened for trading, so no attempt could be made.');
+D('account-blocked', 'account-blocked', 'The account could not take a new order.', 'The account was blocked for the reason given after the colon, for example because it was suspended.');
+D('score', 'Score', 'The ranking number for the coin.', 'A higher score means a better-looking channel. When several coins compete for limited slots, the highest scores go first.');
+D('episode', 'Episode', 'One channel formation for one coin.', 'An episode starts when a coin is first seen forming a channel and lasts until it ends. Each policy may try one order per episode.');
+D('reason', 'Reason', 'Why the coin was rejected.', 'The reason names the check that stopped it. The detail column shows the numbers behind it.');
+D('detail', 'Detail', 'The numbers behind the reason.', 'It shows the values that led to the rejection, such as the price and the zone limits.');
+/* attempts */
+D('outcome', 'Outcome', 'What happened when the policy tried to place an order.', 'Each attempt ends in an order or in a named reason for not placing one.');
+D('outcome-order', 'order (attempt outcome)', 'An order was placed.', 'The attempt passed every check and an order now exists. See the orders table for its status.');
+D('skipped-capacity', 'skipped-capacity', 'All 3 slots or the cash were already used.', 'The account could not take another order without going over its slots, its risk limit or its free cash.');
+D('skipped-exposure', 'skipped-exposure', 'Already holding or ordering this coin.', 'The account already has an order or position in the same coin, so a second one was not placed.');
+D('rejected-levels', 'rejected-levels', 'The buy, stop and target prices did not make sense.', 'The prices must satisfy stop below limit below target. When they did not, no order was made.');
+D('rejected-min-order', 'rejected-min-order', 'Too small for the exchange minimum.', 'After sizing for the risk budget, the order was smaller than the smallest order the exchange accepts.');
+D('order', 'Order', 'The order created by this attempt, if any.', 'It gives the id of the order. A dash means no order was created.');
+D('coin', 'Coin', 'The coin and its trading pair.', 'The name is the data-provider id, and the grey text is the exchange pair used for prices.');
+D('issued', 'Issued', 'When the order was created.', 'It is the capture time, shown in your local time zone.');
+D('date', 'Date', 'The capture date.', 'It is the day of the capture that produced this row.');
+/* accounts and header strip */
+D('protocol', 'Protocol', 'The version of the test rules in force.', 'Every generation records which version of the rules produced it. Version 1.4.4 or later also records ACT rejections.');
+D('generation', 'Generation', 'The id of the data set being shown.', 'Each capture writes a complete, self-consistent set of files under one generation id. The page shows one generation at a time.');
+D('latestCapture', 'Latest capture', 'When the newest data was recorded.', 'The time of the most recent order or capture in the data, shown in local time and in UTC.');
+D('testDay', 'Test day', 'Days since the test started on 2026-10-05.', 'Day 0 is the first day of the forward test. The number goes up by one each day.');
+D('cohort', 'Cohort', 'Days since the first v1.4.4 generation.', 'The cohort starts on 2026-10-07 when the v1.4.4 rules first ran. It is used to compare only like with like.');
+D('dataAge', 'Data age', 'Hours since the newest capture.', 'It turns amber when the data is older than 30 hours, which usually means a capture was missed.');
+D('startCash', 'Start cash', 'The money the account started with.', 'Every policy account starts with the same paper amount.');
+D('cash', 'Cash', 'Money in the account that is not in positions.', 'It includes cash that is set aside for waiting orders. The reserved figure shows how much of it is held back.');
+D('reserved', 'Reserved', 'Cash set aside for resting orders.', 'When an order is placed, its cost and fee reserve are held back so they cannot be spent twice.');
+D('marked', 'Marked', 'Open positions valued at the last price.', 'It is what the coins would be worth at the most recent price, before selling costs.');
+D('E', 'E (equity)', 'Cash plus positions at the last price.', 'It is the total value of the account right now. Order sizes are based on it.');
+D('HWM', 'HWM (high-water mark)', 'The highest equity so far.', 'It records the best value the account has reached. Drawdown is measured from it.');
+D('drawdown', 'Drawdown', 'How far equity is below the HWM.', 'A drawdown of 5% means the account is worth 5% less than at its peak.');
+D('suspended', 'Suspended', 'Trading is paused by the risk rule.', 'When losses reach the limit the account stops taking new orders. Waiting orders are cancelled.');
+D('riskLimit', 'Risk limit exceeded', 'Planned risk is over the allowed limit.', 'The total amount at risk across orders went above what the rules allow, so new orders are blocked.');
+var GLOSS42 = { 'ACT': 'glossary.html#channel-radar', 'score': 'glossary.html#channel-radar' };
+function qtyDp42(lot) { return isNum(lot) && lot > 0 ? Math.min(6, Math.max(0, Math.ceil(-Math.log10(lot) - 1e-9))) : 6; }
+function qty42(o) { return o && isNum(o.qty) ? o.qty.toFixed(qtyDp42(o.lot)) : '—'; }
+function sym42(o) { var s = String((o && o.pair) || '').replace(/[\/_-]?(USDT|USDC|USD|EUR)$/i, ''); return s || String((o && o.cgId) || '—'); }
+function pct42(a, b) { return isNum(a) && isNum(b) && b > 0 ? ((a / b) * 100).toFixed(1) : null; }
+function T42(key, inner) { return '<span class="tm" data-term="' + esc(key) + '" tabindex="0" role="button" title="' + esc(TERMS[key] ? TERMS[key].short : '') + '">' + inner + '</span>'; }
+function sizeCell(o) {
+  try {
+    if (!isNum(o.Ncents) || !isNum(o.Bcents) || !isNum(o.qty)) return '<td data-col="size">—</td>';
+    var sd = isNum(o.L) && isNum(o.S) && o.L > 0 ? pct42(o.L - o.S, o.L) : null;
+    return '<td data-col="size">' + T42('qty', qty42(o)) + ' ' + esc(sym42(o)) + ' · ' + T42('notional', usd(o.Ncents)) + ' · ' + T42('risk', 'risk') + ' ' + usd(o.Bcents) +
+      '<br><span class="mut">' + T42('feeReserve', 'fee reserve') + ' ' + usd(o.feeReserveCents) + ' · ' + T42('stopDistance', 'stop') + ' ' + (sd == null ? '—' : sd + '%') + ' below L</span></td>';
+  } catch (e) { return '<td data-col="size">—</td>'; }
+}
+function askCell(o) {
+  try {
+    var q = o.quote || {};
+    if (!(isNum(q.ask) && isNum(o.L) && o.L > 0)) return '—';
+    var p = (q.ask / o.L - 1) * 100, tk = isNum(o.tick) && o.tick > 0 ? (q.ask - o.L) / o.tick : null;
+    var ptxt = (p >= 0 ? '+' : '') + p.toFixed(1) + '% ' + (p >= 0 ? 'above' : 'below') + ' L';
+    var inner = 'ask ' + pr(q.ask) + (tk != null ? ' (' + (tk >= 0 ? '+' : '') + tk.toFixed(1) + ' ticks)' : ' (' + (p >= 0 ? '+' : '') + p.toFixed(1) + '%)');
+    return '<span title="' + esc(ptxt) + '">' + inner + '</span><br><span class="mut">' + (q.ask > o.L ? 'above L' : 'at or below L') + '</span>';
+  } catch (e) { return '—'; }
+}
+(function () { try {
+  var ORD_ROLE = { 'policy': 'policy', 'coin': 'coin', 'issued': 'issued', 'l / s / t': 'lst', 'size': 'size', 'ask vs l': 'ask', 'status': 'status', 'window': 'window', 'fill': 'fill', 'exit': 'exit', 'result': 'result', 'flags': 'flags', 'projected': 'projected' };
+  var TH_KEY = { 'policy': 'policy', 'coin': 'coin', 'issued': 'issued', 'size': 'size', 'ask vs l': 'askVsL', 'status': 'status', 'window': 'window', 'fill': 'fill', 'exit': 'exit', 'result': 'result', 'flags': 'flags', 'projected': 'projected', 'date': 'date', 'score': 'score', 'episode': 'episode', 'reason': 'reason', 'detail': 'detail', 'outcome': 'outcome', 'order': 'order' };
+  var KV_KEY = { 'protocol': 'protocol', 'generation': 'generation', 'latest capture': 'latestCapture', 'test day': 'testDay', 'cohort': 'cohort', 'data age': 'dataAge', 'start cash': 'startCash', 'cash': 'cash', 'reserved': 'reserved', 'marked': 'marked', 'e': 'E', 'hwm': 'HWM', 'drawdown': 'drawdown', 'suspended': 'suspended', 'risk limit exceeded': 'riskLimit', 'tolerance-only': 'toleranceOnly' };
+  var PH = {
+    policy: { 'N0': 'N0', 'C1': 'C1', 'CTRL': 'CTRL', 'NZ': 'NZ', 'ACT-v1': 'ACT-v1' },
+    ask: { 'ask': 'ask', 'ticks': 'ticks', 'at or below L': 'aboveL', 'above L': 'aboveL' },
+    window: { 'w0': 'w0', 'h': 'h', 'elig': 'elig', 'expires': 'expires' },
+    fill: { 'fill-crossing-ask': 'fill-crossing-ask', 'fill-gap-open': 'fill-gap-open', 'gap-stop-on-fill': 'gap-stop-on-fill', 'maker': 'maker', 'taker': 'taker', 'limit': 'limit', 'fee': 'fee' },
+    exit: { 'gap-stop-on-fill': 'gap-stop-on-fill', 'stop': 'stopExit', 'target': 'targetExit', 'horizon': 'horizon', 'fee': 'fee' },
+    projected: { 'not yet observed from': 'notYetObserved', 'windows exhausted': 'windowsExhausted', 'pending-unresolved': 'pending-unresolved', 'cancel-pending': 'cancel-pending', 'unresolved': 'unresolvedIntervals', 'unrealised': 'unrealised', 'filled': 'filledP', 'estimate': 'estimate', 'resting': 'resting', 'target': 'T', 'stop': 'S', 'mark': 'mark', 'exit': 'exit' },
+    prov: { 'evidence to': 'evidenceTo', 'base': 'base', 'produced': 'projection', 'Projection': 'projection' },
+    act: { 'ACT': 'ACT', 'attempts': 'outcome', 'rejections': 'rejections' }
+  };
+  var BADGE_PREFIX = ['no-episode-day:not-matched', 'no-episode-day:not-opened', 'account-blocked'];
+  function mkTerm(key, text) { var s = document.createElement('span'); s.className = 'tm'; s.setAttribute('data-term', key); s.setAttribute('tabindex', '0'); s.setAttribute('role', 'button'); s.setAttribute('title', TERMS[key].short); s.textContent = text; return s; }
+  function mkI(key) { var s = document.createElement('span'); s.className = 'tm tmi'; s.setAttribute('data-term', key); s.setAttribute('tabindex', '0'); s.setAttribute('role', 'button'); s.setAttribute('title', TERMS[key].short); s.setAttribute('aria-label', 'What is ' + TERMS[key].label + '?'); return s; }
+  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function wrap(el, map) {
+    var keys = Object.keys(map).filter(function (k) { return TERMS[map[k]]; }).sort(function (a, b) { return b.length - a.length; });
+    if (!keys.length) return;
+    var re = new RegExp('(^|[^A-Za-z0-9_-])(' + keys.map(escRe).join('|') + ')(?![A-Za-z0-9_-])', 'g');
+    var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), nodes = [];
+    while (w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(function (n) {
+      var par = n.parentNode; if (!par || (par.closest && par.closest('[data-term]'))) return;
+      var s = n.nodeValue; re.lastIndex = 0; if (!re.test(s)) return; re.lastIndex = 0;
+      var frag = document.createDocumentFragment(), last = 0, m;
+      while ((m = re.exec(s))) { var st = m.index + m[1].length; frag.appendChild(document.createTextNode(s.slice(last, st))); frag.appendChild(mkTerm(map[m[2]], m[2])); last = st + m[2].length; }
+      frag.appendChild(document.createTextNode(s.slice(last))); par.replaceChild(frag, n);
+    });
+  }
+  function norm(t) { return String(t || '').replace(/\s+/g, ' ').trim(); }
+  function addI(el, key, after) { if (!TERMS[key] || el.getAttribute('data-tmd')) return; el.setAttribute('data-tmd', '1'); var i = mkI(key); if (after) el.parentNode.insertBefore(i, el.nextSibling); else el.appendChild(i); }
+  function badgeKey(b) {
+    var t = norm(b.textContent);
+    if (b.getAttribute('data-pair')) return 'coverage';
+    if (/^(ANOMALY|unknown state|unknown reason)/.test(t)) return 'anomaly';
+    if (t === 'order') return 'outcome-order';
+    if (t === 'partial day') return 'partialDay';
+    if (TERMS[t]) return t;
+    for (var i = 0; i < BADGE_PREFIX.length; i++) if (t.indexOf(BADGE_PREFIX[i]) === 0) return BADGE_PREFIX[i];
+    return null;
+  }
+  function decorate(root) {
+    if (!root) return;
+    var q = function (sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); };
+    q('th').forEach(function (th) {
+      if (th.getAttribute('data-tmd')) return;
+      var t = norm(th.textContent).replace(/\s*estimate$/i, '').toLowerCase();
+      if (t === 'l / s / t') { th.setAttribute('data-tmd', '1'); th.innerHTML = ''; ['L', 'S', 'T'].forEach(function (k, i) { if (i) th.appendChild(document.createTextNode(' / ')); th.appendChild(mkTerm(k, k)); }); return; }
+      if (TH_KEY[t]) addI(th, TH_KEY[t]);
+    });
+    q('.kv .k').forEach(function (k) { var key = KV_KEY[norm(k.textContent).toLowerCase()]; if (key) addI(k, key); });
+    q('.badge').forEach(function (b) { var key = badgeKey(b); if (key) addI(b, key); });
+    q('.chip[data-chip],.chip[data-actchip]').forEach(function (c) { var v = c.getAttribute('data-val') || c.getAttribute('data-actchip'); if (v && v !== 'all' && TERMS[v]) addI(c, v, true); });
+    q('.card h3').forEach(function (h) { var t = norm(h.textContent); if (TERMS[t] && !h.getAttribute('data-tmd')) addI(h, t); });
+    q('h2').forEach(function (h) { var t = norm(h.firstChild && h.firstChild.nodeValue); if (t === 'ACT Accounting') addI(h, 'actAccounting'); else if (t === 'Shadow study') addI(h, 'shadowStudy'); });
+    q('.flagtxt').forEach(function (f) { var t = norm(f.textContent); var key = t.indexOf('UNRESOLVED') === 0 ? 'UNRESOLVED' : t.indexOf('STALE') === 0 ? 'STALE' : null; if (key) addI(f, key); });
+    q('#orders-table').forEach(function (tb) {
+      var roles = Array.prototype.map.call(tb.querySelectorAll('thead th'), function (th) { return ORD_ROLE[norm(th.textContent).replace(/\s*estimate$/i, '').toLowerCase()] || null; });
+      Array.prototype.forEach.call(tb.querySelectorAll('tbody tr.row'), function (tr) {
+        Array.prototype.forEach.call(tr.children, function (td, i) { var r = roles[i]; if (!r || td.getAttribute('data-tmw')) return; td.setAttribute('data-tmw', '1'); if (PH[r]) wrap(td, PH[r]); });
+      });
+    });
+    q('#shadow-table tbody td:first-child').forEach(function (td) { if (!td.getAttribute('data-tmw')) { td.setAttribute('data-tmw', '1'); wrap(td, PH.policy); } });
+    q('#prov41-head,.prov41-line').forEach(function (e) { if (!e.getAttribute('data-tmw')) { e.setAttribute('data-tmw', '1'); wrap(e, { 'evidence to': 'evidenceTo', 'base': 'base', 'Projection': 'projection' }); } });
+    q('#act-inv').forEach(function (e) { if (!e.getAttribute('data-tmw')) { e.setAttribute('data-tmw', '1'); wrap(e, PH.act); } });
+  }
+  /* ----- popover (one open at a time) ----- */
+  var pop = null, popFor = null, panel = null;
+  function termBody(key) {
+    var t = TERMS[key]; if (!t) return '';
+    return '<b>' + esc(t.label) + '</b><div class="tm-long">' + esc(t.long) + '</div>' + (GLOSS42[key] ? '<a class="tm-gl" href="' + esc(GLOSS42[key]) + '">Glossary →</a>' : '');
+  }
+  function closePop() { if (pop) { pop.remove(); pop = null; } if (popFor) { try { popFor.setAttribute('aria-expanded', 'false'); } catch (e) {} popFor = null; } }
+  function openPop(el) {
+    var key = el.getAttribute('data-term'); if (!TERMS[key]) return;
+    if (popFor === el) { closePop(); return; }
+    closePop();
+    pop = document.createElement('div'); pop.id = 'tm-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', TERMS[key].label); pop.innerHTML = termBody(key);
+    document.body.appendChild(pop); popFor = el; el.setAttribute('aria-expanded', 'true');
+    var r = el.getBoundingClientRect(), pw = pop.offsetWidth, left = Math.max(8, Math.min(window.scrollX + r.left, window.scrollX + document.documentElement.clientWidth - pw - 8));
+    pop.style.left = left + 'px'; pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+  }
+  /* ----- Terms panel (same termBody) ----- */
+  function termsHtml() {
+    var keys = Object.keys(TERMS).sort(function (a, b) { var x = TERMS[a].label.toLowerCase(), y = TERMS[b].label.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; });
+    return '<div class="tp-head"><b>Terms</b><button class="xbtn" id="terms-x" type="button">Close ✕</button></div><div class="tp-note mut">' + keys.length + ' terms, A to Z. Hover any dotted word or ⓘ on the page for a short hint; click for this text.</div>' +
+      keys.map(function (k) { return '<div class="tp-row" data-termrow="' + esc(k) + '">' + termBody(k) + '</div>'; }).join('');
+  }
+  function togglePanel(force) {
+    if (!panel) return;
+    var on = force == null ? panel.hasAttribute('hidden') : force;
+    if (on) { panel.innerHTML = termsHtml(); panel.removeAttribute('hidden'); } else panel.setAttribute('hidden', '');
+    var b = document.getElementById('terms-btn'); if (b) b.setAttribute('aria-expanded', String(!!on));
+    closePop();
+  }
+  /* ----- install ----- */
+  var st = document.createElement('style'); st.id = 'terms42-css';
+  st.textContent = '.tm{cursor:help;border-bottom:1px dotted var(--muted)}.tm:focus-visible{outline:1px solid var(--accent);outline-offset:1px}.tm.tmi{border:0;cursor:pointer;margin-left:3px;color:var(--accent);font-size:11px;font-weight:400;text-transform:none;letter-spacing:0}.tm.tmi::after{content:"\\24D8"}' +
+    '#tm-pop{position:absolute;z-index:1000;max-width:320px;background:var(--surface3,var(--surface));color:var(--text);border:1px solid var(--accent-border,var(--border2));border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.45);text-transform:none;letter-spacing:0;font-weight:400}' +
+    '#tm-pop b{display:block;margin-bottom:3px;font-size:12px}.tm-gl{display:inline-block;margin-top:6px;color:var(--accent);font-size:11px}' +
+    '#terms-panel{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:var(--surface);border-left:1px solid var(--border2);overflow:auto;z-index:900;padding:14px 16px;font-size:12px;line-height:1.5}#terms-panel[hidden]{display:none}' +
+    '.tp-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.tp-note{margin-bottom:10px;font-size:11px}.tp-row{padding:8px 0;border-top:1px solid var(--border)}.tp-row b{display:block}#terms-btn{font-family:inherit;cursor:pointer}';
+  document.head.appendChild(st);
+  panel = document.createElement('aside'); panel.id = 'terms-panel'; panel.setAttribute('hidden', ''); panel.setAttribute('aria-label', 'Terms'); document.body.appendChild(panel);
+  var nav = document.querySelector('.nav-links');
+  if (nav) { var tb = document.createElement('button'); tb.type = 'button'; tb.id = 'terms-btn'; tb.className = 'nav-link accent'; tb.textContent = 'Terms'; tb.setAttribute('aria-expanded', 'false'); nav.appendChild(tb); }
+  window.addEventListener('click', function (ev) { try {
+    var t = ev.target; if (!t || !t.closest) return;
+    var term = t.closest('[data-term]');
+    if (term && !term.closest('#tm-pop')) { ev.stopPropagation(); ev.preventDefault(); openPop(term); return; }
+    if (t.closest('#terms-btn')) { ev.stopPropagation(); togglePanel(); return; }
+    if (t.closest('#terms-x')) { ev.stopPropagation(); togglePanel(false); return; }
+    if (!t.closest('#tm-pop')) closePop();
+  } catch (e) {} }, true);
+  window.addEventListener('keydown', function (ev) { try {
+    var t = ev.target;
+    if (ev.key === 'Escape') {
+      if (pop) { var f = popFor; closePop(); ev.stopPropagation(); if (f && f.focus) f.focus(); return; }
+      if (panel && !panel.hasAttribute('hidden')) { ev.stopPropagation(); togglePanel(false); var b = document.getElementById('terms-btn'); if (b) b.focus(); }
+      return;
+    }
+    if ((ev.key === 'Enter' || ev.key === ' ') && t && t.closest && t.closest('[data-term]') && !t.closest('#tm-pop')) { ev.preventDefault(); ev.stopPropagation(); openPop(t.closest('[data-term]')); }
+  } catch (e) {} }, true);
+  /* ----- decorate after every render / pane open ----- */
+  var obs = null, pend = false;
+  function run() { pend = false; if (obs) obs.disconnect(); try { decorate(document.getElementById('main')); decorate(document.getElementById('pane')); } catch (e) {} if (obs) obs.observe(document.body, { childList: true, subtree: true }); }
+  function sched() { if (!pend) { pend = true; Promise.resolve().then(run); } }
+  if (window.MutationObserver) { obs = new MutationObserver(function (recs) { for (var i = 0; i < recs.length; i++) { var n = recs[i].target; if (n && n.closest && n.closest('#tm-pop,#terms-panel')) continue; sched(); return; } }); obs.observe(document.body, { childList: true, subtree: true }); }
+  sched();
+  /* ----- orders table: column count fix, projected cell ----- */
+  var _renderOrders42 = renderOrders, _provCell42 = provCellHtml;
+  renderOrders = function () {
+    var h = _renderOrders42();
+    var n = (/<table id="orders-table"><thead><tr>([\s\S]*?)<\/tr>/.exec(h) || [0, ''])[1].split('<th').length - 1;
+    return n ? h.replace(/(<td colspan=")\d+(" class="mut">No orders match)/, '$1' + n + '$2') : h;
+  };
+  provCellHtml = function (o) {
+    var out = _provCell42(o);
+    try {
+      var pj = o && PROV.byEsc[esc(o.id)]; if (!pj) return out;
+      var ord = ordersList().filter(function (x) { return x.id === o.id; })[0], p = pj.projected || {};
+      if (!ord || !isNum(ord.qty)) return out;
+      var qs = qty42(ord), sy = esc(sym42(ord)), canonOpen = o.status === 'open', filled = p.fillAt != null && !canonOpen;
+      var cents = function (x) { return Math.round(x * 100); };
+      if (filled) {
+        var pre = 'filled ' + esc(pT(p.fillAt)) + ' at ' + pr(p.fillPrice) + ' (' + esc(dash(p.fillReason)) + ')';
+        if (out.indexOf(pre) === 0 && isNum(p.fillPrice)) out = '<span title="' + esc('filled at ' + pT(p.fillAt)) + '">filled ' + qs + ' ' + sy + ' @ ' + pr(p.fillPrice) + ' = ' + usd(cents(ord.qty * p.fillPrice)) + ' (' + esc(dash(p.fillReason)) + ')</span>' + out.slice(pre.length);
+      }
+      if (p.exit && isNum(p.exit.price)) {
+        var xl = '<span title="' + esc('exit price ' + pr(p.exit.price)) + '">exit ' + esc(dash(p.exit.reason)) + ' ' + esc(pT(p.exit.at)) + '</span>';
+        var pnl = isNum(p.pnlCents) ? p.pnlCents : (isNum(p.exit.pnlCents) ? p.exit.pnlCents : (isNum(p.fillPrice) ? cents(ord.qty * (p.exit.price - p.fillPrice)) : null));
+        if (out.indexOf(xl) >= 0) out = out.replace(xl, '<span title="' + esc('exit at ' + pT(p.exit.at)) + '">exit ' + esc(dash(p.exit.reason)) + ' @ ' + pr(p.exit.price) + ' = ' + usd(cents(ord.qty * p.exit.price)) + (pnl != null ? ' · P&amp;L ' + usd(pnl) + ' estimate' : '') + '</span>');
+      }
+      if (filled && isNum(ord.L) && isNum(ord.T) && isNum(ord.S) && ord.L > 0) out += '<br><span class="mut">target +' + pct42(ord.T - ord.L, ord.L) + '%  · stop −' + pct42(ord.L - ord.S, ord.L) + '%</span>';
+      if (p.partialDay) out = out.replace('<span class="mut">partial day</span>', '<span class="badge" data-chip42="partial">partial day</span>');
+    } catch (e) {}
+    return out;
+  };
+  window.RT41.provCellHtml = provCellHtml;
+  window.RT42 = { TERMS: TERMS, decorate: decorate, run: run, openTerm: function (k) { var el = document.querySelector('[data-term="' + k + '"]'); if (el) openPop(el); return !!el; }, closePop: closePop, togglePanel: togglePanel, termsHtml: termsHtml, sizeCell: sizeCell, askCell: askCell, qty42: qty42, sym42: sym42 };
+} catch (e) { try { console.warn('item 42 block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 42 */
 
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
