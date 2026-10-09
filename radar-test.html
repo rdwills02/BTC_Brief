@@ -67,13 +67,23 @@ details>.inner{padding:0 0 4px}
 /* detail pane */
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:300}
 #scrim.on{display:block}
-#pane{position:fixed;top:0;right:0;bottom:0;width:min(640px,100vw);background:var(--surface);border-left:1px solid var(--border2);transform:translateX(102%);transition:transform .18s;z-index:310;display:flex;flex-direction:column}
+#pane{position:fixed;top:0;right:0;bottom:0;width:min(var(--detail-w,640px),100vw);background:var(--surface);border-left:1px solid var(--border2);transform:translateX(102%);transition:transform .18s;z-index:310;display:flex;flex-direction:column}
 #pane.on{transform:translateX(0)}
 #pane-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 #pane-title{font-size:14px;font-weight:700}
 #pane-body{overflow-y:auto;padding:10px 14px 40px;flex:1}
 .xbtn{background:var(--surface2);border:1px solid var(--border2);color:var(--text2);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:inherit}
 #dchart{height:330px;margin:6px 0}
+/* item 44 — lifted from radar.html (detail-resize-handle, pane-sticky, chart-wrap, chart-expand-btn); default chart height stays 330 here */
+#pane.resizing{transition:none}
+.detail-resize-handle{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:20;background:transparent}
+.detail-resize-handle:hover,.detail-resize-handle.active{background:var(--accent-border)}
+.pane-sticky{position:sticky;top:0;height:0;z-index:12}
+.chart-wrap{height:330px;position:relative;background:var(--bg);border-bottom:1px solid var(--border);transition:height .15s ease}
+.chart-wrap.expanded{height:560px}
+.chart-wrap #dchart{height:100%;width:100%;margin:0}
+.chart-expand-btn{position:absolute;top:8px;right:8px;z-index:5;background:rgba(30,32,53,.85);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.chart-expand-btn:hover{color:var(--text);border-color:#7b6ef6}
 .note{font-size:11px;color:var(--text2);margin:4px 0 8px}
 .rec{width:100%;margin-bottom:10px}
 .rec td{padding:3px 6px;border-bottom:1px solid var(--border);font-size:12px}
@@ -101,6 +111,7 @@ a.lnk{color:var(--accent);text-decoration:none;font-size:12px;margin-right:12px}
 <main id="main"><div class="mut">Loading forward ledger&hellip;</div></main>
 <div id="scrim"></div>
 <aside id="pane" aria-hidden="true">
+  <div class="detail-resize-handle" id="detail-resize-handle" title="Drag to resize; double-click to reset"></div>
   <div id="pane-head"><div id="pane-title"></div><button class="xbtn" id="pane-x" title="Close (Esc)">Close &#x2715;</button></div>
   <div id="pane-body"></div>
 </aside>
@@ -485,7 +496,7 @@ function chartBuild(cg, ep, ords, all) {
   if (!el || !window.LightweightCharts) return;
   var win = all.slice(-150), lastT = win.length ? win[win.length - 1].time : 0;
   if (charts.d) { try { charts.d.remove(); } catch (e) {} charts.d = null; }
-  var chart = LightweightCharts.createChart(el, { width: el.clientWidth || 600, height: 330, layout: { background: { color: '#0b0c14' }, textColor: '#6b7280' }, grid: { vertLines: { color: '#1e2035' }, horzLines: { color: '#1e2035' } },
+  var chart = LightweightCharts.createChart(el, { width: el.clientWidth || 600, height: el.clientHeight || 330, layout: { background: { color: '#0b0c14' }, textColor: '#6b7280' }, grid: { vertLines: { color: '#1e2035' }, horzLines: { color: '#1e2035' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal }, rightPriceScale: { borderColor: '#1e2035' }, timeScale: { borderColor: '#1e2035', timeVisible: true, rightOffset: 4 } });
   charts.d = chart;
   var ref = ep && ep.refLine, g = (ep && ep.openGeometry) || {};
@@ -566,7 +577,7 @@ function openDetail(kind, id) {
   paneShell((kind === 'order' ? o.id : ep.id));
   var body = $('pane-body');
   body.innerHTML = '<div><a class="lnk" href="radar.html" id="lnk-radar">Open in Radar</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(tvUrl(pair)) + '" id="lnk-tv">TradingView</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(cgUrl(cg)) + '" id="lnk-cg">CoinGecko</a></div>' +
-    '<div id="dchart"></div><div class="note" id="chartnote">Loading candles…</div>' +
+    chartWrap44() + '<div class="note" id="chartnote">Loading candles…</div>' +
     '<div class="note">Intraday limitation: fills in window 0 resolved on 5-minute bars are drawn on the fill day’s daily candle; the exact <code>fill.tSec</code> is in the order record below. Window shading: issue day darker, D+1 and D+2 lighter. Lines run from the issue day to the exit / terminal day, or to the last candle (minimum one day; open orders show the D+2 window).</div>' +
     (o ? orderRecordHtml(o) : '') + (o ? '' : '') + '<div id="eprec">' + episodeRecordHtml(ep) + '</div><div id="rsec"><div class="mut">Loading research…</div></div>';
   var pc = fetchCandles(cg).then(function (c) {
@@ -835,7 +846,7 @@ function shadowHtml() {
   h.push('</tbody></table></div></div>');
   return h.join('');
 }
-renderAccounts = function () { return _renderAccounts41() + shadowHtml(); };
+renderAccounts = function () { return _renderAccounts41() + (RT44_MOVED ? '' : shadowHtml()); };   /* item 44: the shadow section moves below Episodes once the item 44 block is installed */
 window.RT41 = { PROV: PROV, provValid: provValid, provCellHtml: provCellHtml };
 /* end item 41 */
 
@@ -1156,6 +1167,293 @@ function askCell(o) {
   window.RT42 = { TERMS: TERMS, decorate: decorate, run: run, openTerm: function (k) { var el = document.querySelector('[data-term="' + k + '"]'); if (el) openPop(el); return !!el; }, closePop: closePop, togglePanel: togglePanel, termsHtml: termsHtml, sizeCell: sizeCell, askCell: askCell, qty42: qty42, sym42: sym42 };
 } catch (e) { try { console.warn('item 42 block failed: ' + (e && e.message)); } catch (e2) {} } })();
 /* end item 42 */
+
+/* item 44 — order charts + pane expand/drag + layout
+   Display only. Lines come from the order record (L, S, T), fills/exits from the record or the projection, marks from the projection (else the ledger's last mark).
+   The page derives nothing: no fill, exit, mark, P&L or state is computed here. Failure in the installation part leaves the rest of the page working. */
+var RT44_MOVED = false, EXP44 = false;
+D('orderCharts', 'Order charts', 'One small price chart per live order.', 'Each chart shows the coin’s daily candles with the order’s buy price (L), stop (S) and target (T) as horizontal lines, and sold orders drop off two days after the sale. Click a chart to open the full detail pane.');
+D('markLine', 'Mark (current price)', 'The dotted line: the latest price used to value an open position.', 'It is the most recent price the projection (or the ledger, when there is no projection) used to value the position. The dollar figure beside it is an estimate of the gain or loss if the position were sold at that price.');
+D('fillMarker', 'Fill marker (▲)', 'The up arrow: where the order bought.', 'It marks the day the buy order filled and the price it filled at. A projected marker comes from the projection, not from the official ledger yet.');
+D('exitMarker', 'Exit marker (▼)', 'The down arrow: where the position was sold.', 'It marks the day and price of the sale, and why it happened (target hit, stop hit, or time ran out). A projected marker comes from the projection, not from the official ledger yet.');
+D('chartSupport', 'Support, resistance, invalidation', 'The channel lines drawn from the coin’s episode.', 'Support and resistance are the lower and upper edges of the price channel the order was based on, and invalidation is the price below which the channel counts as broken. All three are copied from the episode record and are not recalculated.');
+D('projMarker', 'Projected', 'Taken from the projection, not the official ledger.', 'The projection is an estimate built from newer price data than the ledger has recorded. Anything marked projected can change when the ledger catches up.');
+D('chartExpand', 'Expand / Collapse', 'Makes the pane chart taller (560 px) or back to normal.', 'The same button as on the Radar page. It only changes how tall the chart is drawn.');
+D('paneDrag', 'Resize handle', 'Drag the pane’s left edge to resize it; double-click to reset.', 'The same drag handle as on the Radar page. The width is not saved and returns to the default when the page is reloaded.');
+D('shadowGrid', 'Shadow study charts', 'Charts for the shadow study orders. Observation only.', 'These charts use the same layout as the real order charts but show the CTRL and NZ shadow orders. Nothing here is traded and nothing here changes the real accounts.');
+
+function tm44(key) {
+  var t = TERMS[key];
+  return t ? '<span class="tm tmi" data-term="' + esc(key) + '" tabindex="0" role="button" title="' + esc(t.short) + '" aria-label="' + esc('What is ' + t.label + '?') + '"></span>' : '';
+}
+function chartWrap44() {
+  var tt = TERMS.chartExpand ? ' title="' + esc(TERMS.chartExpand.short) + '"' : '';
+  return '<div class="pane-sticky"><button class="chart-expand-btn" id="chart-expand-btn" type="button"' + tt + '>' + (EXP44 ? 'Collapse' : 'Expand') + '</button></div>' +
+    '<div class="chart-wrap' + (EXP44 ? ' expanded' : '') + '" id="chart-wrap"><div id="dchart"></div></div>' +
+    '<div class="note" id="pane-ctl44">Expand ' + tm44('chartExpand') + ' · drag the pane’s left edge to resize ' + tm44('paneDrag') + ' (double-click the edge to reset).</div>';
+}
+
+(function () { try {
+  var LIVE44 = { resting: 1, 'pending-unresolved': 1, 'cancel-pending': 1, open: 1 };
+  var CARDS = { token: null, list: [] }, CV = {};
+  var C_L = '#7b6ef6', C_S = '#e8754a', C_T = '#00c896', C_M = '#9da3b4';
+  var st = document.createElement('style'); st.id = 'oc44-css';
+  st.textContent = '.ocgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:10px;margin:6px 0 14px}' +
+    '.ocard44{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer}.ocard44:hover,.ocard44:focus-visible{border-color:var(--accent);outline:none}' +
+    '.oc-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;margin-bottom:4px}.oc-chart{height:260px;position:relative}' +
+    '.oc-note{font-size:11px;color:var(--muted);padding:6px 0}.oc-f{font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5}' +
+    '.oc-legend{font-size:11px;color:var(--text2);margin:2px 0 6px;display:flex;flex-wrap:wrap;gap:4px 14px}.oc-sub{font-size:12px;margin:14px 0 4px;color:var(--accent);letter-spacing:.04em}' +
+    'tr.clk44{cursor:pointer}tr.clk44:hover td{background:var(--surface2)}';
+  document.head.appendChild(st);
+
+  /* ----- data helpers (display only) ----- */
+  function projOf(o) { var pj = PROV.state === 'ok' ? PROV.byEsc[esc(o.id)] : null; return pj && pj.projected ? pj.projected : null; }
+  function exitDay(o) {
+    if (o.exit) { var s = o.exit.barId != null ? o.exit.barId : o.exit.tSec; if (isNum(s)) return dayOf(s); }
+    var p = projOf(o); if (p && p.exit && isNum(p.exit.at)) return dayOf(p.exit.at);
+    if (o.status === 'exited') return terminalDay(o);
+    return null;
+  }
+  /* live statuses, plus orders exited within the last 2 days (D, D+1, D+2); an exited order with no datable exit stays */
+  function keep(o) {
+    var ed = exitDay(o);
+    if (o.status === 'exited' || ed != null) return ed == null ? true : (dayOf(nowMs() / 1000) - ed) <= 2 * DAY;
+    return !!LIVE44[o.status];
+  }
+  /* display clone: issue day from issueTimeUtc when the record has no dId; projected fill/exit stand in where the record has none */
+  function disp(o) {
+    var d = Object.assign({}, o), p = projOf(o) || {};
+    if (!isNum(d.dId)) { var s = Date.parse(o.issueTimeUtc) / 1000; if (isNum(s)) d.dId = dayOf(s); }
+    var hasT = function (x) { return x && (isNum(x.dayId) || isNum(x.tSec) || isNum(x.barId)); };
+    if (!o.fill && isNum(p.fillAt) && isNum(p.fillPrice)) d.fill = { price: p.fillPrice, reason: p.fillReason, kind: 'projected', tSec: p.fillAt, proj: true };
+    else if (o.fill && !hasT(o.fill) && isNum(p.fillAt)) d.fill = Object.assign({}, o.fill, { tSec: p.fillAt, proj: true });
+    if (!o.exit && p.exit && isNum(p.exit.price)) d.exit = { price: p.exit.price, reason: p.exit.reason, tSec: p.exit.at, proj: true };
+    else if (o.exit && !hasT(o.exit) && p.exit && isNum(p.exit.at)) d.exit = Object.assign({}, o.exit, { tSec: p.exit.at, proj: true });
+    return d;
+  }
+  function markOf(o, d) {
+    if (d.exit) return null;
+    var p = projOf(o);
+    if (p && p.status === 'open' && isNum(p.markPrice)) return { price: p.markPrice, t: isNum(p.markAt) ? dayOf(p.markAt) : null, cents: isNum(p.unrealisedCents) ? p.unrealisedCents : null, proj: true, label: p.unrealisedLabel };
+    if (o.status === 'open' && Array.isArray(o.marks) && o.marks.length) { var m = o.marks[o.marks.length - 1]; if (isNum(m.mark)) return { price: m.mark, t: m.date ? dateToSec(m.date) : null, cents: null, proj: false }; }
+    return null;
+  }
+  function liveOrders() { return sortedOrders().filter(keep); }
+  function shadowOrders() {
+    var so = PROV.shOrders && Array.isArray(PROV.shOrders.orders) ? PROV.shOrders.orders : [];
+    return so.slice().sort(function (a, b) { var x = a.issueTimeUtc || '', y = b.issueTimeUtc || ''; return x !== y ? (x < y ? 1 : -1) : (b.seq || 0) - (a.seq || 0); }).filter(keep);
+  }
+  function fillTime(f, t0) { return f ? (isNum(f.dayId) ? f.dayId : dayOf(isNum(f.tSec) ? f.tSec : (isNum(f.barId) ? f.barId : t0))) : null; }
+  function exitTime(x, t1) { return x ? dayOf(isNum(x.barId) ? x.barId : (isNum(x.tSec) ? x.tSec : t1)) : null; }
+
+  /* ----- card shells ----- */
+  function footHtml(o, d) {
+    var parts = [];
+    parts.push('<span style="color:' + C_L + '">L ' + pr(o.L) + '</span> · <span style="color:' + C_S + '">S ' + pr(o.S) + '</span> · <span style="color:' + C_T + '">T ' + pr(o.T) + '</span>');
+    if (d.fill) parts.push('filled @ ' + pr(d.fill.price) + (d.fill.proj ? ' (proj.)' : ' (' + esc(dash(d.fill.kind || d.fill.reason)) + ')'));
+    if (d.exit) parts.push('exit ' + esc(dash(d.exit.reason)) + ' @ ' + pr(d.exit.price) + (d.exit.proj ? ' (proj.)' : ''));
+    var m = markOf(o, d);
+    if (m) parts.push('mark ' + pr(m.price) + (m.cents != null ? ' · unrealised <span class="' + (m.cents >= 0 ? 'pos' : 'neg') + '">' + usd(m.cents) + '</span> <span class="mut">' + esc(m.label || 'estimate') + '</span>' : ''));
+    return parts.join('<br>');
+  }
+  function cardHtml(o, kind, n) {
+    var d = disp(o), p = projOf(o), si = statusInfo(o.status);
+    var proj = p && p.status && p.status !== o.status ? ' <span class="pill" title="' + esc('projected status') + '">proj: ' + esc(p.status) + '</span>' : '';
+    return '<div class="ocard44" role="button" tabindex="0" data-card-' + kind + '="' + esc(o.id) + '" data-cgid="' + esc(o.cgId) + '" data-kind="' + kind + '" data-n="' + n + '">' +
+      '<div class="oc-h"><span><b>' + esc(o.policyId) + ' ' + esc(sym42(o)) + '</b> · <span class="badge ' + si.cls + '">' + esc(si.text) + '</span></span>' + proj + '</div>' +
+      '<div class="oc-chart" id="occ44-' + n + '"></div><div class="oc-note" id="ocn44-' + n + '">Loading candles…</div><div class="oc-f">' + footHtml(o, d) + '</div></div>';
+  }
+  function legendHtml() {
+    return '<div class="oc-legend" id="oc-legend44"><span style="color:' + C_L + '">━ L entry ' + tm44('L') + '</span><span style="color:' + C_S + '">━ S stop ' + tm44('S') + '</span><span style="color:' + C_T + '">━ T target ' + tm44('T') + '</span>' +
+      '<span>┄ mark ' + tm44('markLine') + '</span><span>▲ fill ' + tm44('fillMarker') + '</span><span>▼ exit ' + tm44('exitMarker') + '</span><span>support / resistance ' + tm44('chartSupport') + '</span><span>proj. ' + tm44('projMarker') + '</span></div>';
+  }
+  var seq = 0;
+  function sectionHtml() {
+    var list = liveOrders(), h = ['<section id="sec-ocharts"><h2>Order charts <span class="mut" style="font-size:11px;font-weight:400">' + tm44('orderCharts') + '</span><small>one chart per live order (resting, pending-unresolved, cancel-pending, open) plus orders sold in the last 2 days, newest first. Click a chart for the detail pane.</small></h2>'];
+    if (!S.files.orders) return '';
+    h.push(legendHtml());
+    if (!list.length) h.push('<div class="mut" id="ocempty44">No live orders to chart.</div>');
+    else h.push('<div class="ocgrid" id="ocgrid44">' + list.map(function (o) { return cardHtml(o, 'order', seq++); }).join('') + '</div>');
+    h.push('</section>');
+    return h.join('');
+  }
+  function shadowGrid() {
+    var list = shadowOrders();
+    return '<h3 class="oc-sub" id="shadow-charts44">SHADOW STUDY — charts (observation only) ' + tm44('shadowGrid') + '</h3>' +
+      (list.length ? '<div class="ocgrid" id="ocgrid44-shadow">' + list.map(function (o) { return cardHtml(o, 'shadow', seq++); }).join('') + '</div>' : '<div class="mut" id="ocempty44-shadow">No live shadow orders to chart.</div>');
+  }
+  function shadowSection() {
+    var h = shadowHtml(); if (!h) return '';
+    h = h.replace('observation only</small>', 'observation only · click a row for the detail pane</small>').replace(/<tr data-shadow-order=/g, '<tr class="clk44" tabindex="0" role="button" data-shadow-order=');
+    if (!PROV.shErr && PROV.shOrders && PROV.shAccounts && /<\/div>$/.test(h)) h = h.slice(0, -6) + shadowGrid() + '</div>';
+    return '<section id="sec-shadow44">' + h + '</section>';
+  }
+
+  /* ----- chart drawing ----- */
+  function teardown() {
+    CARDS.token = null;
+    CARDS.list.forEach(function (c) { try { if (c.ro) c.ro.disconnect(); } catch (e) {} try { c.chart.remove(); } catch (e) {} });
+    CARDS.list = []; RT44.cards = {};
+  }
+  function drawCard(el, o) {
+    var n = el.getAttribute('data-n'), host = document.getElementById('occ44-' + n), note = document.getElementById('ocn44-' + n);
+    var c = CV[o.cgId];
+    if (!c || !c.candles) { note.textContent = 'Candles unavailable for ' + o.cgId + (c && c.error ? ' (' + c.error + ')' : ''); host.style.display = 'none'; return; }
+    if (!window.LightweightCharts) { note.textContent = 'Chart library unavailable.'; host.style.display = 'none'; return; }
+    var all = c.candles, win = all.slice(-90), lastT = win[win.length - 1].time, d = disp(o), p = projOf(o) || {};
+    var ep = episodesList().filter(function (e) { return e.id === o.episodeId; })[0] || null, ref = ep && ep.refLine, g = (ep && ep.openGeometry) || {};
+    var t0 = isNum(d.dId) ? d.dId : lastT, fillT = fillTime(d.fill, t0), mk = markOf(o, d);
+    var t1 = d.exit ? exitTime(d.exit, t0) : Math.max(lastT, t0, fillT || 0, mk && mk.t ? mk.t : 0);
+    if (t1 <= win[0].time) t1 = win[0].time + DAY;
+    var pp = o.L >= 100 ? 2 : o.L >= 1 ? 4 : 6, LS = LightweightCharts.LineStyle;
+    var chart = LightweightCharts.createChart(host, { width: host.clientWidth || 320, height: 260, layout: { background: { color: '#0b0c14' }, textColor: '#6b7280' }, grid: { vertLines: { color: '#1e2035' }, horzLines: { color: '#1e2035' } },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }, rightPriceScale: { borderColor: '#1e2035' }, timeScale: { borderColor: '#1e2035', timeVisible: false, rightOffset: 3 } });
+    var cs = chart.addCandlestickSeries({ upColor: '#00c896', downColor: '#e8754a', borderUpColor: '#00c896', borderDownColor: '#e8754a', wickUpColor: '#00c896', wickDownColor: '#e8754a', priceFormat: { type: 'price', precision: pp, minMove: Math.pow(10, -pp) } });
+    cs.setData(win);
+    var log = { orderId: o.id, kind: el.getAttribute('data-kind'), bars: win.length, cacheBars: all.length, lines: [], markers: [], mark: null, support: null, resistance: null, inval: null, t0: t0, t1: t1 }, ser = {};
+    function line(color, style, title, label, pts, noScale) {
+      var s = chart.addLineSeries({ color: color, lineWidth: 1, lineStyle: style, priceLineVisible: false, lastValueVisible: !!label, crosshairMarkerVisible: false, title: title || '',
+        autoscaleInfoProvider: noScale ? function () { return null; } : undefined });
+      s.setData(pts); return s;
+    }
+    if (ref && isNum(ref.slope)) {
+      var sup = win.map(function (k) { return { time: k.time, value: supportAt(ref, all, k.time) }; });
+      ser.support = line('#7b6ef6', LS.Solid, '', false, sup, true); log.support = { points: sup.length, first: sup[0], last: sup[sup.length - 1] };
+      if (isNum(g.channelH)) { ser.resistance = line('#9da3b4', LS.Solid, '', false, sup.map(function (q) { return { time: q.time, value: q.value + g.channelH }; }), true); log.resistance = { channelH: g.channelH }; }
+    }
+    if (ep && isNum(ep.frozenInvalidation)) { cs.createPriceLine({ price: ep.frozenInvalidation, color: '#6b7280', lineStyle: LS.Dashed, lineWidth: 1, axisLabelVisible: true, title: 'invalidation' }); log.inval = ep.frozenInvalidation; }
+    [['L', o.L, C_L], ['S', o.S, C_S], ['T', o.T, C_T]].forEach(function (x) {
+      if (!isNum(x[1])) return;
+      ser[x[0]] = line(x[2], LS.Dashed, x[0], true, [{ time: win[0].time, value: x[1] }, { time: t1, value: x[1] }]);
+      log.lines.push({ kind: x[0], price: x[1], t0: win[0].time, t1: t1 });
+    });
+    if (mk) {
+      var mt0 = Math.max(win[0].time, fillT != null ? fillT : t0), mt1 = Math.max(mk.t != null ? mk.t : lastT, mt0 + DAY);
+      ser.mark = line(C_M, LS.Dotted, 'mark', true, [{ time: mt0, value: mk.price }, { time: mt1, value: mk.price }]);
+      log.mark = { price: mk.price, t0: mt0, t1: mt1, cents: mk.cents, proj: mk.proj };
+    }
+    /* markers ride on a transparent series whose points sit at the fill / exit prices */
+    var evp = [], mks = [];
+    function addMk(kind, time, price, m) { evp.push({ time: time, value: price }); var mm = Object.assign({ time: time }, m); mks.push(mm); log.markers.push({ kind: kind, time: time, price: price, text: m.text, shape: m.shape, position: m.position, color: m.color, proj: !!m.proj }); }
+    if (d.fill) {
+      var fk = d.fill.proj ? 'proj.' : dash(d.fill.kind || d.fill.reason), nk = !(isNum(d.fill.dayId) || isNum(d.fill.tSec) || isNum(d.fill.barId));
+      addMk('fill', fillT, d.fill.price, { position: 'belowBar', shape: 'arrowUp', color: C_T, text: 'BUY ' + pr(d.fill.price) + ' · ' + fk + (nk ? ' (day n/a)' : ''), proj: !!d.fill.proj });
+    }
+    if (d.exit) {
+      var xt = exitTime(d.exit, t1), pl = isNum(d.exit.pnlCents) ? d.exit.pnlCents : null, stop = isNum(o.S) && isNum(d.exit.price) && d.exit.price <= o.S;
+      addMk('exit', xt, d.exit.price, { position: 'aboveBar', shape: 'arrowDown', color: (pl != null ? pl < 0 : stop) ? C_S : C_T, text: dash(d.exit.reason) + ' ' + pr(d.exit.price) + (d.exit.proj ? ' (proj.)' : ''), proj: !!d.exit.proj });
+    }
+    if (mks.length) {
+      var byT = {}; evp.forEach(function (q) { byT[q.time] = q; });
+      var pts = Object.keys(byT).map(Number).sort(function (a, b) { return a - b; }).map(function (t) { return byT[t]; });
+      ser.events = chart.addLineSeries({ color: 'rgba(0,0,0,0)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      ser.events.setData(pts); mks.sort(function (a, b) { return a.time - b.time; }); ser.events.setMarkers(mks);
+    }
+    chart.timeScale().fitContent();
+    var ro = null;
+    if (window.ResizeObserver) { ro = new ResizeObserver(function () { if (host.clientWidth > 0) chart.applyOptions({ width: host.clientWidth }); }); ro.observe(host); }
+    note.textContent = all.length + ' daily candles in cache (last ' + win.length + ' drawn)' + (all.length < 60 ? ' — fewer than 60 bars available' : '') + '.';
+    CARDS.list.push({ chart: chart, ro: ro }); RT44.cards[o.id] = { chart: chart, series: ser, log: log };
+  }
+  function drawCards() {
+    var tok = {}; CARDS.token = tok;
+    var els = Array.prototype.slice.call(document.querySelectorAll('.ocard44[data-cgid]'));
+    var cgs = {}; els.forEach(function (e) { cgs[e.getAttribute('data-cgid')] = 1; });
+    return Promise.all(Object.keys(cgs).map(function (cg) { return fetchCandles(cg).then(function (v) { CV[cg] = v; }); })).then(function () {
+      if (CARDS.token !== tok) return;
+      els.forEach(function (el) {
+        try {
+          var id = el.getAttribute('data-card-order') || el.getAttribute('data-card-shadow'), kind = el.getAttribute('data-kind');
+          var o = kind === 'shadow' ? (PROV.shOrders.orders || []).filter(function (x) { return x.id === id; })[0] : ordersList().filter(function (x) { return x.id === id; })[0];
+          if (o) drawCard(el, o);
+        } catch (e) { var nn = document.getElementById('ocn44-' + el.getAttribute('data-n')); if (nn) nn.textContent = 'Chart failed: ' + (e && e.message); }
+      });
+    }).catch(function () {});
+  }
+
+  /* ----- shadow detail pane (reads shadow/orders.json records) ----- */
+  function openShadow(id) {
+    var o = (PROV.shOrders && Array.isArray(PROV.shOrders.orders) ? PROV.shOrders.orders : []).filter(function (x) { return x.id === id; })[0];
+    if (!o) return Promise.resolve();
+    var token = {}; S.pane = token; paneShell(o.id + ' (shadow)');
+    $('pane-body').innerHTML = '<div><a class="lnk" href="radar.html" id="lnk-radar">Open in Radar</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(tvUrl(o.pair)) + '" id="lnk-tv">TradingView</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(cgUrl(o.cgId)) + '" id="lnk-cg">CoinGecko</a></div>' +
+      '<div class="note" id="shadow-note44"><b>SHADOW STUDY — observation only.</b> Nothing here is traded.</div>' +
+      chartWrap44() + '<div class="note" id="chartnote">Loading candles…</div>' +
+      '<table class="rec" id="shadow-proj44"><thead><tr><th>Projection (estimate)</th></tr></thead><tbody><tr><td>' + provCellHtml(o) + '</td></tr></tbody></table>' + orderRecordHtml(o);
+    return fetchCandles(o.cgId).then(function (c) {
+      if (S.pane !== token) return;
+      if (!c.candles) { $('chartnote').innerHTML = '<span class="bad">Candles unavailable for ' + esc(o.cgId) + ' (' + esc(c.error) + ')</span>'; $('dchart').style.display = 'none'; return; }
+      $('chartnote').textContent = c.candles.length + ' daily candles in cache (last ' + Math.min(150, c.candles.length) + ' drawn). Shadow order: L / S / T from shadow/orders.json; a fill or exit marker without a day in the record uses the projection’s time, else the issue day.';
+      chartBuild(o.cgId, null, [disp(o)], c.candles);
+    });
+  }
+
+  /* ----- pane: resize handle (lifted from radar.html) + expand ----- */
+  var RO = null;
+  function watch() {
+    if (RO) { try { RO.disconnect(); } catch (e) {} RO = null; }
+    var el = $('dchart'); if (!el || !window.ResizeObserver) return;
+    RO = new ResizeObserver(function () { if (charts.d && el.clientWidth > 0) charts.d.applyOptions({ width: el.clientWidth, height: el.clientHeight }); });
+    RO.observe(el);
+  }
+  (function () {
+    var DETAIL_W_MIN = 380, DETAIL_W_MAX_PCT = 0.72;
+    var handle = $('detail-resize-handle'), pane = $('pane');
+    if (!handle || !pane) return;
+    var dragging = false, startX = 0, startW = 0, lastW = 0;
+    handle.addEventListener('pointerdown', function (e) {
+      dragging = true; startX = e.clientX; startW = pane.getBoundingClientRect().width; lastW = startW;
+      pane.classList.add('resizing'); handle.classList.add('active');
+      try { handle.setPointerCapture(e.pointerId); } catch (x) {}
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var max = window.innerWidth * DETAIL_W_MAX_PCT;
+      lastW = Math.max(DETAIL_W_MIN, Math.min(max, startW + (startX - e.clientX)));   /* pane is on the right: dragging LEFT widens it */
+      document.documentElement.style.setProperty('--detail-w', lastW + 'px');
+    });
+    function endDrag() { if (!dragging) return; dragging = false; pane.classList.remove('resizing'); handle.classList.remove('active'); }
+    handle.addEventListener('pointerup', endDrag); handle.addEventListener('pointercancel', endDrag);
+    handle.addEventListener('dblclick', function () { document.documentElement.style.removeProperty('--detail-w'); });
+  })();
+
+  document.addEventListener('click', function (ev) { try {
+    var t = ev.target; if (!t || !t.closest) return;
+    var btn = t.closest('#chart-expand-btn');
+    if (btn) {
+      var wrap = $('chart-wrap'); wrap.classList.toggle('expanded'); EXP44 = wrap.classList.contains('expanded');
+      btn.textContent = EXP44 ? 'Collapse' : 'Expand';
+      if (charts.d) { var c = $('dchart'); charts.d.applyOptions({ width: c.clientWidth, height: c.clientHeight }); charts.d.timeScale().fitContent(); }
+      return;
+    }
+    var card = t.closest('.ocard44');
+    if (card) { var id = card.getAttribute('data-card-order') || card.getAttribute('data-card-shadow'); openDetail(card.getAttribute('data-kind') === 'shadow' ? 'shadow' : 'order', id); return; }
+    var sr = t.closest('tr[data-shadow-order]');
+    if (sr) openDetail('shadow', sr.getAttribute('data-shadow-order'));
+  } catch (e) {} });
+  document.addEventListener('keydown', function (ev) { try {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var t = ev.target; if (!t || !t.closest || t.closest('[data-term]')) return;
+    var el = t.closest('.ocard44,tr[data-shadow-order]'); if (!el) return;
+    ev.preventDefault(); el.click();
+  } catch (e) {} });
+
+  /* ----- install (all wrappers last, so a failure above leaves the page as it was) ----- */
+  var _render44 = render, _attempts44 = renderAttempts, _episodes44 = renderEpisodes, _open44 = openDetail;
+  window.RT44 = { cards: {}, drawn: Promise.resolve(), keep: keep, liveOrders: liveOrders, shadowOrders: shadowOrders, disp: disp, chartWrap: chartWrap44, exp: function () { return EXP44; }, paneChart: function () { return charts.d; } };
+  renderAttempts = function () { return sectionHtml() + _attempts44(); };
+  renderEpisodes = function () { return _episodes44() + shadowSection(); };
+  openDetail = function (kind, id) { var r = kind === 'shadow' ? openShadow(id) : _open44(kind, id); try { watch(); } catch (e) {} return r; };
+  render = function () {
+    teardown(); seq = 0;
+    var r = _render44.apply(this, arguments);
+    try { RT44.drawn = drawCards(); } catch (e) { RT44.drawn = Promise.resolve(); }
+    return r;
+  };
+  RT44_MOVED = true;
+} catch (e) { try { console.warn('item 44 block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 44 */
 
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
