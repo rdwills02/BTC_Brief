@@ -1455,6 +1455,179 @@ function chartWrap44() {
 } catch (e) { try { console.warn('item 44 block failed: ' + (e && e.message)); } catch (e2) {} } })();
 /* end item 44 */
 
+/* item 45 — exec summary
+   Display only. Every figure is a ledger field (exit.pnlCents, accounts E / startCash / cash) or a projection field (projected.exit / fillAt / markPrice / unrealisedCents).
+   The page computes only sums, differences, the account shortfall % and the R ratio (pnl / Bcents); no price math, no fill or exit logic. Failure leaves the rest of the page working. */
+D('exExec', 'Exec summary', 'The whole test in one glance: counts, money and every order.', 'This block adds up the real orders of the two production accounts, N0 and C1. The shadow study is not included.');
+D('exOrders', 'Orders', 'How many orders the two production accounts have placed.', 'It counts every order in the current ledger generation, whatever happened to it: waiting, bought, sold or expired.');
+D('exStopped', 'Stopped out', 'Orders sold because the price fell to the stop.', 'The stop is the safety price that limits the loss. A stopped-out order is a trade that lost about the amount the order was sized to risk.');
+D('exTarget', 'Target hit', 'Orders sold because the price reached the target.', 'The target is the price where the order sells to take the gain. These are the winning trades.');
+D('exOpen', 'Open', 'Orders that have bought and are still holding.', 'The position was bought and has not yet been sold. Its gain or loss is an estimate until it is sold.');
+D('exResting', 'Resting', 'Orders waiting for the price to come down to the buy price.', 'Nothing has been bought yet. If the price never comes down to the limit before the order expires, the order simply lapses.');
+D('exWin', 'Win rate', 'Winning trades out of all finished trades.', 'A finished trade is one sold by stop, target or time limit. It wins when the ledger records a profit after fees.');
+D('exRealised', 'Realised P&L', 'Money already won or lost on sold trades.', 'It is the sum of the profit or loss the ledger recorded for each sold order, after fees. A trade whose sale is only in the projection is included as an estimate until the ledger records it.');
+D('exUnreal', 'Unrealised P&L', 'Estimated gain or loss on positions still held.', 'It is the projection’s estimate of what each open position would make or lose if sold at the latest price. It changes with the market and is not final.');
+D('exTotal', 'Total vs start', 'How the two accounts stand against their starting cash.', 'It is the current account value of N0 and C1 together minus what they started with. It comes from the accounts file, so it is only as fresh as the latest ledger capture.');
+D('exEquity', 'Account value', 'Cash plus the value of everything held.', 'The change is measured against the starting cash. The thin bar fills as the account falls below its start, and a full bar means a 10% shortfall.');
+D('exEntered', 'Entered', 'When the order bought, or was placed if it has not bought.', 'It shows the time the buy filled. For an order still waiting it shows the time the order was placed.');
+D('exEntry', 'Entry price', 'The price paid, or the limit price if nothing has been bought.', 'It is the fill price when the order bought, and the limit price (L) otherwise.');
+D('exExitMark', 'Exit / Mark', 'The sale price, or the latest price for an order still running.', 'A sold order shows the sale price and when it sold. An open order shows its mark, the latest price used to value it, and a waiting order shows the latest price seen.');
+D('exPnl', 'P&L', 'Profit or loss in dollars after fees.', 'For a sold order it is the ledger’s figure. For an open order it is the projection’s estimate and is labelled est.');
+D('exStatusStop', 'Stopped', 'Sold because the price reached the stop.', 'The order bought, the price then fell to the stop, and the position was sold to cap the loss.');
+D('exStatusTarget', 'Target', 'Sold because the price reached the target.', 'The order bought, the price then rose to the target, and the position was sold to take the gain.');
+D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recorded this yet; the projection says so.', 'The status comes from the projection, which is built from newer prices than the ledger. It can change when the ledger catches up.');
+
+(function () { try {
+  var st = document.createElement('style'); st.id = 'ex45-css';
+  st.textContent = '#sec-exec45 .exsub{color:var(--muted);font-size:12px;margin:-2px 0 12px}' +
+    '.ex-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.ex-tiles.three{grid-template-columns:repeat(3,1fr)}' +
+    '.ex-tile{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:0}' +
+    '.ex-tile .k{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase}.ex-tile .v{font-size:26px;font-weight:700;margin-top:2px;line-height:1.1;font-variant-numeric:tabular-nums}.ex-tile .v small{font-size:13px;font-weight:600}' +
+    '.ex-tile .d{color:var(--muted);font-size:11px;margin-top:4px}.ex-tile .tm.tmi{text-transform:none}' +
+    '.v.down,.pnl.down,.eqd.down{color:var(--red)}.v.up,.pnl.up,.eqd.up{color:var(--bull)}.v.amber{color:var(--neut)}.v.mut,.pnl.mut{color:var(--muted)}' +
+    '.ex-acct{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}.ex-acct .ex-tile{display:flex;justify-content:space-between;align-items:center;gap:10px}' +
+    '.ex-acct .name{font-weight:700;font-size:15px}.ex-acct .name small{color:var(--muted);font-weight:400;margin-left:6px}.ex-acct .eq{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}.ex-acct .eq small{font-size:12px;font-weight:600;margin-left:8px}' +
+    '.ex-bar{height:6px;background:var(--border2);border-radius:3px;overflow:hidden;width:160px;margin-left:auto}.ex-bar i{display:block;height:100%;background:var(--red)}' +
+    '.ex-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px}#ex-table{width:100%;border-collapse:collapse;background:var(--surface)}' +
+    '#ex-table th{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase;text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap}' +
+    '#ex-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}#ex-table tbody tr:last-child td{border-bottom:0}' +
+    '#ex-table td.num,#ex-table th.num{text-align:right;font-variant-numeric:tabular-nums}#ex-table tfoot td{background:var(--bg);font-weight:700;border-top:1px solid var(--border)}' +
+    '.exchip{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid}.exchip.stop{color:var(--red);border-color:var(--red);background:rgba(255,93,108,.08)}' +
+    '.exchip.open{color:var(--neut);border-color:var(--neut);background:rgba(245,166,35,.08)}.exchip.rest{color:var(--accent);border-color:var(--accent);background:rgba(123,110,246,.1)}' +
+    '.exchip.tgt{color:var(--bull);border-color:var(--bull);background:rgba(0,200,150,.08)}.exchip.oth{color:var(--text2);border-color:var(--border2)}' +
+    '.expol{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:1px 5px}.excoin{font-weight:700}.excoin small{color:var(--muted);font-weight:400;margin-left:5px}' +
+    '.exest{color:var(--muted);font-size:11px;margin-left:4px}.exfoot{color:var(--muted);font-size:11px;margin-top:8px}' +
+    '@media(max-width:900px){.ex-tiles{grid-template-columns:repeat(3,1fr)}.ex-tiles.three{grid-template-columns:repeat(3,1fr)}.ex-acct{grid-template-columns:1fr}}@media(max-width:560px){.ex-tiles,.ex-tiles.three{grid-template-columns:repeat(2,1fr)}}';
+  document.head.appendChild(st);
+
+  var POL = ['N0', 'C1'];
+  function mmdd(sec) { return isNum(sec) ? dateOf(sec).slice(5) : '—'; }
+  function zt(sec) { return isNum(sec) ? mmdd(sec) + ' ' + new Date(sec * 1000).toISOString().slice(11, 16) + 'Z' : '—'; }
+  function zd(sec) { return isNum(sec) ? (sec % DAY === 0 ? mmdd(sec) : zt(sec)) : '—'; }
+  function money(c, plus) {
+    if (!isNum(c)) return '—';
+    var d = Math.round(Math.abs(c) / 100), s = '$' + d.toLocaleString('en-US');
+    return c < 0 && d !== 0 ? '−' + s : (plus && c > 0 ? '+' + s : s);
+  }
+  function mcls(c) { return !isNum(c) || c === 0 ? 'mut' : c < 0 ? 'down' : 'up'; }
+  function pct1(num, den) { return isNum(num) && isNum(den) && den > 0 ? (num >= 0 ? '+' : '−') + Math.abs(num / den * 100).toFixed(1) + '%' : '—'; }
+  function symOf(o) { return sym42(o); }
+  function plist(list, fmt) { var m = {}, ord = []; list.forEach(function (x) { var k = fmt(x); if (!(k in m)) { m[k] = 0; ord.push(k); } m[k]++; }); return ord.map(function (k) { return k + (m[k] > 1 ? ' ×' + m[k] : ''); }).join(' · '); }
+
+  /* effective state: the ledger first, the projection only where the ledger has not recorded the event yet */
+  function eff(o) {
+    var P = PROV.state === 'ok' && PROV.byEsc[esc(o.id)] ? PROV.byEsc[esc(o.id)].projected || null : null;
+    var r = { o: o, P: P, key: 'other', proj: false, text: o.status, pnl: null, est: false, exitPrice: null, exitAt: null, unreal: null, entryAt: null, entryPx: null };
+    if (o.fill && isNum(o.fill.price)) { r.entryAt = isNum(o.fill.tSec) ? o.fill.tSec : null; r.entryPx = o.fill.price; }
+    var kx = function (reason) { return reason === 'stop' ? 'stop' : reason === 'target' ? 'target' : reason === 'horizon' ? 'horizon' : 'exitother'; };
+    if (o.exit) {
+      r.key = kx(o.exit.reason); r.text = r.key === 'exitother' ? 'exited · ' + dash(o.exit.reason) : r.key === 'stop' ? 'stopped' : r.key;
+      r.pnl = isNum(o.exit.pnlCents) ? o.exit.pnlCents : null; r.exitPrice = o.exit.price; r.exitAt = isNum(o.exit.tSec) ? o.exit.tSec : (isNum(o.exit.barId) ? o.exit.barId : null);
+    } else if (P && P.exit) {
+      r.key = kx(P.exit.reason); r.proj = true; r.est = true; r.text = r.key === 'exitother' ? 'exited · ' + dash(P.exit.reason) : r.key === 'stop' ? 'stopped' : r.key;
+      r.pnl = isNum(P.pnlCents) ? P.pnlCents : (isNum(P.exit.pnlCents) ? P.exit.pnlCents : null); r.exitPrice = P.exit.price; r.exitAt = isNum(P.exit.at) ? P.exit.at : null;
+      if (!r.entryPx && isNum(P.fillPrice)) { r.entryPx = P.fillPrice; r.entryAt = isNum(P.fillAt) ? P.fillAt : null; }
+    } else if (o.status === 'open') {
+      r.key = 'open'; r.text = 'open'; if (P && P.status === 'open' && isNum(P.unrealisedCents)) { r.unreal = P.unrealisedCents; r.est = true; }
+    } else if (o.status === 'resting' && P && isNum(P.fillAt) && isNum(P.fillPrice)) {
+      r.key = 'open'; r.proj = true; r.text = 'open'; r.entryPx = P.fillPrice; r.entryAt = P.fillAt; if (isNum(P.unrealisedCents)) { r.unreal = P.unrealisedCents; r.est = true; }
+    } else if (o.status === 'resting') { r.key = 'rest'; r.text = 'resting'; }
+    r.shownPnl = r.pnl != null ? r.pnl : r.unreal;
+    return r;
+  }
+  function modelOf() {
+    var list = sortedOrders().map(eff), M = { rows: list, n: list.length, byPol: {} };
+    POL.forEach(function (p) { M.byPol[p] = list.filter(function (e) { return e.o.policyId === p; }).length; });
+    var cl = list.filter(function (e) { return e.key === 'stop' || e.key === 'target' || e.key === 'horizon'; });
+    M.stop = list.filter(function (e) { return e.key === 'stop'; }); M.target = list.filter(function (e) { return e.key === 'target'; });
+    M.open = list.filter(function (e) { return e.key === 'open'; }); M.rest = list.filter(function (e) { return e.key === 'rest'; });
+    M.closed = cl.length; M.wins = cl.filter(function (e) { return isNum(e.pnl) && e.pnl > 0; }).length;
+    var rl = list.filter(function (e) { return isNum(e.pnl); });
+    M.realised = rl.reduce(function (a, e) { return a + e.pnl; }, 0); M.nReal = rl.length; M.realisedEst = rl.some(function (e) { return e.est; });
+    M.ledgerReal = rl.filter(function (e) { return !e.est; }).length;
+    var ul = M.open.filter(function (e) { return isNum(e.unreal); });
+    M.unreal = ul.reduce(function (a, e) { return a + e.unreal; }, 0); M.ul = ul;
+    M.hasProj = PROV.state === 'ok';
+    var ac = S.files.accounts && S.files.accounts.accounts || {}, E = 0, start = 0, ok = 0;
+    M.acct = {};
+    POL.forEach(function (p) {
+      var a = ac[p], last = a && Array.isArray(a.series) && a.series.length ? a.series[a.series.length - 1] : null;
+      if (a && last && isNum(last.E) && isNum(a.startCash)) { E += last.E; start += a.startCash; ok++; M.acct[p] = { E: last.E, start: a.startCash, cash: a.cash }; }
+    });
+    M.total = ok === POL.length ? { E: E, start: start, d: E - start } : null;
+    var rr = list.filter(function (e) { return isNum(e.shownPnl) && isNum(e.o.Bcents) && e.o.Bcents > 0; });
+    M.rTotal = rr.reduce(function (a, e) { return a + e.shownPnl / e.o.Bcents; }, 0);
+    M.totalPnl = (M.nReal || M.ul.length) ? M.realised + M.unreal : null;
+    return M;
+  }
+  function rOf(e) { return isNum(e.shownPnl) && isNum(e.o.Bcents) && e.o.Bcents > 0 ? e.shownPnl / e.o.Bcents : null; }
+  function tile(key, label, tk, vcls, v, d) { return '<div class="ex-tile" data-tile="' + key + '"><div class="k">' + esc(label) + ' ' + tm44(tk) + '</div><div class="v ' + vcls + '">' + v + '</div><div class="d">' + d + '</div></div>'; }
+  function chip(e) {
+    var c = e.key === 'stop' ? 'stop' : e.key === 'target' ? 'tgt' : e.key === 'open' ? 'open' : e.key === 'rest' ? 'rest' : 'oth';
+    var tk = e.key === 'stop' ? 'exStatusStop' : e.key === 'target' ? 'exStatusTarget' : e.key === 'horizon' ? 'horizon' : e.key === 'open' ? 'open' : e.key === 'rest' ? 'resting' : null;
+    if (!tk && TERMS[e.o.status]) tk = e.o.status;
+    return '<span class="exchip ' + c + '" data-chip45="' + esc(e.key) + '">' + esc(e.text) + (e.proj ? ' <span class="exest">proj ' + tm44('exProjSuffix') + '</span>' : '') + '</span>' + (tk ? tm44(tk) : '');
+  }
+  function html45() {
+    if (!S.files.orders) return '';
+    var M = modelOf(), c = S.cur, lc = latestCaptureIso(), proto = (/v\d+\.\d+\.\d+\s*$/.exec(String(c.protocolVersion || '')) || [String(c.protocolVersion || '—')])[0].trim();
+    var since = actIs144() ? ACT_COHORT_DAY0_MS : DAY0_MS, p = PROV.state === 'ok' ? PROV.proj : null;
+    var sub = 'Production accounts N0 + C1 · cohort ' + esc(proto) + ' since ' + esc(new Date(since).toISOString().slice(5, 10)) + ' · canonical through ' + esc(lc ? zt(Date.parse(lc.iso) / 1000) : '—') + ' · ' +
+      (p && isNum(p.evidenceCutoffSec) ? 'marks from projection ' + esc(new Date(p.evidenceCutoffSec * 1000).toISOString().slice(11, 16)) + 'Z (estimates)' : 'no projection — ledger values only');
+    var h = ['<section id="sec-exec45"><h2>Exec summary <span style="font-size:11px;font-weight:400">' + tm44('exExec') + '</span></h2><div class="exsub" id="ex-sub">' + sub + '</div>'];
+    var perPol = POL.every(function (x) { return M.byPol[x] === M.byPol[POL[0]]; }) ? M.byPol[POL[0]] + ' per policy' : POL.map(function (x) { return x + ' ' + M.byPol[x]; }).join(' · ');
+    var stDates = M.stop.map(function (e) { return isNum(e.exitAt) ? mmdd(e.exitAt) : null; }).filter(Boolean).filter(function (x, i, a) { return a.indexOf(x) === i; }).sort();
+    var tgDates = M.target.map(function (e) { return isNum(e.exitAt) ? mmdd(e.exitAt) : null; }).filter(Boolean).filter(function (x, i, a) { return a.indexOf(x) === i; }).sort();
+    var exp = M.rest.map(function (e) { return e.o.expiryAtSec; }).filter(isNum).sort(function (a, b) { return a - b; })[0];
+    h.push('<div class="ex-tiles" id="ex-tiles">' +
+      tile('orders', 'Orders', 'exOrders', '', M.n, esc(perPol)) +
+      tile('stopped', 'Stopped out', 'exStopped', M.stop.length ? 'down' : '', M.stop.length, M.stop.length ? esc(plist(M.stop, function (e) { return symOf(e.o); }) + (stDates.length ? ' (' + stDates.join(', ') + ')' : '')) : '—') +
+      tile('target', 'Target hit', 'exTarget', M.target.length ? 'up' : '', M.target.length, M.target.length ? esc(plist(M.target, function (e) { return symOf(e.o); }) + (tgDates.length ? ' (' + tgDates.join(', ') + ')' : '')) : '—') +
+      tile('open', 'Open', 'exOpen', M.open.length ? 'amber' : '', M.open.length, M.open.length ? esc(plist(M.open, function (e) { return symOf(e.o); })) : '—') +
+      tile('resting', 'Resting', 'exResting', '', M.rest.length, M.rest.length ? esc(plist(M.rest, function (e) { return symOf(e.o); }) + (exp != null ? ' · expires ' + mmdd(exp) : '')) : '—') +
+      tile('win', 'Win rate', 'exWin', '', M.wins + ' / ' + M.closed, 'closed trades') + '</div>');
+    var avgR = M.nReal ? M.rows.filter(function (e) { return isNum(e.pnl) && isNum(e.o.Bcents) && e.o.Bcents > 0; }) : [];
+    var avg = avgR.length ? avgR.reduce(function (a, e) { return a + e.pnl / e.o.Bcents; }, 0) / avgR.length : null;
+    var rd = M.nReal ? M.nReal + ' closed' + (avg != null ? ' · ≈ ' + (avg < 0 ? '−' : '') + Math.abs(avg).toFixed(1) + ' R each' : '') + (M.realisedEst ? ' · includes est' : '') : 'no closed trades';
+    var ud = !M.hasProj ? 'no projection' : M.ul.length ? esc(M.ul.map(function (e) { return symOf(e.o) + ' ' + money(e.unreal, true); }).join(' · ')) : 'no open positions';
+    var T = M.total, tv = T ? money(T.d, true).replace(/^\+/, '+') + ' <small>(' + pct1(T.d, T.start) + ')</small>' : '—';
+    h.push('<div class="ex-tiles three" id="ex-money">' +
+      tile('realised', 'Realised P&L', 'exRealised', M.nReal ? mcls(M.realised) : 'mut', M.nReal ? money(M.realised, true) : '—', rd) +
+      tile('unreal', 'Unrealised (estimate)', 'exUnreal', M.hasProj && M.ul.length ? mcls(M.unreal) : 'mut', M.hasProj && M.ul.length ? money(M.unreal, true) : '—', ud) +
+      tile('total', 'Total vs start', 'exTotal', T ? mcls(T.d) : 'mut', tv, T ? money(T.start) + ' → ' + money(T.E) : '—') + '</div>');
+    h.push('<div class="ex-acct" id="ex-acct">' + POL.map(function (pid) {
+      var a = M.acct[pid], mine = M.rows.filter(function (e) { return e.o.policyId === pid; }), no = mine.filter(function (e) { return e.key === 'open'; }).length, nr = mine.filter(function (e) { return e.key === 'rest'; }).length;
+      var lab = pid === 'N0' ? 'reference' : 'ACT-v1 · tested';
+      if (!a) return '<div class="ex-tile" data-acct="' + pid + '"><div><div class="name">' + pid + ' <small>' + lab + '</small></div><div class="d">account data unavailable</div></div></div>';
+      var d = a.E - a.start, sf = a.E < a.start ? (a.start - a.E) / a.start * 100 : 0, w = Math.min(100, sf * 10);
+      return '<div class="ex-tile" data-acct="' + pid + '"><div><div class="name">' + pid + ' <small>' + lab + '</small></div><div class="d">cash ' + money(a.cash) + ' · ' + no + ' open · ' + nr + ' resting</div></div>' +
+        '<div style="text-align:right"><div class="eq" data-f="eq">' + money(a.E) + ' ' + tm44('exEquity') + ' <small class="eqd ' + mcls(d) + '" data-f="delta">' + money(d, true) + ' · ' + pct1(d, a.start) + '</small></div><div class="ex-bar" title="shortfall vs start; full bar = 10%"><i data-f="bar" style="width:' + (Math.round(w * 10) / 10) + '%"></i></div></div></div>';
+    }).join('') + '</div>');
+    var th = function (t, k, num) { return '<th' + (num ? ' class="num"' : '') + '>' + t + (k ? ' ' + tm44(k) : '') + '</th>'; };
+    var rows = M.rows.map(function (e) {
+      var o = e.o, P = e.P, pnl = e.shownPnl, R = rOf(e), exm;
+      var entAt = isNum(e.entryAt) ? zt(e.entryAt) : zt(Date.parse(o.issueTimeUtc) / 1000), entPx = isNum(e.entryPx) ? e.entryPx : o.L;
+      if (e.exitPrice != null && (e.key === 'stop' || e.key === 'target' || e.key === 'horizon' || e.key === 'exitother')) exm = pr(e.exitPrice) + ' <span class="exest">' + zd(e.exitAt) + '</span>';
+      else if (e.key === 'open') { var mp = P && isNum(P.markPrice) ? P.markPrice : (Array.isArray(o.marks) && o.marks.length && isNum(o.marks[o.marks.length - 1].mark) ? o.marks[o.marks.length - 1].mark : null); exm = mp != null ? pr(mp) + ' <span class="exest">mark</span>' : '—'; }
+      else if (e.key === 'rest') exm = P && isNum(P.markPrice) ? pr(P.markPrice) + ' <span class="exest">last</span>' : '—';
+      else exm = '—';
+      return '<tr data-ex-order="' + esc(o.id) + '"><td class="excoin">' + esc(symOf(o)) + '<small>' + esc(dash(o.pair)) + '</small></td><td><span class="expol">' + esc(o.policyId) + '</span></td><td>' + chip(e) + '</td><td>' + esc(entAt) + '</td><td class="num">' + pr(entPx) + '</td><td class="num">' + pr(o.S) + ' / ' + pr(o.T) + '</td><td class="num">' + exm + '</td>' +
+        '<td class="num pnl ' + mcls(pnl) + '" data-f="pnl">' + (isNum(pnl) ? money(pnl, true) + (e.est ? '<span class="exest">est</span>' : '') : '—') + '</td><td class="num pnl ' + mcls(R) + '" data-f="r">' + (R != null ? (R < 0 ? '−' : '') + Math.abs(R).toFixed(2) : '—') + '</td></tr>';
+    });
+    var bs = M.rows.map(function (e) { return e.o.Bcents; }).filter(function (x) { return isNum(x) && x > 0; }), bavg = bs.length ? bs.reduce(function (a, x) { return a + x; }, 0) / bs.length : null;
+    var bt = bavg == null ? 'each order’s risk budget' : 'risk budget (' + (bs.every(function (x) { return Math.round(x / 100) === Math.round(bs[0] / 100); }) ? '' : '≈') + money(bavg) + ')';
+    h.push('<div class="ex-wrap"><table id="ex-table"><thead><tr>' + th('Coin') + th('Policy') + th('Status') + th('Entered', 'exEntered') + th('Entry', 'exEntry', 1) + th('Stop / Target', null, 1).replace('</th>', ' ' + tm44('S') + tm44('T') + '</th>') + th('Exit / Mark', 'exExitMark', 1) + th('P&amp;L', 'exPnl', 1) + th('R', 'R', 1) + '</tr></thead><tbody>' +
+      (rows.join('') || '<tr><td colspan="9" class="mut">No production orders.</td></tr>') + '</tbody><tfoot><tr><td colspan="7" id="ex-foot">' + M.n + ' orders · realised ' + (M.nReal ? money(M.realised) : '—') + (M.hasProj ? ' · unrealised ' + (M.ul.length ? money(M.unreal) : '—') + ' (est)' : '') + '</td><td class="num pnl ' + mcls(M.totalPnl) + '" data-f="tpnl">' + (M.totalPnl != null ? money(M.totalPnl) : '—') + '</td><td class="num pnl ' + mcls(M.totalPnl != null ? M.rTotal : null) + '" data-f="tr">' + (M.totalPnl != null ? (M.rTotal < 0 ? '−' : '') + Math.abs(M.rTotal).toFixed(1) + ' R' : '—') + '</td></tr></tfoot></table></div>');
+    h.push('<div class="exfoot" id="ex-note">R = P&amp;L ÷ ' + bt + '. Realised from the ledger; marks and unrealised from the 15-minute projection, labelled est. Shadow study (CTRL/NZ) is not included — it has its own section below.' + (T ? ' Total vs start (' + money(T.d) + ') also includes fee reserves held on resting orders.' : '') + '</div></section>');
+    return h.join('');
+  }
+  function execSection() { try { return html45(); } catch (e) { return '<section id="sec-exec45"><h2>Exec summary</h2><div class="secerr" id="err-exec45">Exec summary could not be displayed (' + esc((e && e.message) || e) + ').</div></section>'; } }
+  var _strip45 = renderStrip;
+  renderStrip = function () { return _strip45() + execSection(); };
+  window.RT45 = { model: modelOf, eff: eff, html: html45 };
+} catch (e) { try { console.warn('item 45 block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 45 */
+
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target;
