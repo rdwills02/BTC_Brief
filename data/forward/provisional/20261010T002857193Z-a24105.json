@@ -1,13 +1,13 @@
 {
  "schemaVersion": 1,
- "baseGenerationId": "20261009T002915013Z-d0ece3",
- "baseCaptureId": "20261009T002915013Z-d0ece3",
+ "baseGenerationId": "20261010T002857193Z-a24105",
+ "baseCaptureId": "20261010T002857193Z-a24105",
  "baseChecksums": {
-  "orders.json": "56bf7c80336bcb7714a83ea5722274fc1f9e5b990d49467f256392ba2cf5c7a9",
-  "shadow/orders.json": "68c7cc3f2125e0bbe29011ec9ea8e8863326e62ee18fced28e06a6928df46ef7"
+  "orders.json": "e6482eb3cdeb24aec363ca2ca8c4c581a8c83261d2a418d20b9ddf053e58807e",
+  "shadow/orders.json": "0f28d78c88bb5212f749cdaa467322a0c375a21a01177609a329251ed54b818a"
  },
- "evidenceCutoffSec": 1791590400,
- "producedAt": "2026-10-10T00:07:32.606Z",
+ "evidenceCutoffSec": 1791592200,
+ "producedAt": "2026-10-10T00:37:37.361Z",
  "orders": [
   {
    "id": "N0-2026-10-07-jito-governance-token",
@@ -21,14 +21,14 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.51735,
-    "markAt": 1791590400,
-    "unrealisedCents": -6079,
+    "markPrice": 0.51847,
+    "markAt": 1791592200,
+    "unrealisedCents": -5624,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791590400,
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -43,38 +43,12 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 126.04,
-    "markAt": 1791590400,
+    "markPrice": 126,
+    "markAt": 1791592200,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791590400,
-    "windowsExhausted": false,
-    "partialDay": false
-   }
-  },
-  {
-   "id": "C1-2026-10-08-monero",
-   "policyId": "C1",
-   "cgId": "monero",
-   "pair": "XMRUSD",
-   "status": "open",
-   "projected": {
-    "status": "exited",
-    "fillAt": 1791443100,
-    "fillPrice": 554.35,
-    "fillReason": "limit",
-    "exit": {
-     "reason": "stop",
-     "at": 1791516600,
-     "price": 510.89
-    },
-    "markPrice": 518.66,
-    "markAt": 1791590400,
-    "unrealisedCents": null,
-    "unrealisedLabel": null,
-    "unresolvedIntervals": [],
-    "notYetObservedFrom": null,
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -91,38 +65,34 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 126.04,
-    "markAt": 1791590400,
+    "markPrice": 126,
+    "markAt": 1791592200,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791590400,
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
     "partialDay": false
    }
   },
   {
-   "id": "CTRL-2026-10-08-monero",
-   "policyId": "CTRL",
-   "cgId": "monero",
-   "pair": "XMRUSD",
-   "status": "open",
+   "id": "C1-2026-10-10-internet-computer",
+   "policyId": "C1",
+   "cgId": "internet-computer",
+   "pair": "ICPUSD",
+   "status": "resting",
    "projected": {
-    "status": "exited",
-    "fillAt": 1791443100,
-    "fillPrice": 554.35,
-    "fillReason": "limit",
-    "exit": {
-     "reason": "stop",
-     "at": 1791516600,
-     "price": 510.89
-    },
-    "markPrice": 518.66,
-    "markAt": 1791590400,
+    "status": "resting",
+    "fillAt": null,
+    "fillPrice": null,
+    "fillReason": null,
+    "exit": null,
+    "markPrice": 3.068,
+    "markAt": 1791592200,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": null,
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -139,38 +109,34 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 126.04,
-    "markAt": 1791590400,
+    "markPrice": 126,
+    "markAt": 1791592200,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791590400,
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
     "partialDay": false
    }
   },
   {
-   "id": "NZ-2026-10-08-monero",
-   "policyId": "NZ",
-   "cgId": "monero",
-   "pair": "XMRUSD",
-   "status": "open",
+   "id": "CTRL-2026-10-10-internet-computer",
+   "policyId": "CTRL",
+   "cgId": "internet-computer",
+   "pair": "ICPUSD",
+   "status": "resting",
    "projected": {
-    "status": "exited",
-    "fillAt": 1791443100,
-    "fillPrice": 554.35,
-    "fillReason": "limit",
-    "exit": {
-     "reason": "stop",
-     "at": 1791516600,
-     "price": 510.89
-    },
-    "markPrice": 518.66,
-    "markAt": 1791590400,
+    "status": "resting",
+    "fillAt": null,
+    "fillPrice": null,
+    "fillReason": null,
+    "exit": null,
+    "markPrice": 3.068,
+    "markAt": 1791592200,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": null,
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -187,12 +153,34 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 126.04,
-    "markAt": 1791590400,
+    "markPrice": 126,
+    "markAt": 1791592200,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791590400,
+    "notYetObservedFrom": 1791592200,
+    "windowsExhausted": false,
+    "partialDay": false
+   }
+  },
+  {
+   "id": "NZ-2026-10-10-internet-computer",
+   "policyId": "NZ",
+   "cgId": "internet-computer",
+   "pair": "ICPUSD",
+   "status": "resting",
+   "projected": {
+    "status": "resting",
+    "fillAt": null,
+    "fillPrice": null,
+    "fillReason": null,
+    "exit": null,
+    "markPrice": 3.068,
+    "markAt": 1791592200,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791592200,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -200,18 +188,18 @@
  ],
  "coverage": {
   "perPair": {
+   "ICPUSD": {
+    "bars": 1,
+    "gaps": 0,
+    "complete": true
+   },
    "JTOUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "OKBUSD": {
-    "bars": 283,
-    "gaps": 0,
-    "complete": true
-   },
-   "XMRUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    }
