@@ -906,6 +906,86 @@ main { padding: 28px 36px; max-width: 860px; }
       <p style="font-size:11px;color:var(--muted);margin-top:10px;">Note: Brandt targets are time-sensitive analyst calls that change with each new pattern identified. Current target is always in the active brief — this entry explains the methodology only.</p>
     </div>
 
+    <!-- item 46 — order and account terms (definitions reused from radar-test.html TERMS) -->
+    <div class="metric-entry" id="m-notional">
+      <div class="metric-header">
+        <span class="metric-name">Notional</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>Quantity × entry price: the dollars that leave the account.</strong> It is the full cost of the coins at the limit price, before fees. This cash is set aside while the order waits.</p>
+    </div>
+
+    <div class="metric-entry" id="m-budget">
+      <div class="metric-header">
+        <span class="metric-name">Budget (1R)</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>The dollars lost if the stop is hit: 1.5% of the account.</strong> The order is sized so that hitting the stop loses about this amount, which is 1.5% of the account. Results are measured in multiples of it, called R.</p>
+    </div>
+
+    <div class="metric-entry" id="m-r">
+      <div class="metric-header">
+        <span class="metric-name">R (budget-R)</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>One R is the risk budget of an order.</strong> A result of +2 R means the trade gained twice the amount we were prepared to lose. A result of -1 R means the stop was hit.</p>
+    </div>
+
+    <div class="metric-entry" id="m-stop-target">
+      <div class="metric-header">
+        <span class="metric-name">Stop / Target</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>Stop (S).</strong> The price at which the position is sold to cap the loss. If the price falls to S after buying, the position is sold so the loss stays small. S is always below L.</p>
+      <p class="metric-desc"><strong>Target (T).</strong> The price at which the position is sold to take the gain. If the price rises to T after buying, the position is sold and the gain is taken. T is always above L.</p>
+    </div>
+
+    <div class="metric-entry" id="m-fee-reserve">
+      <div class="metric-header">
+        <span class="metric-name">Fee reserve</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>Cash held back to pay exchange fees.</strong> This money is set aside next to the order cost so the fees on the buy and the sale can always be paid. Any unused part stays in the account.</p>
+    </div>
+
+    <div class="metric-entry" id="m-tick-lot">
+      <div class="metric-header">
+        <span class="metric-name">Tick / Lot</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>Tick.</strong> The smallest price step on this pair. A tick is the smallest amount the price of this coin can move on the exchange. Showing the gap in ticks makes it comparable between cheap and expensive coins.</p>
+      <p class="metric-desc"><strong>Lot.</strong> The smallest quantity step the exchange accepts for a pair, so an order size is rounded to a whole number of lots.</p>
+    </div>
+
+    <div class="metric-entry" id="m-order-states">
+      <div class="metric-header">
+        <span class="metric-name">Resting / Open / Exited</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>Resting.</strong> Order placed, not filled yet. The order is waiting at its limit price for the market to come down to it.</p>
+      <p class="metric-desc"><strong>Open.</strong> Bought and holding. The order filled, so we own the coins. They are held until the stop, the target or the horizon is reached.</p>
+      <p class="metric-desc"><strong>Exited.</strong> Sold at the stop, target or horizon. The position was closed. The exit column shows which of the three ended it.</p>
+    </div>
+
+    <div class="metric-entry" id="m-mark">
+      <div class="metric-header">
+        <span class="metric-name">Mark</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>The last price used to value the position.</strong> It is the most recent price seen for the coin, and the time shows when it was seen.</p>
+    </div>
+
+    <div class="metric-entry" id="m-projection">
+      <div class="metric-header">
+        <span class="metric-name">Projection (provisional) vs Canonical</span>
+        <span class="metric-lens-tag">Orders &amp; accounts</span>
+      </div>
+      <p class="metric-desc"><strong>Projection (provisional).</strong> An estimate from 5-minute data; the daily capture replaces it. The projection fills the gap between daily captures using 5-minute price history. When the next daily capture arrives it becomes the record and the projection is discarded.</p>
+      <p class="metric-desc"><strong>Canonical.</strong> The official daily record the ledger holds; a projection stays provisional until the daily capture replaces it.</p>
+    </div>
+
+    <!-- end item 46 -->
+
     <div class="section-label" id="coin-categories">Coin Categories</div>
     <p style="color:var(--text2);font-size:12px;margin-bottom:20px;">Category tags shown on Channel Radar candidates describe <em>what kind of project</em> a coin is (sourced from CoinGecko's categorization). They are context only — they do NOT affect the channel score or detection.</p>
 

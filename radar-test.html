@@ -1295,6 +1295,13 @@ function chartWrap44() {
     CARDS.list.forEach(function (c) { try { if (c.ro) c.ro.disconnect(); } catch (e) {} try { c.chart.remove(); } catch (e) {} });
     CARDS.list = []; RT44.cards = {};
   }
+  /* item 46 — issue bar of an order within a candle window; falls back to the window start when the issue time is unknown or after the last candle */
+  function issBar46(o, win) {
+    var s = Date.parse(o && o.issueTimeUtc) / 1000;
+    if (!isNum(s)) return win[0].time;
+    var d0 = Math.floor(s / DAY) * DAY, k = win.filter(function (q) { return q.time >= d0; })[0];
+    return k ? k.time : win[0].time;
+  }
   function drawCard(el, o) {
     var n = el.getAttribute('data-n'), host = document.getElementById('occ44-' + n), note = document.getElementById('ocn44-' + n);
     var c = CV[o.cgId];
@@ -1324,8 +1331,10 @@ function chartWrap44() {
     if (ep && isNum(ep.frozenInvalidation)) { cs.createPriceLine({ price: ep.frozenInvalidation, color: '#6b7280', lineStyle: LS.Dashed, lineWidth: 1, axisLabelVisible: true, title: 'invalidation' }); log.inval = ep.frozenInvalidation; }
     [['L', o.L, C_L], ['S', o.S, C_S], ['T', o.T, C_T]].forEach(function (x) {
       if (!isNum(x[1])) return;
-      ser[x[0]] = line(x[2], LS.Dashed, x[0], true, [{ time: win[0].time, value: x[1] }, { time: t1, value: x[1] }]);
-      log.lines.push({ kind: x[0], price: x[1], t0: win[0].time, t1: t1 });
+      /* item 46 — L/S/T start at the order's issue bar (first candle with time >= the issue date), not at the window's left edge */
+      var lt0 = issBar46(o, win), lt1 = t1 > lt0 ? t1 : lt0 + DAY;
+      ser[x[0]] = line(x[2], LS.Dashed, x[0], true, [{ time: lt0, value: x[1] }, { time: lt1, value: x[1] }]);
+      log.lines.push({ kind: x[0], price: x[1], t0: lt0, t1: lt1 }); if (lt1 !== t1) log.t1 = lt1;   /* issue bar is the last candle: the line gets a one-day tail so the series has two distinct times */
     });
     if (mk) {
       var mt0 = Math.max(win[0].time, fillT != null ? fillT : t0), mt1 = Math.max(mk.t != null ? mk.t : lastT, mt0 + DAY);
@@ -1503,6 +1512,9 @@ D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recor
   var POL = ['N0', 'C1'];
   function mmdd(sec) { return isNum(sec) ? dateOf(sec).slice(5) : '—'; }
   function zt(sec) { return isNum(sec) ? mmdd(sec) + ' ' + new Date(sec * 1000).toISOString().slice(11, 16) + 'Z' : '—'; }
+  /* item 46 — a fill/exit adjudicated on a DAILY bar (tSec === barId, 00:00Z, not marked intraday) shows "bar MM-DD"; 5-minute events keep their time */
+  function dailyBar46(x) { return !!x && isNum(x.tSec) && x.tSec === x.barId && x.tSec % DAY === 0 && !/intraday/i.test(String(x.kind || '')); }
+  function bar46(sec, what) { return '<span title="' + what + ' adjudicated on the daily bar; the intraday time is not recorded">bar ' + mmdd(sec) + '</span>'; }
   function zd(sec) { return isNum(sec) ? (sec % DAY === 0 ? mmdd(sec) : zt(sec)) : '—'; }
   function money(c, plus) {
     if (!isNum(c)) return '—';
@@ -1518,11 +1530,11 @@ D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recor
   function eff(o) {
     var P = PROV.state === 'ok' && PROV.byEsc[esc(o.id)] ? PROV.byEsc[esc(o.id)].projected || null : null;
     var r = { o: o, P: P, key: 'other', proj: false, text: o.status, pnl: null, est: false, exitPrice: null, exitAt: null, unreal: null, entryAt: null, entryPx: null };
-    if (o.fill && isNum(o.fill.price)) { r.entryAt = isNum(o.fill.tSec) ? o.fill.tSec : null; r.entryPx = o.fill.price; }
+    if (o.fill && isNum(o.fill.price)) { r.entryAt = isNum(o.fill.tSec) ? o.fill.tSec : null; r.entryPx = o.fill.price; r.entryDaily = dailyBar46(o.fill); }
     var kx = function (reason) { return reason === 'stop' ? 'stop' : reason === 'target' ? 'target' : reason === 'horizon' ? 'horizon' : 'exitother'; };
     if (o.exit) {
       r.key = kx(o.exit.reason); r.text = r.key === 'exitother' ? 'exited · ' + dash(o.exit.reason) : r.key === 'stop' ? 'stopped' : r.key;
-      r.pnl = isNum(o.exit.pnlCents) ? o.exit.pnlCents : null; r.exitPrice = o.exit.price; r.exitAt = isNum(o.exit.tSec) ? o.exit.tSec : (isNum(o.exit.barId) ? o.exit.barId : null);
+      r.pnl = isNum(o.exit.pnlCents) ? o.exit.pnlCents : null; r.exitPrice = o.exit.price; r.exitAt = isNum(o.exit.tSec) ? o.exit.tSec : (isNum(o.exit.barId) ? o.exit.barId : null); r.exitDaily = dailyBar46(o.exit);
     } else if (P && P.exit) {
       r.key = kx(P.exit.reason); r.proj = true; r.est = true; r.text = r.key === 'exitother' ? 'exited · ' + dash(P.exit.reason) : r.key === 'stop' ? 'stopped' : r.key;
       r.pnl = isNum(P.pnlCents) ? P.pnlCents : (isNum(P.exit.pnlCents) ? P.exit.pnlCents : null); r.exitPrice = P.exit.price; r.exitAt = isNum(P.exit.at) ? P.exit.at : null;
@@ -1607,18 +1619,18 @@ D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recor
     var rows = M.rows.map(function (e) {
       var o = e.o, P = e.P, pnl = e.shownPnl, R = rOf(e), exm;
       var entAt = isNum(e.entryAt) ? zt(e.entryAt) : zt(Date.parse(o.issueTimeUtc) / 1000), entPx = isNum(e.entryPx) ? e.entryPx : o.L;
-      if (e.exitPrice != null && (e.key === 'stop' || e.key === 'target' || e.key === 'horizon' || e.key === 'exitother')) exm = pr(e.exitPrice) + ' <span class="exest">' + zd(e.exitAt) + '</span>';
+      if (e.exitPrice != null && (e.key === 'stop' || e.key === 'target' || e.key === 'horizon' || e.key === 'exitother')) exm = pr(e.exitPrice) + ' <span class="exest">' + (e.exitDaily ? bar46(e.exitAt, e.key === 'stop' ? 'stop' : 'exit') : zd(e.exitAt)) + '</span>';   /* item 46 */
       else if (e.key === 'open') { var mp = P && isNum(P.markPrice) ? P.markPrice : (Array.isArray(o.marks) && o.marks.length && isNum(o.marks[o.marks.length - 1].mark) ? o.marks[o.marks.length - 1].mark : null); exm = mp != null ? pr(mp) + ' <span class="exest">mark</span>' : '—'; }
       else if (e.key === 'rest') exm = P && isNum(P.markPrice) ? pr(P.markPrice) + ' <span class="exest">last</span>' : '—';
       else exm = '—';
-      return '<tr data-ex-order="' + esc(o.id) + '"><td class="excoin">' + esc(symOf(o)) + '<small>' + esc(dash(o.pair)) + '</small></td><td><span class="expol">' + esc(o.policyId) + '</span></td><td>' + chip(e) + '</td><td>' + esc(entAt) + '</td><td class="num">' + pr(entPx) + '</td><td class="num">' + pr(o.S) + ' / ' + pr(o.T) + '</td><td class="num">' + exm + '</td>' +
+      return '<tr data-ex-order="' + esc(o.id) + '"><td class="excoin">' + esc(symOf(o)) + '<small>' + esc(dash(o.pair)) + '</small></td><td><span class="expol">' + esc(o.policyId) + '</span></td><td>' + chip(e) + '</td><td>' + (e.entryDaily ? bar46(e.entryAt, 'fill') : esc(entAt)) + '</td><td class="num">' + pr(entPx) + '</td><td class="num">' + pr(o.S) + ' / ' + pr(o.T) + '</td><td class="num">' + exm + '</td>' +
         '<td class="num pnl ' + mcls(pnl) + '" data-f="pnl">' + (isNum(pnl) ? money(pnl, true) + (e.est ? '<span class="exest">est</span>' : '') : '—') + '</td><td class="num pnl ' + mcls(R) + '" data-f="r">' + (R != null ? (R < 0 ? '−' : '') + Math.abs(R).toFixed(2) : '—') + '</td></tr>';
     });
     var bs = M.rows.map(function (e) { return e.o.Bcents; }).filter(function (x) { return isNum(x) && x > 0; }), bavg = bs.length ? bs.reduce(function (a, x) { return a + x; }, 0) / bs.length : null;
     var bt = bavg == null ? 'each order’s risk budget' : 'risk budget (' + (bs.every(function (x) { return Math.round(x / 100) === Math.round(bs[0] / 100); }) ? '' : '≈') + money(bavg) + ')';
     h.push('<div class="ex-wrap"><table id="ex-table"><thead><tr>' + th('Coin') + th('Policy') + th('Status') + th('Entered', 'exEntered') + th('Entry', 'exEntry', 1) + th('Stop / Target', null, 1).replace('</th>', ' ' + tm44('S') + tm44('T') + '</th>') + th('Exit / Mark', 'exExitMark', 1) + th('P&amp;L', 'exPnl', 1) + th('R', 'R', 1) + '</tr></thead><tbody>' +
       (rows.join('') || '<tr><td colspan="9" class="mut">No production orders.</td></tr>') + '</tbody><tfoot><tr><td colspan="7" id="ex-foot">' + M.n + ' orders · realised ' + (M.nReal ? money(M.realised) : '—') + (M.hasProj ? ' · unrealised ' + (M.ul.length ? money(M.unreal) : '—') + ' (est)' : '') + '</td><td class="num pnl ' + mcls(M.totalPnl) + '" data-f="tpnl">' + (M.totalPnl != null ? money(M.totalPnl) : '—') + '</td><td class="num pnl ' + mcls(M.totalPnl != null ? M.rTotal : null) + '" data-f="tr">' + (M.totalPnl != null ? (M.rTotal < 0 ? '−' : '') + Math.abs(M.rTotal).toFixed(1) + ' R' : '—') + '</td></tr></tfoot></table></div>');
-    h.push('<div class="exfoot" id="ex-note">R = P&amp;L ÷ ' + bt + '. Realised from the ledger; marks and unrealised from the 15-minute projection, labelled est. Shadow study (CTRL/NZ) is not included — it has its own section below.' + (T ? ' Total vs start (' + money(T.d) + ') also includes fee reserves held on resting orders.' : '') + '</div></section>');
+    h.push('<div class="exfoot" id="ex-note">R = P&amp;L ÷ ' + bt + '. Realised from the ledger; marks and unrealised from the 15-minute projection, labelled est. Shadow study (CTRL/NZ) is not included — it has its own section below.' + '</div></section>');   /* item 46 — exec footer: the fee-reserve clause is removed (reserves are cash held back and already inside E) */
     return h.join('');
   }
   function execSection() { try { return html45(); } catch (e) { return '<section id="sec-exec45"><h2>Exec summary</h2><div class="secerr" id="err-exec45">Exec summary could not be displayed (' + esc((e && e.message) || e) + ').</div></section>'; } }
