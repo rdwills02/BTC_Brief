@@ -6,8 +6,8 @@
   "orders.json": "784fd2755857867f9d238085ba4a9c813f4a6f7054a60bef7d5245df084b6cfa",
   "shadow/orders.json": "8a5516e0a0bf22c25e299457c48f7ff22ebde17c73b66a91d30ca9f04e50ad76"
  },
- "evidenceCutoffSec": 1791905400,
- "producedAt": "2026-10-13T15:37:34.062Z",
+ "evidenceCutoffSec": 1791906300,
+ "producedAt": "2026-10-13T15:52:41.747Z",
  "orders": [
   {
    "id": "N0-2026-10-07-jito-governance-token",
@@ -21,12 +21,12 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.53797,
-    "markAt": 1791905400,
-    "unrealisedCents": 2290,
+    "markPrice": 0.5348,
+    "markAt": 1791906300,
+    "unrealisedCents": 1003,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791905400,
+    "notYetObservedFrom": 1791906300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -47,8 +47,8 @@
      "at": 1791852600,
      "price": 111.32
     },
-    "markPrice": 120.81,
-    "markAt": 1791905400,
+    "markPrice": 121.89,
+    "markAt": 1791906300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -69,12 +69,12 @@
     "fillPrice": 2422.15,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 2511.38,
-    "markAt": 1791905400,
-    "unrealisedCents": 13292,
+    "markPrice": 2506.08,
+    "markAt": 1791906300,
+    "unrealisedCents": 12266,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791905400,
+    "notYetObservedFrom": 1791906300,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -95,8 +95,8 @@
      "at": 1791852600,
      "price": 111.32
     },
-    "markPrice": 120.81,
-    "markAt": 1791905400,
+    "markPrice": 121.89,
+    "markAt": 1791906300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -117,12 +117,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.134,
-    "markAt": 1791905400,
-    "unrealisedCents": 6845,
+    "markPrice": 3.116,
+    "markAt": 1791906300,
+    "unrealisedCents": 5340,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791905400,
+    "notYetObservedFrom": 1791906300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -143,8 +143,8 @@
      "at": 1791852600,
      "price": 111.32
     },
-    "markPrice": 120.81,
-    "markAt": 1791905400,
+    "markPrice": 121.89,
+    "markAt": 1791906300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -165,12 +165,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.134,
-    "markAt": 1791905400,
-    "unrealisedCents": 6965,
+    "markPrice": 3.116,
+    "markAt": 1791906300,
+    "unrealisedCents": 5433,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791905400,
+    "notYetObservedFrom": 1791906300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -191,8 +191,8 @@
      "at": 1791852600,
      "price": 111.32
     },
-    "markPrice": 120.81,
-    "markAt": 1791905400,
+    "markPrice": 121.89,
+    "markAt": 1791906300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -213,12 +213,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.134,
-    "markAt": 1791905400,
-    "unrealisedCents": 6845,
+    "markPrice": 3.116,
+    "markAt": 1791906300,
+    "unrealisedCents": 5339,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791905400,
+    "notYetObservedFrom": 1791906300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -227,22 +227,22 @@
  "coverage": {
   "perPair": {
    "ETHUSD": {
-    "bars": 181,
+    "bars": 184,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 186,
+    "bars": 189,
     "gaps": 0,
     "complete": true
    },
    "JTOUSD": {
-    "bars": 186,
+    "bars": 189,
     "gaps": 0,
     "complete": true
    },
    "OKBUSD": {
-    "bars": 186,
+    "bars": 189,
     "gaps": 0,
     "complete": true
    }
