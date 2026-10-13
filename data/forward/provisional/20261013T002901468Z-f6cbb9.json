@@ -6,8 +6,8 @@
   "orders.json": "784fd2755857867f9d238085ba4a9c813f4a6f7054a60bef7d5245df084b6cfa",
   "shadow/orders.json": "8a5516e0a0bf22c25e299457c48f7ff22ebde17c73b66a91d30ca9f04e50ad76"
  },
- "evidenceCutoffSec": 1791882000,
- "producedAt": "2026-10-13T09:07:34.036Z",
+ "evidenceCutoffSec": 1791882900,
+ "producedAt": "2026-10-13T09:22:36.175Z",
  "orders": [
   {
    "id": "N0-2026-10-07-jito-governance-token",
@@ -21,12 +21,12 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.5388,
-    "markAt": 1791882000,
-    "unrealisedCents": 2627,
+    "markPrice": 0.53619,
+    "markAt": 1791882900,
+    "unrealisedCents": 1568,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791882000,
+    "notYetObservedFrom": 1791882900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -48,7 +48,7 @@
      "price": 111.32
     },
     "markPrice": 122.02,
-    "markAt": 1791882000,
+    "markAt": 1791882900,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -69,12 +69,12 @@
     "fillPrice": 2422.15,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 2515.58,
-    "markAt": 1791882000,
-    "unrealisedCents": 14105,
+    "markPrice": 2510.31,
+    "markAt": 1791882900,
+    "unrealisedCents": 13085,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791882000,
+    "notYetObservedFrom": 1791882900,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -96,7 +96,7 @@
      "price": 111.32
     },
     "markPrice": 122.02,
-    "markAt": 1791882000,
+    "markAt": 1791882900,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -117,12 +117,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.194,
-    "markAt": 1791882000,
-    "unrealisedCents": 11863,
+    "markPrice": 3.18,
+    "markAt": 1791882900,
+    "unrealisedCents": 10692,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791882000,
+    "notYetObservedFrom": 1791882900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -144,7 +144,7 @@
      "price": 111.32
     },
     "markPrice": 122.02,
-    "markAt": 1791882000,
+    "markAt": 1791882900,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -165,12 +165,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.194,
-    "markAt": 1791882000,
-    "unrealisedCents": 12072,
+    "markPrice": 3.18,
+    "markAt": 1791882900,
+    "unrealisedCents": 10880,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791882000,
+    "notYetObservedFrom": 1791882900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -192,7 +192,7 @@
      "price": 111.32
     },
     "markPrice": 122.02,
-    "markAt": 1791882000,
+    "markAt": 1791882900,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -213,12 +213,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.194,
-    "markAt": 1791882000,
-    "unrealisedCents": 11863,
+    "markPrice": 3.18,
+    "markAt": 1791882900,
+    "unrealisedCents": 10692,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791882000,
+    "notYetObservedFrom": 1791882900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -227,22 +227,22 @@
  "coverage": {
   "perPair": {
    "ETHUSD": {
-    "bars": 103,
+    "bars": 106,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 108,
+    "bars": 111,
     "gaps": 0,
     "complete": true
    },
    "JTOUSD": {
-    "bars": 108,
+    "bars": 111,
     "gaps": 0,
     "complete": true
    },
    "OKBUSD": {
-    "bars": 108,
+    "bars": 111,
     "gaps": 0,
     "complete": true
    }
