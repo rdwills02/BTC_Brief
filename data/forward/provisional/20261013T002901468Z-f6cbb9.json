@@ -6,8 +6,8 @@
   "orders.json": "784fd2755857867f9d238085ba4a9c813f4a6f7054a60bef7d5245df084b6cfa",
   "shadow/orders.json": "8a5516e0a0bf22c25e299457c48f7ff22ebde17c73b66a91d30ca9f04e50ad76"
  },
- "evidenceCutoffSec": 1791876600,
- "producedAt": "2026-10-13T07:37:37.461Z",
+ "evidenceCutoffSec": 1791877500,
+ "producedAt": "2026-10-13T07:52:44.643Z",
  "orders": [
   {
    "id": "N0-2026-10-07-jito-governance-token",
@@ -21,12 +21,12 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.54019,
-    "markAt": 1791876600,
-    "unrealisedCents": 3191,
+    "markPrice": 0.54317,
+    "markAt": 1791877500,
+    "unrealisedCents": 4400,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791876600,
+    "notYetObservedFrom": 1791877500,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -48,7 +48,7 @@
      "price": 111.32
     },
     "markPrice": 122.41,
-    "markAt": 1791876600,
+    "markAt": 1791877500,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -69,12 +69,12 @@
     "fillPrice": 2422.15,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 2523.64,
-    "markAt": 1791876600,
-    "unrealisedCents": 15666,
+    "markPrice": 2527.44,
+    "markAt": 1791877500,
+    "unrealisedCents": 16402,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791876600,
+    "notYetObservedFrom": 1791877500,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -96,7 +96,7 @@
      "price": 111.32
     },
     "markPrice": 122.41,
-    "markAt": 1791876600,
+    "markAt": 1791877500,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -117,12 +117,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.188,
-    "markAt": 1791876600,
-    "unrealisedCents": 11361,
+    "markPrice": 3.222,
+    "markAt": 1791877500,
+    "unrealisedCents": 14205,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791876600,
+    "notYetObservedFrom": 1791877500,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -144,7 +144,7 @@
      "price": 111.32
     },
     "markPrice": 122.41,
-    "markAt": 1791876600,
+    "markAt": 1791877500,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -165,12 +165,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.188,
-    "markAt": 1791876600,
-    "unrealisedCents": 11561,
+    "markPrice": 3.222,
+    "markAt": 1791877500,
+    "unrealisedCents": 14455,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791876600,
+    "notYetObservedFrom": 1791877500,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -192,7 +192,7 @@
      "price": 111.32
     },
     "markPrice": 122.41,
-    "markAt": 1791876600,
+    "markAt": 1791877500,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -213,12 +213,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.188,
-    "markAt": 1791876600,
-    "unrealisedCents": 11361,
+    "markPrice": 3.222,
+    "markAt": 1791877500,
+    "unrealisedCents": 14204,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791876600,
+    "notYetObservedFrom": 1791877500,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -227,22 +227,22 @@
  "coverage": {
   "perPair": {
    "ETHUSD": {
-    "bars": 85,
+    "bars": 88,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 90,
+    "bars": 93,
     "gaps": 0,
     "complete": true
    },
    "JTOUSD": {
-    "bars": 90,
+    "bars": 93,
     "gaps": 0,
     "complete": true
    },
    "OKBUSD": {
-    "bars": 90,
+    "bars": 93,
     "gaps": 0,
     "complete": true
    }
