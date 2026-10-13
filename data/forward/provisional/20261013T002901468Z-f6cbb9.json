@@ -6,8 +6,8 @@
   "orders.json": "784fd2755857867f9d238085ba4a9c813f4a6f7054a60bef7d5245df084b6cfa",
   "shadow/orders.json": "8a5516e0a0bf22c25e299457c48f7ff22ebde17c73b66a91d30ca9f04e50ad76"
  },
- "evidenceCutoffSec": 1791860400,
- "producedAt": "2026-10-13T03:07:38.187Z",
+ "evidenceCutoffSec": 1791861300,
+ "producedAt": "2026-10-13T03:22:38.451Z",
  "orders": [
   {
    "id": "N0-2026-10-07-jito-governance-token",
@@ -21,12 +21,12 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.51642,
-    "markAt": 1791860400,
-    "unrealisedCents": -6456,
+    "markPrice": 0.51664,
+    "markAt": 1791861300,
+    "unrealisedCents": -6367,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791860400,
+    "notYetObservedFrom": 1791861300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -48,7 +48,7 @@
      "price": 111.32
     },
     "markPrice": 120.95,
-    "markAt": 1791860400,
+    "markAt": 1791861300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -69,12 +69,12 @@
     "fillPrice": 2422.15,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 2488.6,
-    "markAt": 1791860400,
-    "unrealisedCents": 8881,
+    "markPrice": 2486.73,
+    "markAt": 1791861300,
+    "unrealisedCents": 8519,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791860400,
+    "notYetObservedFrom": 1791861300,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -96,7 +96,7 @@
      "price": 111.32
     },
     "markPrice": 120.95,
-    "markAt": 1791860400,
+    "markAt": 1791861300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -117,12 +117,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.106,
-    "markAt": 1791860400,
-    "unrealisedCents": 4503,
+    "markPrice": 3.114,
+    "markAt": 1791861300,
+    "unrealisedCents": 5172,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791860400,
+    "notYetObservedFrom": 1791861300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -144,7 +144,7 @@
      "price": 111.32
     },
     "markPrice": 120.95,
-    "markAt": 1791860400,
+    "markAt": 1791861300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -165,12 +165,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.106,
-    "markAt": 1791860400,
-    "unrealisedCents": 4582,
+    "markPrice": 3.114,
+    "markAt": 1791861300,
+    "unrealisedCents": 5263,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791860400,
+    "notYetObservedFrom": 1791861300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -192,7 +192,7 @@
      "price": 111.32
     },
     "markPrice": 120.95,
-    "markAt": 1791860400,
+    "markAt": 1791861300,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
@@ -213,12 +213,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.106,
-    "markAt": 1791860400,
-    "unrealisedCents": 4503,
+    "markPrice": 3.114,
+    "markAt": 1791861300,
+    "unrealisedCents": 5172,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791860400,
+    "notYetObservedFrom": 1791861300,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -227,22 +227,22 @@
  "coverage": {
   "perPair": {
    "ETHUSD": {
-    "bars": 31,
+    "bars": 34,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 36,
+    "bars": 39,
     "gaps": 0,
     "complete": true
    },
    "JTOUSD": {
-    "bars": 36,
+    "bars": 39,
     "gaps": 0,
     "complete": true
    },
    "OKBUSD": {
-    "bars": 36,
+    "bars": 39,
     "gaps": 0,
     "complete": true
    }
