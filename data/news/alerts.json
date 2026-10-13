@@ -1,10 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-13T00:12:00Z",
-  "lastSuccessfulScanAt": "2026-10-13T00:12:00Z",
+  "generatedAt": "2026-10-13T01:15:00Z",
+  "lastSuccessfulScanAt": "2026-10-13T01:15:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
+    {
+      "eventId": "filecoin:tokenomics-change:2026-10-15",
+      "revision": 1,
+      "cgId": "filecoin",
+      "symbol": "FIL",
+      "headline": "Filecoin vesting ends Oct 15: gross FIL emission falls ~75% (~88M to ~22M FIL/yr), block rewards become the only inflow",
+      "eventClass": "tokenomics change with a date (vesting ends Oct 15, 2026)",
+      "direction": "up",
+      "relevance": "Dated supply-side change in 2 days: removes ~66.7M FIL/yr of vesting inflow (~8% of ~827M circulating), supportive of the NEAR setup; circulating supply still grows via block rewards and the date has been public since early Sept, so it does not by itself justify chasing above the entry zone.",
+      "sourceUrl": "https://cryptoticker.io/en/filecoin-vesting-ends-fil-emission/",
+      "sourceName": "CryptoTicker (article Sep 7, updated Sep 29)",
+      "publishedAt": "2026-09-07",
+      "firstDetectedAt": "2026-10-13T01:15:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-10-14T01:15:00Z",
+      "evidence": "verified"
+    },
     {
       "eventId": "solana:etf-launch:2026-10-13",
       "revision": 1,
