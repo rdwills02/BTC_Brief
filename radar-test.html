@@ -5,6 +5,371 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Channel Radar - Automation Test</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+/* item 52c — depth overlay (shared snippet: duplicated verbatim in radar.html and radar-test.html) */
+(function () { try {
+  if (window.RDepth52) return;
+  var RD = window.RDepth52 = {};
+  var Q15 = 900000, H1 = 3600000, DAY = 86400000, MIN_COV = 0.5, WALL_KEY = 'q5', MAXPAR = 6, MAX_AGE = 7200000, FLOOR_I = 0.2, P_SOLID = 0.75, P_DASH = 0.25;
+  var WINS = { '1h': H1, '4h': 4 * H1, '7d': 7 * DAY };
+  var VCOL = { kraken: { a: '232,69,74', b: '0,200,150', n: 'Kraken' }, coinbase: { a: '217,70,239', b: '34,211,238', n: 'Coinbase' } };
+  var CACHE = { meta: null, batch: {} };   /* memory only: nothing is written to any storage except the sessionStorage view state */
+  RD.config = { base: 'https://raw.githubusercontent.com/rdwills02/BTC_Brief-data/rolling/', mods: 'radar_tools/book/', minCov: MIN_COV, wallKey: WALL_KEY };
+  RD.cache = CACHE;
+  function BC() { return window.BookCore; }
+  function CD() { return window.BookCodec; }
+  function isNum(x) { return typeof x === 'number' && isFinite(x); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function kerr(kind, msg) { var e = new Error(msg || kind); e.kind = kind; return e; }
+  RD.supported = function () { return typeof DecompressionStream === 'function' && !!(window.crypto && window.crypto.subtle); };
+  /* book-core.js and book-codec.js load on first use (never on page load) */
+  function loadScript(src) { return new Promise(function (res, rej) { var s = document.createElement('script'); s.src = src; s.onload = function () { res(); }; s.onerror = function () { rej(kerr('modules', 'script ' + src)); }; (document.head || document.documentElement).appendChild(s); }); }
+  RD.modules = function () {
+    if (BC() && CD()) return Promise.resolve();
+    if (!RD._mods) RD._mods = Promise.all([BC() ? 0 : loadScript(RD.config.mods + 'book-core.js'), CD() ? 0 : loadScript(RD.config.mods + 'book-codec.js')]).then(function () { if (!BC() || !CD()) throw kerr('modules', 'book modules missing'); }, function (e) { RD._mods = null; throw e; });
+    return RD._mods;
+  };
+
+  /* ---- transport + verification ---- */
+  function hex(buf) { var a = new Uint8Array(buf), s = ''; for (var i = 0; i < a.length; i++) s += (a[i] < 16 ? '0' : '') + a[i].toString(16); return s; }
+  function sha256(buf) { return crypto.subtle.digest('SHA-256', buf).then(hex); }
+  function getBuf(rel, bust) {
+    var u = RD.config.base + rel + (bust ? '?t=' + Date.now() : '');
+    return fetch(u, bust ? { cache: 'reload' } : undefined).then(function (r) { if (!r.ok) { var e = kerr(r.status === 404 ? 'gap' : 'unreachable', 'HTTP ' + r.status); e.status = r.status; throw e; } return r.arrayBuffer(); }, function () { throw kerr('unreachable', 'network'); });
+  }
+  function gunzipText(buf) { return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
+  function utf8(buf) { return new TextDecoder().decode(buf); }
+
+  /* meta/datasets.json is the registry; cadence.json and grids.json are verified against it. A mismatch is retried once uncached, then the whole depth feed is "unverified". */
+  RD.loadMeta = function () {
+    if (CACHE.meta) return CACHE.meta;
+    function go(bust) {
+      return getBuf('meta/datasets.json', bust).then(function (b) {
+        var reg; try { reg = JSON.parse(utf8(b)); } catch (e) { throw kerr('unverified', 'registry unreadable'); }
+        var ds = reg && reg.datasets && reg.datasets.book; if (!ds || !ds.hashes) throw kerr('unverified', 'registry has no book dataset');
+        return Promise.all([getBuf('book/cadence.json', bust), getBuf('book/grids.json', bust)]).then(function (bb) {
+          return Promise.all([sha256(bb[0]), sha256(bb[1])]).then(function (h) {
+            if (h[0] !== ds.hashes['book/cadence.json'] || h[1] !== ds.hashes['book/grids.json']) { if (!bust) return go(true); throw kerr('unverified', 'cadence/grids hash mismatch'); }
+            return { ds: ds, hashes: ds.hashes, cadence: JSON.parse(utf8(bb[0])), grids: JSON.parse(utf8(bb[1])).grids || {} };
+          });
+        });
+      });
+    }
+    CACHE.meta = go(false); CACHE.meta.catch(function () { CACHE.meta = null; });
+    return CACHE.meta;
+  };
+
+  /* ---- coin -> venue|pair, slot selection ---- */
+  RD.pairsFor = function (meta, symbol) {
+    var out = {}, S = String(symbol || '').toUpperCase();
+    (meta.cadence.table || []).forEach(function (e) { if (e.toMs == null && String(e.pair).split('/')[0] === S) out[e.venue] = e.pair; });
+    return out;
+  };
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function slotPath(venue, ms) { var d = new Date(ms), iso = d.toISOString(); return 'book/' + venue + '/' + iso.slice(0, 10) + '/' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + '.json.gz'; }
+  /* 1 h = 4 slots, 4 h = 16 (15-minute tier); the hourly tier has the :00 slot only. 7 d = every :00 slot in the window + all of the last published day's slots. Never earlier than the cadence table's first entry, never later than the newest published slot. */
+  RD.slotsFor = function (table, venue, pair, winMs, nowMs, lastSlotMs) {
+    var ent = (table || []).filter(function (e) { return e.venue === venue && e.pair === pair; });
+    if (!ent.length || !isNum(lastSlotMs)) return [];
+    var minFrom = Math.min.apply(null, ent.map(function (e) { return e.fromMs; })), from = Math.max(nowMs - winMs, minFrom - 1), out = [], day0 = Math.floor(lastSlotMs / DAY) * DAY;
+    for (var s = Math.ceil((from + 1) / Q15) * Q15; s <= lastSlotMs; s += Q15) {
+      var e = null; for (var i = 0; i < ent.length; i++) if (ent[i].fromMs <= s && (ent[i].toMs == null || s < ent[i].toMs)) { e = ent[i]; break; }
+      if (!e) continue;
+      var hourly = s % H1 === 0, wanted = e.cadenceMs === Q15 ? (winMs > DAY ? (hourly || s >= day0) : true) : hourly;
+      if (wanted) out.push(s);
+    }
+    return out;
+  };
+
+  function pool(items, n, fn) {
+    var res = new Array(items.length), next = 0;
+    function worker() { if (next >= items.length) return Promise.resolve(); var i = next++; return fn(items[i], i).then(function (v) { res[i] = v; return worker(); }); }
+    var ws = []; for (var k = 0; k < Math.min(n, items.length); k++) ws.push(worker());
+    return Promise.all(ws).then(function () { return res; });
+  }
+  /* one batch: state ok | uncovered (registry holds no hash for this file) | unverified (hash mismatch: excluded) | gap (missing / unreadable) */
+  RD.loadBatch = function (meta, venue, slotMs) {
+    var path = slotPath(venue, slotMs);
+    if (CACHE.batch[path]) return CACHE.batch[path];
+    var p = getBuf(path).then(function (buf) {
+      return sha256(buf).then(function (h) {
+        var want = meta.hashes[path];
+        if (want && want !== h) return { slot: slotMs, path: path, state: 'unverified' };
+        return gunzipText(buf).then(function (t) {
+          var b = JSON.parse(t); if (!b || b.c !== 1 || !Array.isArray(b.r) || !Array.isArray(b.pairs)) return { slot: slotMs, path: path, state: 'gap' };
+          return { slot: slotMs, path: path, state: want ? 'ok' : 'uncovered', batch: b };
+        });
+      });
+    }).catch(function (e) { return { slot: slotMs, path: path, state: e && e.kind === 'unreachable' ? 'unreachable' : 'gap' }; });
+    CACHE.batch[path] = p; return p;
+  };
+  RD.loadSlots = function (meta, venue, slots) { return pool(slots, MAXPAR, function (s) { return RD.loadBatch(meta, venue, s); }); };
+
+  /* decode only this pair's records, with the codec module (never by hand) */
+  RD.recordsOf = function (batch, pair) {
+    var idx = []; batch.pairs.forEach(function (p, i) { if (p[0] === pair) idx.push(i); });
+    if (!idx.length) return [];
+    var sub = { c: batch.c, s: batch.s, t0: batch.t0, pairs: batch.pairs, grids: batch.grids, meta: null, r: batch.r.filter(function (r) { return idx.indexOf(r[0]) >= 0; }) };
+    return CD().decodeBatch(sub).map(function (r) { r.recvMs = Date.parse(r.recv); return r; });
+  };
+  function binKnown(rec, side, idx, grid) {   /* a capped side is complete only out to its farthest retrieved level; beyond that the bin is unknown (never zero) */
+    if (!rec.capReached || !rec.capReached[side]) return true;
+    var bd = BC().binBounds(grid, idx), far = rec.farthest && rec.farthest[side];
+    if (far == null || bd.lo == null || bd.hi == null) return false;
+    return side === 'b' ? bd.lo >= far : bd.hi <= far;
+  }
+  function binQ(rec, side, idx) { var a = rec.bins && rec.bins[side] || []; for (var i = 0; i < a.length; i++) if (a[i][0] === idx) return a[i][2]; return 0; }
+
+  /* analyse one venue|pair over a window: persistence + coverage from book-core windowStats; mean quote over the snapshots in which the bin is KNOWN */
+  RD.analyze = function (meta, venue, pair, winKey, loaded, nowMs) {
+    var res = { venue: venue, pair: pair, win: winKey, bands: [], status: 'none', reason: null, slotsAsked: loaded.length, slotsOk: 0, gaps: 0, unverified: 0, uncovered: 0, unreachable: 0, gridExcluded: 0, latest: null, ageMs: null, expected: null, observed: 0, tick: null };
+    var recs = [];
+    loaded.forEach(function (x) { if (x.state === 'ok' || x.state === 'uncovered') { res.slotsOk++; if (x.state === 'uncovered') res.uncovered++; recs = recs.concat(RD.recordsOf(x.batch, pair)); } else if (x.state === 'unverified') res.unverified++; else if (x.state === 'unreachable') res.unreachable++; else res.gaps++; });
+    recs = recs.filter(function (r) { return r.venue === venue; });
+    if (!recs.length) { res.reason = res.unreachable && !res.slotsOk ? 'unreachable' : 'no observations'; return res; }
+    recs.sort(function (a, b) { return a.recvMs - b.recvMs; });
+    var latest = recs[recs.length - 1], g = BC().gridFromId(latest.grid); if (!g) { res.reason = 'grid unreadable'; return res; }
+    var cur = recs.filter(function (r) { return r.grid === latest.grid; }); res.gridExcluded = recs.length - cur.length;
+    var gi = meta.grids[venue + '|' + pair], grid = BC().makeGrid(g.anchor, gi && gi.tick, null, g.venue, g.pair);
+    var ws = BC().windowStats(cur, { cutoffMs: nowMs, windowMs: WINS[winKey], cadenceTable: meta.cadence.table, minCoverage: RD.config.minCov, maxAgeMs: MAX_AGE, wallKey: RD.config.wallKey });
+    res.latest = latest; res.ageMs = nowMs - latest.recvMs; res.expected = ws.expected; res.observed = ws.observed; res.status = ws.status; res.reason = ws.reason; res.ws = ws; res.grid = grid; res.tick = gi && gi.tick;
+    res.cov = { b: latest.walls && latest.walls.coverage ? latest.walls.coverage.b : 'complete', a: latest.walls && latest.walls.coverage ? latest.walls.coverage.a : 'complete' };
+    res.cap = { b: !!(latest.capReached && latest.capReached.b), a: !!(latest.capReached && latest.capReached.a) };
+    if (ws.status !== 'ok') return res;
+    var dd = BC().dedupeSnapshots(cur.filter(function (r) { return !r.auction && !r.empty; })).records.filter(function (r) { return r.recvMs > nowMs - WINS[winKey] && r.recvMs <= nowMs; });
+    var cand = {}; dd.forEach(function (r) { ['b', 'a'].forEach(function (s) { (r.bins[s] || []).forEach(function (x) { cand[s + x[0]] = [s, x[0]]; }); }); });
+    var out = [], maxQ = 0;
+    Object.keys(cand).forEach(function (k) {
+      var s = cand[k][0], idx = cand[k][1], bd = BC().binBounds(grid, idx); if (bd.lo == null || bd.hi == null) return;   /* the two open tails are not drawn */
+      if (!binKnown(latest, s, idx, grid)) return;   /* a bin the newest snapshot cannot see (beyond its retrieved levels) is not drawn */
+      var known = 0, sum = 0; dd.forEach(function (r) { if (binKnown(r, s, idx, grid)) { known++; sum += binQ(r, s, idx); } });
+      if (!known || known / Math.max(1, ws.expected) < RD.config.minCov) return;   /* coverage unknown -> not drawn */
+      var mean = sum / known; if (!(mean > 0)) return;
+      var wb = ws.bins[k], pers = wb && wb.persistence != null ? wb.persistence : null;
+      out.push({ venue: venue, pair: pair, side: s, idx: idx, lo: bd.lo, hi: bd.hi, mean: mean, known: known, pers: pers, n: wb ? wb.qualifying : null, N: wb ? wb.observedCovered : null });
+      if (mean > maxQ) maxQ = mean;
+    });
+    res.maxQ = maxQ;
+    out.forEach(function (b) { b.intensity = maxQ > 0 ? Math.log1p(b.mean) / Math.log1p(maxQ) : 0; });
+    res.bands = out.filter(function (b) { return b.intensity >= FLOOR_I; });
+    return res;
+  };
+  RD.borderOf = function (b) { return b.pers == null ? 'none' : b.pers >= P_SOLID ? 'solid' : b.pers >= P_DASH ? 'dashed' : 'none'; };
+
+  /* one call: meta -> slots -> batches -> analysis, for a venue and window */
+  RD.run = function (symbol, venue, winKey, nowMs) {
+    nowMs = nowMs || Date.now();
+    if (!RD.supported()) return Promise.reject(kerr('unsupported', 'unsupported'));
+    return RD.modules().then(function () { return RD.loadMeta(); }).then(function (meta) {
+      var pair = RD.pairsFor(meta, symbol)[venue]; if (!pair) return { venue: venue, pair: null, status: 'nopair', bands: [], meta: meta };
+      var obs = Date.parse(meta.ds.observedAt || meta.ds.version), last = isNum(obs) ? Math.floor(obs / Q15) * Q15 : null, slots = RD.slotsFor(meta.cadence.table, venue, pair, WINS[winKey], nowMs, last);
+      return RD.loadSlots(meta, venue, slots).then(function (loaded) { var a = RD.analyze(meta, venue, pair, winKey, loaded, nowMs); a.meta = meta; a.slots = slots; return a; });
+    });
+  };
+
+  /* ---- formatting ---- */
+  function money(x) { if (!isNum(x)) return '—'; var a = Math.abs(x); return '$' + (a >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : a >= 1e4 ? Math.round(x / 1e3) + 'k' : a >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : Math.round(x).toLocaleString('en-US')); }
+  function px(x, tick) { if (!isNum(x)) return '—'; var d = tick && tick > 0 ? Math.max(0, Math.min(8, Math.round(-Math.log10(tick)))) : (x >= 100 ? 2 : x >= 1 ? 4 : 6); return x.toFixed(d); }
+  function age(ms) { if (!isNum(ms)) return '—'; var m = Math.round(ms / 60000); return m < 1 ? '<1 min' : m < 120 ? m + ' min' : (m / 60).toFixed(1) + ' h'; }
+  RD.fmt = { money: money, px: px, age: age };
+
+  /* ---- view state (sessionStorage only) ---- */
+  var SS = 'rd52.view';
+  function readView(defVenue) { var v = { win: '4h', venue: defVenue, off: false }; try { var j = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (j) { if (WINS[j.win]) v.win = j.win; if (j.venue === 'kraken' || j.venue === 'coinbase' || j.venue === 'both') v.venue = j.venue; v.off = !!j.off; } } catch (e) {} return v; }
+  function saveView(v) { try { sessionStorage.setItem(SS, JSON.stringify(v)); } catch (e) {} }
+
+  /* ---- chart overlay ---- */
+  RD.css = '.rd52-ctl{position:absolute;top:8px;right:76px;z-index:13;display:flex;gap:4px;align-items:center;font-size:10px;color:var(--muted,#9aa3b2)}' +
+    '.rd52-ctl button{background:rgba(30,32,53,.85);border:1px solid var(--border,#2a2d45);color:var(--muted,#9aa3b2);border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600;cursor:pointer}' +
+    '.rd52-ctl button.on{color:#fff;border-color:#7b6ef6}.rd52-ctl .sep{width:6px}' +
+    '.rd52-cv{position:absolute;left:0;top:0;pointer-events:none;z-index:3}' +
+    '.rd52-msg{position:absolute;left:8px;bottom:30px;z-index:4;max-width:70%;font-size:10px;line-height:1.35;color:var(--muted,#9aa3b2);background:rgba(11,12,20,.7);padding:2px 6px;border-radius:3px;pointer-events:none}' +
+    '.rd52-bar{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;padding:5px 12px;font-size:10px;color:var(--muted,#9aa3b2)}.rd52-bar .rd52-ctl{position:static}.rd52-bar .rd52-msg{position:static;max-width:none;background:none;padding:0;white-space:pre-line;flex:1 1 240px}.rd52-key{font-size:10px;opacity:.85}' +
+    '.rd52-tip{position:absolute;z-index:21;display:none;pointer-events:none;white-space:pre-line;max-width:290px;padding:5px 8px;font-size:11px;line-height:1.4;background:rgba(20,22,38,.96);border:1px solid #2a2d45;border-radius:4px;color:#d7dae6}';
+  (function () { var st = document.createElement('style'); st.id = 'rd52-css'; st.textContent = RD.css; (document.head || document.documentElement).appendChild(st); })();
+
+  var MOUNTS = [];
+  RD.mount = function (o) {
+    /* o: { chart, series, host, ctlHost, symbol, defaultVenue, key } */
+    var ex = MOUNTS.filter(function (m) { return m.key === o.key; })[0]; if (ex) { ex.destroy(); }
+    var st = readView(o.defaultVenue || 'kraken'), models = {}, tok = 0, dead = false, raf = 0, tipHit = [];
+    var cv = document.createElement('canvas'); cv.className = 'rd52-cv'; o.host.appendChild(cv);
+    if (getComputedStyle(o.host).position === 'static') o.host.style.position = 'relative';
+    var bar = null; if (o.barAfter && o.barAfter.parentNode) { bar = document.createElement('div'); bar.className = 'rd52-bar'; o.barAfter.parentNode.insertBefore(bar, o.barAfter.nextSibling); }
+    var msg = document.createElement('div'); msg.className = 'rd52-msg'; msg.style.display = 'none';
+    var tip = document.createElement('div'); tip.className = 'rd52-tip'; o.host.appendChild(tip);
+    var ctl = document.createElement('div'); ctl.className = 'rd52-ctl'; ctl.setAttribute('data-rd52-ctl', o.key);
+    function btn(label, attr, val) { return '<button type="button" data-rd52="' + attr + '" data-v="' + val + '">' + label + '</button>'; }
+    ctl.innerHTML = btn('1 h', 'win', '1h') + btn('4 h', 'win', '4h') + btn('7 d', 'win', '7d') + '<span class="sep"></span>' + btn('Kraken', 'venue', 'kraken') + btn('Coinbase', 'venue', 'coinbase') + btn('Both', 'venue', 'both') + '<span class="sep"></span>' + btn('Depth', 'off', 'toggle');
+    if (bar) { bar.appendChild(ctl); bar.appendChild(msg); } else { o.host.appendChild(msg); (o.ctlHost || o.host).appendChild(ctl); }
+    function paintCtl() { Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { var a = b.getAttribute('data-rd52'), v = b.getAttribute('data-v'); b.classList.toggle('on', a === 'off' ? !st.off : st[a] === v); }); }
+    function setMsg(t) { msg.textContent = t || ''; msg.style.display = t ? '' : 'none'; }
+    function plot() { var w = o.host.clientWidth, h = o.host.clientHeight, pw = 56, th = 26; try { pw = o.chart.priceScale('right').width() || 56; } catch (e) {} try { th = o.chart.timeScale().height() || 26; } catch (e) {} return { w: w, h: h, pw: w - pw, ph: h - th }; }
+    function draw() {
+      raf = 0; if (dead) return;
+      var P = plot(), dpr = window.devicePixelRatio || 1; cv.style.width = P.w + 'px'; cv.style.height = P.h + 'px'; cv.width = Math.round(P.w * dpr); cv.height = Math.round(P.h * dpr);
+      var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, P.w, P.h);
+      if (st.off) return;
+      var lastT = null; try { var dd = o.series.data(); if (dd && dd.length) lastT = dd[dd.length - 1].time; } catch (e) {}
+      var xl = null; try { if (lastT != null) xl = o.chart.timeScale().timeToCoordinate(lastT); } catch (e) {} if (xl == null || !isFinite(xl)) xl = P.pw; var fr = Math.max(0.02, Math.min(1, xl / Math.max(1, P.pw))), both = Object.keys(models).filter(function (v) { return models[v] && models[v].bands && models[v].bands.length; }).length > 1;
+      g.save(); g.beginPath(); g.rect(0, 0, P.pw, P.ph); g.clip();   /* the book is the CURRENT book: the zones fade towards the older candles and are full strength from the newest candle on */
+      Object.keys(models).forEach(function (v) {
+        var m = models[v]; if (!m || !m.bands) return;
+        m.bands.forEach(function (b) {
+          var y1 = o.series.priceToCoordinate(b.hi), y2 = o.series.priceToCoordinate(b.lo); if (y1 == null || y2 == null) return;
+          var top = Math.min(y1, y2), h = Math.max(1, Math.abs(y2 - y1)), c = VCOL[v][b.side], bo = RD.borderOf(b);
+          var a = (0.05 + 0.33 * b.intensity) * (both ? 0.75 : 1), gr = g.createLinearGradient(0, 0, P.pw, 0); gr.addColorStop(0, 'rgba(' + c + ',' + (a * 0.3).toFixed(3) + ')'); gr.addColorStop(fr, 'rgba(' + c + ',' + a.toFixed(3) + ')'); gr.addColorStop(1, 'rgba(' + c + ',' + a.toFixed(3) + ')');
+          g.fillStyle = gr; g.fillRect(0, top, P.pw, h);
+          if (bo !== 'none') { g.strokeStyle = 'rgba(' + c + ',' + (bo === 'solid' ? '0.95' : '0.75') + ')'; g.lineWidth = 1; g.setLineDash(bo === 'solid' ? [] : [5, 3]); g.strokeRect(0.5, top + 0.5, P.pw - 1, Math.max(0, h - 1)); }
+        });
+      });
+      g.restore();
+    }
+    function sched() { if (!raf && !dead) raf = requestAnimationFrame(draw); }
+    function status() {
+      var parts = [], vs = Object.keys(models).filter(function (v) { return models[v]; });
+      if (st.off) { setMsg(''); return; }
+      vs.forEach(function (v) {
+        var m = models[v], n = VCOL[v].n;
+        if (m.err) { parts.push(m.err); return; }
+        if (m.status === 'nopair') { parts.push('depth: ' + n + ' has no mapped pair for ' + o.symbol); return; }
+        var t = n + ' ' + m.pair + ' · ' + st.win + ' · ' + m.observed + ' of ' + (m.expected == null ? '?' : m.expected) + ' scheduled slots · newest ' + age(m.ageMs);
+        if (m.status !== 'ok') t += ' · not drawn (' + (m.reason || 'no observations') + ')'; else if (!m.bands.length) t += ' · no zone above the display floor';
+        if (m.unverified) t += ' · unverified batch excluded (' + m.unverified + ')';
+        if (m.gaps) t += ' · ' + m.gaps + ' missing slot' + (m.gaps > 1 ? 's' : '');
+        if (m.uncovered) t += ' · ' + m.uncovered + ' not hash-covered by the registry';
+        if (m.gridExcluded) t += ' · ' + m.gridExcluded + ' older-grid snapshot' + (m.gridExcluded > 1 ? 's' : '') + ' excluded';
+        parts.push(t);
+      });
+      if (vs.length > 1) parts.push('Kraken: red asks / green bids · Coinbase: magenta asks / cyan bids · never summed');
+      setMsg(parts.join('\n'));
+    }
+    function failMsg(e) {
+      var k = e && e.kind;
+      return k === 'unsupported' ? 'depth unavailable in this browser' : k === 'modules' ? 'depth: unavailable (book modules could not be loaded)' : k === 'unverified' ? 'depth: unverified batch excluded (feed hash mismatch)' : 'depth: unavailable (rolling data repo unreachable)';
+    }
+    function refresh() {
+      var my = ++tok; paintCtl(); models = {};
+      if (st.off) { status(); sched(); return Promise.resolve(); }
+      if (!RD.supported()) { setMsg('depth unavailable in this browser'); sched(); return Promise.resolve(); }
+      var vs = st.venue === 'both' ? ['kraken', 'coinbase'] : [st.venue];
+      setMsg('depth: loading…');
+      return Promise.all(vs.map(function (v) { return RD.run(o.symbol, v, st.win).then(function (a) { models[v] = a; }, function (e) { models[v] = { err: failMsg(e), bands: [] }; }); })).then(function () {
+        if (my !== tok || dead) return;
+        var unv = 0; Object.keys(models).forEach(function (v) { if (models[v] && models[v].unverified) unv += models[v].unverified; });
+        status(); sched(); if (o.onModels) try { o.onModels(models, st); } catch (e) {}
+      });
+    }
+    ctl.addEventListener('click', function (ev) {
+      var b = ev.target.closest && ev.target.closest('button[data-rd52]'); if (!b) return; ev.stopPropagation(); ev.preventDefault();
+      var a = b.getAttribute('data-rd52'), v = b.getAttribute('data-v');
+      if (a === 'off') st.off = !st.off; else { st[a] = v; st.off = false; }
+      saveView(st); refresh();
+    });
+    ctl.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    /* hover: the band(s) under the cursor */
+    function onMove(param) {
+      tipHit = [];
+      if (st.off || !param || !param.point) { tip.style.display = 'none'; return; }
+      var pr = o.series.coordinateToPrice(param.point.y), P = plot(); if (pr == null || param.point.x > P.pw) { tip.style.display = 'none'; return; }
+      var lines = [];
+      Object.keys(models).forEach(function (v) {
+        var m = models[v]; if (!m || !m.bands) return;
+        m.bands.forEach(function (b) { if (pr >= b.lo && pr < b.hi) tipHit.push(b); });
+        tipHit.filter(function (b) { return b.venue === v; }).forEach(function (b) {
+          var side = b.side === 'a' ? 'asks' : 'bids', lb = m.cov && m.cov[b.side] === 'lowerBound', cap = m.cap && m.cap[b.side];
+          lines.push(VCOL[v].n + ' ' + b.pair + ' — ' + side + '\n' + px(b.lo, m.tick) + ' – ' + px(b.hi, m.tick) + ' · mean ' + money(b.mean) + '\npersistence: ' + (b.pers == null ? 'n/a (side is a lower bound)' : b.n + ' of ' + b.N + ' slots (' + Math.round(b.pers * 100) + '%)') +
+            '\nobserved ' + m.observed + ' of ' + m.expected + ' scheduled · newest ' + age(m.ageMs) + '\ncoverage: ' + (lb ? 'lowerBound' : 'complete') + (cap ? ' (500-level cap — lower bound)' : ''));
+        });
+      });
+      if (!lines.length) { tip.style.display = 'none'; return; }
+      tip.textContent = lines.join('\n\n'); tip.style.display = 'block';
+      var x = Math.min(param.point.x + 14, Math.max(0, o.host.clientWidth - 300)), y = Math.max(4, Math.min(param.point.y + 10, o.host.clientHeight - 120)); tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    }
+    o.chart.subscribeCrosshairMove(onMove);
+    try { o.chart.timeScale().subscribeVisibleLogicalRangeChange(sched); } catch (e) {}
+    var evs = ['wheel', 'mousedown', 'mouseup', 'mousemove', 'touchmove', 'touchend', 'dblclick'];
+    evs.forEach(function (n) { o.host.addEventListener(n, sched, { passive: true }); });
+    var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () { sched(); }) : null; if (ro) ro.observe(o.host);
+    var mount = { key: o.key, state: st, models: function () { return models; }, refresh: refresh, redraw: draw, destroy: function () {
+      dead = true; if (raf) cancelAnimationFrame(raf); try { o.chart.unsubscribeCrosshairMove(onMove); } catch (e) {} try { o.chart.timeScale().unsubscribeVisibleLogicalRangeChange(sched); } catch (e) {}
+      evs.forEach(function (n) { o.host.removeEventListener(n, sched); }); if (ro) ro.disconnect();
+      [cv, msg, tip, ctl, bar].forEach(function (e) { if (e && e.parentNode) e.parentNode.removeChild(e); });
+      MOUNTS = MOUNTS.filter(function (m) { return m !== mount; });
+    } };
+    MOUNTS.push(mount);
+    paintCtl(); refresh();
+    return mount;
+  };
+  RD.mounts = function () { return MOUNTS; };
+  RD.view = readView;
+
+  /* ---- TEST order rows: figures from the latest decoded record of the order's venue|pair ---- */
+  RD.orderFigures = function (order, nowMs) {
+    var sym = String(order.pair || '').replace(/(USDT|USDC|USD)$/, ''), venue = order.venue === 'coinbase' ? 'coinbase' : 'kraken';
+    return RD.run(sym, venue, '4h', nowMs).then(function (a) {
+      var out = { venue: venue, pair: a.pair, status: a.status, reason: a.reason, askLT: null, bidLS: null, askWall: null, bidWall: null, latest: a.latest || null, analysis: a };
+      if (!a.latest) return out;
+      var iv = a.latest.intervals || [], id = order.id;
+      iv.forEach(function (x) { if (x.name === 'L->T:' + id || (x.name.indexOf('L->T') === 0 && x.name.indexOf(id) > 0)) out.askLT = x; if (x.name === 'L->S:' + id || (x.name.indexOf('L->S') === 0 && x.name.indexOf(id) > 0)) out.bidLS = x; });
+      var mid = a.latest.mid;
+      (a.bands || []).forEach(function (b) {
+        if (b.pers == null || b.pers < P_SOLID) return;
+        if (b.side === 'a' && b.lo >= mid && (!out.askWall || b.lo < out.askWall.lo)) out.askWall = b;
+        if (b.side === 'b' && b.hi <= mid && (!out.bidWall || b.hi > out.bidWall.hi)) out.bidWall = b;
+      });
+      return out;
+    });
+  };
+  RD.figureText = function (f) {
+    function iv(x) { return !x ? '—' : (x.coverage === 'lowerBound' ? '≥ ' : '') + money(x.quote) + (x.coverage === 'lowerBound' ? ' (lower bound)' : ''); }
+    function wall(b, f) { return b ? px(b.lo, f.analysis && f.analysis.tick) + '–' + px(b.hi, f.analysis && f.analysis.tick) + ' · ' + money(b.mean) + ' · ' + b.n + ' of ' + b.N + ' slots' : (f.analysis && f.analysis.status === 'ok' ? 'none persistent' : '—'); }
+    function nw(b, side) { if (b) return wall(b, f); if (f.analysis && f.analysis.status === 'ok') return f.analysis.cap && f.analysis.cap[side] && f.analysis.cov && f.analysis.cov[side] === 'lowerBound' ? 'n/a (lower bound)' : 'none persistent'; return '—'; }
+    if (!f || !f.latest) return 'depth: — (no batch for ' + (f && f.venue || 'the venue') + ' ' + (f && f.pair || 'pair') + ' in the window)';
+    return 'depth (' + VCOL[f.venue].n + ' ' + f.pair + ', 4 h): ask depth L→T ' + iv(f.askLT) + ' · bid depth L→S ' + iv(f.bidLS) + ' · nearest persistent ask wall above price: ' + nw(f.askWall, 'a') + ' · nearest persistent bid wall below: ' + nw(f.bidWall, 'b');
+  };
+  window.RDEPTH52_LOADED = true;
+} catch (e) { try { console.warn('item 52c block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 52c */
+/* item 52c — TEST glue (order-card overlay on request + exec-row depth detail) */
+(function () { try {
+  var RD = window.RDepth52; if (!RD) return;
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var SHOWN = {};   /* order id -> last rendered figure text, so a re-render keeps what was already loaded (no refetch) */
+  var st = document.createElement('style'); st.textContent = '.exd52{font-size:11px;font-weight:400;color:var(--muted,#9aa3b2);white-space:normal;max-width:380px;margin-top:3px}.exd52 button{background:transparent;border:1px solid var(--border,#2a2d45);color:var(--muted,#9aa3b2);border-radius:4px;font-size:10px;padding:1px 6px;cursor:pointer}.rd52-open{position:absolute;top:6px;right:6px;z-index:13;background:rgba(30,32,53,.85);border:1px solid var(--border,#2a2d45);color:var(--muted,#9aa3b2);border-radius:4px;font-size:10px;font-weight:600;padding:2px 6px;cursor:pointer}';
+  (document.head || document.documentElement).appendChild(st);
+  window.RT52 = {
+    shown: SHOWN,
+    rows: function (rows, model) {
+      return rows.map(function (h, i) {
+        var e = model[i], o = e && e.o; if (!o || (e.key !== 'open' && e.key !== 'rest')) return h;
+        var d = '<div class="exd52" data-ex-depth="' + esc(o.id) + '"><button type="button" data-rd52-row="' + esc(o.id) + '">' + (SHOWN[o.id] ? 'Refresh depth' : 'Show depth') + '</button> <span class="rd52-rowout">' + esc(SHOWN[o.id] || '') + '</span></div>';
+        return h.replace('</small></td>', '</small>' + d + '</td>');
+      });
+    },
+    row: function (id, btn) {
+      var o = (window.RT44 && RT44.liveOrders ? RT44.liveOrders() : []).filter(function (x) { return x.id === id; })[0]; if (!o) return Promise.resolve(null);
+      var out = btn.parentNode.querySelector('.rd52-rowout'); out.textContent = ' depth: loading…';
+      return RD.orderFigures(o).then(function (f) { var t = RD.figureText(f); SHOWN[id] = t; out.textContent = ' ' + t; btn.textContent = 'Refresh depth'; return f; },
+        function (e) { var t = e && e.kind === 'unsupported' ? 'depth unavailable in this browser' : e && e.kind === 'unverified' ? 'depth: unverified batch excluded (feed hash mismatch)' : e && e.kind === 'modules' ? 'depth: unavailable (book modules could not be loaded)' : 'depth: unavailable (rolling data repo unreachable)'; out.textContent = ' ' + t; return null; });
+    },
+    card: function (host, chart, cs, o) {
+      if (!host || host.querySelector('.rd52-open')) return;
+      var sym = String(o.pair || '').replace(/(USDT|USDC|USD)$/, '');
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'rd52-open'; b.textContent = 'Depth';
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); ev.preventDefault(); if (b.parentNode) b.parentNode.removeChild(b); RD.mount({ chart: chart, series: cs, host: host, barAfter: host, symbol: sym, defaultVenue: 'kraken', key: 'card-' + o.id }); });
+      b.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      host.appendChild(b);
+    }
+  };
+  document.addEventListener('click', function (ev) { try {
+    var b = ev.target && ev.target.closest && ev.target.closest('button[data-rd52-row]'); if (!b) return;
+    ev.stopPropagation(); RT52.row(b.getAttribute('data-rd52-row'), b);
+  } catch (e) {} }, true);
+} catch (e) { try { console.warn('item 52c glue failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 52c glue */
+</script>
 <style>
 :root{
   --bg:#0b0c14;--surface:#13141f;--surface2:#1a1b2a;--surface3:#20223a;
@@ -979,6 +1344,13 @@ D('drawdown', 'Drawdown', 'How far equity is below the HWM.', 'A drawdown of 5% 
 D('suspended', 'Suspended', 'Trading is paused by the risk rule.', 'When losses reach the limit the account stops taking new orders. Waiting orders are cancelled.');
 D('riskLimit', 'Risk limit exceeded', 'Planned risk is over the allowed limit.', 'The total amount at risk across orders went above what the rules allow, so new orders are blocked.');
 var GLOSS42 = { 'ACT': 'glossary.html#channel-radar', 'score': 'glossary.html#channel-radar' };
+/* item 52c — terms */
+D('depthBlock', 'Sell block / buy block (resting orders)', 'Standing orders in the exchange book, grouped into price zones.', 'Resting orders above price (sell) or below price (buy), grouped into price zones and shaded red or green; darker means more dollar value was resting there on average over the sampled snapshots. It describes what was resting, not what price will do.');
+D('depthPersist', 'Sampled price-zone persistence', 'In how many sampled snapshots a zone held a large standing order.', 'Of the snapshots in the chosen window, the share in which the zone held a large standing order (n of N slots). Snapshots come every 15 minutes or hourly, so orders that came and went between them are not seen, and zones with too few snapshots are not drawn.');
+D('depthLB', 'Lower bound (500-level cap)', 'Kraken returns at most 500 levels per side; the true figure can be higher.', 'Kraken’s public book stops at 500 price levels per side, which on liquid coins may reach only a few percent from price. A figure marked ≥ is therefore a minimum, and persistence is not computed for a side that is a lower bound.');
+D('depthGone', 'Sampled wall-disappearance', 'A zone that held a large order in one snapshot and no longer qualifies in a later one.', 'It compares two sampled snapshots and records only that the zone stopped qualifying. The order may have been filled, cancelled or moved, or price may have moved the zone out of range, so it is descriptive only.');
+GLOSS42.depthBlock = 'glossary.html#m-depth-block'; GLOSS42.depthPersist = 'glossary.html#m-depth-persistence'; GLOSS42.depthLB = 'glossary.html#m-depth-lowerbound'; GLOSS42.depthGone = 'glossary.html#m-depth-disappearance';
+/* end item 52c terms */
 function qtyDp42(lot) { return isNum(lot) && lot > 0 ? Math.min(6, Math.max(0, Math.ceil(-Math.log10(lot) - 1e-9))) : 6; }
 function qty42(o) { return o && isNum(o.qty) ? o.qty.toFixed(qtyDp42(o.lot)) : '—'; }
 function sym42(o) { var s = String((o && o.pair) || '').replace(/[\/_-]?(USDT|USDC|USD|EUR)$/i, ''); return s || String((o && o.cgId) || '—'); }
@@ -1362,6 +1734,7 @@ function chartWrap44() {
     var ro = null;
     if (window.ResizeObserver) { ro = new ResizeObserver(function () { if (host.clientWidth > 0) chart.applyOptions({ width: host.clientWidth }); }); ro.observe(host); }
     note.textContent = all.length + ' daily candles in cache (last ' + win.length + ' drawn)' + (all.length < 60 ? ' — fewer than 60 bars available' : '') + '.';
+    try { if (window.RT52) RT52.card(host, chart, cs, o); } catch (e) {}   /* item 52c */
     CARDS.list.push({ chart: chart, ro: ro }); RT44.cards[o.id] = { chart: chart, series: ser, log: log };
   }
   function drawCards() {
@@ -1626,6 +1999,7 @@ D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recor
       return '<tr data-ex-order="' + esc(o.id) + '"><td class="excoin">' + esc(symOf(o)) + '<small>' + esc(dash(o.pair)) + '</small></td><td><span class="expol">' + esc(o.policyId) + '</span></td><td>' + chip(e) + '</td><td>' + (e.entryDaily ? bar46(e.entryAt, 'fill') : esc(entAt)) + '</td><td class="num">' + pr(entPx) + '</td><td class="num">' + pr(o.S) + ' / ' + pr(o.T) + '</td><td class="num">' + exm + '</td>' +
         '<td class="num pnl ' + mcls(pnl) + '" data-f="pnl">' + (isNum(pnl) ? money(pnl, true) + (e.est ? '<span class="exest">est</span>' : '') : '—') + '</td><td class="num pnl ' + mcls(R) + '" data-f="r">' + (R != null ? (R < 0 ? '−' : '') + Math.abs(R).toFixed(2) : '—') + '</td></tr>';
     });
+    try { if (window.RT52) rows = RT52.rows(rows, M.rows); } catch (e) {}   /* item 52c */
     var bs = M.rows.map(function (e) { return e.o.Bcents; }).filter(function (x) { return isNum(x) && x > 0; }), bavg = bs.length ? bs.reduce(function (a, x) { return a + x; }, 0) / bs.length : null;
     var bt = bavg == null ? 'each order’s risk budget' : 'risk budget (' + (bs.every(function (x) { return Math.round(x / 100) === Math.round(bs[0] / 100); }) ? '' : '≈') + money(bavg) + ')';
     h.push('<div class="ex-wrap"><table id="ex-table"><thead><tr>' + th('Coin') + th('Policy') + th('Status') + th('Entered', 'exEntered') + th('Entry', 'exEntry', 1) + th('Stop / Target', null, 1).replace('</th>', ' ' + tm44('S') + tm44('T') + '</th>') + th('Exit / Mark', 'exExitMark', 1) + th('P&amp;L', 'exPnl', 1) + th('R', 'R', 1) + '</tr></thead><tbody>' +

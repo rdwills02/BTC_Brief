@@ -984,6 +984,38 @@ main { padding: 28px 36px; max-width: 860px; }
       <p class="metric-desc"><strong>Canonical.</strong> The official daily record the ledger holds; a projection stays provisional until the daily capture replaces it.</p>
     </div>
 
+    <div class="metric-entry" id="m-depth-block">
+      <div class="metric-header">
+        <span class="metric-name">Sell block / buy block (resting orders)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>Standing orders in the exchange’s order book, grouped into price zones.</strong> Sell blocks sit above the current price and buy blocks below it. The chart shades each zone red (sell) or green (buy); a darker shade means more dollar value was resting there on average across the sampled snapshots. It shows what was resting in the sampled book. It does not say that price will stop, bounce or break at a zone.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-persistence">
+      <div class="metric-header">
+        <span class="metric-name">Sampled price-zone persistence</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>How often a zone held a large standing order, across the snapshots in the chosen window.</strong> “n of N slots” means the zone held at least 5% of that side’s resting value in n of the N snapshots. Snapshots are taken every 15 minutes (coins with an order, ACT or NEAR verdict, or a holding) or hourly, so an order that came and went between snapshots is not seen. The border is solid at 75% or more, dashed from 25% to 75%, and absent below 25% or where persistence is not computed. A zone seen in too few of the scheduled snapshots is not drawn.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-lowerbound">
+      <div class="metric-header">
+        <span class="metric-name">Lower bound (500-level cap)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>A figure that is a minimum, not the full amount.</strong> Kraken’s public book returns at most 500 price levels per side. On liquid coins those levels can reach only a few percent from the price, so anything further out is not seen. A dollar figure marked “≥” or “lower bound” is at least that much. Persistence is not computed for a side that is a lower bound, and Coinbase and Kraken figures are never added together.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-disappearance">
+      <div class="metric-header">
+        <span class="metric-name">Sampled wall-disappearance</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>A zone that held a large standing order in one snapshot and no longer qualifies in a later one.</strong> It records only that the zone stopped qualifying between two sampled snapshots. The order may have been filled, cancelled or moved, or price may have moved the zone out of range; the comparison cannot tell which. It is descriptive and is not used as a signal.</p>
+    </div>
+
     <!-- end item 46 -->
 
     <div class="section-label" id="coin-categories">Coin Categories</div>
