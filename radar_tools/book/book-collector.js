@@ -43,12 +43,15 @@
   function cadenceVersion(table) { var s = JSON.stringify(table), h = 5381; for (var i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return 'c' + h.toString(16) + '-' + table.length; }
   function dueNow(table, venue, pair, nowMs) { var e = table.filter(function (x) { return x.venue === venue && x.pair === pair && x.toMs == null; })[0]; if (!e) return false; return e.cadenceMs === Q15 ? true : Math.floor(nowMs / Q15) % 4 === 0; }
   // ---- grids: one fixed absolute grid per pair per UTC month; re-anchor on drift > 15 % (recorded) ----
-  function ensureGrid(state, venue, m, mid, nowMs) {
-    var key = venue + '|' + m.pair, period = iso(nowMs).slice(0, 7), cur = state[key], reason = null;
-    if (!cur) reason = 'first'; else if (cur.period !== period) reason = 'period-start'; else if (Math.abs(mid / cur.anchor - 1) > 0.15) reason = 'drift>15%';
-    if (!reason) return { grid: B.makeGrid(cur.anchor, cur.tick, cur.period, venue, m.pair), change: null };
-    var g = B.makeGrid(mid, m.tick, period, venue, m.pair), prev = cur ? B.makeGrid(cur.anchor, cur.tick, cur.period, venue, m.pair) : null;
-    state[key] = { anchor: g.anchor, tick: m.tick, period: period, createdAt: iso(nowMs) };
+  // 52e: the sweep passes targetVersion = B.CURRENT_GRID_VERSION (3: ask side to +40 %); a direct call without it keeps the legacy v2 behaviour. A state entry without `version` is a v2 grid: the next sweep upgrades it IN PLACE (same anchor/tick/period, reason 'grid-v3', recorded as a grid change);
+  // records already written keep their v2 grid id and are always decoded by it. Re-anchor rule (period start, drift > 15 %) unchanged.
+  function ensureGrid(state, venue, m, mid, nowMs, targetVersion) {
+    var CUR = targetVersion || 2, key = venue + '|' + m.pair, period = iso(nowMs).slice(0, 7), cur = state[key], reason = null, curVer = cur ? (cur.version || 2) : null;
+    if (!cur) reason = 'first'; else if (cur.period !== period) reason = 'period-start'; else if (Math.abs(mid / cur.anchor - 1) > 0.15) reason = 'drift>15%'; else if (curVer < CUR) reason = 'grid-v3';
+    if (!reason) return { grid: B.makeGrid(cur.anchor, cur.tick, cur.period, venue, m.pair, curVer), change: null };
+    var prev = cur ? B.makeGrid(cur.anchor, cur.tick, cur.period, venue, m.pair, curVer) : null, g;
+    if (reason === 'grid-v3') { g = B.makeGrid(cur.anchor, cur.tick, cur.period, venue, m.pair, CUR); state[key] = Object.assign({}, cur, { version: CUR, upgradedAt: iso(nowMs) }); }
+    else { g = B.makeGrid(mid, m.tick, period, venue, m.pair, CUR); state[key] = { anchor: g.anchor, tick: m.tick, period: period, version: CUR, createdAt: iso(nowMs) }; }
     return { grid: g, change: B.gridChange(prev, g, reason, iso(nowMs)) };
   }
   // ---- intervals for active orders on this pair ----
@@ -87,7 +90,7 @@
         var r = await requestOne(venue, m, tStart, deadline);
         if (r.miss) { misses.push({ venue: venue, pair: m.pair, reason: r.miss }); continue; }
         var b = r.book; if (b.mid == null) { var er = B.buildRecord(b, B.makeGrid(1, null, null, venue, m.pair)); er.recvMs = r.t1; recs.push(er); scales[venue + '|' + m.pair] = C.scaleFor(m.tick || 0.01, m.lot || 1e-8, m.quote); continue; }
-        var gg = ensureGrid(o.gridState, venue, m, b.mid, env.now()); if (gg.change) changes.push(Object.assign({ venue: venue, pair: m.pair }, gg.change));
+        var gg = ensureGrid(o.gridState, venue, m, b.mid, env.now(), o.gridVersion || B.CURRENT_GRID_VERSION); if (gg.change) changes.push(Object.assign({ venue: venue, pair: m.pair }, gg.change));
         var rec = B.buildRecord(b, gg.grid, { intervals: o.intervals ? o.intervals(it.sym, b) : [], maxTerms: 0 }); rec.recvMs = r.t1; rec.attempts = r.attempts;
         scales[venue + '|' + m.pair] = C.scaleFor(m.tick || 0.01, m.lot || 1e-8, m.quote); recs.push(rec);
       }
@@ -98,7 +101,7 @@
       var enc = C.encodeBatch(sweep.records, sweep.scales, null), dec = C.decodeBatch(enc.batch), rejected = enc.rejected.slice(), ok = [], idx = 0, okIds = {};
       sweep.records.forEach(function (r) { if (enc.rejected.some(function (x) { return x.id === r.id; })) return; var d = dec[idx++], c = C.compare(r, d, null); if (c.bad.length) rejected.push({ id: r.id, reason: 'codec-mismatch', msg: c.bad.slice(0, 2).join(';') }); else okIds[r.id] = 1; });
       var keep = sweep.records.filter(function (r) { return okIds[r.id]; }), enc2 = rejected.length > enc.rejected.length ? C.encodeBatch(keep, sweep.scales, null) : enc;
-      enc2.batch.meta = Object.assign({}, meta, { venue: sweep.venue, startedAt: sweep.startedAt, endedAt: sweep.endedAt, requested: sweep.requested, records: enc2.batch.r.length, misses: sweep.misses, rejected: rejected, gridChanges: sweep.gridChanges, schema: C.SCHEMA, grid: B.GRID_VERSION, codec: C.CODEC_VERSION });
+      enc2.batch.meta = Object.assign({}, meta, { venue: sweep.venue, startedAt: sweep.startedAt, endedAt: sweep.endedAt, requested: sweep.requested, records: enc2.batch.r.length, misses: sweep.misses, rejected: rejected, gridChanges: sweep.gridChanges, schema: C.SCHEMA, grid: B.GRID_VERSION, gridCurrent: B.CURRENT_GRID_VERSION, codec: C.CODEC_VERSION });
       return enc2.batch;
     }
     return { getJson: getJson, requestOne: requestOne, sweepVenue: sweepVenue, buildBatch: buildBatch };

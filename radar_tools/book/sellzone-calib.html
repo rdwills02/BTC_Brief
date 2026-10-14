@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sell-zone calibration bundle</title>
+<style>
+:root { --bg:#f6f7f9; --fg:#14181f; --mut:#5b6573; --card:#ffffff; --line:#d5dae1; --acc:#1f5fbf; --warn:#a15c00; --bad:#b42318; --good:#0b7a43; --code:#eef1f5; }
+@media (prefers-color-scheme: dark) { :root { --bg:#12151a; --fg:#e6e9ee; --mut:#98a2b3; --card:#1a1f27; --line:#2d3541; --acc:#6ea8fe; --warn:#e0a24a; --bad:#ff7b72; --good:#56d364; --code:#222a35; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:1100px; margin:0 auto; padding:20px 16px 60px; }
+h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:15px; margin:0 0 8px; }
+p.sub { margin:0 0 16px; color:var(--mut); }
+section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin:0 0 14px; }
+label { display:block; font-weight:600; margin:8px 0 3px; } label small { font-weight:400; color:var(--mut); }
+input[type=text], textarea, select { width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:13px ui-monospace,Consolas,monospace; }
+textarea { min-height:90px; resize:vertical; }
+button { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:7px 14px; font:600 13px system-ui; cursor:pointer; margin:6px 8px 0 0; }
+button.sec { background:transparent; color:var(--acc); border:1px solid var(--acc); } button:disabled { opacity:.45; cursor:default; }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:14px; } @media (max-width:760px) { .row { grid-template-columns:1fr; } }
+#pairs { max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; columns:3 220px; font:12px ui-monospace,Consolas,monospace; }
+#pairs label { display:block; font-weight:400; margin:0; white-space:nowrap; }
+pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; max-height:360px; font:12px/1.4 ui-monospace,Consolas,monospace; margin:6px 0 0; white-space:pre-wrap; }
+.note { color:var(--mut); font-size:12px; } .warn { color:var(--warn); } .bad { color:var(--bad); } .good { color:var(--good); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sell-zone calibration bundle</h1>
+  <p class="sub">Item 52e. Reads the rolling depth repo, public hourly candles and the Radar research file; writes nothing to any repo. Produces one downloadable zip with no trade outcomes in it. Cutoff and parameter values below are inspection candidates, not findings.</p>
+
+  <section>
+    <h2>1 · Sources</h2>
+    <div class="row">
+      <div><label for="repo">Rolling repo base <small>(raw, ends with /)</small></label><input type="text" id="repo" value="https://raw.githubusercontent.com/rdwills02/BTC_Brief-data/rolling/"></div>
+      <div><label for="daily">Radar research file <small>(E / T source)</small></label><input type="text" id="daily" value="https://rdwills02.github.io/BTC_Brief/data/latest-daily.json"></div>
+    </div>
+    <button id="load">Load mapped pairs</button><span id="loadMsg" class="note"></span>
+  </section>
+
+  <section>
+    <h2>2 · Pairs</h2>
+    <div id="pairs" class="note">Load the mapped pairs first.</div>
+    <button class="sec" id="preset">Preset: 6 coins × both venues</button><button class="sec" id="selAll">Select all</button><button class="sec" id="selNone">Clear</button><span id="selCount" class="note"></span>
+  </section>
+
+  <section>
+    <h2>3 · Observation cutoffs and parameter sets</h2>
+    <div class="row">
+      <div><label for="cutoffs">Cutoffs <small>(UTC ISO, one per line, at most 3 per UTC day)</small></label><textarea id="cutoffs" spellcheck="false"></textarea><button class="sec" id="addNow">Add now</button><span id="cutMsg" class="note"></span></div>
+      <div><label for="ovr">Manual E / T overrides <small>(JSON, optional: {"kraken|ETH/USD":{"E":2400,"T":2700}})</small></label><textarea id="ovr" spellcheck="false">{}</textarea></div>
+    </div>
+    <label for="params">Candidate parameter sets <small>(JSON, editable: clustering sets × cutoff sets; labelled candidates only)</small></label><textarea id="params" spellcheck="false" style="min-height:180px"></textarea>
+  </section>
+
+  <section>
+    <h2>4 · Run</h2>
+    <button id="run" disabled>Run calibration</button><button class="sec" id="dl" disabled>Download bundle (zip)</button><button class="sec" id="verify" disabled>Verify bundle</button>
+    <p class="note">Candle requests: at most 2 concurrent per venue. Kraken OHLC returns at most 720 bars, so cutoffs older than about 23 days (a full preceding week must still be retrievable) are refused. Save the zip to <code>Astra/to-astra/evidence/sellzone-calib-&lt;runId&gt;/</code>.</p>
+    <pre id="log">idle</pre>
+  </section>
+
+  <section id="outSec" hidden>
+    <h2>Result</h2>
+    <div id="out"></div>
+  </section>
+</main>
+
+<script src="book-core.js"></script>
+<script src="book-codec.js"></script>
+<script src="sellzone-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var B = window.BookCore, C = window.BookCodec, S = window.SellzoneCore;
+  var PAGE_BUILD = 'a02c2135e5c23245dc5279b141804a48b9dfa908de6e6a0bfce9efe363c78659';   // sha256 of this file with this value set to 64 zeros (rule recorded in the manifest)
+  var HOUR = 3600000, Q15 = 900000, KRAKEN_BARS = 720, LOOKBACK_SLOTS = 8, MAX_PER_VENUE = 2, MAX_PER_DAY = 3;
+  var ALIAS = { XBT: 'BTC', XDG: 'DOGE' }, PRESET_BASES = ['ETH', 'SOL', 'ICP', 'TAO', 'XMR', 'JTO', 'ASTER', 'LINK', 'ADA', 'ETHFI', 'OKB'];
+  var enc = new TextEncoder();
+  var $ = function (id) { return document.getElementById(id); };
+  var st = { grids: null, pairs: [], bundle: null };
+
+  function log(m) { var el = $('log'); el.textContent = (el.textContent === 'idle' ? '' : el.textContent + '\n') + m; el.scrollTop = el.scrollHeight; }
+  function resetLog() { $('log').textContent = 'idle'; }
+  function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  async function sha256(x) { return hex(await crypto.subtle.digest('SHA-256', typeof x === 'string' ? enc.encode(x) : x)); }
+  function iso(ms) { return new Date(ms).toISOString(); }
+  function compact(ms) { return iso(ms).replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function safe(s) { return String(s).replace(/[^A-Za-z0-9._-]+/g, '_'); }
+  function Sem(n) { this.n = n; this.q = []; }
+  Sem.prototype.run = async function (fn) { while (this.n <= 0) await new Promise(function (r) { this.q.push(r); }.bind(this)); this.n--; try { return await fn(); } finally { this.n++; var w = this.q.shift(); if (w) w(); } };
+  var sems = { kraken: new Sem(MAX_PER_VENUE), coinbase: new Sem(MAX_PER_VENUE), net: new Sem(4) };
+
+  async function getText(url, tries) {
+    var last;
+    for (var a = 0; a < (tries || 3); a++) {
+      try { var t0 = Date.now(), r = await fetch(url, { cache: 'no-store' }), txt = await r.text(); if (r.status === 429 || r.status >= 500) { last = 'HTTP ' + r.status; await sleep(1500 * (a + 1)); continue; } return { status: r.status, text: txt, url: url, retrievedAt: iso(t0) }; }
+      catch (e) { last = String(e.message || e); await sleep(1000 * (a + 1)); }
+    }
+    return { status: 0, text: '', url: url, error: last, retrievedAt: iso(Date.now()) };
+  }
+  async function getGz(url) {
+    var last; for (var a = 0; a < 3; a++) { try { var r = await fetch(url, { cache: 'no-store' }); if (r.status === 404) return { status: 404 }; if (!r.ok) { last = 'HTTP ' + r.status; await sleep(1000); continue; } var buf = await r.arrayBuffer(), h = await sha256(buf);
+      var ds = new DecompressionStream('gzip'), txt = await new Response(new Blob([buf]).stream().pipeThrough(ds)).text(); return { status: 200, sha256: h, bytes: buf.byteLength, text: txt }; } catch (e) { last = String(e.message || e); await sleep(1000); } }
+    return { status: 0, error: last };
+  }
+
+  // ---------- inputs ----------
+  function defaultParams() { return JSON.stringify({ clustering: S.calibrationCandidates.clustering, cutoffs: S.calibrationCandidates.cutoffs, staleMultiplier: S.calibrationCandidates.staleMultiplier, label: S.calibrationCandidates.label }, null, 1); }
+  function parseCutoffs() {
+    var lines = $('cutoffs').value.split(/\n/).map(function (s) { return s.trim(); }).filter(Boolean), out = [], perDay = {}, now = Date.now(), errs = [], curH = Math.floor(now / HOUR) * HOUR;
+    lines.forEach(function (s) {
+      var ms = Date.parse(s); if (!/Z$/.test(s) || !isFinite(ms)) { errs.push('"' + s + '": not a UTC ISO time ending in Z'); return; }
+      if (ms > now + 1000) { errs.push(s + ': in the future'); return; }
+      var H = Math.floor(ms / HOUR) * HOUR;
+      if (H - S.WINDOW_HOURS * HOUR < curH - (KRAKEN_BARS - 1) * HOUR) { errs.push(s + ': refused - the preceding 168 hours are no longer fully retrievable (Kraken OHLC returns at most ' + KRAKEN_BARS + ' bars, about 23 days of observation lookback)'); return; }
+      var d = iso(ms).slice(0, 10); perDay[d] = (perDay[d] || 0) + 1; if (perDay[d] > MAX_PER_DAY) { errs.push(s + ': more than ' + MAX_PER_DAY + ' cutoffs on ' + d); return; }
+      out.push({ ms: ms, iso: iso(ms), H: H });
+    });
+    return { cutoffs: out, errs: errs };
+  }
+  function selectedPairs() { return Array.prototype.map.call(document.querySelectorAll('#pairs input:checked'), function (i) { return i.value; }); }
+  function updSel() { $('selCount').textContent = ' ' + selectedPairs().length + ' selected'; $('run').disabled = !selectedPairs().length; }
+
+  $('load').onclick = async function () {
+    $('loadMsg').textContent = ' loading…'; var base = $('repo').value.trim(), r = await getText(base + 'book/grids.json');
+    if (r.status !== 200) { $('loadMsg').textContent = ' failed: ' + (r.error || 'HTTP ' + r.status); return; }
+    st.grids = JSON.parse(r.text); var keys = Object.keys(st.grids.grids).sort();
+    $('pairs').innerHTML = keys.map(function (k) { var g = st.grids.grids[k]; return '<label><input type="checkbox" value="' + k + '"> ' + k + ' <span class="note">v' + (g.version || 2) + '</span></label>'; }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#pairs input'), function (i) { i.onchange = updSel; });
+    $('loadMsg').textContent = ' ' + keys.length + ' venue|pair entries (grids.json updated ' + st.grids.updatedAt + ')'; updSel();
+  };
+  $('preset').onclick = function () {
+    var keys = Object.keys((st.grids || { grids: {} }).grids), picked = [];
+    PRESET_BASES.forEach(function (b) { if (picked.length >= 12) return; var k = 'kraken|' + b + '/USD', c = 'coinbase|' + b + '/USD'; if (keys.indexOf(k) >= 0 && keys.indexOf(c) >= 0) picked.push(k, c); });
+    Array.prototype.forEach.call(document.querySelectorAll('#pairs input'), function (i) { i.checked = picked.indexOf(i.value) >= 0; }); updSel();
+  };
+  $('selAll').onclick = function () { Array.prototype.forEach.call(document.querySelectorAll('#pairs input'), function (i) { i.checked = true; }); updSel(); };
+  $('selNone').onclick = function () { Array.prototype.forEach.call(document.querySelectorAll('#pairs input'), function (i) { i.checked = false; }); updSel(); };
+  $('addNow').onclick = function () { var v = $('cutoffs').value.trim(); $('cutoffs').value = (v ? v + '\n' : '') + iso(Math.floor(Date.now() / 1000) * 1000); };
+  $('params').value = defaultParams();
+
+  // ---------- depth records ----------
+  var batchCache = {}, registry = null;
+  function slotPath(venue, slotMs) { var s = iso(slotMs); return 'book/' + venue + '/' + s.slice(0, 10) + '/' + s.slice(11, 13) + s.slice(14, 16) + '.json.gz'; }
+  function getBatch(base, venue, slotMs) {
+    var k = venue + '|' + slotMs; if (batchCache[k]) return batchCache[k];
+    return batchCache[k] = sems.net.run(async function () {
+      var path = slotPath(venue, slotMs), g = await getGz(base + path); if (g.status !== 200) return { path: path, status: g.status, error: g.error || null };
+      var verification = 'no-registry-entry', want = registry && registry.datasets && registry.datasets.book && registry.datasets.book.hashes && registry.datasets.book.hashes[path];
+      if (want) verification = want === g.sha256 ? 'registry-match' : 'registry-MISMATCH';
+      var batch = JSON.parse(g.text), recs = C.decodeBatch(batch), by = {}; recs.forEach(function (r) { by[r.pair] = r; });
+      return { path: path, status: 200, sha256: g.sha256, bytes: g.bytes, verification: verification, records: recs.length, by: by, metaSlot: batch.meta && batch.meta.slot };
+    });
+  }
+  async function findDepth(base, venue, pair, cutMs) {
+    var slot = Math.floor(cutMs / Q15) * Q15;
+    for (var i = 0; i < LOOKBACK_SLOTS; i++) {
+      var b = await getBatch(base, venue, slot - i * Q15); if (b.status !== 200) continue;
+      var r = b.by[pair]; if (r && Date.parse(r.recv) <= cutMs) return { record: r, batch: b };
+    }
+    return null;
+  }
+
+  // ---------- candles ----------
+  var candleCache = {}, krakenAlt = null;
+  async function krakenAltName(pair) {
+    if (!krakenAlt) { var r = await getText('https://api.kraken.com/0/public/AssetPairs'); krakenAlt = {}; try { var res = JSON.parse(r.text).result; Object.keys(res).forEach(function (k) { if (res[k].wsname) krakenAlt[res[k].wsname] = res[k].altname; }); } catch (e) { /* leave empty */ } }
+    return krakenAlt[pair] || null;
+  }
+  function candleKey(venue, pair, H) { return venue + '|' + pair + '|' + H; }
+  function getCandles(venue, pair, H) {
+    var k = candleKey(venue, pair, H); if (candleCache[k]) return candleCache[k];
+    return candleCache[k] = sems[venue].run(async function () {
+      var start = H - S.WINDOW_HOURS * HOUR, url, resp;
+      if (venue === 'kraken') { var alt = await krakenAltName(pair); if (!alt) return { venue: venue, pair: pair, H: H, error: 'pair not found in Kraken AssetPairs' }; url = 'https://api.kraken.com/0/public/OHLC?pair=' + encodeURIComponent(alt) + '&interval=60&since=' + (start / 1000 - 1); }
+      else url = 'https://api.exchange.coinbase.com/products/' + encodeURIComponent(pair.replace('/', '-')) + '/candles?granularity=3600&start=' + encodeURIComponent(iso(start)) + '&end=' + encodeURIComponent(iso(H));
+      resp = await getText(url); await sleep(venue === 'kraken' ? 400 : 150);
+      var out = { venue: venue, pair: pair, H: H, requestUrl: url, retrievedAt: resp.retrievedAt, httpStatus: resp.status, responseText: resp.text, error: resp.error || null };
+      out.responseSha256 = await sha256(resp.text); return out;
+    });
+  }
+  function rowsOf(venue, c) {
+    if (!c || c.error || c.httpStatus !== 200) return null;
+    try { var j = JSON.parse(c.responseText); if (venue === 'kraken') { if (j.error && j.error.length) return null; var ks = Object.keys(j.result || {}).filter(function (k) { return k !== 'last'; }); return ks.length ? j.result[ks[0]] : null; } return Array.isArray(j) ? j : null; } catch (e) { return null; }
+  }
+  function baselineOf(venue, c, H) {
+    var rows = rowsOf(venue, c); if (!rows) return { status: 'unavailable', reason: 'candle request failed: ' + ((c && (c.error || 'HTTP ' + c.httpStatus)) || 'none'), median: null, validHours: 0, missingHours: [], venue: venue, method: null };
+    return S.activityBaseline(rows, venue, H);
+  }
+
+  // ---------- E / T ----------
+  async function loadTerms(url) {
+    var r = await getText(url); if (r.status !== 200) return { error: r.error || 'HTTP ' + r.status, bySym: {} };
+    var j = JSON.parse(r.text), by = {}; (j.coins || []).forEach(function (c) { var ee = c.research && c.research.entryEconomics; by[String(c.symbol).toUpperCase()] = ee ? { entryLow: ee.entryLow, entryHigh: ee.entryHigh, target: ee.target, targetSource: ee.targetSource || null } : null; });
+    return { sha256: await sha256(r.text), url: url, retrievedAt: r.retrievedAt, captureTime: j.captureTime || null, captureId: j.captureId || null, bySym: by };
+  }
+  function termsFor(key, venue, pair, terms, ovr) {
+    var o = ovr[key] || ovr[pair]; if (o && isFinite(o.E) && isFinite(o.T)) return { available: true, E: +o.E, T: +o.T, source: 'manual override' };
+    var base = pair.split('/')[0].toUpperCase(), quote = pair.split('/')[1]; base = ALIAS[base] || base;
+    if (quote !== 'USD') return { available: false, reason: 'E/T unavailable: quote ' + quote + ' has no declared conversion from the USD research terms' };
+    var t = terms.bySym[base]; if (!t) return { available: false, reason: 'E/T unavailable: no research entry economics for ' + base };
+    if (t.targetSource !== 'independent' || !(t.target > 0)) return { available: false, reason: 'E/T unavailable: target is not an independent target (' + t.targetSource + ')' };
+    if (!(t.entryLow > 0 && t.entryHigh >= t.entryLow)) return { available: false, reason: 'E/T unavailable: no entry zone' };
+    var E = (t.entryLow + t.entryHigh) / 2; if (!(t.target > E)) return { available: false, reason: 'E/T unavailable: target is not above the entry-zone midpoint' };
+    return { available: true, E: E, T: t.target, source: 'research.entryEconomics: E = midpoint(entryLow, entryHigh), T = target (independent)', researchCaptureTime: terms.captureTime };
+  }
+
+  // ---------- compute one example ----------
+  function compactEval(res) { return { qualifying: res.qualifying, states: res.states.map(function (s) { return s.code; }), verdicts: res.zones.map(function (z) { return [z.id, z.verdict, z.concentration, z.materiality]; }) }; }
+  function computeResults(record, E, T, baseline, ps, maxAgeMs, cutMs) {
+    var out = {};
+    ps.clustering.forEach(function (cl) {
+      var par = Object.assign({}, cl); delete par.name; var base = S.sellObstacleZones(record, record.grid, E, T, baseline, par, { asOfMs: cutMs, maxAgeMs: maxAgeMs }), evals = {};
+      ps.cutoffs.forEach(function (ct) { evals[ct.name] = compactEval(S.sellObstacleZones(record, record.grid, E, T, baseline, par, { concentration: ct.concentration, material: ct.material, asOfMs: cutMs, maxAgeMs: maxAgeMs })); });
+      out[cl.name] = { params: base.params, zones: base.zones, unassessed: base.unassessed, totalAskMassOnPath: base.totalAskMassOnPath, baseStates: base.states.map(function (s) { return s.code; }), evals: evals };
+    });
+    return out;
+  }
+  function baselineSummary(b, candleRef) { return { status: b.status, reason: b.reason || null, median: b.median, medianLo: b.medianLo == null ? null : b.medianLo, medianHi: b.medianHi == null ? null : b.medianHi, validHours: b.validHours, missingHours: (b.missingHours || []).map(iso), method: b.method, label: b.label || null, exact: b.exact === undefined ? null : b.exact, source: b.source || null, window: b.window ? { start: iso(b.window.startMs), end: iso(b.window.endMs) } : null, dupConflicts: b.dupConflicts, clippedOutside: b.clippedOutside, malformed: b.malformed, candleRef: candleRef }; }
+
+  // ---------- zip (stored, no compression) ----------
+  var CRC = (function () { var t = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(u8) { var c = 0xFFFFFFFF; for (var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function zipStore(files) {
+    var parts = [], central = [], off = 0, d = new Date(), dt = ((d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | (d.getUTCSeconds() >> 1)) & 0xFFFF, dd = (((d.getUTCFullYear() - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate()) & 0xFFFF;
+    files.forEach(function (f) {
+      var nm = enc.encode(f.name), data = f.data, crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, dt, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+      parts.push(new Uint8Array(h.buffer), nm, data);
+      var c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+      central.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + data.length;
+    });
+    var csize = central.reduce(function (a, p) { return a + p.length; }, 0), e = new DataView(new ArrayBuffer(22)); e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csize, true); e.setUint32(16, off, true);
+    return new Blob(parts.concat(central, [new Uint8Array(e.buffer)]), { type: 'application/zip' });
+  }
+
+  // ---------- summary.md ----------
+  var STATE_COLS = ['noSubstantialZone', 'baselineUnavailable', 'depthIncomplete', 'comparisonIncomplete', 'stale', 'freshnessUnknown', 'pathInvalid'];
+  function summarize(ps, examples, runInfo) {
+    var L = [], ok = examples.filter(function (e) { return e.results; });
+    L.push('# Sell-zone calibration bundle — summary', '', 'Run ' + runInfo.runId + ' · generated ' + runInfo.generatedAt + ' · page build ' + runInfo.pageBuild.slice(0, 12), '',
+      'Descriptive only: no trade outcomes appear anywhere in this bundle. Parameter and cutoff values are labelled inspection candidates, not findings. E/T are the CURRENT research terms (' + (runInfo.researchCaptureTime || 'capture time unknown') + '), applied to every cutoff.', '',
+      '- examples: ' + examples.length + ' (with depth and E/T: ' + ok.length + ')', '- venue|pairs: ' + runInfo.pairs.length + ' · cutoffs: ' + runInfo.cutoffs.join(', '),
+      '- stale rule: age > staleMultiplier (' + runInfo.staleMultiplier + ') × the pair\'s effective scheduled cadence from cadence.json (per example in examples.jsonl `freshness`).', '- baseline: Kraken = VWAP × base volume (quote turnover); Coinbase = close × base volume (ESTIMATE, bounds low×volume .. high×volume); 168 hours in [H−168h, H), running hour excluded, ≥120 valid hours required.', '');
+    L.push('## Baseline availability', ''); var bs = {}; examples.forEach(function (e) { if (e.baseline) { var k = e.venue + ' ' + e.baseline.status; bs[k] = (bs[k] || 0) + 1; } }); Object.keys(bs).sort().forEach(function (k) { L.push('- ' + k + ': ' + bs[k]); });
+    L.push('', '## Coverage of the E→T path (absolute prices)', ''); var cs = {}; ok.forEach(function (e) { var k = e.venue + ' ' + e.coverage.status; cs[k] = (cs[k] || 0) + 1; }); Object.keys(cs).sort().forEach(function (k) { L.push('- ' + k + ': ' + cs[k]); }); L.push('');
+    ps.clustering.forEach(function (cl) {
+      L.push('## Clustering set ' + cl.name, '', '`' + JSON.stringify(cl) + '`', '', 'Zones retained = verdict pass; suppressed = verdict fail.', '', '| cutoff set | zones listed | retained (pass) | suppressed (fail) | uncertain | unavailable | no verdict | ' + STATE_COLS.join(' | ') + ' |', '|' + new Array(7 + STATE_COLS.length + 1).join('---|'));
+      ps.cutoffs.forEach(function (ct) {
+        var tot = 0, p = 0, f = 0, u = 0, un = 0, nv = 0, sc = {};
+        ok.forEach(function (e) { var ev = e.results[cl.name].evals[ct.name]; ev.verdicts.forEach(function (v) { tot++; if (v[1] === 'pass') p++; else if (v[1] === 'fail') f++; else if (v[1] === 'uncertain') u++; else if (v[1] === 'unavailable') un++; else nv++; }); ev.states.forEach(function (s) { sc[s] = (sc[s] || 0) + 1; }); });
+        L.push('| ' + ct.name + ' (C≥' + ct.concentration + ', M≥' + ct.material + ') | ' + tot + ' | ' + p + ' | ' + f + ' | ' + u + ' | ' + un + ' | ' + nv + ' | ' + STATE_COLS.map(function (s) { return sc[s] || 0; }).join(' | ') + ' |');
+      });
+      L.push('', 'Candidate zones (cutoff-free values; first 120):', '', '| venue | pair | E | T | zone lo–hi | % above E | Q (bounds if approx) | C | M (bounds) |', '|---|---|---|---|---|---|---|---|---|');
+      var n = 0; ok.forEach(function (e) { e.results[cl.name].zones.forEach(function (z) { if (n++ < 120) L.push('| ' + e.venue + ' | ' + e.pair + ' | ' + e.terms.E + ' | ' + e.terms.T + ' | ' + z.lo + '–' + z.hi + ' | ' + z.pctAboveEntry.lo + '–' + z.pctAboveEntry.hi + ' | ' + (z.Q == null ? z.Qlo + '..' + z.Qhi : z.Q) + ' | ' + (z.C == null ? 'n/a' : z.C) + ' | ' + (z.M == null ? (z.Mlo == null ? 'n/a' : z.Mlo + '..' + (z.Mhi == null ? '∞' : z.Mhi)) : z.M) + ' |'); }); });
+      L.push('');
+    });
+    L.push('## Incomplete / unavailable cases', '');
+    var any = false, add = function (s) { any = true; L.push('- ' + s); };
+    examples.forEach(function (e) {
+      var id = e.venue + '|' + e.pair + ' @ ' + e.cutoff;
+      if (!e.depth) add(id + ': no depth record (' + e.reason + ')'); else if (!e.terms.available) add(id + ': ' + e.terms.reason);
+      if (e.coverage && e.coverage.status !== 'complete') add(id + ': path coverage ' + e.coverage.status + ', observed to ' + e.coverage.coveredTo + ' vs target ' + e.terms.T);
+      if (e.baseline && e.baseline.status !== 'complete') add(id + ': baseline ' + e.baseline.status + ' (' + e.baseline.validHours + '/168 valid hours' + (e.baseline.reason ? '; ' + e.baseline.reason : '') + ')');
+      if (e.freshness && e.freshness.maxAgeMs == null) add(id + ': freshness unknown (' + e.freshness.reason + ')');
+      else if (e.freshness && e.depth.ageMs > e.freshness.maxAgeMs) add(id + ': stale - depth record is ' + Math.round(e.depth.ageMs / 60000) + ' min old, limit ' + Math.round(e.freshness.maxAgeMs / 60000) + ' min (' + e.freshness.multiplier + ' × ' + e.freshness.tier + ' cadence ' + Math.round(e.freshness.cadenceMs / 60000) + ' min)');
+    });
+    if (!any) L.push('- none');
+    return L.join('\n') + '\n';
+  }
+
+  // ---------- run ----------
+  async function run() {
+    resetLog(); $('run').disabled = true; $('dl').disabled = true; $('verify').disabled = true; $('outSec').hidden = true; batchCache = {}; candleCache = {}; krakenAlt = null;
+    try {
+      if (!(window.crypto && crypto.subtle && window.DecompressionStream)) throw new Error('this browser lacks crypto.subtle or DecompressionStream');
+      var base = $('repo').value.trim(), keys = selectedPairs(), ps, ovr, pc = parseCutoffs();
+      try { ps = JSON.parse($('params').value); ovr = JSON.parse($('ovr').value || '{}'); } catch (e) { throw new Error('parameter or override JSON is invalid: ' + e.message); }
+      if (!ps.clustering || !ps.cutoffs) throw new Error('parameter JSON needs "clustering" and "cutoffs" lists');
+      pc.errs.forEach(function (m) { log('REFUSED ' + m); }); if (!pc.cutoffs.length) throw new Error('no valid cutoffs');
+      var mult = ps.staleMultiplier; if (!(typeof mult === 'number' && mult > 0)) throw new Error('parameter JSON needs a positive "staleMultiplier" (stale when age > staleMultiplier x the pair\'s effective scheduled cadence)');
+      var runId = compact(Date.now()), t0 = Date.now();
+      log('run ' + runId + ': ' + keys.length + ' venue|pairs × ' + pc.cutoffs.length + ' cutoff(s) × ' + ps.clustering.length + ' clustering sets × ' + ps.cutoffs.length + ' cutoff sets');
+      var rr = await getText(base + 'meta/datasets.json'); registry = rr.status === 200 ? JSON.parse(rr.text) : null; var registrySha = rr.status === 200 ? await sha256(rr.text) : null; log('registry: ' + (registry ? 'loaded (book version ' + registry.datasets.book.version + ')' : 'unavailable'));
+      var cr = await getText(base + 'book/cadence.json'), cad = cr.status === 200 ? JSON.parse(cr.text) : null, cadSha = cr.status === 200 ? await sha256(cr.text) : null; log('cadence.json: ' + (cad ? 'loaded (version ' + cad.version + ', ' + cad.table.length + ' effective-dated entries)' : 'UNAVAILABLE - freshness cannot be judged, no all-clear'));
+      var terms = await loadTerms($('daily').value.trim()); if (terms.error) log('WARNING research file: ' + terms.error + ' — E/T unavailable unless overridden'); else log('research file loaded, capture ' + terms.captureTime);
+      var tasks = []; pc.cutoffs.forEach(function (ct) { keys.forEach(function (key) { tasks.push({ ct: ct, key: key }); }); });
+      var done = 0, examples = await Promise.all(tasks.map(async function (tk) {
+        var parts = tk.key.split('|'), venue = parts[0], pair = parts[1], ex = { exampleId: venue + '|' + pair + '|' + tk.ct.iso, venue: venue, pair: pair, cutoff: tk.ct.iso, H: iso(tk.ct.H), depth: null, terms: null, coverage: null, baseline: null, results: null };
+        var dp = await findDepth(base, venue, pair, tk.ct.ms); ex.terms = termsFor(tk.key, venue, pair, terms, ovr);
+        if (!dp) { ex.reason = 'no batch within ' + LOOKBACK_SLOTS * 15 + ' min before the cutoff holds this pair'; done++; return ex; }
+        if (dp.batch.verification === 'registry-MISMATCH') { ex.reason = 'batch hash does not match the registry'; done++; return ex; }
+        var rec = dp.record; ex.depth = { recordId: rec.id, gridId: rec.grid, req: rec.req, recv: rec.recv, ageMs: tk.ct.ms - Date.parse(rec.recv), batchPath: dp.batch.path, batchSha256: dp.batch.sha256, batchVerification: dp.batch.verification, capReached: rec.capReached, farthest: rec.farthest, levels: rec.levels, denominator: rec.walls ? rec.walls.denominator : null };
+        ex.record = rec; ex.freshness = S.staleMaxAgeMs(cad ? cad.table : [], venue, pair, tk.ct.ms, mult);
+        var cd = await getCandles(venue, pair, tk.ct.H), candleRef = 'candles/' + safe(venue + '-' + pair + '-' + compact(tk.ct.H)) + '.json', bl = baselineOf(venue, cd, tk.ct.H); ex.baseline = baselineSummary(bl, candleRef);
+        if (ex.terms.available && !rec.empty && !rec.excludedFromContinuous) { var g = B.gridOf(rec.grid); ex.coverage = S.coverage(rec, g, ex.terms.E, ex.terms.T); ex.results = computeResults(rec, ex.terms.E, ex.terms.T, bl, ps, ex.freshness.maxAgeMs, tk.ct.ms); }
+        done++; if (done % 6 === 0) log('  ' + done + '/' + tasks.length + ' examples'); return ex;
+      }));
+      log(done + '/' + tasks.length + ' examples computed; building bundle');
+      var files = [], put = function (name, text) { files.push({ name: name, data: enc.encode(text), text: text }); };
+      var seenC = {}; for (var k in candleCache) { var c = await candleCache[k]; if (c) { var nm = 'candles/' + safe(c.venue + '-' + c.pair + '-' + compact(c.H)) + '.json'; if (!seenC[nm]) { seenC[nm] = 1; put(nm, JSON.stringify(c, null, 1)); } } }
+      put('examples.jsonl', examples.map(function (e) { return JSON.stringify(e); }).join('\n') + '\n');
+      var runInfo = { runId: runId, generatedAt: iso(Date.now()), pageBuild: PAGE_BUILD, pairs: keys, cutoffs: pc.cutoffs.map(function (x) { return x.iso; }), researchCaptureTime: terms.captureTime, staleMultiplier: mult };
+      put('summary.md', summarize(ps, examples, runInfo));
+      var modHashes = {}; for (var si = 0, ss = document.scripts; si < ss.length; si++) { var src = ss[si].getAttribute('src'); if (!src) continue; try { var rt = await fetch(src); modHashes[src] = rt.ok ? await sha256(await rt.text()) : null; } catch (e) { modHashes[src] = null; } }
+      var hashes = {}; for (var fi = 0; fi < files.length; fi++) hashes[files[fi].name] = await sha256(files[fi].data);
+      var manifest = { bundle: 'sellzone-calib', runId: runId, generatedAt: runInfo.generatedAt, pageBuild: PAGE_BUILD, pageBuildRule: 'sha256 of sellzone-calib.html with the PAGE_BUILD constant set to 64 zeros', moduleVersions: { sellzoneCore: S.VERSION, bookGrid: B.CURRENT_GRID_VERSION, codec: C.CODEC_VERSION }, moduleSha256: modHashes,
+        inputs: { repoBase: base, registrySha256: registrySha, registryBookVersion: registry ? registry.datasets.book.version : null, researchFile: { url: terms.url || $('daily').value, sha256: terms.sha256 || null, retrievedAt: terms.retrievedAt || null, captureTime: terms.captureTime || null, captureId: terms.captureId || null }, venuePairs: keys, cutoffs: runInfo.cutoffs, refusedCutoffs: pc.errs, overrides: ovr, staleMultiplier: mult, cadence: { url: base + 'book/cadence.json', sha256: cadSha, version: cad ? cad.version : null, updatedAt: cad ? cad.updatedAt : null }, lookbackSlots: LOOKBACK_SLOTS },
+        parameterSets: ps, concurrency: { candlePerVenue: MAX_PER_VENUE }, counts: { examples: examples.length, withEandT: examples.filter(function (e) { return e.results; }).length, candleFiles: Object.keys(seenC).length }, files: hashes, elapsedMs: Date.now() - t0 };
+      put('manifest.json', JSON.stringify(manifest, null, 1));
+      st.bundle = { runId: runId, files: files, manifest: manifest, examples: examples, ps: ps, blob: zipStore(files.map(function (f) { return { name: 'sellzone-calib-' + runId + '/' + f.name, data: f.data }; })) };
+      window.__bundle = st.bundle; show(st.bundle); $('dl').disabled = false; $('verify').disabled = false; log('done in ' + Math.round((Date.now() - t0) / 1000) + ' s; ' + files.length + ' files, ' + st.bundle.blob.size + ' bytes');
+    } catch (e) { log('ERROR ' + (e.message || e)); } finally { $('run').disabled = !selectedPairs().length; }
+  }
+  function show(b) {
+    $('outSec').hidden = false; var ex = b.examples, ok = ex.filter(function (e) { return e.results; });
+    $('out').innerHTML = '<p>Run <b>' + b.runId + '</b> · ' + ex.length + ' examples (' + ok.length + ' with depth and E/T) · ' + b.files.length + ' files · zip ' + b.blob.size + ' bytes</p><pre>' + b.files.filter(function (f) { return f.name === 'summary.md'; })[0].text.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</pre>';
+  }
+  async function verify() {
+    var b = st.bundle, bad = [], mf = JSON.parse(b.files.filter(function (f) { return f.name === 'manifest.json'; })[0].text);
+    for (var i = 0; i < b.files.length; i++) { var f = b.files[i]; if (f.name === 'manifest.json') continue; var h = await sha256(f.data); if (mf.files[f.name] !== h) bad.push('hash ' + f.name); }
+    Object.keys(mf.files).forEach(function (n) { if (!b.files.some(function (f) { return f.name === n; })) bad.push('missing ' + n); });
+    var candleByRef = {}; b.files.forEach(function (f) { if (f.name.indexOf('candles/') === 0) candleByRef[f.name] = JSON.parse(f.text); });
+    for (var j = 0; j < b.examples.length; j++) {
+      var e = b.examples[j]; if (!e.baseline) continue; var c = candleByRef[e.baseline.candleRef]; if (!c) { bad.push('no candle file for ' + e.exampleId); continue; }
+      if (await sha256(c.responseText) !== c.responseSha256) bad.push('candle response hash ' + e.baseline.candleRef);
+      if (!e.results) continue; var bl = baselineOf(e.venue, c, Date.parse(e.H)), again = computeResults(e.record, e.terms.E, e.terms.T, bl, b.ps, e.freshness.maxAgeMs, Date.parse(e.cutoff));
+      if (JSON.stringify(again) !== JSON.stringify(e.results)) bad.push('recompute differs ' + e.exampleId);
+    }
+    log(bad.length ? 'VERIFY FAILED: ' + bad.slice(0, 10).join('; ') : 'VERIFY OK: ' + (b.files.length - 1) + ' file hashes match the manifest; every example recomputes identically from the retained record and candle response');
+    return bad;
+  }
+  window.__verify = verify;
+  $('run').onclick = run; $('verify').onclick = verify;
+  $('dl').onclick = function () { var a = document.createElement('a'); a.href = URL.createObjectURL(st.bundle.blob); a.download = 'sellzone-calib-' + st.bundle.runId + '.zip'; document.body.appendChild(a); a.click(); a.remove(); };
+  window.__calib = { run: run, parseCutoffs: parseCutoffs };
+})();
+</script>
+</body>
+</html>

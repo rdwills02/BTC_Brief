@@ -8,7 +8,7 @@
  * Names: "sampled price-zone persistence", "sampled wall-disappearance" (outcomes: persisted | lost-qualification | outside-region | unknown-*). L2 snapshots cannot follow individual orders. */
 (function (root, factory) { if (typeof module !== 'undefined' && module.exports) module.exports = factory(); else root.BookCore = factory(); })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var SCHEMA_VERSION = 2, GRID_VERSION = 2, DEPTH_PCTS = [1, 2, 5, 10], WALL_PCTS = [3, 5, 8], WALL_REGION_PCT = 10, WALL_MAIN = 5;
+  var SCHEMA_VERSION = 2, GRID_VERSION = 2, CURRENT_GRID_VERSION = 3, DEPTH_PCTS = [1, 2, 5, 10], WALL_PCTS = [3, 5, 8], WALL_REGION_PCT = 10, WALL_MAIN = 5;
   function num(v) { return typeof v === 'number' && isFinite(v); }
   function sig(x) { return num(x) ? Number(x.toPrecision(10)) : x; }   // stored numbers: 10 significant digits
 
@@ -39,10 +39,14 @@
   // Anchored at the pair's tick-rounded reference price (the first snapshot's mid of the comparison period); stored with the period; never moves with the mid.
   // Steps: 0.25 % within +-5 %, 0.5 % for 5-10 %, 1 % for 10-20 %, one tail bin beyond each side. Bin 0 = below the low tail edge; bins 1..80 = [edge[i-1], edge[i]); bin 81 = at/above the high tail edge.
   function roundToTick(x, tick) { return tick > 0 ? Math.round(x / tick) * tick : x; }
-  function stepTableBp() { var bp = [], x; for (x = -2000; x < -1000; x += 100) bp.push(x); for (x = -1000; x < -500; x += 50) bp.push(x); for (x = -500; x < 0; x += 25) bp.push(x); for (x = 0; x < 500; x += 25) bp.push(x); for (x = 500; x < 1000; x += 50) bp.push(x); for (x = 1000; x <= 2000; x += 100) bp.push(x); return bp; }
-  function makeGrid(refPrice, tick, period, venue, pair) {
-    var anchor = sig(roundToTick(refPrice, tick || 0)), bp = stepTableBp();
-    return { version: GRID_VERSION, venue: venue || '', pair: pair || '', period: period || null, anchor: anchor, tick: tick || null, stepsBp: { inner: 25, innerTo: 500, mid: 50, midTo: 1000, outer: 100, outerTo: 2000 }, edgesBp: bp, bins: bp.length + 1,
+  // Grid versions coexist (52e): v2 = +-20 % finite span; v3 = same bid side and same bins up to +20 %, then 1 % ask bins from +20 % to +40 % (open tail beyond +40 %).
+  // Bin indices 0..80 are identical in v2 and v3; v2 tail bin 81 (>= +20 %) becomes v3 bins 81..100 (1 % each) plus tail 101. A grid is ALWAYS reconstructed by its own version (gridOf / gridFromId).
+  function stepTableBp(version) { var up = (version || GRID_VERSION) >= 3 ? 4000 : 2000, bp = [], x; for (x = -2000; x < -1000; x += 100) bp.push(x); for (x = -1000; x < -500; x += 50) bp.push(x); for (x = -500; x < 0; x += 25) bp.push(x); for (x = 0; x < 500; x += 25) bp.push(x); for (x = 500; x < 1000; x += 50) bp.push(x); for (x = 1000; x <= up; x += 100) bp.push(x); return bp; }
+  // version: 2 (default - legacy callers and records) or 3 (current collector grids). Any other version throws: a record is never rebuilt on rules it was not written under.
+  function makeGrid(refPrice, tick, period, venue, pair, version) {
+    var ver = version == null ? GRID_VERSION : version; if (ver !== 2 && ver !== 3) throw new Error('unsupported grid version ' + version);
+    var anchor = sig(roundToTick(refPrice, tick || 0)), bp = stepTableBp(ver);
+    return { version: ver, venue: venue || '', pair: pair || '', period: period || null, anchor: anchor, tick: tick || null, stepsBp: { inner: 25, innerTo: 500, mid: 50, midTo: 1000, outer: 100, outerTo: ver >= 3 ? 4000 : 2000 }, edgesBp: bp, bins: bp.length + 1,
       edges: bp.map(function (b) { return anchor * (1 + b / 10000); }) };
   }
   function binIndex(grid, price) {   // [edge[i-1], edge[i]) ; below the first edge -> 0 ; at/above the last edge -> edges.length
@@ -50,9 +54,11 @@
     while (lo < hi) { var m = (lo + hi) >> 1; if (price >= e[m]) lo = m + 1; else hi = m; }
     return lo;
   }
-  function binBounds(grid, i) { var e = grid.edges; return { lo: i === 0 ? null : e[i - 1], hi: i >= e.length ? null : e[i] }; }
-  function gridId(grid) { return (grid.venue || '') + '|' + (grid.pair || '') + '|' + grid.anchor + '|v' + GRID_VERSION; }   // grid id = venue|pair|anchor|version (period is stored beside it, not in it)
+  function binBounds(grid, i) { if (typeof grid === 'string') grid = gridOf(grid); var e = grid.edges; return { lo: i === 0 ? null : e[i - 1], hi: i >= e.length ? null : e[i] }; }
+  function gridId(grid) { return (grid.venue || '') + '|' + (grid.pair || '') + '|' + grid.anchor + '|v' + (grid.version || GRID_VERSION); }   // grid id = venue|pair|anchor|version (period is stored beside it, not in it)
   function gridFromId(id) { var a = String(id || '').split('|'); if (a.length !== 4 || !/^v\d+$/.test(a[3]) || !(+a[2] > 0)) return null; return { venue: a[0], pair: a[1], anchor: +a[2], version: +a[3].slice(1) }; }
+  // Reconstruct the grid a record was written on, from its grid id, BY THE ID'S OWN VERSION (v2 id -> v2 edges, v3 id -> v3 edges). Unknown version -> null.
+  function gridOf(id) { var g = gridFromId(id); if (!g || (g.version !== 2 && g.version !== 3)) return null; return makeGrid(g.anchor, null, null, g.venue, g.pair, g.version); }
   function gridChange(prev, next, reason, atUtc) { return { at: atUtc || null, reason: reason || null, from: prev ? gridId(prev) : null, to: gridId(next), period: next.period || null }; }
   // quote value of each bin = SUM(price x size) over the raw levels in it (never size x bin midpoint)
   function aggregate(book, grid) {
@@ -185,7 +191,7 @@
     if (!sideReliable(nxt, o.side)) return unk('unknown-missing', 'horizon snapshot coverage incomplete', { observedAtMs: nxt.recvMs });
     var done = function (status, why) { return { horizonMs: o.horizonMs, status: status, outcome: status, reason: why || null, observedAtMs: nxt.recvMs }; };
     if (qualifies(nxt, o.side, o.idx, o.wallKey)) return done('persisted');
-    var g = gridFromId(t0.grid), grid = g && makeGrid(g.anchor, null, null, g.venue, g.pair), bd = grid && binBounds(grid, o.idx);
+    var g = gridFromId(t0.grid), grid = g && gridOf(t0.grid), bd = grid && binBounds(grid, o.idx);
     if (bd && bd.lo != null && nxt.mid != null) { var rl = nxt.mid * (1 - WALL_REGION_PCT / 100), rh = nxt.mid * (1 + WALL_REGION_PCT / 100); if (bd.hi <= rl || bd.lo > rh) return done('outside-region', 'zone left the +-10 % region of the later snapshot mid (mass is not claimed gone)'); }
     return done('lost-qualification', 'zone inside the region no longer reaches the qualifying share');
   }
@@ -208,7 +214,6 @@
     return { n: n, min: x[0], median: q(0.5), p90: q(0.9), max: x[n - 1] };
   }
   return { SCHEMA_VERSION: SCHEMA_VERSION, GRID_VERSION: GRID_VERSION, parseKraken: parseKraken, parseCoinbase: parseCoinbase, makeGrid: makeGrid, binIndex: binIndex, binBounds: binBounds, gridId: gridId, aggregate: aggregate,
-    sideCoverage: sideCoverage, depthAt: depthAt, intervalSum: intervalSum, walls: walls, gridFromId: gridFromId, gridChange: gridChange, quoteOf: quoteOf, snapshotId: snapshotId, buildRecord: buildRecord, serialize: serialize, deserialize: deserialize, batchPath: batchPath, batchFile: batchFile,
+    sideCoverage: sideCoverage, depthAt: depthAt, intervalSum: intervalSum, walls: walls, gridFromId: gridFromId, gridOf: gridOf, CURRENT_GRID_VERSION: CURRENT_GRID_VERSION, gridChange: gridChange, quoteOf: quoteOf, snapshotId: snapshotId, buildRecord: buildRecord, serialize: serialize, deserialize: deserialize, batchPath: batchPath, batchFile: batchFile,
     dedupeById: dedupeById, gzipSize: gzipSize, byteLen: byteLen, windowStats: windowStats, wallTransition: wallTransition, wallDisappearance: wallTransition, transitions: transitions, dedupeSnapshots: dedupeSnapshots, scheduledCount: scheduledCount, assertSingleVenue: assertSingleVenue, dist: dist, qualifies: qualifies };
 });
-
