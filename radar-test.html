@@ -176,7 +176,7 @@
 /* item 52g — sell obstacles */
   /* The 52c band renderer is removed. This section draws ONE view: the sell obstacles (resting asks) on the path entry -> target, from sellzone-core (all zone / coverage / baseline math lives there; nothing is computed here).
      Bids and ordinary depth are not drawn. RD.analyze() and RD.orderFigures() below are untouched, so the TEST row figures do not change. */
-  var SS = 'rd52.view', SZ = { params: null, base: {}, alt: null, sem: {} }, ZSTYLE = { pass: { fill: 0.30, line: 0.95, dash: [] }, uncertain: { fill: 0.18, line: 0.85, dash: [] }, cand: { fill: 0.16, line: 0.8, dash: [] }, stale: { fill: 0.12, line: 0.7, dash: [2, 3] } };   /* item 52i: a fresh current-book zone has a thin solid boundary; a stale one is desaturated with a dashed boundary; no fill scales with size */
+  var SS = 'rd52.view', HK = 'rd52.hide', WLAB = { '1h': '1 h', '4h': '4 h', '7d': '7 d' }, SZ = { params: null, base: {}, alt: null, sem: {} }, ZSTYLE = { pass: { fill: 0.30, line: 0.95, dash: [] }, uncertain: { fill: 0.18, line: 0.85, dash: [] }, cand: { fill: 0.16, line: 0.8, dash: [] }, stale: { fill: 0.12, line: 0.7, dash: [2, 3] } };   /* item 52i: a fresh current-book zone has a thin solid boundary; a stale one is desaturated with a dashed boundary; no fill scales with size */
   /* item 52i (Ryan's call, ONE constant): true = 52h behaviour - zoom to the last 20 bars when the view turns on, exact restore when it turns off; false = Astra's model - the toggle never changes the scale and "Fit entry → target" is the only zoom. */
   var ZOOM_ON_TOGGLE = true;
   RD.config.paramsUrl = 'data/book/sellzone-params.json';
@@ -271,6 +271,16 @@
     });
   };
 
+  /* item 52k: the 7 d look-back loads its own slots (the :00 batches plus today's), only when it is selected; cached per venue | pair | newest slot */
+  RD.sellRecs7 = function (d) {
+    var k = d.venue + '|' + d.pair + '|' + Math.floor(d.latest.recvMs / Q15); SZ.r7 = SZ.r7 || {}; if (SZ.r7[k]) return SZ.r7[k];
+    var meta = d.meta, obs = Date.parse(meta.ds.observedAt || meta.ds.version), last = isNum(obs) ? Math.floor(obs / Q15) * Q15 : null, slots = RD.slotsFor(meta.cadence.table, d.venue, d.pair, WINS['7d'], d.nowMs, last);
+    var p = RD.loadSlots(meta, d.venue, slots).then(function (loaded) {
+      var recs = []; loaded.forEach(function (x) { if (x.state === 'ok' || x.state === 'uncovered') recs = recs.concat(RD.recordsOf(x.batch, d.pair)); });
+      recs = recs.filter(function (r) { return r.venue === d.venue; }); recs = BC().dedupeSnapshots(recs).records; recs.sort(function (a, b) { return a.recvMs - b.recvMs; }); return recs;
+    }); SZ.r7[k] = p; p.catch(function () { delete SZ.r7[k]; }); return p;
+  };
+
   /* ---- formatting ---- */
   function qmoney(x, quote) { if (!isNum(x)) return '—'; var s = money(x); return !quote || quote === 'USD' ? s : s.slice(1) + ' ' + quote; }
   function qpx(x, tick, quote) { if (!isNum(x)) return '—'; var s = px(x, tick); return !quote || quote === 'USD' ? '$' + s : s + ' ' + quote; }
@@ -288,7 +298,8 @@
   }
 
   /* ---- one evaluation: sellzone-core on the newest record for a path E -> T, plus the descriptive persistence and the display classification ---- */
-  RD.sellEval = function (d, E, T, mode) {
+  RD.sellEval = function (d, E, T, mode, opt) {
+    opt = opt || {}; var win = opt.win === '1h' || opt.win === '7d' ? opt.win : '4h';
     var P = d.params, cut = P.frozen ? { concentration: P.cutoffs.concentration, material: P.cutoffs.material } : {}, V = VCOL[d.venue].n, ev = { venue: d.venue, pair: d.pair, quote: d.quote, E: E, T: T, mode: P.frozen ? 'frozen' : 'diagnostic', pathMode: mode || 'entry', res: null, states: [], zones: [], drawn: [], unclassified: [], total: null, coverage: null, error: null };
     cut.asOfMs = d.nowMs; cut.maxAgeMs = d.fresh ? d.fresh.maxAgeMs : null;
     var g = d.latest && BC().gridOf(d.latest.grid), res;
@@ -310,12 +321,13 @@
     ev.unobs = null;
     if (cov && cov.status !== 'complete') { if (isFinite(cov.coveredTo)) { if (cov.coveredTo < T) ev.unobs = { lo: Math.max(cov.coveredTo, E), hi: T, coveredTo: cov.coveredTo }; } else ev.unobs = { lo: E, hi: T, coveredTo: null }; }
     /* descriptive persistence: how many earlier comparable snapshots held an overlapping candidate zone (never decides drawing) */
-    var earlier = d.recs.filter(function (r) { return r !== d.latest && r.grid === d.latest.grid && !r.empty && !r.auction && !r.excludedFromContinuous && r.bins; }), prior = [];
+    var src = win === '7d' && opt.recs ? opt.recs : d.recs, since = win === '4h' ? -Infinity : d.latest.recvMs - WINS[win];   /* item 52k (4 h = the loaded window exactly as before): only the comparison set changes with the look-back; the zones are the newest snapshot's */
+    var earlier = src.filter(function (r) { return r !== d.latest && r.recvMs !== d.latest.recvMs && r.recvMs >= since && r.grid === d.latest.grid && !r.empty && !r.auction && !r.excludedFromContinuous && r.bins; }), prior = [];
     earlier.forEach(function (r) { try { var c = szc().candidateZones(r, g, E, T, P.clustering); prior.push({ cov: c.coverage, zones: c.zones }); } catch (e) {} });
     function key(z) { return z.Q != null ? z.Q : z.Qhi; }
     var zs = res.zones.map(function (z) {
       var N = 0, n = 0; prior.forEach(function (p) { if (p.cov.coveredTo >= z.hi) { N++; if (p.zones.some(function (q) { return q.lo < z.hi && q.hi > z.lo; })) n++; } });
-      return Object.assign({}, z, { pers: { n: n, N: N } });
+      return Object.assign({}, z, { pers: { n: n, N: N, win: win, unavailable: win === '7d' && !opt.recs } });
     }).sort(function (a, b) { return key(b) - key(a); });
     zs.forEach(function (z, i) { z.rank = i + 1; z.stale = stale; });
     ev.zones = zs;
@@ -327,8 +339,14 @@
   };
 
   /* ---- view state (sessionStorage only): venue (auto | kraken | coinbase | both) and on/off. Overrides and the held-position toggle are memory only and always start at their defaults. ---- */
-  function readView(defVenue) { var v = { win: '4h', venue: 'auto', off: false, hs: false }; try { var j = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (j) { if (j.venue === 'kraken' || j.venue === 'coinbase' || j.venue === 'both' || j.venue === 'auto') v.venue = j.venue; v.off = !!j.off; v.hs = !!j.hs; } } catch (e) {} return v; }
-  function saveView(v) { try { sessionStorage.setItem(SS, JSON.stringify({ win: '4h', venue: v.venue, off: v.off, hs: !!v.hs })); } catch (e) {} }
+  /* item 52k: bands the user hid, kept as PRICE RANGES per coin + venue in sessionStorage; a zone of a later snapshot is hidden when its range overlaps one of them */
+  function hideRead() { try { var j = JSON.parse(sessionStorage.getItem(HK) || '{}'); return j && typeof j === 'object' ? j : {}; } catch (e) { return {}; } }
+  function hideWrite(o) { try { sessionStorage.setItem(HK, JSON.stringify(o)); } catch (e) {} }
+  function hkey(sym, v) { return String(sym) + '|' + v; }
+  function ovl(a, lo, hi) { return a[0] < hi && lo < a[1]; }
+  function isHid(store, sym, v, z) { var rs = store[hkey(sym, v)]; if (!rs) return false; for (var i = 0; i < rs.length; i++) if (ovl(rs[i], z.lo, z.hi)) return true; return false; }
+  function readView(defVenue) { var v = { win: '4h', venue: 'auto', off: false, hs: false }; try { var j = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (j) { if (j.venue === 'kraken' || j.venue === 'coinbase' || j.venue === 'both' || j.venue === 'auto') v.venue = j.venue; v.off = !!j.off; v.hs = !!j.hs; if (j.win === '1h' || j.win === '4h' || j.win === '7d') v.win = j.win; }   /* item 52k: the persistence look-back */ } catch (e) {} return v; }
+  function saveView(v) { try { sessionStorage.setItem(SS, JSON.stringify({ win: v.win === '1h' || v.win === '7d' ? v.win : '4h', venue: v.venue, off: v.off, hs: !!v.hs })); } catch (e) {} }
 
   /* ---- chart overlay + panels ---- */
   RD.css = '.rd52-ctl{position:absolute;top:8px;right:76px;z-index:13;display:flex;gap:4px;align-items:center;font-size:10px;color:var(--muted,#9aa3b2)}' +
@@ -341,6 +359,8 @@
     '.rd52-panels{display:flex;flex-wrap:wrap;gap:8px;padding:2px 12px 8px}.rd52-panel{flex:1 1 340px;min-width:0;border:1px solid var(--border,#2a2d45);border-radius:6px;padding:6px 9px;font-size:10.5px;line-height:1.45;color:var(--muted,#9aa3b2)}' +
     '.rd52-chip{display:inline-block;border:1px solid #8a90a6;color:#c8cddc;border-radius:3px;padding:0 4px;margin-left:4px;font-size:9px;font-weight:700;text-transform:uppercase}' +
     '.rd52-panel b{color:#d7dae6}.rd52-panel .ph{margin-bottom:3px}.rd52-panel .st{color:#e6b450}.rd52-panel .zl{margin:2px 0 2px 10px;color:#c5c9d8}.rd52-panel summary{cursor:pointer;color:#d7dae6}.rd52-panel .lg{color:#9aa3b2}' +
+    '.rd52-tbl{margin:4px 0}.rd52-tbl summary{cursor:pointer;color:#d7dae6}.rd52-tbl .tc{margin:3px 0;color:#9aa3b2}.rd52-tbl .tc select{background:rgba(11,12,20,.8);border:1px solid var(--border,#2a2d45);color:#d7dae6;border-radius:4px;font-size:10px}.rd52-tbl .tc a{margin-left:10px;color:var(--muted,#9aa3b2);cursor:pointer;text-decoration:underline}' +
+    '.rd52-bt{width:100%;border-collapse:collapse;font-size:10.5px}.rd52-bt th{font-weight:600;color:#9aa3b2;text-align:left;padding:1px 6px 1px 0;white-space:nowrap}.rd52-bt td{padding:2px 6px 2px 0;color:#c5c9d8;cursor:pointer;vertical-align:top}.rd52-bt tr.off td{color:#6b7280}.rd52-bt tr.nd td{cursor:default}.rd52-bt .tg{color:#e6b450;font-size:9.5px}.rd52-bt input{margin:0;cursor:pointer}' +
     '.rd52-tip{position:absolute;z-index:21;display:none;pointer-events:none;white-space:pre-line;max-width:330px;padding:5px 8px;font-size:11px;line-height:1.4;background:rgba(20,22,38,.96);border:1px solid #2a2d45;border-radius:4px;color:#d7dae6}';
   (function () { var st = document.createElement('style'); st.id = 'rd52-css'; st.textContent = RD.css; (document.head || document.documentElement).appendChild(st); })();
 
@@ -348,7 +368,7 @@
   RD.mount = function (o) {
     /* o: { chart, series, host, ctlHost, barAfter, symbol, defaultVenue, key, terms:{E,T,quote,source,targetSource}|fn, price:number|fn, quote } */
     var ex = MOUNTS.filter(function (m) { return m.key === o.key; })[0]; if (ex) { ex.destroy(); }
-    var st = readView(o.defaultVenue || 'kraken'), models = {}, DATA = {}, tok = 0, dead = false, raf = 0, ovr = { E: null, T: null }, held = false, zs = null, zoom = null, xzSaved = null, xzOn = false, xzH = '', lastRects = [], collapsedZ = [], lastUnobs = [], lastX0 = null, lastChip = null, msgBase = '', offLine = '', primary = o.defaultVenue === 'coinbase' ? 'coinbase' : 'kraken', other = primary === 'kraken' ? 'coinbase' : 'kraken';
+    var st = readView(o.defaultVenue || 'kraken'), models = {}, DATA = {}, tok = 0, dead = false, raf = 0, ovr = { E: null, T: null }, held = false, zs = null, zoom = null, xzSaved = null, xzOn = false, xzH = '', pulse = null, pulseDrawn = null, tblOpen = true, lastRects = [], collapsedZ = [], lastUnobs = [], lastX0 = null, lastChip = null, msgBase = '', offLine = '', primary = o.defaultVenue === 'coinbase' ? 'coinbase' : 'kraken', other = primary === 'kraken' ? 'coinbase' : 'kraken';
     var cv = document.createElement('canvas'); cv.className = 'rd52-cv'; o.host.appendChild(cv);
     if (getComputedStyle(o.host).position === 'static') o.host.style.position = 'relative';
     var bar = null; if (o.barAfter && o.barAfter.parentNode) { bar = document.createElement('div'); bar.className = 'rd52-bar'; o.barAfter.parentNode.insertBefore(bar, o.barAfter.nextSibling); }
@@ -408,7 +428,7 @@
       if (z.verdict === 'uncertain') in_.push('a cutoff comparison that falls inside those bounds');
       return in_.length ? '≈ approximate: depends on ' + in_.join(' and ') + '. ' + (m.ev.mode === 'frozen' ? 'Whether it qualifies is cutoff-sensitive.' : 'Its size is cutoff-sensitive once cutoffs are ruled.') : null;
     }
-    function persTxt(z) { return z.pers && z.pers.n > 0 ? 'present in ' + z.pers.n + '/' + z.pers.N + ' comparable samples' : 'newly observed' + (z.pers && z.pers.N ? ' (0/' + z.pers.N + ' earlier samples)' : ''); }
+    function persTxt(z) { var p = z.pers || {}, w = WLAB[p.win] || '4 h'; return p.unavailable ? 'persistence unavailable (7 d samples could not be loaded)' : p.n > 0 ? 'present in ' + p.n + '/' + p.N + ' (' + w + ')' : 'newly observed (0/' + (p.N || 0) + ', ' + w + ')'; }
     function zoneTip(m, z) {
       var ev = m.ev, q = ev.quote, tk = m.d.tick, b = m.d.baseline, ref = ev.pathMode === 'held' ? 'current price' : 'entry', room = ev.T - z.hi, L = [];
       L.push(VCOL[m.v].n + ' ' + m.d.pair + ' — ' + (z.style === 'cand' ? 'candidate zone #' + z.rank + ' · materiality not yet calibrated' : z.style === 'uncertain' ? 'sell zone · materiality uncertain' : 'sell zone'));
@@ -444,11 +464,11 @@
       raf = 0; if (dead) return;
       var P = plot(), dpr = window.devicePixelRatio || 1; cv.style.width = P.w + 'px'; cv.style.height = P.h + 'px'; cv.width = Math.round(P.w * dpr); cv.height = Math.round(P.h * dpr);
       var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, P.w, P.h);
-      lastLabels = []; lastRects = []; lastUnobs = []; lastX0 = null; lastChip = null; collapsedZ = []; if (st.off) { if (H) H.draw(g, P); setOff(''); return; }
+      pulseDrawn = null; lastLabels = []; lastRects = []; lastUnobs = []; lastX0 = null; lastChip = null; collapsedZ = []; if (st.off) { if (H) H.draw(g, P); setOff(''); return; }
       var lastT = null; try { var dd = o.series.data(); if (dd && dd.length) lastT = dd[dd.length - 1].time; } catch (e) {}
       var xl = null; try { if (lastT != null) xl = o.chart.timeScale().timeToCoordinate(lastT); } catch (e) {}
       /* item 52i: the book is the CURRENT book. Its zones start at the latest bar (the observation is "now") and run right into the gutter; nothing is painted over the historical candles. */
-      var anchored = xl != null && isFinite(xl) && xl < P.pw, x0 = anchored ? Math.max(0, xl) : null, gw = anchored ? P.pw - x0 : 0; lastX0 = x0;
+      var HS = hideRead(), anchored = xl != null && isFinite(xl) && xl < P.pw, x0 = anchored ? Math.max(0, xl) : null, gw = anchored ? P.pw - x0 : 0; lastX0 = x0;
       var offs = [], notes = [], labels = [], stale = [];
       g.save(); g.beginPath(); g.rect(0, 0, P.pw, P.ph); g.clip();
       /* item 52j: the historical-supply layer (muted amber outlines / pattern, off by default, no ask-value labels) is drawn HERE, before the current-book layer; it never reads or writes anything the sell layer owns */
@@ -463,14 +483,16 @@
         var c = VCOL[m.v].a, cs = '150,155,170', ab = 0, bl = 0;
         if (m.ev.stale) stale.push(VCOL[m.v].n + ' ' + new Date(m.ev.stale.lastMs).toISOString().slice(11, 16) + ' UTC');
         m.ev.drawn.forEach(function (z) {
+          if (isHid(HS, o.symbol, m.v, z)) return;   /* item 52k: hidden on the chart only; the zone, its count and the table row remain */
+          var isP = pulseOn(m.v, z.rank); if (isP) pulseDrawn = { v: m.v, rank: z.rank };
           var y1 = o.series.priceToCoordinate(z.hi), y2 = o.series.priceToCoordinate(z.lo); if (y1 == null || y2 == null) return;
           var top = Math.min(y1, y2), h = Math.max(2, Math.abs(y2 - y1)), s = z.stale ? ZSTYLE.stale : (ZSTYLE[z.style] || ZSTYLE.cand), col = z.stale ? cs : c;
           if (top + h < 0) { ab++; return; } if (top > P.ph) { bl++; return; }
-          g.fillStyle = 'rgba(' + col + ',' + s.fill.toFixed(3) + ')'; g.fillRect(x0, top, gw, h);
-          g.strokeStyle = 'rgba(' + col + ',' + s.line + ')'; g.lineWidth = 1; g.setLineDash(s.dash); g.strokeRect(x0 + 0.5, top + 0.5, Math.max(0, gw - 1), Math.max(0, h - 1)); g.setLineDash([]);
+          g.fillStyle = 'rgba(' + col + ',' + (s.fill + (isP ? 0.28 : 0)).toFixed(3) + ')'; g.fillRect(x0, top, gw, h);
+          g.strokeStyle = 'rgba(' + col + ',' + (isP ? 1 : s.line) + ')'; g.lineWidth = isP ? 3 : 1; g.setLineDash(s.dash); g.strokeRect(x0 + 0.5, top + 0.5, Math.max(0, gw - 1), Math.max(0, h - 1)); g.setLineDash([]);
           z.bins.forEach(function (b) { if (!b.boundary) return; var a1 = o.series.priceToCoordinate(b.hi), a2 = o.series.priceToCoordinate(b.lo); if (a1 == null || a2 == null) return; var bt = Math.max(top, Math.min(a1, a2)), bb = Math.min(top + h, Math.max(a1, a2)); if (bb > bt) hatch(g, x0, bt, gw, bb - bt); });
           var tg = visible().length > 1 ? (m.v === 'kraken' ? 'KRK' : 'CB') : '';   /* two venues on one chart: every label names its own venue; neither fills the other's region */
-          labels.push({ y0: top, y1: top + h, c: col, z: z, ev: m.ev, t: [zoneLabel(z, m.ev, 0, tg), zoneLabel(z, m.ev, 1, tg), zoneLabel(z, m.ev, 2, tg)] });
+          labels.push({ y0: top, y1: top + h, c: col, z: z, ev: m.ev, p: isP, t: [zoneLabel(z, m.ev, 0, tg), zoneLabel(z, m.ev, 1, tg), zoneLabel(z, m.ev, 2, tg)] });
         });
         var nm = m.ev.mode === 'frozen' ? 'qualifying zone' : 'candidate concentration', pl = function (n) { return n + ' ' + nm + (n === 1 ? '' : 's'); };
         if (ab) offs.push((visible().length > 1 ? VCOL[m.v].n + ': ' : '') + pl(ab) + ' above the viewport'); if (bl) offs.push((visible().length > 1 ? VCOL[m.v].n + ': ' : '') + pl(bl) + ' below the viewport');
@@ -496,14 +518,16 @@
           var q2 = rect(l.t[2], y00, right), guard = 0, c2; while ((c2 = hit(q2)) && guard++ < 12) q2 = rect(l.t[2], y00, c2.x1 - 2);
           if (q2.x1 < xmin || hit(q2)) { collapsedZ.push(l.z); return; } r = q2; r.tier = 2;
         }
-        r.c = l.c; r.full = l.t[0]; r.collapsed = r.tier === 2; r.rank = l.z.rank; if (r.tier > 0) collapsedZ.push(l.z); placed.push(r);
+        r.c = l.c; r.v = l.ev.venue; r.p = l.p; r.full = l.t[0]; r.collapsed = r.tier === 2; r.rank = l.z.rank; if (r.tier > 0) collapsedZ.push(l.z); placed.push(r);
       });
-      lastRects = placed.map(function (r) { return { text: r.text, full: r.full, collapsed: r.collapsed, tier: r.tier, rank: r.rank, x1: r.x1, x2: r.x2, y1: r.y1, y2: r.y2 }; });
-      placed.forEach(function (r) { g.fillStyle = 'rgba(11,12,20,0.85)'; g.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1); g.fillStyle = 'rgba(' + r.c + ',1)'; g.fillText(r.text, r.x2 - 1, (r.y1 + r.y2) / 2); });
+      lastRects = placed.map(function (r) { return { text: r.text, full: r.full, collapsed: r.collapsed, tier: r.tier, rank: r.rank, v: r.v, pulse: !!r.p, x1: r.x1, x2: r.x2, y1: r.y1, y2: r.y2 }; });
+      placed.forEach(function (r) { g.fillStyle = 'rgba(11,12,20,0.85)'; g.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1); g.fillStyle = 'rgba(' + r.c + ',1)'; g.fillText(r.text, r.x2 - 1, (r.y1 + r.y2) / 2); if (r.p) { g.font = '800 10px sans-serif'; g.fillText(r.text, r.x2 - 1, (r.y1 + r.y2) / 2); g.strokeStyle = 'rgba(' + r.c + ',1)'; g.lineWidth = 1; g.strokeRect(r.x1 + 0.5, r.y1 + 0.5, r.x2 - r.x1 - 1, r.y2 - r.y1 - 1); g.font = '600 10px sans-serif'; } });
       if (chipY != null) { var ct, cr, cands = ['stale · last observed ' + stale.join('; '), 'stale · ' + stale.map(function (x) { return x.replace(/^[A-Za-z]+ /, ''); }).join('; '), 'stale']; for (var ci = 0; ci < cands.length; ci++) { ct = cands[ci]; cr = rect(ct, chipY, right); if (cr.x1 >= xmin) break; } g.fillStyle = 'rgba(11,12,20,0.9)'; g.fillRect(cr.x1, cr.y1, cr.x2 - cr.x1, cr.y2 - cr.y1); g.strokeStyle = 'rgba(176,182,198,0.8)'; g.strokeRect(cr.x1 + 0.5, cr.y1 + 0.5, cr.x2 - cr.x1 - 1, cr.y2 - cr.y1 - 1); g.fillStyle = 'rgba(200,205,220,1)'; g.fillText(ct, cr.x2 - 1, (cr.y1 + cr.y2) / 2); lastChip = { text: ct, x1: cr.x1, x2: cr.x2, y1: cr.y1, y2: cr.y2 }; }
       g.restore();
+      if (pulse) { if (performance.now() - pulse.t0 < 1400) sched(); else { pulse = null; } }
       setOff(offs.concat(notes).join('\n'));
     }
+    function pulseOn(v, rank) { return !!pulse && pulse.v === v && pulse.rank === rank && performance.now() - pulse.t0 < 1400; }
     function sched() { if (!raf && !dead) raf = requestAnimationFrame(draw); }
 
     /* zoom: the price axis spans at least [min(E, lowest drawn) - 3 %, max(T, highest drawn) + 3 %] through an invisible overlay series; the candle data is never touched */
@@ -531,15 +555,27 @@
     function fitNow() { if (st.off || !zoom || !alive()) return; try { o.chart.priceScale('right').applyOptions({ autoScale: true }); } catch (e) {} xSet(); sched(); }
 
     /* ---- panels ---- */
-    function zoneRow(m, z) {
-      var q = m.ev.quote, tk = m.d.tick;
-      return '<div class="zl">' + (z.style === 'cand' ? '#' + z.rank + ' ' : '') + '<b>' + esc(qTxt(z, q)) + '</b> asks · ' + esc(qpx(z.lo, tk, q) + ' – ' + qpx(z.hi, tk, q)) + ' · ' + esc(pctTxt(z)) + ' above ' + (m.ev.pathMode === 'held' ? 'current price' : 'entry') + ' · C ' + (z.C == null ? 'n/a' : z.C.toFixed(2)) + ' · M ' + esc(mTxt(z)) + (z.style === 'uncertain' ? ' · materiality uncertain' : '') + ' · ' + esc(persTxt(z)) + '</div>';
+    /* item 52k: the bucket table - every zone the snapshot produced, one row each; the checkbox hides / shows that band on the chart only */
+    function tableHtml(m, HS) {
+      var ev = m.ev, zs = ev.zones || []; if (!zs.length) return '';
+      var q = ev.quote, tk = m.d.tick, frozen = ev.mode === 'frozen', two = visible().length > 1, N = frozen ? ev.drawn.length : zs.length;
+      var hk = ev.drawn.filter(function (z) { return isHid(HS, o.symbol, m.v, z); }).length, noun = frozen ? 'qualifying concentration' : 'candidate concentration';
+      var h = '<details class="rd52-tbl" data-v="' + m.v + '"' + (tblOpen ? ' open' : '') + '><summary>' + esc(N + ' ' + noun + (N === 1 ? '' : 's') + ' · ' + hk + ' hidden') + '</summary>';
+      h += '<div class="tc"><label>persistence window <select data-rd52-win aria-label="persistence look-back window">' + ['1h', '4h', '7d'].map(function (w) { return '<option value="' + w + '"' + (st.win === w ? ' selected' : '') + '>' + WLAB[w] + '</option>'; }).join('') + '</select></label> <a data-rd52-showall data-v="' + m.v + '" role="button" tabindex="0">show all</a></div>';
+      h += '<table class="rd52-bt"><thead><tr><th></th><th>#</th><th>' + esc(q) + ' resting</th><th>price range</th><th>from ' + (ev.pathMode === 'held' ? 'price' : 'entry') + '</th><th>C</th><th>M</th><th>present</th>' + (two ? '<th>venue</th>' : '') + '</tr></thead><tbody>';
+      zs.forEach(function (z) {
+        var dr = ev.drawn.indexOf(z) >= 0, hid = dr && isHid(HS, o.symbol, m.v, z), tag = dr ? (z.style === 'uncertain' ? 'materiality uncertain' : '') : (z.verdict === 'fail' ? 'below the cutoffs · not drawn' : 'not classified · not drawn');
+        h += '<tr data-v="' + m.v + '" data-k="' + z.rank + '" class="' + (hid ? 'off' : '') + (dr ? '' : ' nd') + '"><td><input type="checkbox" data-rd52-tg' + (dr ? '' : ' disabled') + (hid ? '' : ' checked') + ' aria-label="band #' + z.rank + ' on the chart"></td><td>#' + z.rank + '</td><td>' + esc(qTxt(z, q)) + '</td><td>' + esc(qpx(z.lo, tk, q) + ' – ' + qpx(z.hi, tk, q)) + (tag ? ' <span class="tg">' + esc(tag) + '</span>' : '') + '</td><td>' + esc(pctTxt(z)) + '</td><td>' + (z.C == null ? 'n/a' : esc(z.C.toFixed(2))) + '</td><td>' + esc(mTxt(z)) + '</td><td>' + esc(persTxt(z)) + '</td>' + (two ? '<td>' + (m.v === 'kraken' ? 'KRK' : 'CB') + '</td>' : '') + '</tr>';
+      });
+      return h + '</tbody></table></details>';
     }
-    function listBlock(m, list, noun) {
-      if (!list.length) return '';
-      var n = list.length, head = n + ' ' + noun + (n === 1 ? '' : 's') + ' before target', rows = list.map(function (z) { return zoneRow(m, z); }).join('');
-      return n > 3 ? '<details><summary>' + esc(head) + '</summary>' + rows + '</details>' : '<div><b>' + esc(head) + '</b></div>' + rows;
+    function hideSet(v, rank, hide) {
+      var m = models[v], z = m && m.ev && m.ev.zones.filter(function (x) { return x.rank === rank; })[0]; if (!z) return;
+      var store = hideRead(), k = hkey(o.symbol, v), rs = store[k] || [];
+      if (hide) { rs.push([z.lo, z.hi]); if (rs.length > 40) rs = rs.slice(-40); } else rs = rs.filter(function (r) { return !ovl(r, z.lo, z.hi); });
+      if (rs.length) store[k] = rs; else delete store[k]; hideWrite(store); render(); sched();
     }
+    function showAll(v) { var store = hideRead(); delete store[hkey(o.symbol, v)]; hideWrite(store); render(); sched(); }
     function panelHtml(m) {
       var V = VCOL[m.v].n, h = '<div class="rd52-panel" data-venue="' + m.v + '">';
       if (m.err) return h + '<div class="ph"><b>' + esc(V) + '</b></div><div class="st">' + esc(m.err) + '</div></div>';
@@ -556,12 +592,7 @@
       h += '<div>' + esc(pathLine(m)) + '</div>';
       h += '<div class="lg">' + (ev.mode === 'frozen' ? 'sell zones · cutoffs frozen by ' + esc(d.params.frozenBy) + ' ' + esc(d.params.date) + ' (C ≥ ' + d.params.cutoffs.concentration + ', M ≥ ' + d.params.cutoffs.material + ')' : 'candidate concentrations · cutoffs pending calibration') + (d.params.note ? ' · ' + esc(d.params.note) : '') + '</div>';
       ev.states.forEach(function (s) { h += '<div class="st">' + esc(s.text) + '</div>'; });
-      if (ev.mode === 'frozen') {
-        var pass = ev.drawn.filter(function (z) { return z.style === 'pass'; }), unc = ev.drawn.filter(function (z) { return z.style === 'uncertain'; });
-        h += listBlock(m, pass, 'substantial sell zone');
-        if (unc.length) h += listBlock(m, unc, 'sell zone with materiality uncertain');
-        if (ev.unclassified.length) h += listBlock(m, ev.unclassified, 'candidate concentration not classified');
-      } else h += listBlock(m, ev.drawn, 'candidate concentration');
+      h += tableHtml(m, hideRead());
       var tot = ev.total, cov = ev.coverage;
       if (tot) h += '<div>total observed ask mass entry→target: ' + esc(tot.Qlo === tot.Qhi ? qmoney(tot.Qlo, ev.quote) : qRange(tot.Qlo, tot.Qhi, ev.quote)) + (tot.lowerBound ? ' (lower bound' + (tot.note ? '; ' + esc(tot.note) : '') + ')' : '') + '</div>';
       if (ev.unobs) h += '<div class="lg">grey hatched band on the chart = not observed (depth ends' + (ev.unobs.coveredTo != null ? ' at ' + esc(qpx(ev.unobs.coveredTo, d.tick, d.quote)) : '') + '): unobserved, not empty; no other venue fills it</div>';
@@ -580,7 +611,7 @@
         if (m.d.status === 'nopair') { parts.push('depth: ' + V + ' has no mapped pair for ' + o.symbol); return; }
         if (m.d.status !== 'ok') { parts.push(V + ' ' + m.d.pair + ' · no depth observation in the window'); return; }
         var t = V + ' ' + m.d.pair + ' · newest ' + age(m.d.nowMs - m.d.latest.recvMs);
-        if (!m.path.valid) t += ' · Set an entry below a target to evaluate the path.'; else if (m.ev.states.length) t += ' · ' + m.ev.states[0].text; else if (m.ev.drawn.length) t += ' · ' + m.ev.drawn.length + (m.ev.mode === 'frozen' ? ' sell zone' : ' candidate concentration') + (m.ev.drawn.length === 1 ? '' : 's');
+        if (!m.path.valid) t += ' · Set an entry below a target to evaluate the path.'; else if (m.ev.states.length) t += ' · ' + m.ev.states[0].text; else if (m.ev.drawn.length) { var hk0 = m.ev.drawn.filter(function (z) { return isHid(hideRead(), o.symbol, m.v, z); }).length; t += ' · ' + m.ev.drawn.length + (m.ev.mode === 'frozen' ? ' sell zone' : ' candidate concentration') + (m.ev.drawn.length === 1 ? '' : 's') + (hk0 ? ' (' + hk0 + ' hidden)' : ''); }
         parts.push(t);
       });
       if (!st.off && ms.length > 1) parts.push('never summed: each venue is its own book, pair and quote currency');
@@ -595,7 +626,7 @@
     }
     function load(v) { if (!DATA[v]) DATA[v] = RD.sellData(o.symbol, v); return DATA[v]; }
     function modelFor(v) {
-      return load(v).then(function (d) { var m = { v: v, d: d, path: null, ev: null, err: null }; if (d.status === 'ok') { m.path = pathFor(d); if (m.path.valid) m.ev = RD.sellEval(d, m.path.E, m.path.T, m.path.mode); } return m; }, function (e) { return { v: v, d: null, path: null, ev: null, err: failMsg(e) }; }).catch(function (e) { return { v: v, d: null, path: null, ev: null, err: 'depth: unavailable (' + (e && e.message || 'error') + ')' }; });
+      return load(v).then(async function (d) { var m = { v: v, d: d, path: null, ev: null, err: null }; if (d.status === 'ok') { m.path = pathFor(d); if (m.path.valid) { if (st.win === '7d') { try { m.recs7 = await RD.sellRecs7(d); } catch (e) { m.recs7 = null; } } m.ev = RD.sellEval(d, m.path.E, m.path.T, m.path.mode, { win: st.win, recs: m.recs7 }); } } return m; }, function (e) { return { v: v, d: null, path: null, ev: null, err: failMsg(e) }; }).catch(function (e) { return { v: v, d: null, path: null, ev: null, err: 'depth: unavailable (' + (e && e.message || 'error') + ')' }; });
     }
     /* build: data load (cached per venue) + path evaluation. Auto: the execution venue first; the other venue is added beside it when the first one's depth does not reach the target. */
     var lastBuild = Promise.resolve(), lastLabels = [];
@@ -629,6 +660,18 @@
       if (a === 'reset') { ovr.E = null; ovr.T = null; var ie = inp('E'), it = inp('T'); if (ie) ie.value = ''; if (it) it.value = ''; build(); return; }
       st[a] = v; st.off = false; saveView(st); build();
     });
+    panels.addEventListener('change', function (ev) {
+      var t = ev.target; if (!t || !t.matches) return;
+      if (t.matches('[data-rd52-tg]')) { var tr = t.closest('tr'); if (tr) hideSet(tr.getAttribute('data-v'), +tr.getAttribute('data-k'), !t.checked); }
+      else if (t.matches('[data-rd52-win]')) { st.win = t.value === '1h' || t.value === '7d' ? t.value : '4h'; saveView(st); build(); }
+    });
+    panels.addEventListener('click', function (ev) {
+      var a = ev.target.closest && ev.target.closest('[data-rd52-showall]'); if (a) { ev.preventDefault(); showAll(a.getAttribute('data-v')); return; }
+      if (ev.target.closest && ev.target.closest('input,select,a,summary')) return;
+      var tr = ev.target.closest && ev.target.closest('tr[data-k]'); if (tr) { pulse = { v: tr.getAttribute('data-v'), rank: +tr.getAttribute('data-k'), t0: performance.now() }; sched(); }
+    });
+    panels.addEventListener('toggle', function (ev) { var d = ev.target; if (d && d.matches && d.matches('details.rd52-tbl')) tblOpen = d.open; }, true);
+    panels.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
     ctl.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
     ctl.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
     ctl.addEventListener('change', function (ev) {
@@ -640,7 +683,7 @@
       var hl = H ? H.hover(param) : null;   /* item 52j: a historical zone's own block; never merged with a current zone's figures */
       if (!param || !param.point || (st.off && !hl)) { tip.style.display = 'none'; return; }
       var pr = o.series.coordinateToPrice(param.point.y), P = plot(), lines = [], inSell = !st.off && pr != null && param.point.x <= P.pw && lastX0 != null && param.point.x >= lastX0; if (!inSell && !hl) { tip.style.display = 'none'; return; }
-      if (inSell) visible().forEach(function (m) { m.ev.drawn.forEach(function (z) { if (pr >= z.lo && pr < z.hi) lines.push((collapsedZ.indexOf(z) >= 0 ? zoneLabel(z, m.ev, 0) + '\n' : '') + zoneTip(m, z)); }); });
+      if (inSell) visible().forEach(function (m) { var HS = hideRead(); m.ev.drawn.forEach(function (z) { if (!isHid(HS, o.symbol, m.v, z) && pr >= z.lo && pr < z.hi) lines.push((collapsedZ.indexOf(z) >= 0 ? zoneLabel(z, m.ev, 0) + '\n' : '') + zoneTip(m, z)); }); });
       if (inSell && !lines.length) visible().forEach(function (m) { var u = m.ev.unobs; if (u && pr >= u.lo && pr <= u.hi) lines.push(VCOL[m.v].n + ' ' + m.d.pair + ' — NOT OBSERVED\n' + qpx(u.lo, m.d.tick, m.ev.quote) + ' – ' + qpx(u.hi, m.d.tick, m.ev.quote) + ': this venue’s depth ends' + (u.coveredTo != null ? ' at ' + qpx(u.coveredTo, m.d.tick, m.ev.quote) : '') + '; the region is unobserved, not empty. No other venue fills it.'); });
       if (hl) lines.push(hl);
       if (!lines.length) { tip.style.display = 'none'; return; }
@@ -652,7 +695,7 @@
     var evs = ['wheel', 'mousedown', 'mouseup', 'mousemove', 'touchmove', 'touchend', 'dblclick'];
     evs.forEach(function (n) { o.host.addEventListener(n, sched, { passive: true }); });
     var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () { var sg = o.host.clientWidth + 'x' + o.host.clientHeight; if (xzOn && !dead && sg !== xzH) { xzH = sg; requestAnimationFrame(function () { if (xzOn && !dead) xSet(); sched(); }); } sched(); }) : null; if (ro) ro.observe(o.host);
-    var mount = { key: o.key, state: st, hist: H, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, rects: function () { return lastRects.slice(); }, unobs: function () { return lastUnobs.slice(); }, anchor: function () { return lastX0; }, chip: function () { return lastChip; }, fit: fitNow, zoomOnToggle: ZOOM_ON_TOGGLE, tagsBottom: tagsBottom, xrange: function () { return { on: xzOn, saved: xzSaved }; }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
+    var mount = { key: o.key, state: st, hist: H, hidden: function () { return hideRead(); }, pulse: function () { return pulse && pulseOn(pulse.v, pulse.rank) ? { v: pulse.v, rank: pulse.rank, drawn: !!pulseDrawn } : null; }, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, rects: function () { return lastRects.slice(); }, unobs: function () { return lastUnobs.slice(); }, anchor: function () { return lastX0; }, chip: function () { return lastChip; }, fit: fitNow, zoomOnToggle: ZOOM_ON_TOGGLE, tagsBottom: tagsBottom, xrange: function () { return { on: xzOn, saved: xzSaved }; }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
       xRestore(); dead = true; if (raf) cancelAnimationFrame(raf); try { o.chart.unsubscribeCrosshairMove(onMove); } catch (e) {} try { o.chart.timeScale().unsubscribeVisibleLogicalRangeChange(sched); } catch (e) {}
       if (zs) { try { o.chart.removeSeries(zs); } catch (e) {} zs = null; }
       evs.forEach(function (n) { o.host.removeEventListener(n, sched); }); if (ro) ro.disconnect();
