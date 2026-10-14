@@ -1,1 +1,21 @@
-
+{
+  "version": 1,
+  "status": "uncalibrated",
+  "clustering": {
+    "name": "A",
+    "baselineMethod": "median",
+    "neighborhoodPct": 4,
+    "seedMinConcentration": 3,
+    "extendMinConcentration": 1.5,
+    "maxGapPct": 1,
+    "maxZoneWidthPct": 5
+  },
+  "cutoffs": {
+    "concentration": null,
+    "material": null
+  },
+  "staleMultiplier": 1.5,
+  "frozenBy": null,
+  "date": null,
+  "note": "cutoffs are set only by an Astra ruling on a calibration bundle"
+}
