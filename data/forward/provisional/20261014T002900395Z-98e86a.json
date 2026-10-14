@@ -1,0 +1,172 @@
+{
+ "schemaVersion": 1,
+ "baseGenerationId": "20261014T002900395Z-98e86a",
+ "baseCaptureId": "20261014T002900395Z-98e86a",
+ "baseChecksums": {
+  "orders.json": "d4158d76d3978cc4b71f1c6d9d94dbdb49dc446c1840d13c66fa6c93fd32b547",
+  "shadow/orders.json": "f90a28dc35edbe732a3361241b803b6f943695403012bf69ab78cc26d60b4083"
+ },
+ "evidenceCutoffSec": 1791937500,
+ "producedAt": "2026-10-14T00:34:37.199Z",
+ "orders": [
+  {
+   "id": "N0-2026-10-07-jito-governance-token",
+   "policyId": "N0",
+   "cgId": "jito-governance-token",
+   "pair": "JTOUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1791360600,
+    "fillPrice": 0.52784,
+    "fillReason": "fill-gap-open",
+    "exit": null,
+    "markPrice": 0.53974,
+    "markAt": 1791937500,
+    "unrealisedCents": 3008,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791937500,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "N0-2026-10-13-ethereum",
+   "policyId": "N0",
+   "cgId": "ethereum",
+   "pair": "ETHUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1791851343,
+    "fillPrice": 2422.15,
+    "fillReason": "fill-crossing-ask",
+    "exit": null,
+    "markPrice": 2506.73,
+    "markAt": 1791937500,
+    "unrealisedCents": 12392,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791937500,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "N0-2026-10-14-curve-dao-token",
+   "policyId": "N0",
+   "cgId": "curve-dao-token",
+   "pair": "CRVUSD",
+   "status": "resting",
+   "projected": {
+    "status": "resting",
+    "fillAt": null,
+    "fillPrice": null,
+    "fillReason": null,
+    "exit": null,
+    "markPrice": 0.34176,
+    "markAt": 1791937500,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791937742,
+    "windowsExhausted": false,
+    "partialDay": false
+   }
+  },
+  {
+   "id": "C1-2026-10-10-internet-computer",
+   "policyId": "C1",
+   "cgId": "internet-computer",
+   "pair": "ICPUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1791676800,
+    "fillPrice": 3.04,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 3.134,
+    "markAt": 1791937500,
+    "unrealisedCents": 6845,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791937500,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "CTRL-2026-10-10-internet-computer",
+   "policyId": "CTRL",
+   "cgId": "internet-computer",
+   "pair": "ICPUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1791676800,
+    "fillPrice": 3.04,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 3.134,
+    "markAt": 1791937500,
+    "unrealisedCents": 6965,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791937500,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "NZ-2026-10-10-internet-computer",
+   "policyId": "NZ",
+   "cgId": "internet-computer",
+   "pair": "ICPUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1791676800,
+    "fillPrice": 3.04,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 3.134,
+    "markAt": 1791937500,
+    "unrealisedCents": 6845,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1791937500,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  }
+ ],
+ "coverage": {
+  "perPair": {
+   "CRVUSD": {
+    "bars": 0,
+    "gaps": 0,
+    "complete": false
+   },
+   "ETHUSD": {
+    "bars": 5,
+    "gaps": 0,
+    "complete": true
+   },
+   "ICPUSD": {
+    "bars": 5,
+    "gaps": 0,
+    "complete": true
+   },
+   "JTOUSD": {
+    "bars": 5,
+    "gaps": 0,
+    "complete": true
+   }
+  }
+ },
+ "warnings": [
+  "coverage incomplete for CRVUSD (0 missing 5-min bars before the cutoff)"
+ ]
+}
