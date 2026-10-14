@@ -342,7 +342,7 @@
   RD.mount = function (o) {
     /* o: { chart, series, host, ctlHost, barAfter, symbol, defaultVenue, key, terms:{E,T,quote,source,targetSource}|fn, price:number|fn, quote } */
     var ex = MOUNTS.filter(function (m) { return m.key === o.key; })[0]; if (ex) { ex.destroy(); }
-    var st = readView(o.defaultVenue || 'kraken'), models = {}, DATA = {}, tok = 0, dead = false, raf = 0, ovr = { E: null, T: null }, held = false, zs = null, zoom = null, primary = o.defaultVenue === 'coinbase' ? 'coinbase' : 'kraken', other = primary === 'kraken' ? 'coinbase' : 'kraken';
+    var st = readView(o.defaultVenue || 'kraken'), models = {}, DATA = {}, tok = 0, dead = false, raf = 0, ovr = { E: null, T: null }, held = false, zs = null, zoom = null, xzSaved = null, xzOn = false, xzH = '', lastRects = [], collapsedZ = [], primary = o.defaultVenue === 'coinbase' ? 'coinbase' : 'kraken', other = primary === 'kraken' ? 'coinbase' : 'kraken';
     var cv = document.createElement('canvas'); cv.className = 'rd52-cv'; o.host.appendChild(cv);
     if (getComputedStyle(o.host).position === 'static') o.host.style.position = 'relative';
     var bar = null; if (o.barAfter && o.barAfter.parentNode) { bar = document.createElement('div'); bar.className = 'rd52-bar'; o.barAfter.parentNode.insertBefore(bar, o.barAfter.nextSibling); }
@@ -401,6 +401,21 @@
     }
     function visible() { return Object.keys(models).map(function (v) { return models[v]; }).filter(function (m) { return m && m.ev; }); }
     function hatch(g, x0, y0, w, h) { g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip(); g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1; g.setLineDash([]); g.beginPath(); for (var k = -h; k < w; k += 6) { g.moveTo(x0 + k, y0 + h); g.lineTo(x0 + k + h, y0); } g.stroke(); g.restore(); }
+    /* item 52h: the bottom edge (px from the host top) of the text overlays pinned to the top strip of the chart (legend, OHLC line, research tags). Labels are never drawn above it. */
+    function tagsBottom() {
+      var bot = 0;
+      try {
+        var hb = o.host.getBoundingClientRect();
+        Array.prototype.forEach.call(o.host.querySelectorAll('*'), function (e) {
+          if (e === cv || e === tip || e === msg || tip.contains(e) || ctl.contains(e) || msg.contains(e) || panels.contains(e) || (bar && bar.contains(e)) || !/^(DIV|SPAN|BUTTON|A|LABEL)$/.test(e.tagName)) return;
+          if (!e.textContent || !e.textContent.trim()) return;
+          var cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || (cs.position !== 'absolute' && cs.position !== 'fixed')) return;
+          var r = e.getBoundingClientRect(); if (!r.width || !r.height || r.height > 70) return;
+          var t = r.top - hb.top, b = r.bottom - hb.top; if (t > 90 || b < 0) return; if (b > bot) bot = b;
+        });
+      } catch (e) {}
+      return Math.min(bot, 120);
+    }
     function draw() {
       raf = 0; if (dead) return;
       var P = plot(), dpr = window.devicePixelRatio || 1; cv.style.width = P.w + 'px'; cv.style.height = P.h + 'px'; cv.width = Math.round(P.w * dpr); cv.height = Math.round(P.h * dpr);
@@ -419,14 +434,31 @@
           g.fillStyle = gr; g.fillRect(0, top, P.pw, h);
           g.strokeStyle = 'rgba(' + c + ',' + s.line + ')'; g.lineWidth = 1; g.setLineDash(s.dash); g.strokeRect(0.5, top + 0.5, P.pw - 1, Math.max(0, h - 1)); g.setLineDash([]);
           z.bins.forEach(function (b) { if (!b.boundary) return; var a1 = o.series.priceToCoordinate(b.hi), a2 = o.series.priceToCoordinate(b.lo); if (a1 == null || a2 == null) return; var bt = Math.max(top, Math.min(a1, a2)), bb = Math.min(top + h, Math.max(a1, a2)); if (bb > bt) hatch(g, 0, bt, P.pw, bb - bt); });
-          labels.push({ y: top + h / 2, text: zoneLabel(z, m.ev), c: c });
+          labels.push({ y0: top, y1: top + h, text: zoneLabel(z, m.ev), c: c, z: z });
         });
       });
       lastLabels = labels.map(function (l) { return l.text; });
-      labels.sort(function (a, b) { return a.y - b.y; }); var prev = -1e9;
-      labels.forEach(function (l) { if (l.y < prev + 14) l.y = prev + 14; prev = l.y; });
+      /* item 52h: each label sits at the vertical centre of its band (the part of the band inside the plot and below the tags row), right-aligned at the band's right edge inside the plot area, with a 1 px dark backing. Ranked by Q: when a label would overlap a placed one, the lower-ranked label is nudged down by its own height (at most twice); if it still overlaps it collapses to "#n" (its full text stays in the hover) and is moved left of whatever it meets; the list below the chart keeps the full labels. */
+      var HL = 14, tb = tagsBottom(), yMin = tb + HL / 2, yMax = P.ph - HL / 2, right = P.pw - 8, placed = [];
       g.font = '600 10px sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'right';
-      labels.forEach(function (l) { var w = g.measureText(l.text).width; g.fillStyle = 'rgba(11,12,20,0.78)'; g.fillRect(P.pw - w - 12, l.y - 7, w + 8, 14); g.fillStyle = 'rgba(' + l.c + ',1)'; g.fillText(l.text, P.pw - 8, l.y); });
+      function rect(text, yy, xr) { var w = Math.ceil(g.measureText(text).width) + 2; return { x1: xr - w, x2: xr, y1: yy - HL / 2, y2: yy + HL / 2, text: text }; }
+      function hit(r) { for (var i = 0; i < placed.length; i++) { var p = placed[i]; if (r.x1 < p.x2 && p.x1 < r.x2 && r.y1 < p.y2 && p.y1 < r.y2) return p; } return null; }
+      labels.sort(function (a, b) { return (a.z.rank - b.z.rank) || (a.y0 - b.y0) || (a.text < b.text ? -1 : a.text > b.text ? 1 : 0); });
+      collapsedZ = [];
+      labels.forEach(function (l) {
+        var lo = Math.max(l.y0, tb), hi = Math.min(l.y1, P.ph); if (!(hi > lo)) return;   /* band not visible below the tags row */
+        var y = Math.max(yMin, Math.min(yMax, (lo + hi) / 2)), y00 = y, n = 0, r = rect(l.text, y, right);
+        while (r.x1 >= 0 && (hit(r) || r.y2 > P.ph) && n < 2) { n++; y += HL; r = rect(l.text, y, right); }
+        r.c = l.c; r.full = l.text; r.collapsed = false;
+        if (r.x1 < 0 || hit(r) || r.y2 > P.ph) {   /* too wide for the plot, or still overlapping after two nudges */
+          var short = '#' + l.z.rank; r = rect(short, y00, right); r.c = l.c; r.full = l.text; r.collapsed = true; var guard = 0, c2;
+          while ((c2 = hit(r)) && guard++ < 12) r = Object.assign(rect(short, y00, c2.x1 - 2), { c: l.c, full: l.text, collapsed: true });
+          collapsedZ.push(l.z); if (hit(r) || r.x1 < 0) return;
+        }
+        r.rank = l.z.rank; placed.push(r);
+      });
+      lastRects = placed.map(function (r) { return { text: r.text, full: r.full, collapsed: r.collapsed, rank: r.rank, x1: r.x1, x2: r.x2, y1: r.y1, y2: r.y2 }; });
+      placed.forEach(function (r) { g.fillStyle = 'rgba(11,12,20,0.85)'; g.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1); g.fillStyle = 'rgba(' + r.c + ',1)'; g.fillText(r.text, r.x2 - 1, (r.y1 + r.y2) / 2); });
       g.restore();
     }
     function sched() { if (!raf && !dead) raf = requestAnimationFrame(draw); }
@@ -445,6 +477,12 @@
       if (!zoom && zs) { try { o.chart.removeSeries(zs); } catch (e) {} zs = null; }
       try { o.chart.priceScale('right').applyOptions({ autoScale: true }); } catch (e) {}
     }
+
+    /* item 52h: x-zoom to the path. ON: the visible logical range is stored once and set to the last 20 bars plus the chart's own right margin; OFF (or pane close): the stored range is restored exactly. Applied only on the ON transition (first evaluable path) and again after a pane size change (expand / drag-resize: the page refits the chart to its full range on every resize, so the zoom is re-applied one frame later); never on redraw, hover, venue, window or E/T changes. */
+    function xSet() { if (!alive()) return false; var li = null, dd = null; try { dd = o.series.data(); } catch (e) {} if (!dd || !dd.length) return false; li = dd.length - 1; var mg = 0; try { mg = o.chart.timeScale().options().rightOffset || 0; } catch (e) {} try { o.chart.timeScale().setVisibleLogicalRange({ from: Math.max(-0.5, li - 19.5), to: li + mg }); return true; } catch (e) { return false; } }
+    function xApply() { var sv = null; try { sv = o.chart.timeScale().getVisibleLogicalRange(); } catch (e) {} if (xSet()) { xzSaved = sv; xzOn = true; xzH = o.host.clientWidth + 'x' + o.host.clientHeight; } }
+    function alive() { try { o.chart.priceScale('right').width(); return true; } catch (e) { return false; } }   /* a chart removed by the page (coin change) throws on read: nothing to restore, and nothing may be scheduled on it */
+    function xRestore() { if (!xzOn) return; xzOn = false; var sv = xzSaved; xzSaved = null; if (!alive()) return; try { if (sv) o.chart.timeScale().setVisibleLogicalRange({ from: sv.from, to: sv.to }); } catch (e) {} }
 
     /* ---- panels ---- */
     function zoneRow(m, z) {
@@ -517,7 +555,7 @@
     function build() { var p = build0(); lastBuild = p; return p; }
     function build0() {
       var my = ++tok; paintCtl();
-      if (st.off) { models = {}; setZoom(); render(); sched(); return Promise.resolve(); }
+      if (st.off) { xRestore(); models = {}; setZoom(); render(); sched(); return Promise.resolve(); }
       if (!RD.supported()) { setMsg('depth unavailable in this browser'); sched(); return Promise.resolve(); }
       if (!Object.keys(models).length) setMsg('sell obstacles: loading…');
       var first = st.venue === 'both' || st.venue === 'auto' ? primary : st.venue;
@@ -530,7 +568,7 @@
       }).then(function (want) {
         if (!want || my !== tok || dead) return;
         models = {}; want.forEach(function (m) { models[m.v] = m; });
-        setZoom(); render(); sched(); if (o.onModels) try { o.onModels(models, st); } catch (e) {}
+        setZoom(); if (!xzOn && !st.off && Object.keys(models).some(function (k) { var q = models[k]; return q && q.path && q.path.valid; })) xApply(); render(); sched(); if (o.onModels) try { o.onModels(models, st); } catch (e) {}
       });
     }
     function refresh() { DATA = {}; models = {}; return build(); }
@@ -553,7 +591,7 @@
       if (st.off || !param || !param.point) { tip.style.display = 'none'; return; }
       var pr = o.series.coordinateToPrice(param.point.y), P = plot(); if (pr == null || param.point.x > P.pw) { tip.style.display = 'none'; return; }
       var lines = [];
-      visible().forEach(function (m) { m.ev.drawn.forEach(function (z) { if (pr >= z.lo && pr < z.hi) lines.push(zoneTip(m, z)); }); });
+      visible().forEach(function (m) { m.ev.drawn.forEach(function (z) { if (pr >= z.lo && pr < z.hi) lines.push((collapsedZ.indexOf(z) >= 0 ? zoneLabel(z, m.ev) + '\n' : '') + zoneTip(m, z)); }); });
       if (!lines.length) { tip.style.display = 'none'; return; }
       tip.textContent = lines.join('\n\n'); tip.style.display = 'block';
       var x = Math.min(param.point.x + 14, Math.max(0, o.host.clientWidth - 340)), y = Math.max(4, Math.min(param.point.y + 10, o.host.clientHeight - 150)); tip.style.left = x + 'px'; tip.style.top = y + 'px';
@@ -562,9 +600,9 @@
     try { o.chart.timeScale().subscribeVisibleLogicalRangeChange(sched); } catch (e) {}
     var evs = ['wheel', 'mousedown', 'mouseup', 'mousemove', 'touchmove', 'touchend', 'dblclick'];
     evs.forEach(function (n) { o.host.addEventListener(n, sched, { passive: true }); });
-    var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () { sched(); }) : null; if (ro) ro.observe(o.host);
-    var mount = { key: o.key, state: st, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
-      dead = true; if (raf) cancelAnimationFrame(raf); try { o.chart.unsubscribeCrosshairMove(onMove); } catch (e) {} try { o.chart.timeScale().unsubscribeVisibleLogicalRangeChange(sched); } catch (e) {}
+    var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () { var sg = o.host.clientWidth + 'x' + o.host.clientHeight; if (xzOn && !dead && sg !== xzH) { xzH = sg; requestAnimationFrame(function () { if (xzOn && !dead) xSet(); sched(); }); } sched(); }) : null; if (ro) ro.observe(o.host);
+    var mount = { key: o.key, state: st, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, rects: function () { return lastRects.slice(); }, tagsBottom: tagsBottom, xrange: function () { return { on: xzOn, saved: xzSaved }; }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
+      xRestore(); dead = true; if (raf) cancelAnimationFrame(raf); try { o.chart.unsubscribeCrosshairMove(onMove); } catch (e) {} try { o.chart.timeScale().unsubscribeVisibleLogicalRangeChange(sched); } catch (e) {}
       if (zs) { try { o.chart.removeSeries(zs); } catch (e) {} zs = null; }
       evs.forEach(function (n) { o.host.removeEventListener(n, sched); }); if (ro) ro.disconnect();
       [cv, msg, tip, ctl, bar, panels].forEach(function (e) { if (e && e.parentNode) e.parentNode.removeChild(e); });
