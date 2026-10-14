@@ -1008,6 +1008,14 @@ main { padding: 28px 36px; max-width: 860px; }
       <p class="metric-desc"><strong>A concentration of resting sell orders on the path from entry to target.</strong> A concentration of resting sell orders between the intended entry and the target, measured from a sampled order-book snapshot: its $ resting (Q), its concentration against nearby ask depth (C) and its size against the pair’s median hourly traded value over the prior 7 days (M); drawn as a band over its price range. Describes what was resting when sampled; not a forecast.</p>
     </div>
 
+    <div class="metric-entry" id="m-depth-historicalsupply">
+      <div class="metric-header">
+        <span class="metric-name">Historical supply zone (candle-derived)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>A price box from a past candle, chosen by a pinned public rule.</strong> A price box from a past candle chosen by a pinned public rule (v1: volume-pivot candle; box = upper half of that candle, from its midpoint to its high), drawn from the time it was confirmed until a later candle mitigates it. It records where selling once overwhelmed buying; it is not a measure of orders resting now — that is the sell-liquidity layer.</p>
+    </div>
+
     <div class="metric-entry" id="m-depth-materiality">
       <div class="metric-header">
         <span class="metric-name">Materiality (sell obstacle)</span>

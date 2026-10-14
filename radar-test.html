@@ -327,8 +327,8 @@
   };
 
   /* ---- view state (sessionStorage only): venue (auto | kraken | coinbase | both) and on/off. Overrides and the held-position toggle are memory only and always start at their defaults. ---- */
-  function readView(defVenue) { var v = { win: '4h', venue: 'auto', off: false }; try { var j = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (j) { if (j.venue === 'kraken' || j.venue === 'coinbase' || j.venue === 'both' || j.venue === 'auto') v.venue = j.venue; v.off = !!j.off; } } catch (e) {} return v; }
-  function saveView(v) { try { sessionStorage.setItem(SS, JSON.stringify({ win: '4h', venue: v.venue, off: v.off })); } catch (e) {} }
+  function readView(defVenue) { var v = { win: '4h', venue: 'auto', off: false, hs: false }; try { var j = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (j) { if (j.venue === 'kraken' || j.venue === 'coinbase' || j.venue === 'both' || j.venue === 'auto') v.venue = j.venue; v.off = !!j.off; v.hs = !!j.hs; } } catch (e) {} return v; }
+  function saveView(v) { try { sessionStorage.setItem(SS, JSON.stringify({ win: '4h', venue: v.venue, off: v.off, hs: !!v.hs })); } catch (e) {} }
 
   /* ---- chart overlay + panels ---- */
   RD.css = '.rd52-ctl{position:absolute;top:8px;right:76px;z-index:13;display:flex;gap:4px;align-items:center;font-size:10px;color:var(--muted,#9aa3b2)}' +
@@ -358,13 +358,15 @@
     if (bar && bar.parentNode) bar.parentNode.insertBefore(panels, bar.nextSibling); else (o.ctlHost || o.host.parentNode || o.host).appendChild(panels);
     var ctl = document.createElement('div'); ctl.className = 'rd52-ctl'; ctl.setAttribute('data-rd52-ctl', o.key);
     function btn(label, attr, val, title) { return '<button type="button" data-rd52="' + attr + '" data-v="' + val + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + label + '</button>'; }
-    ctl.innerHTML = btn('Sell obstacles', 'off', 'toggle', RD.terms.sellObstacle[1]) + '<span class="sep"></span>' + btn('Auto', 'venue', 'auto', 'Execution venue first; the other venue is added beside it when the first one’s depth does not reach the target') + btn('Kraken', 'venue', 'kraken') + btn('Coinbase', 'venue', 'coinbase') + btn('Both', 'venue', 'both') + '<span class="sep"></span>' +
+    ctl.innerHTML = btn('Sell obstacles', 'off', 'toggle', RD.terms.sellObstacle[1]) + (RD.terms.histSupply ? btn('Historical supply', 'hs', 'toggle', RD.terms.histSupply[1]) : '') + '<span class="sep"></span>' + btn('Auto', 'venue', 'auto', 'Execution venue first; the other venue is added beside it when the first one’s depth does not reach the target') + btn('Kraken', 'venue', 'kraken') + btn('Coinbase', 'venue', 'coinbase') + btn('Both', 'venue', 'both') + '<span class="sep"></span>' +
       btn('Fit entry → target', 'fit', 'now', 'Set the visible range to the whole trade path (entry to target, with every drawn zone) and the last ~20 bars. One-shot: it changes no toggle and stores nothing.') + btn('Held position', 'held', 'toggle', 'Path from the current price to the target instead of entry to target. Off by default; never substituted silently.') +
       '<span class="rd52-in sep-in"><label>entry $ <input type="text" inputmode="decimal" data-rd52-in="E" aria-label="entry price"></label><label>target $ <input type="text" inputmode="decimal" data-rd52-in="T" aria-label="target price"></label><a data-rd52="reset" role="button" tabindex="0">reset</a></span>';
     if (bar) { bar.appendChild(ctl); bar.appendChild(msg); } else { o.host.appendChild(msg); (o.ctlHost || o.host).appendChild(ctl); }
     function inp(k) { return ctl.querySelector('input[data-rd52-in="' + k + '"]'); }
+    /* item 52j hook: the historical-supply layer lives in its own block (below); the mount only hands it the chart, the view state and the intended path */
+    var H = RD.hist52j ? RD.hist52j({ o: o, st: st, bar: bar, after: function () { return panels; }, plot: function () { return plot(); }, path: function () { var t = termsNow(); return pathFor({ quote: (t && t.quote) || o.quote || 'USD' }); }, price: function () { return curPrice(); }, sched: function () { sched(); }, sellOn: function () { return !st.off; } }) : null;
     function paintCtl() {
-      Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { var a = b.getAttribute('data-rd52'), v = b.getAttribute('data-v'); b.classList.toggle('on', a === 'off' ? !st.off : a === 'held' ? held : st[a] === v); });
+      Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { var a = b.getAttribute('data-rd52'), v = b.getAttribute('data-v'); b.classList.toggle('on', a === 'off' ? !st.off : a === 'hs' ? !!st.hs : a === 'held' ? held : st[a] === v); });
       var ie = inp('E'); if (ie) ie.disabled = held;
       var fb = ctl.querySelector('[data-rd52="fit"]'); if (fb) fb.disabled = st.off || !zoom;
     }
@@ -442,14 +444,15 @@
       raf = 0; if (dead) return;
       var P = plot(), dpr = window.devicePixelRatio || 1; cv.style.width = P.w + 'px'; cv.style.height = P.h + 'px'; cv.width = Math.round(P.w * dpr); cv.height = Math.round(P.h * dpr);
       var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, P.w, P.h);
-      lastLabels = []; lastRects = []; lastUnobs = []; lastX0 = null; lastChip = null; collapsedZ = []; if (st.off) { setOff(''); return; }
+      lastLabels = []; lastRects = []; lastUnobs = []; lastX0 = null; lastChip = null; collapsedZ = []; if (st.off) { if (H) H.draw(g, P); setOff(''); return; }
       var lastT = null; try { var dd = o.series.data(); if (dd && dd.length) lastT = dd[dd.length - 1].time; } catch (e) {}
       var xl = null; try { if (lastT != null) xl = o.chart.timeScale().timeToCoordinate(lastT); } catch (e) {}
       /* item 52i: the book is the CURRENT book. Its zones start at the latest bar (the observation is "now") and run right into the gutter; nothing is painted over the historical candles. */
       var anchored = xl != null && isFinite(xl) && xl < P.pw, x0 = anchored ? Math.max(0, xl) : null, gw = anchored ? P.pw - x0 : 0; lastX0 = x0;
       var offs = [], notes = [], labels = [], stale = [];
       g.save(); g.beginPath(); g.rect(0, 0, P.pw, P.ph); g.clip();
-      /* item 52j insertion point: the historical-supply layer (muted amber outlines/patterns, off by default, no current ask-value labels) is drawn HERE, before the current-book layer. Nothing of it is built in 52i. */
+      /* item 52j: the historical-supply layer (muted amber outlines / pattern, off by default, no ask-value labels) is drawn HERE, before the current-book layer; it never reads or writes anything the sell layer owns */
+      if (H) H.draw(g, P);
       if (anchored) visible().forEach(function (m) {
         var u = m.ev.unobs; if (!u) return; var u1 = o.series.priceToCoordinate(u.hi), u2 = o.series.priceToCoordinate(u.lo); if (u1 == null || u2 == null) return;
         var ut = Math.min(u1, u2), uh = Math.max(1, Math.abs(u2 - u1)); g.fillStyle = 'rgba(176,178,184,0.07)'; g.fillRect(x0, ut, gw, uh); hatch(g, x0, ut, gw, uh, 'rgba(180,182,188,0.30)', 7);
@@ -620,6 +623,7 @@
       var b = ev.target.closest && ev.target.closest('[data-rd52]'); if (!b) return; ev.stopPropagation(); ev.preventDefault();
       var a = b.getAttribute('data-rd52'), v = b.getAttribute('data-v');
       if (a === 'off') { st.off = !st.off; if (!st.off) DATA = {}; saveView(st); build(); return; }
+      if (a === 'hs') { st.hs = !st.hs; saveView(st); paintCtl(); if (H) H.toggled(); sched(); return; }   /* item 52j: the toggle touches no sell-layer state, no scale and no range */
       if (a === 'fit') { fitNow(); return; }   /* one-shot: no stored state is touched */
       if (a === 'held') { held = !held; build(); return; }
       if (a === 'reset') { ovr.E = null; ovr.T = null; var ie = inp('E'), it = inp('T'); if (ie) ie.value = ''; if (it) it.value = ''; build(); return; }
@@ -633,11 +637,12 @@
     });
     /* hover: the zone(s) under the cursor */
     function onMove(param) {
-      if (st.off || !param || !param.point) { tip.style.display = 'none'; return; }
-      var pr = o.series.coordinateToPrice(param.point.y), P = plot(); if (pr == null || param.point.x > P.pw || lastX0 == null || param.point.x < lastX0) { tip.style.display = 'none'; return; }
-      var lines = [];
-      visible().forEach(function (m) { m.ev.drawn.forEach(function (z) { if (pr >= z.lo && pr < z.hi) lines.push((collapsedZ.indexOf(z) >= 0 ? zoneLabel(z, m.ev, 0) + '\n' : '') + zoneTip(m, z)); }); });
-      if (!lines.length) visible().forEach(function (m) { var u = m.ev.unobs; if (u && pr >= u.lo && pr <= u.hi) lines.push(VCOL[m.v].n + ' ' + m.d.pair + ' — NOT OBSERVED\n' + qpx(u.lo, m.d.tick, m.ev.quote) + ' – ' + qpx(u.hi, m.d.tick, m.ev.quote) + ': this venue’s depth ends' + (u.coveredTo != null ? ' at ' + qpx(u.coveredTo, m.d.tick, m.ev.quote) : '') + '; the region is unobserved, not empty. No other venue fills it.'); });
+      var hl = H ? H.hover(param) : null;   /* item 52j: a historical zone's own block; never merged with a current zone's figures */
+      if (!param || !param.point || (st.off && !hl)) { tip.style.display = 'none'; return; }
+      var pr = o.series.coordinateToPrice(param.point.y), P = plot(), lines = [], inSell = !st.off && pr != null && param.point.x <= P.pw && lastX0 != null && param.point.x >= lastX0; if (!inSell && !hl) { tip.style.display = 'none'; return; }
+      if (inSell) visible().forEach(function (m) { m.ev.drawn.forEach(function (z) { if (pr >= z.lo && pr < z.hi) lines.push((collapsedZ.indexOf(z) >= 0 ? zoneLabel(z, m.ev, 0) + '\n' : '') + zoneTip(m, z)); }); });
+      if (inSell && !lines.length) visible().forEach(function (m) { var u = m.ev.unobs; if (u && pr >= u.lo && pr <= u.hi) lines.push(VCOL[m.v].n + ' ' + m.d.pair + ' — NOT OBSERVED\n' + qpx(u.lo, m.d.tick, m.ev.quote) + ' – ' + qpx(u.hi, m.d.tick, m.ev.quote) + ': this venue’s depth ends' + (u.coveredTo != null ? ' at ' + qpx(u.coveredTo, m.d.tick, m.ev.quote) : '') + '; the region is unobserved, not empty. No other venue fills it.'); });
+      if (hl) lines.push(hl);
       if (!lines.length) { tip.style.display = 'none'; return; }
       tip.textContent = lines.join('\n\n'); tip.style.display = 'block';
       var x = Math.min(param.point.x + 14, Math.max(0, o.host.clientWidth - 340)), y = Math.max(4, Math.min(param.point.y + 10, o.host.clientHeight - 150)); tip.style.left = x + 'px'; tip.style.top = y + 'px';
@@ -647,10 +652,11 @@
     var evs = ['wheel', 'mousedown', 'mouseup', 'mousemove', 'touchmove', 'touchend', 'dblclick'];
     evs.forEach(function (n) { o.host.addEventListener(n, sched, { passive: true }); });
     var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () { var sg = o.host.clientWidth + 'x' + o.host.clientHeight; if (xzOn && !dead && sg !== xzH) { xzH = sg; requestAnimationFrame(function () { if (xzOn && !dead) xSet(); sched(); }); } sched(); }) : null; if (ro) ro.observe(o.host);
-    var mount = { key: o.key, state: st, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, rects: function () { return lastRects.slice(); }, unobs: function () { return lastUnobs.slice(); }, anchor: function () { return lastX0; }, chip: function () { return lastChip; }, fit: fitNow, zoomOnToggle: ZOOM_ON_TOGGLE, tagsBottom: tagsBottom, xrange: function () { return { on: xzOn, saved: xzSaved }; }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
+    var mount = { key: o.key, state: st, hist: H, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, rects: function () { return lastRects.slice(); }, unobs: function () { return lastUnobs.slice(); }, anchor: function () { return lastX0; }, chip: function () { return lastChip; }, fit: fitNow, zoomOnToggle: ZOOM_ON_TOGGLE, tagsBottom: tagsBottom, xrange: function () { return { on: xzOn, saved: xzSaved }; }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
       xRestore(); dead = true; if (raf) cancelAnimationFrame(raf); try { o.chart.unsubscribeCrosshairMove(onMove); } catch (e) {} try { o.chart.timeScale().unsubscribeVisibleLogicalRangeChange(sched); } catch (e) {}
       if (zs) { try { o.chart.removeSeries(zs); } catch (e) {} zs = null; }
       evs.forEach(function (n) { o.host.removeEventListener(n, sched); }); if (ro) ro.disconnect();
+      if (H) H.destroy();
       [cv, msg, tip, ctl, bar, panels].forEach(function (e) { if (e && e.parentNode) e.parentNode.removeChild(e); });
       MOUNTS = MOUNTS.filter(function (m) { return m !== mount; });
     } };
@@ -661,6 +667,149 @@
   RD.mounts = function () { return MOUNTS; };
   RD.view = readView;
 /* end item 52g */
+/* item 52j — historical supply */
+  /* The candle-derived "historical supply" layer. Everything it computes comes from supply-zones-core.js (pinned detector, loaded when the toggle is first turned on, never on page load) over the candles already on the chart (no candle fetch). It owns its own result, canvas drawing, message line, legend and list; it reads the intended path through the mount but never writes to, or reads from, the sell-liquidity layer, RD.analyze(), RD.orderFigures(), E/T, classifications or orders. */
+  try { (function () {
+    var ZMODS = 'radar_tools/zones/', AM = '214,160,60', IVS = 86400, SENT = -1e9;
+    RD.terms.histSupply = ['historical supply zone (candle-derived)', 'A price box from a past candle chosen by a pinned public rule (v1: volume-pivot candle; box = upper half of that candle, from its midpoint to its high), drawn from the time it was confirmed until a later candle mitigates it. It records where selling once overwhelmed buying; it is not a measure of orders resting now — that is the sell-liquidity layer.'];
+    (function () { var el = document.createElement('style'); el.id = 'rd52h-css'; el.textContent =
+      '.rd52h-msg{flex:1 1 240px;white-space:pre-line;font-size:10px;line-height:1.35;color:var(--muted,#9aa3b2)}.rd52h-msg b{color:#d9a63c;font-weight:600}' +
+      '.rd52h-leg{flex:1 1 100%;font-size:10px;color:var(--muted,#9aa3b2);display:flex;gap:14px;flex-wrap:wrap;align-items:center}.rd52h-leg i{display:inline-block;width:16px;height:9px;vertical-align:middle;margin-right:5px;border-radius:1px}' +
+      '.rd52h-leg .h{border:1px solid rgba(214,160,60,.9);background:repeating-linear-gradient(135deg,rgba(214,160,60,.45) 0 1px,rgba(214,160,60,.08) 1px 4px)}.rd52h-leg .s{border:1px solid rgba(240,90,90,.9);background:rgba(240,90,90,.30)}' +
+      '.rd52h-panel{padding:2px 12px 8px;font-size:10.5px;line-height:1.45;color:var(--muted,#9aa3b2)}.rd52h-panel b{color:#d9a63c}.rd52h-panel .zl{margin:2px 0 2px 10px;color:#c5c9d8}.rd52h-panel summary{cursor:pointer;color:#d7dae6}';
+      (document.head || document.documentElement).appendChild(el); })();
+    var _zm = null;
+    function zmod() {
+      if (window.SupplyZonesCore) return Promise.resolve(window.SupplyZonesCore);
+      if (!_zm) _zm = loadScript(ZMODS + 'supply-zones-core.js').then(function () { if (!window.SupplyZonesCore) throw new Error('supply-zones-core missing'); return window.SupplyZonesCore; }, function (e) { _zm = null; throw e; });
+      return _zm;
+    }
+    function dayTxt(sec) { return new Date(sec * 1000).toISOString().slice(0, 10); }
+    function dtTxt(sec) { return new Date(sec * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC'; }
+    var REASON = { lookback: 'fewer than 11 closed daily candles on this chart', volume: 'no candle volume on this chart (nothing is substituted)', candles: 'no daily candles on this chart' };
+
+    RD.hist52j = function (h) {
+      var o = h.o, st = h.st, core = null, loadErr = null, cache = null, rects = [], info = null, uiKey = '', dead = false;
+      var host = h.bar || (o.host && o.host.parentNode) || o.host;
+      var msg = null, leg = null, panel = null;
+      function ensureDom() {   /* created on the first enable: with the toggle off nothing of this layer exists in the page */
+        if (msg) return;
+        msg = document.createElement('div'); msg.className = 'rd52h-msg'; msg.setAttribute('data-rd52h', 'msg'); msg.style.display = 'none';
+        leg = document.createElement('div'); leg.className = 'rd52h-leg'; leg.setAttribute('data-rd52h', 'legend'); leg.style.display = 'none';
+        leg.innerHTML = '<span><i class="h"></i>Historical supply · past candles, pinned rule</span><span><i class="s"></i>Current sell liquidity · resting asks, sampled</span>';
+        panel = document.createElement('div'); panel.className = 'rd52h-panel'; panel.setAttribute('data-rd52h', 'panel'); panel.style.display = 'none';
+        if (h.bar) { h.bar.appendChild(msg); h.bar.appendChild(leg); } else { var fh = o.ctlHost || o.host; fh.appendChild(msg); fh.appendChild(leg); }
+        var anchor = h.after && h.after(); if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(panel, anchor.nextSibling); else if (host && host.parentNode) host.parentNode.appendChild(panel);
+      }
+      function cands() { var c = typeof o.candles === 'function' ? o.candles() : o.candles; return Array.isArray(c) ? c : null; }
+      function venueName() { var c = cands(), v = c && c.length && c[0].venue; return v ? String(v).charAt(0).toUpperCase() + String(v).slice(1) : 'Kraken'; }
+      function label() { return 'Historical supply · 1D · ' + venueName() + ' · v1 (pinned)'; }
+      function compute() {
+        var c = cands(); if (!core) return null;
+        if (!c || !c.length) return { available: false, reason: 'candles', zones: [] };
+        var key = c.length + '|' + c[c.length - 1].time + '|' + Math.floor(Date.now() / 3600000); if (cache && cache.key === key) return cache.res;
+        var res = core.detectBearish(c, { intervalSec: IVS, nowMs: Date.now() }); cache = { key: key, res: res }; return res;
+      }
+      function tick() { try { var pf = o.series.options().priceFormat; return pf && pf.minMove > 0 ? pf.minMove : null; } catch (e) { return null; } }
+      function pxT(x) { return '$' + px(x, tick()); }
+      function xOf(t) {
+        var ts = o.chart.timeScale(), x = null; try { x = ts.timeToCoordinate(t); } catch (e) {}
+        if (x != null && isFinite(x)) return x;
+        var dd = null; try { dd = o.series.data(); } catch (e) {} if (!dd || !dd.length) return null;
+        var a = dd[0].time, b = dd[dd.length - 1].time;
+        if (t < a) return SENT;
+        if (t > b) { var xb = null, xp = null; try { xb = ts.timeToCoordinate(b); xp = dd.length > 1 ? ts.timeToCoordinate(dd[dd.length - 2].time) : null; } catch (e) {} if (xb == null) return null; var sp = xp != null ? xb - xp : 6; return xb + sp * (t - b) / IVS; }
+        var lo = 0, hi = dd.length - 1; while (lo < hi) { var mid = (lo + hi) >> 1; if (dd[mid].time >= t) hi = mid; else lo = mid + 1; }
+        try { return ts.timeToCoordinate(dd[lo].time); } catch (e) { return null; }
+      }
+      function lastClose() { var c = cands(); if (c && c.length) { var l = c[c.length - 1]; if (isFinite(l.close)) return l.close; } var p = h.price && h.price(); return isFinite(p) ? p : null; }
+      function nearest(z, ref) { return Math.max(z.bottom, ref); }
+      function pctTxt(z, ref) { if (!isFinite(ref) || !(ref > 0)) return ''; var d = (nearest(z, ref) / ref - 1) * 100; return '+' + Math.max(0, d).toFixed(1) + ' %'; }
+      function volTxt(z) { var v = z.volume, n = v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : v.toFixed(v >= 100 ? 0 : 2); return n + ' ' + (o.symbol || 'base units') + (isFinite(z.quoteEst) ? ' (≈ ' + money(z.quoteEst) + ' estimate, close × volume)' : ''); }
+      function rowTxt(z, rank, ref, ctxMode) {
+        return (rank ? 'H' + rank + ' ' : '') + pxT(z.bottom) + ' – ' + pxT(z.top) + ' · ' + pctTxt(z, ref) + ' above ' + (ctxMode ? 'the latest close' : 'entry') + ' · origin ' + dayTxt(z.originTime) + ' · confirmed ' + dayTxt(z.confirmedAt) + ' · candle volume ' + volTxt(z);
+      }
+      function tipFor(r) {
+        var z = r.z, D = core.DETECTOR;
+        return ['HISTORICAL SUPPLY ZONE (candle-derived) — not resting orders', pxT(z.bottom) + ' – ' + pxT(z.top) + ' · 1D · ' + venueName() + (o.symbol ? ' ' + o.symbol : ''),
+          'origin candle ' + dayTxt(z.originTime) + ' · confirmed ' + dtTxt(z.confirmedAt) + ' (close of the last candle the pivot needed)',
+          'geometric midpoint ' + pxT(z.mid), 'originating candle traded volume ' + volTxt(z),
+          'detector: ' + D.id + ' (pinned: ' + D.name + ' ' + D.version + ')'].join('\n');
+      }
+      function hatch(g, x0, y0, w, hh, col, step) { g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([]); g.beginPath(); for (var k = -hh; k < w; k += step) { g.moveTo(x0 + k, y0 + hh); g.lineTo(x0 + k + hh, y0); } g.stroke(); }
+
+      function ui(text, legendOn, listHtml) {
+        if (!msg) return;
+        var key = text + '|' + legendOn + '|' + listHtml; if (key === uiKey) return; uiKey = key;
+        msg.textContent = text; msg.style.display = text ? '' : 'none'; leg.style.display = legendOn ? '' : 'none';
+        panel.innerHTML = listHtml || ''; panel.style.display = listHtml ? '' : 'none';
+      }
+      function toggled() {
+        if (!st.hs || core || dead) return;
+        loadErr = null; zmod().then(function (c) { core = c; if (!dead) h.sched(); }, function () { loadErr = 'unavailable (the detector module could not be loaded)'; if (!dead) h.sched(); });
+      }
+
+      function draw(g, P) {
+        rects = []; info = null;
+        if (!st.hs) { ui('', false, ''); return; }
+        ensureDom();
+        if (!core) { ui(label() + ' — ' + (loadErr || 'loading…'), false, ''); return; }
+        var res = compute(); if (!res || !res.available) { ui(label() + ' — unavailable: ' + (REASON[res && res.reason] || 'no result'), false, ''); return; }
+        var p = h.path(), pathOk = !!(p && p.valid), ref = pathOk ? p.E : lastClose(), sel, vis = null;
+        if (pathOk) sel = core.selectDisplay(res.zones, { E: p.E, T: p.T });
+        else { var vhi = null, vlo = null; try { vhi = o.series.coordinateToPrice(0); vlo = o.series.coordinateToPrice(P.ph); } catch (e) {} sel = core.selectDisplay(res.zones, { ref: ref, vlo: vlo, vhi: vhi }); }
+        var nAct = res.zones.filter(function (z) { return z.mitigatedAt == null; }).length, offV = 0, offX = 0;
+        g.save(); g.beginPath(); g.rect(0, 0, P.pw, P.ph); g.clip();
+        var boxes = [];
+        sel.shown.forEach(function (z, i) {
+          var y1 = o.series.priceToCoordinate(z.top), y2 = o.series.priceToCoordinate(z.bottom), x1 = xOf(z.confirmedAt); if (y1 == null || y2 == null || x1 == null) { offV++; return; }
+          var top = Math.min(y1, y2), hh = Math.max(2, Math.abs(y2 - y1)), xs = Math.max(0, x1);
+          if (xs >= P.pw) { offX++; return; } if (top + hh < 0 || top > P.ph) { offV++; return; }
+          boxes.push({ z: z, rank: i + 1, x1: xs, x2: P.pw, y1: top, y2: top + hh });
+        });
+        if (boxes.length) {
+          g.beginPath(); boxes.forEach(function (b) { g.rect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); });
+          g.fillStyle = 'rgba(' + AM + ',0.10)'; g.fill();   /* one light fill over the union: overlaps never accumulate */
+          g.save(); g.clip(); boxes.forEach(function (b) { hatch(g, b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1, 'rgba(' + AM + ',0.30)', 7); }); g.restore();
+          g.setLineDash([]); g.lineWidth = 1; g.strokeStyle = 'rgba(' + AM + ',0.85)'; boxes.forEach(function (b) { g.strokeRect(b.x1 + 0.5, b.y1 + 0.5, Math.max(0, b.x2 - b.x1 - 1), Math.max(0, b.y2 - b.y1 - 1)); });
+          g.lineWidth = 1; g.strokeStyle = 'rgba(' + AM + ',0.6)'; g.setLineDash([2, 3]); boxes.forEach(function (b) { var ym = o.series.priceToCoordinate(b.z.mid); if (ym != null && ym > b.y1 && ym < b.y2) { g.beginPath(); g.moveTo(b.x1, Math.round(ym) + 0.5); g.lineTo(b.x2, Math.round(ym) + 0.5); g.stroke(); } }); g.setLineDash([]);   /* the geometric midpoint, named in the hover */
+          if (pathOk) boxes.forEach(function (b) {   /* the in-path portion is emphasized by a heavier outline */
+            var lo = Math.max(b.z.bottom, p.E), hi = Math.min(b.z.top, p.T), a = o.series.priceToCoordinate(hi), c = o.series.priceToCoordinate(lo); if (a == null || c == null) return;
+            g.lineWidth = 2; g.strokeStyle = 'rgba(' + AM + ',1)'; g.strokeRect(b.x1 + 1, Math.min(a, c) + 1, Math.max(0, b.x2 - b.x1 - 2), Math.max(0, Math.abs(c - a) - 2));
+          });
+          g.font = '600 9px sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'left';
+          boxes.forEach(function (b) {
+            var xo = xOf(b.z.originTime); if (xo != null && xo >= 0 && xo <= P.pw) { g.fillStyle = 'rgba(' + AM + ',1)'; g.strokeStyle = 'rgba(11,12,20,0.9)'; g.lineWidth = 1; g.beginPath(); g.moveTo(xo, b.y1 - 4); g.lineTo(xo + 4, b.y1); g.lineTo(xo, b.y1 + 4); g.lineTo(xo - 4, b.y1); g.closePath(); g.fill(); g.stroke(); }
+            if (b.y2 - b.y1 >= 12 && b.x1 + 22 < P.pw) { g.fillStyle = 'rgba(' + AM + ',1)'; g.fillText('H' + b.rank, b.x1 + 4, b.y1 + 8); }
+            rects.push({ id: b.z.id, rank: b.rank, x1: b.x1, x2: b.x2, y1: b.y1, y2: b.y2, z: b.z });
+          });
+        }
+        g.restore();
+        var n = sel.total, head;
+        if (!pathOk) head = 'historical context (no trade path): ';
+        else head = '';
+        var cnt = n === 0 ? (pathOk ? 'no active historical supply zone on the entry → target path' : 'no active historical supply zone above the latest close in the visible price range') + (nAct ? ' (' + nAct + ' active elsewhere)' : '')
+          : n > 3 ? '3 of ' + n + ' historical zones (nearest above ' + (pathOk ? 'entry' : 'the latest close') + ', by lower boundary)' : n + ' historical zone' + (n === 1 ? '' : 's') + (pathOk ? ' on the path' : '');
+        var extra = (offV ? '; ' + offV + ' outside the visible price range' : '') + (offX ? '; ' + offX + ' confirmed right of the visible bars' : '');
+        var list = '';
+        if (n) {
+          var rowsAll = sel.all.map(function (z) { var k = sel.shown.indexOf(z); return '<div class="zl">' + esc(rowTxt(z, k >= 0 ? k + 1 : 0, ref, !pathOk)) + '</div>'; }).join('');
+          list = '<div><b>Historical supply zones</b> · candle-derived, from past candles by the pinned rule; not resting orders</div>' + (n > 3 ? '<details><summary>3 of ' + n + ' historical zones — all ' + n + ' in price order</summary>' + rowsAll + '</details>' : rowsAll);
+        }
+        info = { mode: sel.mode, total: n, shown: sel.shown.map(function (z) { return z.id; }), all: sel.all.map(function (z) { return z.id; }), active: nAct, offV: offV, offX: offX, ref: ref };
+        ui(label() + '\n' + head + cnt + extra, h.sellOn(), list);
+      }
+      function hover(param) {
+        if (!st.hs || !param || !param.point || !rects.length || !core) return null;
+        var x = param.point.x, y = param.point.y, hits = rects.filter(function (r) { return x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2; });
+        return hits.length ? hits.map(tipFor).join('\n\n') : null;
+      }
+      function destroy() { dead = true; [msg, leg, panel].forEach(function (e) { if (e && e.parentNode) e.parentNode.removeChild(e); }); }
+      if (st.hs) toggled();
+      return { draw: draw, hover: hover, toggled: toggled, destroy: destroy, rects: function () { return rects.slice(); }, info: function () { return info; }, result: function () { return core ? compute() : null; }, ready: function () { return !!core; } };
+    };
+  })(); } catch (e) { try { console.warn('item 52j block failed: ' + (e && e.message)); } catch (e2) {} }
+/* end item 52j */
 
   /* ---- TEST order rows: figures from the latest decoded record of the order's venue|pair ---- */
   RD.orderFigures = function (order, nowMs) {
@@ -711,11 +860,11 @@
       return RD.orderFigures(o).then(function (f) { var t = RD.figureText(f); SHOWN[id] = t; out.textContent = ' ' + t; btn.textContent = 'Refresh depth'; return f; },
         function (e) { var t = e && e.kind === 'unsupported' ? 'depth unavailable in this browser' : e && e.kind === 'unverified' ? 'depth: unverified batch excluded (feed hash mismatch)' : e && e.kind === 'modules' ? 'depth: unavailable (book modules could not be loaded)' : 'depth: unavailable (rolling data repo unreachable)'; out.textContent = ' ' + t; return null; });
     },
-    card: function (host, chart, cs, o) {
+    card: function (host, chart, cs, o, cand) {
       if (!host || host.querySelector('.rd52-open')) return;
       var sym = String(o.pair || '').replace(/(USDT|USDC|USD)$/, '');
       var b = document.createElement('button'); b.type = 'button'; b.className = 'rd52-open'; b.textContent = 'Depth';
-      b.addEventListener('click', function (ev) { ev.stopPropagation(); ev.preventDefault(); if (b.parentNode) b.parentNode.removeChild(b); var qd = (String(o.pair || '').match(/(USDT|USDC|USD)$/) || [])[1] || 'USD'; RD.mount({ chart: chart, series: cs, host: host, barAfter: host, symbol: sym, defaultVenue: o.venue === 'coinbase' ? 'coinbase' : 'kraken', key: 'card-' + o.id, terms: { E: o.L, T: o.T, quote: qd, source: 'order limit L', targetSource: 'order target T' }, price: null, quote: qd }); });
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); ev.preventDefault(); if (b.parentNode) b.parentNode.removeChild(b); var qd = (String(o.pair || '').match(/(USDT|USDC|USD)$/) || [])[1] || 'USD'; RD.mount({ chart: chart, series: cs, host: host, barAfter: host, symbol: sym, defaultVenue: o.venue === 'coinbase' ? 'coinbase' : 'kraken', key: 'card-' + o.id, terms: { E: o.L, T: o.T, quote: qd, source: 'order limit L', targetSource: 'order target T' }, price: null, quote: qd, candles: cand }); });
       b.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
       if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
       host.appendChild(b);
@@ -1127,7 +1276,7 @@ function fetchCandles(cg) {
   S.candle[cg] = getJSON('data/cache/' + encodeURIComponent(cg) + '.json').then(function (j) {
     var full = (j && j.ohlcDaily) || [];
     if (!full.length) throw new Error('no ohlcDaily in cache');
-    return { candles: full.map(function (c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, date: c.date }; }) };
+    return { candles: full.map(function (c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, date: c.date, volume: c.volume }; }) };
   }).catch(function (e) { return { candles: null, error: e.message || String(e) }; });
   return S.candle[cg];
 }
@@ -1708,6 +1857,7 @@ D('depthPersist', 'Sampled persistence', 'Descriptive context beside a sell zone
 D('depthLB', 'Lower bound (500-level cap)', 'Kraken returns at most 500 levels per side; the true figure can be higher.', 'Kraken’s public book stops at 500 price levels per side, which on liquid coins may reach only a few percent from price. A figure marked ≥ is therefore a minimum, and persistence is not computed for a side that is a lower bound.');
 D('depthGone', 'Sampled wall-disappearance', 'A zone that held a large order in one snapshot and no longer qualifies in a later one.', 'It compares two sampled snapshots and records only that the zone stopped qualifying. The order may have been filled, cancelled or moved, or price may have moved the zone out of range, so it is descriptive only.');
 D('depthSellObs', 'Sell obstacle (resting asks on the path)', 'A concentration of resting sell orders on the path from entry to target.', 'A concentration of resting sell orders between the intended entry and the target, measured from a sampled order-book snapshot: its $ resting (Q), its concentration against nearby ask depth (C) and its size against the pair’s median hourly traded value over the prior 7 days (M); drawn as a band over its price range. Describes what was resting when sampled; not a forecast.');
+D('depthHistSupply', 'Historical supply zone (candle-derived)', 'A price box from a past candle, chosen by a pinned public rule.', 'A price box from a past candle chosen by a pinned public rule (v1: volume-pivot candle; box = upper half of that candle, from its midpoint to its high), drawn from the time it was confirmed until a later candle mitigates it. It records where selling once overwhelmed buying; it is not a measure of orders resting now — that is the sell-liquidity layer.');
 D('depthMateriality', 'Materiality (sell obstacle)', 'Pass / fail / uncertain against two frozen cutoffs.', 'pass / fail / uncertain against two frozen cutoffs on C and M; “not yet calibrated” until the cutoffs are ruled.');
 GLOSS42.depthSellObs = 'glossary.html#m-depth-sellobstacle'; GLOSS42.depthMateriality = 'glossary.html#m-depth-materiality';
 GLOSS42.depthBlock = 'glossary.html#m-depth-block'; GLOSS42.depthPersist = 'glossary.html#m-depth-persistence'; GLOSS42.depthLB = 'glossary.html#m-depth-lowerbound'; GLOSS42.depthGone = 'glossary.html#m-depth-disappearance';
@@ -2095,7 +2245,7 @@ function chartWrap44() {
     var ro = null;
     if (window.ResizeObserver) { ro = new ResizeObserver(function () { if (host.clientWidth > 0) chart.applyOptions({ width: host.clientWidth }); }); ro.observe(host); }
     note.textContent = all.length + ' daily candles in cache (last ' + win.length + ' drawn)' + (all.length < 60 ? ' — fewer than 60 bars available' : '') + '.';
-    try { if (window.RT52) RT52.card(host, chart, cs, o); } catch (e) {}   /* item 52c */
+    try { if (window.RT52) RT52.card(host, chart, cs, o, all); } catch (e) {}   /* item 52c */
     CARDS.list.push({ chart: chart, ro: ro }); RT44.cards[o.id] = { chart: chart, series: ser, log: log };
   }
   function drawCards() {
