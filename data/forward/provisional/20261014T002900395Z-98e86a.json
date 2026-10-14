@@ -6,8 +6,8 @@
   "orders.json": "d4158d76d3978cc4b71f1c6d9d94dbdb49dc446c1840d13c66fa6c93fd32b547",
   "shadow/orders.json": "f90a28dc35edbe732a3361241b803b6f943695403012bf69ab78cc26d60b4083"
  },
- "evidenceCutoffSec": 1791937800,
- "producedAt": "2026-10-14T00:37:36.190Z",
+ "evidenceCutoffSec": 1791938700,
+ "producedAt": "2026-10-14T00:52:40.800Z",
  "orders": [
   {
    "id": "N0-2026-10-07-jito-governance-token",
@@ -21,12 +21,12 @@
     "fillPrice": 0.52784,
     "fillReason": "fill-gap-open",
     "exit": null,
-    "markPrice": 0.53869,
-    "markAt": 1791937800,
-    "unrealisedCents": 2582,
+    "markPrice": 0.54067,
+    "markAt": 1791938700,
+    "unrealisedCents": 3386,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791937800,
+    "notYetObservedFrom": 1791938700,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -43,12 +43,12 @@
     "fillPrice": 2422.15,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 2509.26,
-    "markAt": 1791937800,
-    "unrealisedCents": 12882,
+    "markPrice": 2514.78,
+    "markAt": 1791938700,
+    "unrealisedCents": 13951,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791937800,
+    "notYetObservedFrom": 1791938700,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -65,12 +65,12 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 0.3425,
-    "markAt": 1791937800,
+    "markPrice": 0.34161,
+    "markAt": 1791938700,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791937800,
+    "notYetObservedFrom": 1791938700,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -87,12 +87,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.137,
-    "markAt": 1791937800,
-    "unrealisedCents": 7096,
+    "markPrice": 3.142,
+    "markAt": 1791938700,
+    "unrealisedCents": 7514,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791937800,
+    "notYetObservedFrom": 1791938700,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -109,12 +109,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.137,
-    "markAt": 1791937800,
-    "unrealisedCents": 7220,
+    "markPrice": 3.142,
+    "markAt": 1791938700,
+    "unrealisedCents": 7646,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791937800,
+    "notYetObservedFrom": 1791938700,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -131,12 +131,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.137,
-    "markAt": 1791937800,
-    "unrealisedCents": 7096,
+    "markPrice": 3.142,
+    "markAt": 1791938700,
+    "unrealisedCents": 7514,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1791937800,
+    "notYetObservedFrom": 1791938700,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -145,22 +145,22 @@
  "coverage": {
   "perPair": {
    "CRVUSD": {
-    "bars": 1,
+    "bars": 4,
     "gaps": 0,
     "complete": true
    },
    "ETHUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    },
    "JTOUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    }
