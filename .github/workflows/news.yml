@@ -16,7 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # 52b: read + write the rolling data repo through the lease publisher; the main-repo copy is still written (dual-write) until NEWS_MAIN_WRITE=0.
       - run: node radar_tools/news-fetch.js
+        env:
+          BOOK_ROLLING_URL: https://github.com/rdwills02/BTC_Brief-data.git
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
       - name: Commit
         run: |
           git config user.name radar-news-bot

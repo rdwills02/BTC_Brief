@@ -1,0 +1,39 @@
+name: Book
+# Order-book depth collector (item 52b). ADVISORY: every step is continue-on-error and this workflow has its own concurrency group,
+# so it can never fail or delay a canonical capture. Manual dispatch for now; an external dispatcher will call it every 15 minutes later.
+# Ryan creates: repo rdwills02/BTC_Brief-data (branch `rolling` is created by the first publish) and the secret DATA_REPO_TOKEN (contents:write on that repo only).
+on:
+  workflow_dispatch:
+permissions:
+  contents: write            # the archive appender pushes book-archive/ to main with GITHUB_TOKEN (normal push, stale rejected)
+concurrency:
+  group: radar-book
+  cancel-in-progress: false
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      BOOK_ROLLING_URL: https://github.com/rdwills02/BTC_Brief-data.git
+      BOOK_MAIN_URL: https://github.com/${{ github.repository }}.git
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Hydrate rolling state (cadence table, grids)
+        continue-on-error: true
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: node radar_tools/book/book-publish.js fetch-state --dest .rolling-state
+      - name: Collect (sweeps finish or abort within 10 minutes)
+        continue-on-error: true
+        run: node radar_tools/book/book-collector.js --root . --state .rolling-state --out out
+      - name: Publish (archive in main, then rolling window)
+        continue-on-error: true
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node radar_tools/book/book-publish.js publish --out out
