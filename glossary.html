@@ -994,10 +994,26 @@ main { padding: 28px 36px; max-width: 860px; }
 
     <div class="metric-entry" id="m-depth-persistence">
       <div class="metric-header">
-        <span class="metric-name">Sampled price-zone persistence</span>
+        <span class="metric-name">Sampled persistence</span>
         <span class="metric-lens-tag">Order-book depth</span>
       </div>
-      <p class="metric-desc"><strong>How often a zone held a large standing order, across the snapshots in the chosen window.</strong> “n of N slots” means the zone held at least 5% of that side’s resting value in n of the N snapshots. Snapshots are taken every 15 minutes (coins with an order, ACT or NEAR verdict, or a holding) or hourly, so an order that came and went between snapshots is not seen. The border is solid at 75% or more, dashed from 25% to 75%, and absent below 25% or where persistence is not computed. A zone seen in too few of the scheduled snapshots is not drawn.</p>
+      <p class="metric-desc"><strong>Descriptive context beside a sell zone.</strong> Of the earlier comparable snapshots in the 4 h window, how many held an overlapping candidate zone (n of N), shown beside a sell zone as “present in n/N comparable samples” or “newly observed”. Descriptive context only here: it does not decide whether a zone is drawn, and orders that came and went between the 15-minute or hourly snapshots are not seen.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-sellobstacle">
+      <div class="metric-header">
+        <span class="metric-name">Sell obstacle (resting asks on the path)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>A concentration of resting sell orders on the path from entry to target.</strong> A concentration of resting sell orders between the intended entry and the target, measured from a sampled order-book snapshot: its $ resting (Q), its concentration against nearby ask depth (C) and its size against the pair’s median hourly traded value over the prior 7 days (M); drawn as a band over its price range. Describes what was resting when sampled; not a forecast.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-materiality">
+      <div class="metric-header">
+        <span class="metric-name">Materiality (sell obstacle)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>Pass, fail or uncertain.</strong> pass / fail / uncertain against two frozen cutoffs on C and M; “not yet calibrated” until the cutoffs are ruled.</p>
     </div>
 
     <div class="metric-entry" id="m-depth-lowerbound">
