@@ -696,6 +696,7 @@
     evs.forEach(function (n) { o.host.addEventListener(n, sched, { passive: true }); });
     var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () { var sg = o.host.clientWidth + 'x' + o.host.clientHeight; if (xzOn && !dead && sg !== xzH) { xzH = sg; requestAnimationFrame(function () { if (xzOn && !dead) xSet(); sched(); }); } sched(); }) : null; if (ro) ro.observe(o.host);
     var mount = { key: o.key, state: st, hist: H, hidden: function () { return hideRead(); }, pulse: function () { return pulse && pulseOn(pulse.v, pulse.rank) ? { v: pulse.v, rank: pulse.rank, drawn: !!pulseDrawn } : null; }, models: function () { return models; }, refresh: refresh, redraw: draw, ready: function () { return lastBuild; }, labels: function () { return lastLabels.slice(); }, rects: function () { return lastRects.slice(); }, unobs: function () { return lastUnobs.slice(); }, anchor: function () { return lastX0; }, chip: function () { return lastChip; }, fit: fitNow, zoomOnToggle: ZOOM_ON_TOGGLE, tagsBottom: tagsBottom, xrange: function () { return { on: xzOn, saved: xzSaved }; }, path: function () { return { ovr: { E: ovr.E, T: ovr.T }, held: held, zoom: zoom }; }, destroy: function () {
+      try { if (RD.fs52l) RD.fs52l.closeFor(o.host); } catch (e) {}   /* item 52l */
       xRestore(); dead = true; if (raf) cancelAnimationFrame(raf); try { o.chart.unsubscribeCrosshairMove(onMove); } catch (e) {} try { o.chart.timeScale().unsubscribeVisibleLogicalRangeChange(sched); } catch (e) {}
       if (zs) { try { o.chart.removeSeries(zs); } catch (e) {} zs = null; }
       evs.forEach(function (n) { o.host.removeEventListener(n, sched); }); if (ro) ro.disconnect();
@@ -853,6 +854,68 @@
     };
   })(); } catch (e) { try { console.warn('item 52j block failed: ' + (e && e.message)); } catch (e2) {} }
 /* end item 52j */
+/* item 52l — full screen: the chart's own container (same chart instance) and the depth controls/panels that follow it are moved into a fixed overlay and moved back on exit. Nothing here runs, and no style or element is added, until a full-screen button is pressed. */
+  (function () { try {
+    var cur = null, FSCSS = '#rd52l-ov,#rd52l-ov *{box-sizing:border-box}#rd52l-ov{position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:99990;background:var(--bg,#0b0c14);display:flex;flex-direction:column}' +
+      '#rd52l-ov .rd52l-slot{flex:1 1 auto;min-height:0;position:relative}' +
+      '#rd52l-ov .rd52l-band{flex:0 0 auto;max-height:35vh;overflow:auto;border-top:1px solid var(--border,#2a2d45);background:var(--surface,#13141f)}' +
+      '#rd52l-ov .rd52l-band.min>*:not(.rd52-bar):not(.rd52l-chev){display:none !important}' +
+      '#rd52l-ov .rd52l-chev{position:sticky;top:0;float:right;z-index:3;margin:3px 8px 0 0;background:rgba(30,32,53,.9);border:1px solid var(--border,#2a2d45);color:var(--muted,#9aa3b2);border-radius:4px;font-size:10px;font-weight:600;padding:1px 7px;cursor:pointer}' +
+      '#rd52l-ov .rd52l-exit{position:absolute;top:8px;right:76px;z-index:20;background:rgba(30,32,53,.9);border:1px solid #7b6ef6;color:#fff;border-radius:5px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}';
+    function isEl(n) { return n && n.nodeType === 1; }
+    function depsAfter(host) { var out = [], n = host.nextSibling; while (n) { if (isEl(n)) { if (/^rd52h?-/.test(String(n.className))) out.push(n); else break; } n = n.nextSibling; } return out; }
+    function size(s) { var c = s.chart, host = s.host; try { c.applyOptions({ width: host.clientWidth, height: host.clientHeight }); } catch (e) {} }
+    function settle(s, fn) { requestAnimationFrame(function () { requestAnimationFrame(function () { if (cur && cur !== s && s.closed !== true) return; fn(); }); }); }
+    function setRange(s) { try { if (s.range) s.chart.timeScale().setVisibleLogicalRange(s.range); } catch (e) {} }
+    function redrawAll() { try { RD.mounts().forEach(function (m) { try { m.redraw(); } catch (e) {} }); } catch (e) {} }
+    function onKey(ev) { if (cur && ev.key === 'Escape') { ev.stopPropagation(); ev.preventDefault(); api.exit(); } }
+    var api = RD.fs52l = {
+      isOpen: function () { return !!cur; },
+      state: function () { return cur ? { host: cur.host, chart: cur.chart, overlay: cur.ov, band: cur.band, min: cur.band.classList.contains('min') } : null; },
+      enter: function (cfg) {
+        if (cur || !cfg || !cfg.host || !cfg.chart || !cfg.host.parentNode) return false;
+        var host = cfg.host, deps = depsAfter(host), last = deps.length ? deps[deps.length - 1] : host, hr = host.getBoundingClientRect(), lr = last.getBoundingClientRect();
+        var s = { host: host, chart: cfg.chart, opener: document.activeElement, hostStyle: host.getAttribute('style'), bodyOv: document.body.style.overflow, closed: false, range: null, w: host.clientWidth, h: host.clientHeight };
+        try { s.range = cfg.chart.timeScale().getVisibleLogicalRange(); } catch (e) {}
+        if (!document.getElementById('rd52l-css')) { var st = document.createElement('style'); st.id = 'rd52l-css'; st.textContent = FSCSS; document.head.appendChild(st); }
+        var ph = document.createElement('div'); ph.className = 'rd52l-ph'; ph.style.cssText = 'width:100%;height:' + Math.max(0, Math.round(lr.bottom - hr.top)) + 'px'; s.ph = ph;
+        host.parentNode.insertBefore(ph, host);
+        var ov = document.createElement('div'); ov.id = 'rd52l-ov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Chart full screen');
+        var slot = document.createElement('div'); slot.className = 'rd52l-slot'; var band = document.createElement('div'); band.className = 'rd52l-band';
+        var ex = document.createElement('button'); ex.type = 'button'; ex.className = 'rd52l-exit'; ex.setAttribute('data-rd52l', 'exit'); ex.textContent = 'Exit full screen';
+        var chev = document.createElement('button'); chev.type = 'button'; chev.className = 'rd52l-chev'; chev.setAttribute('data-rd52l', 'chev'); chev.setAttribute('aria-expanded', 'true'); chev.textContent = '▾ panels'; chev.title = 'Collapse the panels to the controls row';
+        host.style.cssText = (s.hostStyle ? s.hostStyle + ';' : '') + 'height:100%;width:100%;transition:none';
+        slot.appendChild(host); band.appendChild(chev); deps.forEach(function (d) { band.appendChild(d); });
+        ov.appendChild(slot); ov.appendChild(band); ov.appendChild(ex); document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+        ex.addEventListener('click', function () { api.exit(); });
+        chev.addEventListener('click', function () { var m = band.classList.toggle('min'); chev.setAttribute('aria-expanded', m ? 'false' : 'true'); chev.textContent = m ? '▴ panels' : '▾ panels'; requestAnimationFrame(function () { size(s); redrawAll(); }); });
+        document.addEventListener('keydown', onKey, true);
+        s.ov = ov; s.band = band; s.slot = slot; cur = s;
+        settle(s, function () { size(s); setRange(s); redrawAll(); });
+        try { ex.focus(); } catch (e) {}
+        return true;
+      },
+      exit: function (opt) {
+        var s = cur; if (!s) return false; cur = null; s.closed = true; opt = opt || {};
+        document.removeEventListener('keydown', onKey, true);
+        var back = Array.prototype.slice.call(s.band.children).filter(function (n) { return !/rd52l-chev/.test(String(n.className)); });
+        var ph = s.ph, par = ph.parentNode;
+        if (par) { par.insertBefore(s.host, ph); var ref = ph; back.forEach(function (d) { par.insertBefore(d, ref.nextSibling); ref = d; }); par.removeChild(ph); }
+        s.host.setAttribute('style', (s.hostStyle ? s.hostStyle + ';' : '') + 'transition:none');   /* the page's height transition must not re-fit the chart after the range is restored */
+        function unfreeze() { if (s.hostStyle == null) s.host.removeAttribute('style'); else s.host.setAttribute('style', s.hostStyle); }
+        if (s.ov.parentNode) s.ov.parentNode.removeChild(s.ov);
+        document.body.style.overflow = s.bodyOv;
+        if (!opt.quick) { try { s.chart.applyOptions({ width: s.w, height: s.h }); } catch (e) {} }   /* quick = the chart was replaced/removed by the page: it is never touched */
+        if (opt.quick) unfreeze();
+        else { var t = { chart: s.chart, range: s.range, closed: true }; requestAnimationFrame(function () { requestAnimationFrame(function () { size({ chart: s.chart, host: s.host }); setRange(t); redrawAll(); setTimeout(function () { setRange(t); unfreeze(); redrawAll(); }, 120); }); }); }
+        try { if (s.opener && s.opener.focus && document.body.contains(s.opener)) s.opener.focus(); } catch (e) {}
+        return true;
+      },
+      toggle: function (cfg) { return cur ? api.exit() : api.enter(cfg); },
+      closeFor: function (host) { if (cur && cur.host === host) api.exit({ quick: true }); }
+    };
+  } catch (e) { try { console.warn('item 52l block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 52l */
 
   /* ---- TEST order rows: figures from the latest decoded record of the order's venue|pair ---- */
   RD.orderFigures = function (order, nowMs) {
@@ -911,6 +974,12 @@
       b.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
       if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
       host.appendChild(b);
+      /* item 52l: full screen for this card's chart (same chart instance; the depth controls follow it once Depth is on) */
+      var fb = document.createElement('button'); fb.type = 'button'; fb.className = 'rd52l-btn'; fb.textContent = 'Full screen'; fb.title = 'Chart full screen; the depth controls and panels stay beneath it';
+      fb.style.cssText = 'position:absolute;top:6px;right:58px;z-index:13;background:rgba(30,32,53,.85);border:1px solid var(--border,#2a2d45);color:var(--muted,#9aa3b2);border-radius:4px;font-size:10px;font-weight:600;padding:2px 6px;cursor:pointer';
+      fb.addEventListener('click', function (ev) { ev.stopPropagation(); ev.preventDefault(); if (RD.fs52l) RD.fs52l.toggle({ host: host, chart: chart }); });
+      fb.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
+      host.appendChild(fb);
     }
   };
   document.addEventListener('click', function (ev) { try {
