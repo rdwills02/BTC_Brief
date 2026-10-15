@@ -1016,6 +1016,38 @@ main { padding: 28px 36px; max-width: 860px; }
       <p class="metric-desc"><strong>A price box from a past candle, chosen by a pinned public rule.</strong> A price box from a past candle chosen by a pinned public rule (v1: volume-pivot candle; box = upper half of that candle, from its midpoint to its high), drawn from the time it was confirmed until a later candle mitigates it. It records where selling once overwhelmed buying; it is not a measure of orders resting now — that is the sell-liquidity layer.</p>
     </div>
 
+    <div class="metric-entry" id="m-depth-historicaldemand">
+      <div class="metric-header">
+        <span class="metric-name">Historical demand zone (candle-derived)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>A price box from a past candle, chosen by the same pinned public rule as historical supply, on the opposite side.</strong> The mirror of a historical supply zone (item 52n): a price box from a past candle chosen by the same pinned public rule on the opposite side (v1: volume-pivot candle in a bullish regime; box = lower half of that candle, from its low to its midpoint), drawn from the time it was confirmed until a later candle trades below it. It records where buying once overwhelmed selling; it is not a measure of orders resting now.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-fib">
+      <div class="metric-header">
+        <span class="metric-name">Fib impulse leg (pinned v1)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>The leg the Fib layer measures: last confirmed swing low to the highest confirmed swing high after it.</strong> The most recent confirmed swing low on the daily candles and the highest confirmed swing high after it (swing = a candle whose low/high is strictly beyond the 5 candles either side; confirmed once the fifth candle after it has closed). Bullish legs only; levels measured on it are geometry, not a forecast.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-fiblevel">
+      <div class="metric-header">
+        <span class="metric-name">Retracement / extension level</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>Levels measured on the fib leg: 0.618, 0.705, 0.786, 1.272 and 1.618, plus the leg low and high.</strong> Retracements 0.618, 0.705 and 0.786 of the leg (price = leg high − ratio × leg range) and extensions 1.272 and 1.618 (price = leg low + ratio × leg range), plus the leg low and high as reference.</p>
+    </div>
+
+    <div class="metric-entry" id="m-depth-confluence">
+      <div class="metric-header">
+        <span class="metric-name">Confluence (listed, not scored)</span>
+        <span class="metric-lens-tag">Order-book depth</span>
+      </div>
+      <p class="metric-desc"><strong>Things whose price range lies within ±1 % of a fib level, listed side by side.</strong> Anything whose price range lies within ±1 % of a fib level: the entry zone, stop, target, historical demand/supply boxes and current sell-liquidity zones. They are listed side by side; nothing is counted, weighted or ranked.</p>
+    </div>
+
     <div class="metric-entry" id="m-depth-materiality">
       <div class="metric-header">
         <span class="metric-name">Materiality (sell obstacle)</span>
