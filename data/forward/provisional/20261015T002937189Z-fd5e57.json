@@ -6,8 +6,8 @@
   "orders.json": "cbc96c1879e3114637304d6cfa01dbb95e766a70601cd8053a65677590520f5f",
   "shadow/orders.json": "39cd3a65e99a1640a569899399fac28af709c8599ee71a320efb6975ce7bd6e0"
  },
- "evidenceCutoffSec": 1792028700,
- "producedAt": "2026-10-15T01:52:34.786Z",
+ "evidenceCutoffSec": 1792029600,
+ "producedAt": "2026-10-15T02:07:31.015Z",
  "orders": [
   {
    "id": "N0-2026-10-13-ethereum",
@@ -21,12 +21,12 @@
     "fillPrice": 2422.15,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 2419.32,
-    "markAt": 1792028700,
-    "unrealisedCents": -4535,
+    "markPrice": 2410.37,
+    "markAt": 1792029600,
+    "unrealisedCents": -6268,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -43,12 +43,12 @@
     "fillPrice": 0.33874,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.32836,
-    "markAt": 1792028700,
-    "unrealisedCents": -9332,
+    "markPrice": 0.32637,
+    "markAt": 1792029600,
+    "unrealisedCents": -10914,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -65,12 +65,12 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 0.11437,
-    "markAt": 1792028700,
+    "markPrice": 0.11363,
+    "markAt": 1792029600,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -87,12 +87,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.018,
-    "markAt": 1792028700,
-    "unrealisedCents": -2857,
+    "markPrice": 2.998,
+    "markAt": 1792029600,
+    "unrealisedCents": -4529,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -109,12 +109,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.018,
-    "markAt": 1792028700,
-    "unrealisedCents": -2908,
+    "markPrice": 2.998,
+    "markAt": 1792029600,
+    "unrealisedCents": -4610,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -131,12 +131,12 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.018,
-    "markAt": 1792028700,
-    "unrealisedCents": -2857,
+    "markPrice": 2.998,
+    "markAt": 1792029600,
+    "unrealisedCents": -4529,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -153,12 +153,12 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 1.7453,
-    "markAt": 1792028700,
+    "markPrice": 1.7319,
+    "markAt": 1792029600,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792028700,
+    "notYetObservedFrom": 1792029600,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -167,27 +167,27 @@
  "coverage": {
   "perPair": {
    "ALGOUSD": {
-    "bars": 16,
+    "bars": 19,
     "gaps": 0,
     "complete": true
    },
    "ATOMUSD": {
-    "bars": 16,
+    "bars": 19,
     "gaps": 0,
     "complete": true
    },
    "CRVUSD": {
-    "bars": 21,
+    "bars": 24,
     "gaps": 0,
     "complete": true
    },
    "ETHUSD": {
-    "bars": 21,
+    "bars": 24,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 21,
+    "bars": 24,
     "gaps": 0,
     "complete": true
    }
