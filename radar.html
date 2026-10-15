@@ -409,7 +409,7 @@
     function pct1(x) { return (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%'; }
     var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     function dshort(sec) { var d = new Date(sec * 1000); return MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); }
-    function tipHtml(blocks) { return blocks.map(function (b) { return '<div class="rd52n-tb"><b>' + esc(b.title) + '</b>' + b.rows.map(function (r) { return '<div class="r"><span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></div>'; }).join('') + '</div>'; }).join(''); }
+    function tipHtml(blocks) { return blocks.map(function (b) { return '<div class="rd52n-tb"><b>' + esc(b.title) + '</b>' + b.rows.map(function (r) { return '<div class="r"' + (r[2] ? ' title="' + esc(r[2]) + '"' : '') + '><span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></div>'; }).join('') + '</div>'; }).join(''); }
     return { read: read, save: save, sec: sec, body: body, sum: sum, setOpen: setOpen, initOpen: initOpen, chip: chip, pct1: pct1, dshort: dshort, tipHtml: tipHtml, names: NAMES };
   })();
   /* end item 52n — pane */
@@ -489,6 +489,18 @@
       return in_.length ? '≈ approximate: depends on ' + in_.join(' and ') + '. ' + (m.ev.mode === 'frozen' ? 'Whether it qualifies is cutoff-sensitive.' : 'Its size is cutoff-sensitive once cutoffs are ruled.') : null;
     }
     function persTxt(z) { var p = z.pers || {}, w = WLAB[p.win] || '4 h'; return p.unavailable ? 'persistence unavailable (7 d samples could not be loaded)' : p.n > 0 ? 'present in ' + p.n + '/' + p.N + ' (' + w + ')' : 'newly observed (0/' + (p.N || 0) + ', ' + w + ')'; }
+    /* item 52p: "0.087 % of reported global 24 h vol" beside M. Only on the page that supplies a global snapshot (o.global: the capture's CoinGecko total_volume for this coin, USD, with the capture time). Older than 26 h at the time of viewing, missing, or in another currency (USDT / USDC pair: no conversion invented) -> "unavailable" with the reason. Never today's value for an older record. */
+    function globalShareTxt(m, z) {
+      var gl = o.global; if (!gl) return null; var C = szc(); if (typeof C.venueContext !== 'function') return null;
+      var q = m.ev.quote, g = isNum(gl.value) && gl.value > 0 ? { coinId: gl.coinId || null, endpoint: gl.endpoint || null, vsCurrency: gl.vsCurrency || 'usd', value: gl.value, lastUpdatedMs: isNum(gl.lastUpdatedMs) ? gl.lastUpdatedMs : null, retrievedAtMs: null } : null;
+      var vc; try { vc = C.venueContext(null, g, q, m.d.nowMs, { Q: z.Q != null ? z.Q : null, Qlo: z.Qlo != null ? z.Qlo : z.Q, Qhi: z.Qhi != null ? z.Qhi : z.Q }, { maxGlobalAgeMs: 26 * 3600000 });   /* 26 h: the figure is a rolling 24 h value from a daily capture, judged against now (the capture's age) */ } catch (e) { return null; }
+      var zs = vc && vc.zoneShareGlobal24h; if (!zs) return null;
+      if (zs.status !== 'ok') return { short: 'unavailable', detail: /contemporaneous/.test(zs.reason || '') ? 'the capture’s reported global 24 h vol is more than 26 h old' : zs.reason || 'n/a' };
+      var f = function (x) { var p = x * 100; return p >= 1 ? p.toFixed(1) : p.toPrecision(2); };
+      var pct = zs.value != null ? f(zs.value) : (f(zs.lo) === f(zs.hi) ? '≈' + f(zs.lo) : f(zs.lo) + '–' + f(zs.hi));
+      var gm = vc.global.lastUpdatedMs, hhmm = new Date(gm).toISOString().slice(11, 16) + 'Z', ageMs = Math.max(0, m.d.nowMs - gm), ageTxt = ageMs < 3600000 ? Math.round(ageMs / 60000) + ' min' : Math.round(ageMs / 3600000) + ' h';
+      return { short: pct + ' % of reported global 24 h vol', detail: 'reported global 24 h vol as of ' + hhmm + ' · ' + ageTxt + ' old (' + money(g.value) + ' ' + String(g.vsCurrency).toUpperCase() + ', CoinGecko via daily capture; its rolling 24 h window is not aligned with the hourly baseline)' };
+    }
     function zoneTip(m, z) {
       var ev = m.ev, q = ev.quote, tk = m.d.tick, b = m.d.baseline, ref = ev.pathMode === 'held' ? 'current price' : 'entry', room = ev.T - z.hi, L = [];
       L.push(VCOL[m.v].n + ' ' + m.d.pair + ' — ' + (z.style === 'cand' ? 'candidate zone #' + z.rank + ' · materiality not yet calibrated' : z.style === 'uncertain' ? 'sell zone · materiality uncertain' : 'sell zone'));
@@ -497,7 +509,8 @@
       L.push('Q ' + (z.Q != null ? qmoney(z.Q, q) : qRange(z.Qlo, z.Qhi, q) + ' (boundary bins approximate)') + (z.approx && (z.approx.E || z.approx.T) ? ' · edge bins at ' + (z.approx.E ? 'entry' : '') + (z.approx.E && z.approx.T ? ' and ' : '') + (z.approx.T ? 'target' : '') + ' hatched' : ''));
       L.push('room to target T ' + qpx(ev.T, tk, q) + ': ' + (room > 0 ? qpx(room, tk, q) + ' (' + (room / z.hi * 100).toFixed(1) + ' % above the zone top)' : 'target inside the zone'));
       L.push('C ' + (z.C == null ? 'unavailable (' + (z.CReason || 'n/a') + ')' : z.C.toFixed(2) + ' × nearby ask density (' + z.CBasis + ')'));
-      L.push('M ' + mTxt(z) + ' × median hourly traded value · baseline: ' + baseTxt(b));
+      L.push('M ' + mTxt(z) + ' × typical hourly turnover · baseline: ' + baseTxt(b));   /* item 52p: M is a multiple of the median hourly turnover over 168 valid hours, never an absorption time */
+      var gs = globalShareTxt(m, z); if (gs) L.push('global share: ' + gs.short + (gs.detail ? ' (' + gs.detail + ')' : ''));
       var aw = approxWhy(z, m); if (aw) L.push(aw);
       if (z.stale) L.push('STALE: the last observation was ' + age(m.d.nowMs - m.d.latest.recvMs) + ' ago, beyond its scheduled limit; this is not current data.');
       L.push('observed ' + age(m.d.nowMs - m.d.latest.recvMs) + ' ago on ' + VCOL[m.v].n + ' ' + m.d.pair + ' · ' + persTxt(z));
@@ -555,7 +568,7 @@
           var tg = visible().length > 1 ? (m.v === 'kraken' ? 'KRK' : 'CB') : '';   /* two venues on one chart: every label names its own venue; neither fills the other's region */
           labels.push({ y0: top, y1: top + h, c: col, z: z, ev: m.ev, p: isP, t: [zoneLabel(z, m.ev, 0, tg), zoneLabel(z, m.ev, 1, tg), zoneLabel(z, m.ev, 2, tg)] });
         });
-        var nm = m.ev.mode === 'frozen' ? 'qualifying zone' : 'candidate concentration', pl = function (n) { return n + ' ' + nm + (n === 1 ? '' : 's'); };
+        var nm = m.ev.mode === 'frozen' ? 'classified sell zone' : 'candidate concentration', pl = function (n) { return n + ' ' + nm + (n === 1 ? '' : 's'); };
         if (ab) offs.push((visible().length > 1 ? VCOL[m.v].n + ': ' : '') + pl(ab) + ' above the viewport'); if (bl) offs.push((visible().length > 1 ? VCOL[m.v].n + ': ' : '') + pl(bl) + ' below the viewport');
       });
       if (!anchored && visible().length) notes.push('the latest observation is ' + (xl != null && isFinite(xl) && xl >= P.pw ? 'right of the visible bars (scroll right or use Fit)' : 'not on the visible time axis'));
@@ -633,7 +646,7 @@
       var q = ev.quote, tk = m.d.tick, frozen = ev.mode === 'frozen', two = visible().length > 1, N = frozen ? ev.drawn.length : zs.length, hk = hiddenCount(m, HS), w = (WLAB[st.win] || '4 h').replace(' ', '');
       var h = '<details class="rd52-tbl" data-v="' + m.v + '"' + (tblOpen ? ' open' : '') + '><summary>' + esc(N + (frozen ? ' zone' : ' candidate') + (N === 1 ? '' : 's') + ' · ' + hk + ' hidden') + '</summary>';
       h += '<div class="tc"><label>seen window <select data-rd52-win aria-label="seen look-back window">' + ['1h', '4h', '7d'].map(function (x) { return '<option value="' + x + '"' + (st.win === x ? ' selected' : '') + '>' + WLAB[x] + '</option>'; }).join('') + '</select></label> <a data-rd52-showall data-v="' + m.v + '" role="button" tabindex="0">show all</a></div>';
-      h += '<table class="rd52-bt rd52n-t"><thead><tr><th></th><th>#</th><th>asks</th><th>price</th><th>+' + (ev.pathMode === 'held' ? 'P' : 'E') + '</th><th title="concentration against nearby ask density">×nearby</th><th title="hours of turnover: the zone’s $ against the pair’s median hourly traded value">hrs</th><th title="earlier comparable snapshots that held an overlapping candidate zone">seen ' + w + '</th>' + (two ? '<th>venue</th>' : '') + '</tr></thead><tbody>';
+      h += '<table class="rd52-bt rd52n-t"><thead><tr><th></th><th>#</th><th>asks</th><th>price</th><th>+' + (ev.pathMode === 'held' ? 'P' : 'E') + '</th><th title="concentration against nearby ask density">×nearby</th><th title="M, × typical hourly turnover: the zone’s $ against the pair’s median hourly traded value over 168 valid hours (not an absorption time)">hrs</th><th title="earlier comparable snapshots that held an overlapping candidate zone">seen ' + w + '</th>' + (two ? '<th>venue</th>' : '') + '</tr></thead><tbody>';
       zs.forEach(function (z) {
         var dr = ev.drawn.indexOf(z) >= 0, hid = dr && isHid(HS, o.symbol, m.v, z), tag = dr ? (z.style === 'uncertain' ? 'uncertain' : '') : (z.verdict === 'fail' ? 'below cutoffs' : 'not classified');
         var aw = approxWhy(z, m); if (dr && z.style === 'uncertain') aw = 'materiality uncertain' + (aw ? ' · ' + aw : ''); h += '<tr data-v="' + m.v + '" data-k="' + z.rank + '"' + (aw ? ' title="' + esc(aw) + '"' : '') + ' class="' + (hid ? 'off' : '') + (dr ? '' : ' nd') + '"><td><label class="rd52n-sw"><input type="checkbox" data-rd52-tg' + (dr ? '' : ' disabled') + (hid ? '' : ' checked') + ' aria-label="band #' + z.rank + ' on the chart"><span></span></label></td><td>#' + z.rank + '</td><td>' + esc(asksTxt(z, q)) + '</td><td>' + esc(px(z.lo, tk) + '–' + px(z.hi, tk)) + (tag ? ' <span class="tg">' + esc(tag) + '</span>' : '') + '</td><td>' + esc(distShort(z)) + '</td><td>' + esc(cTxt(z)) + '</td><td>' + esc(hrTxt(z)) + '</td><td>' + esc(seenTxt(z)) + '</td>' + (two ? '<td>' + (m.v === 'kraken' ? 'KRK' : 'CB') + '</td>' : '') + '</tr>';
@@ -650,7 +663,8 @@
     /* item 52n: one panel per venue = a head, a row of state chips (they replace every sentence the panel used to print) and the bucket table */
     function chipsFor(m) {
       var ev = m.ev, d = m.d, P = d.params, cov = ev.coverage, ps = RD.pane52n.chip, c = [], T = m.path.T;
-      c.push(ev.mode === 'frozen' ? ps('qualifying', '', 'cutoffs frozen by ' + P.frozenBy + ' ' + P.date + ' (C ≥ ' + P.cutoffs.concentration + ', M ≥ ' + P.cutoffs.material + ')') : ps('uncalibrated', 'w', 'candidates · cutoffs pending calibration'));
+      c.push(ev.mode === 'frozen' ? ps('cutoffs frozen', '', 'cutoffs frozen by ' + P.frozenBy + ' ' + P.date + ' (C ≥ ' + P.cutoffs.concentration + ', M ≥ ' + P.cutoffs.material + ')') : ps('uncalibrated', 'w', 'candidates · cutoffs pending calibration'));
+      if (ev.mode === 'frozen') { var cP = ev.drawn.filter(function (z) { return z.style === 'pass'; }).length, cU = ev.drawn.filter(function (z) { return z.style === 'uncertain'; }).length; c.push(ps(cP + ' qualifying · ' + cU + ' uncertain', cU ? 'w' : '', 'confirmed passes and uncertain candidates are counted separately; an uncertain candidate is not a qualifying one')); }   /* item 52p */
       var beyond = false, stx = function (code, dflt) { var f = ev.states.filter(function (x) { return x.code === code; })[0]; return f ? f.text : dflt; };
       if (cov && isFinite(cov.coveredTo)) { if (isNum(T) && T > cov.coveredTo) { beyond = true; c.push(ps('beyond coverage ↑', 'w', stx('depthIncomplete', 'depth ends at ' + qpx(cov.coveredTo, d.tick, d.quote) + '; target ' + qpx(T, d.tick, d.quote) + ' is beyond it'))); } else c.push(ps('covers to ' + qpx(cov.coveredTo, d.tick, d.quote), '', 'covered ask range ' + qpx(d.latest.bestAsk, d.tick, d.quote) + ' – ' + qpx(cov.coveredTo, d.tick, d.quote))); }
       else if (cov) c.push(ps('coverage unknown', 'w'));
@@ -685,7 +699,7 @@
       var HS = hideRead();
       return ms.map(function (m) {
         var V = VCOL[m.v].n; if (m.err) return V + ' · unavailable'; if (m.d.status === 'nopair') return V + ' · no pair'; if (m.d.status !== 'ok') return V + ' · no depth'; if (!m.path.valid) return V + ' · no valid path';
-        var ev = m.ev, N = ev.mode === 'frozen' ? ev.drawn.length : ev.zones.length, t = V + ' · ' + N + (ev.mode === 'frozen' ? ' zone' : ' candidate') + (N === 1 ? '' : 's') + ' · ' + hiddenCount(m, HS) + ' hidden', tot = ev.total;
+        var ev = m.ev, fz = ev.mode === 'frozen', nP = fz ? ev.drawn.filter(function (z) { return z.style === 'pass'; }).length : 0, nU = fz ? ev.drawn.filter(function (z) { return z.style === 'uncertain'; }).length : 0, N = ev.zones.length, t = V + ' · ' + (fz ? nP + ' qualifying · ' + nU + ' uncertain' : N + ' candidate' + (N === 1 ? '' : 's')) + ' · ' + hiddenCount(m, HS) + ' hidden', tot = ev.total;   /* item 52p: confirmed passes and uncertain candidates are counted separately; "qualifying" means confirmed pass only */
         if (tot && isNum(tot.Qlo) && isNum(tot.Qhi)) t += ' · ' + (tot.lowerBound ? '≥' : '') + (tot.Qlo === tot.Qhi ? qmoney(tot.Qlo, ev.quote) : qRange(tot.Qlo, tot.Qhi, ev.quote)) + ' on path';
         return t;
       }).join(' | ');
@@ -716,7 +730,7 @@
     }
     function sellItems() {
       var out = []; if (st.off) return out; var HS = hideRead();
-      visible().forEach(function (m) { var ev = m.ev; ev.drawn.forEach(function (z) { if (isHid(HS, o.symbol, m.v, z)) return; out.push({ lo: z.lo, hi: z.hi, venue: m.v, usd: z.Q != null ? z.Q : null, label: '#' + z.rank, txt: asksTxt(z, ev.quote) + ' asks (' + (m.v === 'kraken' ? 'KRK' : 'CB') + ')' }); }); });
+      visible().forEach(function (m) { var ev = m.ev; ev.drawn.forEach(function (z) { if (isHid(HS, o.symbol, m.v, z)) return; out.push({ lo: z.lo, hi: z.hi, venue: m.v, usd: z.Q != null ? z.Q : null, label: '#' + z.rank, status: z.stale ? 'stale' : ev.mode !== 'frozen' ? 'candidate' : z.style === 'pass' ? 'pass' : z.style === 'uncertain' ? 'uncertain' : 'unassessed', time: m.d && m.d.latest ? m.d.latest.recvMs : null, txt: asksTxt(z, ev.quote) + ' asks (' + (m.v === 'kraken' ? 'KRK' : 'CB') + ')' }); }); });
       return out;
     }
     function failMsg(e) {
@@ -790,8 +804,9 @@
       var ev = m.ev, q = ev.quote, tk = m.d.tick, p = z.pers || {}, w = (WLAB[p.win] || WLAB[st.win] || '4 h').replace(' ', '');
       return { title: '#' + z.rank + ' · ' + VCOL[m.v].n + ' ' + m.d.pair + (z.stale ? ' · stale' : ''), rows: [
         ['asks', asksTxt(z, q)], ['range', px(z.lo, tk) + ' – ' + px(z.hi, tk)], ['from ' + (ev.pathMode === 'held' ? 'price' : 'entry'), distShort(z)],
-        ['vs nearby', z.C == null ? 'n/a' : cTxt(z) + '×'], ['hours of turnover', hrTxt(z)], ['seen', p.unavailable ? 'n/a' : (p.n || 0) + '/' + (p.N || 0) + ' · ' + w] ] };
+        ['vs nearby', z.C == null ? 'n/a' : cTxt(z) + '×'], ['M × typical hourly turnover', hrTxt(z) + gShareRow(m, z)[0], gShareRow(m, z)[1]], ['seen', p.unavailable ? 'n/a' : (p.n || 0) + '/' + (p.N || 0) + ' · ' + w] ] };
     }
+    function gShareRow(m, z) { var g = globalShareTxt(m, z); return g ? [' · ' + (g.short === 'unavailable' ? 'global share unavailable' : g.short), g.detail || ''] : ['', '']; }   /* item 52p: beside M, only where the page supplies a global snapshot */
     function onMove(param) {
       var hl = H ? H.hover(param) : null, fh = F ? F.hover(param) : null; if (fh) hl = fh.concat(hl || []);   /* item 52o: a fib confluence dot's own block; item 52j: a historical box's own block; never merged with a current zone's figures */
       if (!param || !param.point || (st.off && !hl)) { tip.style.display = 'none'; return; }
@@ -900,11 +915,12 @@
       function sg(d) { return d == null ? '—' : PN.pct1(d); }
       function volShort(z) { var v = z.volume; return v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : v.toFixed(v >= 100 ? 0 : 2); }
       function volTxt(z) { return volShort(z) + ' ' + (o.symbol || 'units') + (isFinite(z.quoteEst) ? ' (≈ ' + money(z.quoteEst) + ' est.)' : ''); }
+      var gapTxt = '';   /* item 52p: every unevaluable range, shown in the box hover even when the chip is not (it is off the path) */
       function blockFor(r) {
         var z = r.z, sup = r.kind === 'supply', ref = r.ref;
         return { title: r.label + ' · historical ' + (sup ? 'supply' : 'demand') + ' · ' + label(), rows: [
           ['range', px(z.bottom, tick()) + ' – ' + px(z.top, tick())], ['from entry', sg(sup ? distS(z, ref) : distD(z, ref))],
-          ['origin', PN.dshort(z.originTime)], ['confirmed', PN.dshort(z.confirmedAt)], ['candle vol', volTxt(z)], ['rule', 'v1 · ' + (sup ? 'bearish' : 'bullish') + ' · pinned'] ] };
+          ['origin', PN.dshort(z.originTime)], ['confirmed', PN.dshort(z.confirmedAt)], ['candle vol', volTxt(z)], ['rule', 'v1 · ' + (sup ? 'bearish' : 'bullish') + ' · pinned', gapTxt ? 'incomplete volume (all ranges): ' + gapTxt : undefined] ] };
       }
       function hatchS(g, x0, y0, w, hh, col, step) { g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([]); g.beginPath(); for (var k = -hh; k < w; k += step) { g.moveTo(x0 + k, y0 + hh); g.lineTo(x0 + k + hh, y0); } g.stroke(); }
       function hatchD(g, x0, y0, w, hh, col, step) { g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([]); g.beginPath(); for (var k = 0; k < w + hh; k += step) { g.moveTo(x0 + k, y0 + hh); g.lineTo(x0 + k - hh, y0); } g.stroke(); }
@@ -962,7 +978,7 @@
         ensureDom(); chipsEl.innerHTML = chipsHtml; legEl.style.display = legendOn ? '' : 'none'; supEl.innerHTML = supHtml; demEl.innerHTML = demHtml; PN.sum(sec, sumText);
       }
       function draw(g, P) {
-        rects = []; info = null; dinfo = null; boxes = { supply: [], demand: [] };
+        rects = []; info = null; dinfo = null; boxes = { supply: [], demand: [] }; gapTxt = '';
         paintSub();
         if (!st.hs) { if (sec) { uiKey = ''; PN.sum(sec, 'off'); if (chipsEl) { chipsEl.innerHTML = ''; supEl.innerHTML = ''; demEl.innerHTML = ''; legEl.style.display = 'none'; } } return; }
         ensureDom();
@@ -981,15 +997,26 @@
         boxes = { supply: sS.sel.all.map(function (z, i) { return { z: z, label: 'H' + (i + 1) }; }), demand: sD ? sD.sel.all.map(function (z, i) { return { z: z, label: 'D' + (i + 1) }; }) : [] };
         var chips = chip(label()) + chip('rule v1 · pinned', 'dim', 'detector: historical supply zones v1 (pinned: Order Block Detector [LuxAlgo] Mar 10, 2023 (Pine v5)); volume pivot 5, wick mitigation; CC BY-NC-SA 4.0');
         if (!pathOk) chips += chip('no trade path · in view', 'w');
-        var cnt = function (nm, s, on) { if (!on) return ''; var n = s.sel.total; return n > 3 ? chip('3 of ' + n + ' ' + nm, '') : n === 0 ? chip('no ' + nm + ' ' + (pathOk ? 'on path' : 'in view') + (s.nAct ? ' (' + s.nAct + ' active elsewhere)' : ''), 'dim') : ''; };
+        /* item 52p (B4): a pivot window with a missing volume value is never read as "no zone" - the affected range is named, established zones still draw */
+        /* item 52p (round 2): the message appears only when an unevaluable window could lie ON the path (supply: E..T; demand: stop..T) or, with no path, in the viewport; every range stays in the result (partialAll) and in the box hover */
+        var loD = terms && isFinite(terms.S) && terms.S > 0 && pathOk && terms.S < p.E ? terms.S : (pathOk ? p.E : null);
+        var near = function (u) { var a = u.priceLow, b = u.priceHigh; if (pathOk) { var r0 = u.side === 'supply' ? p.E : loD, r1 = p.T; return b >= r0 && a <= r1; } return vlo != null && vhi != null ? (b >= vlo && a <= vhi) : true; };
+        var allU = [].concat(res.unevaluable || [], dOk ? (resD.unevaluable || []) : []), hitU = allU.filter(near);
+        var mergeR = function (list) { var r = list.map(function (u) { return { from: u.windowFrom, to: u.windowTo }; }).sort(function (a, b) { return a.from - b.from; }), out = []; r.forEach(function (x) { var l = out[out.length - 1]; if (l && x.from <= l.to) { if (x.to > l.to) l.to = x.to; } else out.push({ from: x.from, to: x.to }); }); return out; };
+        var pm = mergeR(hitU), pmAll = mergeR(allU), partial = pm.length > 0;
+        var dstr = function (t) { return new Date(t * 1000).toISOString().slice(0, 10); };
+        var rtxt = function (rs) { return rs.map(function (r) { return dstr(r.from) + ' → ' + dstr(r.to - 1); }).join(', '); }, prange = rtxt(pm);
+        gapTxt = pmAll.length ? rtxt(pmAll) : '';
+        var cnt = function (nm, s, on) { if (!on) return ''; var n = s.sel.total; return n > 3 ? chip('3 of ' + n + ' ' + nm, '') : n === 0 ? (partial ? '' : chip('no ' + nm + ' ' + (pathOk ? 'on path' : 'in view') + (s.nAct ? ' (' + s.nAct + ' active elsewhere)' : ''), 'dim')) : ''; };
         chips += cnt('supply', sS, showS) + (sD ? cnt('demand', sD, showD) : '');
+        if (partial) chips += chip('historical zones: incomplete volume in ' + prange, 'w', 'A pivot window in this range has a candle with no volume value. Zones that can be established are drawn; no conclusion of "no zone" is drawn for the range. Missing volume is never replaced by zero or another venue\'s volume.');
         if (!dOk) chips += chip('demand unavailable' + (resD && resD.reason ? ': ' + (REASON[resD.reason] || resD.reason) : ''), 'w');
         var offV = (showS ? sS.offV : 0) + (showD && sD ? sD.offV : 0), offX = (showS ? sS.offX : 0) + (showD && sD ? sD.offX : 0);
         if (offV) chips += chip(offV + ' outside the price range', 'w'); if (offX) chips += chip(offX + ' confirmed right of the bars', 'w');
         var sumParts = []; if (showS) sumParts.push(sS.sel.total + ' supply'); if (showD && sD) sumParts.push(sD.sel.total + ' demand');
-        var sumText = '1D · ' + (sumParts.length ? sumParts.join(' · ') + (pathOk ? ' on path' : ' in view') : 'both hidden');
+        var sumText = '1D · ' + (sumParts.length ? sumParts.join(' · ') + (pathOk ? ' on path' : ' in view') : 'both hidden') + (partial ? ' · incomplete volume' : '');
         ui(chips, h.sellOn(), showS ? tableFor('supply', sS.sel, ref, pathOk) : '', showD && sD ? tableFor('demand', sD.sel, ref, pathOk) : '', sumText);
-        info = { mode: sS.sel.mode, total: sS.sel.total, shown: sS.sel.shown.map(function (z) { return z.id; }), all: sS.sel.all.map(function (z) { return z.id; }), active: sS.nAct, offV: sS.offV, offX: sS.offX, ref: ref };
+        info = { mode: sS.sel.mode, total: sS.sel.total, shown: sS.sel.shown.map(function (z) { return z.id; }), all: sS.sel.all.map(function (z) { return z.id; }), active: sS.nAct, offV: sS.offV, offX: sS.offX, ref: ref, partial: partial, partialRanges: pm, partialAll: pmAll };
         dinfo = sD ? { mode: sD.sel.mode, total: sD.sel.total, shown: sD.sel.shown.map(function (z) { return z.id; }), all: sD.sel.all.map(function (z) { return z.id; }), active: sD.nAct, offV: sD.offV, offX: sD.offX, ref: ref } : null;
       }
       function hover(param) {
@@ -1054,12 +1081,14 @@
         c.sell = h.sell ? h.sell() : [];
         return c;
       }
+      /* item 52p: a sell item's status (pass / uncertain / candidate / stale / unassessed) and observation time travel with it into the confluence; nothing is dropped silently, stale and unassessed items are labelled */
+      function sellWhen(x) { return (x.status ? x.status : 'status n/a') + (x.time != null ? ' · observed ' + new Date(x.time).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : ''); }
       function chipFor(x) {
         var PNc = PN.chip; if (x.kind === 'entry') return '<span class="rd52n-chip" data-ref="E">entry zone</span>';
         if (x.kind === 'stop') return '<span class="rd52n-chip b" data-ref="S">S</span>'; if (x.kind === 'target') return '<span class="rd52n-chip g" data-ref="T">T</span>';
         if (x.kind === 'demand') return '<span class="rd52n-chip" data-ref="' + esc(x.id) + '" style="border-color:rgba(64,176,160,.6)">' + esc(x.id) + '</span>';
         if (x.kind === 'supply') return '<span class="rd52n-chip" data-ref="' + esc(x.id) + '" style="border-color:rgba(214,160,60,.6)">' + esc(x.id) + '</span>';
-        return '<span class="rd52n-chip w" data-ref="sell:' + esc(x.venue) + ':' + esc(x.id) + '">' + esc(x.txt || ((x.usd != null ? money(x.usd) : '') + ' asks (' + (x.venue === 'coinbase' ? 'CB' : 'KRK') + ')')) + '</span>';
+        return '<span class="rd52n-chip w" data-ref="sell:' + esc(x.venue) + ':' + esc(x.id) + '" title="' + esc(sellWhen(x)) + '">' + esc(x.txt || ((x.usd != null ? money(x.usd) : '') + ' asks (' + (x.venue === 'coinbase' ? 'CB' : 'KRK') + ')')) + (x.status ? ' · ' + esc(x.status) : '') + '</span>';
       }
       function compute(t) {
         var c = cands(); if (!core) return null;
@@ -1084,9 +1113,10 @@
         var ticks = [], extOff = [];
         r.levels.forEach(function (lv) {
           var y = o.series.priceToCoordinate(lv.price), inV = y != null && y >= 0 && y <= P.ph;
-          if (lv.kind === 'ref') { if (inV) ticks.push({ ratio: lv.ratio, price: lv.price, y: y, ref: true }); return; }
-          if (!inV) { if (lv.kind === 'extension') extOff.push({ ratio: lv.ratio, price: lv.price, up: y == null ? lv.price > leg.high : y < 0 }); else off++; return; }
-          ticks.push({ ratio: lv.ratio, price: lv.price, y: y, ref: false, kind: lv.kind });
+          /* item 52p: the leg-high (0) and leg-low (1) levels get the same faint dotted line as the ratio levels (and so the same confluence dot) */
+          if (lv.kind === 'ref') { if (!inV) return; ticks.push({ ratio: lv.ratio, price: lv.price, y: y, ref: true, kind: 'ref' }); }
+          else { if (!inV) { if (lv.kind === 'extension') extOff.push({ ratio: lv.ratio, price: lv.price, up: y == null ? lv.price > leg.high : y < 0 }); else off++; return; }
+          ticks.push({ ratio: lv.ratio, price: lv.price, y: y, ref: false, kind: lv.kind }); }
           if (lineX != null) { g.strokeStyle = 'rgba(' + FC + ',0.45)'; g.lineWidth = 1; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(lineX, Math.round(y) + 0.5); g.lineTo(P.pw, Math.round(y) + 0.5); g.stroke(); g.setLineDash([]); }
           drawn.lines.push({ ratio: lv.ratio, price: lv.price, y: y, x1: lineX, label: rlab(lv.ratio) + ' ' + fx(lv.price) });
         });
@@ -1115,20 +1145,20 @@
           drawn.ruler = { x: rx, y1: y1, y2: y2, side: flip ? 'right' : 'left', ticks: ticks.map(function (t) { return { ratio: t.ratio, y: t.y }; }), labels: labs };
         }
         g.restore();
-        var E = t && isFinite(t.E) ? t.E : null, five = r.levels.filter(function (l) { return l.kind !== 'ref'; }), nConf = five.filter(function (l) { return l.confluence.length; }).length;
+        var E = t && isFinite(t.E) ? t.E : null, five = r.levels.filter(function (l) { return l.kind !== 'ref'; }), nConf = r.levels.filter(function (l) { return l.confluence.length; }).length;   /* item 52p: every level counts, the leg high / low included */
         var rows = r.levels.slice().sort(function (a, b) { return b.price - a.price; });
         var tb = '<table class="rd52n-t" data-rd52n="fib-table"><thead><tr><th>level</th><th>price</th><th>+E</th><th>coincides with</th></tr></thead><tbody>';
         rows.forEach(function (lv) {
           var nm = lv.kind === 'ref' ? (lv.ratio === 0 ? '0 · leg high' : '1 · leg low') : String(lv.ratio);
           tb += '<tr class="' + (lv.confluence.length ? '' : 'dim') + '" data-ratio="' + lv.ratio + '"><td>' + esc(nm) + '</td><td>' + esc(fx(lv.price)) + '</td><td>' + esc(E ? PN.pct1((lv.price / E - 1) * 100) : '—') + '</td><td>' + (lv.confluence.length ? lv.confluence.map(chipFor).join(' ') : '—') + '</td></tr>';
         });
-        tb += '</tbody></table><div class="rd52n-note">Levels are geometry from the last confirmed impulse; coincidences are listed, not scored.</div>';
-        var chips = chip('1D · pinned v1', 'dim', 'impulse leg: last confirmed swing low to the highest confirmed swing high after it') + chip('leg ' + PN.dshort(leg.lowTime) + ' → ' + PN.dshort(leg.highTime), 'dim');
+        tb += '</tbody></table><div class="rd52n-note">Levels are geometry from the last confirmed impulse; coincidences are listed, not scored. Compares visible layers only: a level with no listed coincidence does not mean nothing rests there.</div>';   /* item 52p */
+        var chips = chip('1D · pinned v1', 'dim', 'impulse leg: last confirmed swing low to the highest confirmed swing high after it') + chip('leg ' + PN.dshort(leg.lowTime) + ' → ' + PN.dshort(leg.highTime), 'dim', 'swing low ' + new Date(leg.lowTime * 1000).toISOString().slice(0, 10) + ' (confirmed ' + new Date(leg.lowConfirmedAt * 1000).toISOString().slice(0, 10) + '), swing high ' + new Date(leg.highTime * 1000).toISOString().slice(0, 10) + ' (confirmed ' + new Date(leg.highConfirmedAt * 1000).toISOString().slice(0, 10) + ')') + chip('leg confirmed ' + new Date(leg.confirmedAt * 1000).toISOString().slice(0, 10), 'dim', 'the later of the two pivots\' confirmations; the leg was not knowable before this date');   /* item 52p */
         if (!(t && isFinite(t.T))) chips += chip('no trade path: E / S / T not compared', 'w');
         if (!h.sellOn()) chips += chip('sell layer off: not compared', 'dim'); if (!h.histOn()) chips += chip('hist. layer off: boxes not compared', 'dim');
         var extN = r.levels.filter(function (l) { return l.kind === 'extension'; }).length - drawn.lines.filter(function (l) { return l.ratio > 1; }).length; if (off + extN) chips += chip((off + extN) + ' outside the price range', 'w');
         if (!drawn.ruler) chips += chip('ruler outside the visible range', 'w'); if (leg.legIndexFromLatest > 0) chips += chip('fallback leg · ' + leg.legIndexFromLatest + ' back', 'dim', 'the latest confirmed swing low has no confirmed swing high after it yet; this is the most recent confirmed low that does');
-        ui(chips, tb, 'leg ' + fx(leg.low) + '→' + fx(leg.high) + ' (' + (leg.legIndexFromLatest || 0) + ' back) · ' + nConf + ' level' + (nConf === 1 ? '' : 's') + ' with confluence');
+        ui(chips, tb, 'leg ' + fx(leg.low) + '→' + fx(leg.high) + ' (' + (leg.legIndexFromLatest || 0) + ' back) · ' + nConf + ' level' + (nConf === 1 ? '' : 's') + ' with confluence · compares visible layers');   /* item 52p */
       }
       /* item 52o: a 3.5 px dot where a level line meets the left edge of a current sell-liquidity band or a historical box it coincides with (the fib-core +-1 % rule); drawn after the book layer so it sits on top */
       function dots(g, P) {
@@ -1155,10 +1185,11 @@
         var rows = hit.level.confluence.map(function (x) {
           if (x.kind === 'entry') return ['entry zone', fx(x.lo) + (x.hi > x.lo ? ' – ' + fx(x.hi) : '')];
           if (x.kind === 'stop') return ['stop S', fx(x.lo)]; if (x.kind === 'target') return ['target T', fx(x.lo)];
-          if (x.kind === 'sell') return ['sell · ' + (x.venue === 'coinbase' ? 'CB' : 'KRK'), x.txt || (x.usd != null ? money(x.usd) : fx(x.lo) + ' – ' + fx(x.hi))];
+          if (x.kind === 'sell') return ['sell · ' + (x.venue === 'coinbase' ? 'CB' : 'KRK'), (x.txt || (x.usd != null ? money(x.usd) : fx(x.lo) + ' – ' + fx(x.hi))) + ' · ' + sellWhen(x)];
           return [x.id + (x.kind === 'demand' ? ' demand' : ' supply'), fx(x.lo) + ' – ' + fx(x.hi)];
         });
         if (rows.length > 6) rows = rows.slice(0, 5).concat([['+' + (rows.length - 5) + ' more', 'see the Fib section']]);
+        if (last && last.leg && last.leg.confirmedAt) rows.push(['leg confirmed', new Date(last.leg.confirmedAt * 1000).toISOString().slice(0, 10)]);   /* item 52p */
         return [{ title: 'fib ' + rlab(hit.ratio) + ' · ' + fx(hit.price), rows: rows }];
       }
       function destroy() { dead = true; if (bodyEl) bodyEl.innerHTML = ''; }
@@ -1260,12 +1291,18 @@
 /* item 52c — radar glue */
 (function () { try {
   var RD = window.RDepth52; if (!RD) return;
+  /* item 52p: the capture's CoinGecko total_volume for this coin (USD) with the capture time; read from the row already in memory, never fetched. Absent or without a capture time -> null (the hover prints nothing rather than a guess). */
+  function globalFor52p(r) {
+    var ct = r && (r.captureTime || (r.researchRow && r.researchRow.captureTime)), ms = ct ? Date.parse(ct) : NaN;
+    if (!r || typeof r.volume24h !== 'number' || !(r.volume24h > 0) || !isFinite(ms)) return null;
+    return { value: r.volume24h, coinId: r.cgId || null, vsCurrency: 'usd', endpoint: 'CoinGecko coins/markets total_volume (daily capture)', lastUpdatedMs: ms };
+  }
   RD.radarAttach = function (chart, cs, r, container) {
     if (!r || !r.symbol || !container || !container.parentNode) return null;
     /* item 52g: E = midpoint of the entry zone, T = the target - the same figures the pane prints (H6 entry economics); read, never recomputed */
     var ee = r.researchRow && r.researchRow.entryEconomics, ok = ee && Array.isArray(ee.entryZone) && typeof ee.entryZone[0] === 'number' && typeof ee.entryZone[1] === 'number';
     var terms = ok ? { E: (ee.entryZone[0] + ee.entryZone[1]) / 2, Elo: ee.entryZone[0], Ehi: ee.entryZone[1], S: typeof ee.stop === 'number' ? ee.stop : null, T: typeof ee.target === 'number' ? ee.target : null, quote: 'USD', source: 'entry-zone midpoint', targetSource: ee.targetSource || null } : null;
-    return RD.mount({ chart: chart, series: cs, host: container.parentNode, barAfter: container.parentNode, symbol: r.symbol, defaultVenue: 'kraken', key: 'radar', terms: terms, price: typeof r.price === 'number' ? r.price : null, quote: 'USD', candles: r.candles });
+    return RD.mount({ chart: chart, series: cs, host: container.parentNode, barAfter: container.parentNode, symbol: r.symbol, defaultVenue: 'kraken', key: 'radar', terms: terms, global: globalFor52p(r), price: typeof r.price === 'number' ? r.price : null, quote: 'USD', candles: r.candles });
   };
 } catch (e) { try { console.warn('item 52c glue failed: ' + (e && e.message)); } catch (e2) {} } })();
 /* end item 52c glue */
