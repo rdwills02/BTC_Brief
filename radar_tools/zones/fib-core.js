@@ -4,8 +4,8 @@
  *   price pivot low  at i : low[i]  is STRICTLY less    than the lows  of the 5 candles before and the 5 after (same length 5 and strict-tie rule as the 52j port; price pivots, not volume)
  *   price pivot high at i : high[i] is STRICTLY greater than the highs of the 5 candles before and the 5 after
  *   a pivot is CONFIRMED only once candle i+5 has closed (confirmedAt = close of candle i+5); the forming candle never confirms.
- *   leg = the most recent confirmed pivot low L, then the highest high among confirmed pivot highs that occur AFTER L (earliest on a tie). If no confirmed pivot high follows the most recent confirmed
- *   pivot low (or there is no confirmed pivot low) -> status 'unavailable', reason 'no confirmed impulse'. Bullish legs only in v1 (bearish legs = backlog).
+ *   leg = the most recent confirmed pivot low L that has a confirmed pivot high after it (item 52o: walk back through confirmed lows until one qualifies; legIndexFromLatest = lows skipped, 0 = the latest confirmed low),
+ *   then the highest high among confirmed pivot highs that occur AFTER L and are ABOVE L's price (earliest on a tie; a later high at or below the low disqualifies that low). No qualifying pair -> status 'unavailable': reason 'nonpositive leg' if confirmed highs follow some low but none is above it, else 'no confirmed impulse'. Bullish legs only in v1 (bearish legs = backlog).
  *   leg.confirmedAt = the later of the two pivots' confirmation times. Results depend on closed candles up to that time only.
  * LEVELS (range = high - low): retracements 0.618 / 0.705 / 0.786 -> price = high - r*range ; extensions 1.272 / 1.618 -> price = low + e*range ; reference 0 (= high) and 1 (= low).
  * CONFLUENCE: for each level, every item whose price range intersects [price*(1-tol), price*(1+tol)] (tol = 1 %, inclusive): entry zone, stop S, target T, demand boxes, supply boxes, current sell-liquidity zones (venue, $).
@@ -46,10 +46,14 @@
     if (c.length < 2 * L + 1) return { available: false, reason: 'lookback', leg: null };
     var p = pivots(c, iv);
     if (!p.lows.length) return { available: false, reason: 'no confirmed impulse', leg: null };
-    var low = p.lows[p.lows.length - 1], best = null;
-    p.highs.forEach(function (h) { if (h.idx > low.idx && (best == null || h.price > best.price)) best = h; });
-    if (!best) return { available: false, reason: 'no confirmed impulse', leg: null };
-    return { available: true, reason: null, leg: { lowTime: low.time, low: low.price, highTime: best.time, high: best.price, confirmedAt: Math.max(low.confirmedAt, best.confirmedAt) } };
+    /* item 52o: walk back through the confirmed lows, most recent first, to the first one that has a confirmed high after it; legIndexFromLatest = how many later confirmed lows were skipped */
+    var sawLater = false;
+    for (var k = p.lows.length - 1; k >= 0; k--) {
+      var low = p.lows[k], best = null;
+      p.highs.forEach(function (h) { if (h.idx > low.idx) sawLater = true; if (h.idx > low.idx && h.price > low.price && (best == null || h.price > best.price)) best = h; });
+      if (best) return { available: true, reason: null, leg: { lowTime: low.time, low: low.price, highTime: best.time, high: best.price, confirmedAt: Math.max(low.confirmedAt, best.confirmedAt), legIndexFromLatest: p.lows.length - 1 - k } };
+    }
+    return { available: false, reason: sawLater ? 'nonpositive leg' : 'no confirmed impulse', leg: null };   /* item 52o: a later confirmed high at or below the low is not an impulse; 'nonpositive leg' = highs exist after a low but none above it */
   }
   function levelsFor(leg) {
     var r = leg.high - leg.low, out = [{ ratio: 0, kind: 'ref', price: leg.high }];

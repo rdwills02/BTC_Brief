@@ -18,7 +18,7 @@ function fix(N) {
 }
 var r = F.compute(fix(26), O, {});
 eq(r.status, 'ok', 'leg available on the hand-checked fixture');
-eq(r.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22) }, 'leg selection: most recent confirmed low, highest confirmed pivot high after it; confirmedAt = later confirmation');
+eq(r.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22), legIndexFromLatest: 0 }, 'leg selection: most recent confirmed low, highest confirmed pivot high after it; confirmedAt = later confirmation');
 var want = { 0: 40, 0.618: 21.46, 0.705: 18.85, 0.786: 16.42, 1: 10, 1.272: 48.16, 1.618: 58.54 };
 eq(r.levels.map(function (l) { return l.ratio; }), [0, 0.618, 0.705, 0.786, 1, 1.272, 1.618], 'levels: reference 0, three retracements, reference 1, two extensions');
 r.levels.forEach(function (l) { near(l.price, want[l.ratio], 'level ' + l.ratio + ' arithmetic'); });
@@ -45,9 +45,33 @@ eq(F.compute(fix(26), { intervalSec: D, nowMs: (T(21) + D) * 1000 }, {}).status,
 var flat = []; for (var i = 0; i < 30; i++) flat.push({ time: T(i), open: 1, high: 2, low: 1, close: 1.5, volume: 1 });
 eq(F.compute(flat, O, {}).reason, 'no confirmed impulse', 'flat series: no pivots -> unavailable');
 eq(F.compute(fix(8), O, {}).reason, 'lookback', 'short series -> lookback');
-/* a newer confirmed low with no confirmed high after it makes the leg unavailable (most recent low rule) */
+/* item 52o: a newer confirmed low with no confirmed high after it -> fall back to the prior low->high pair (legIndexFromLatest 1); once a later high confirms the leg moves forward */
 var nl = fix(26).concat([]); for (i = 26; i < 40; i++) nl.push({ time: T(i), open: 25, high: 30, low: 22, close: 25, volume: 100 }); nl[30] = { time: T(30), open: 20, high: 29, low: 5, close: 20, volume: 100 };
-eq(F.compute(nl, O, {}).status, 'unavailable', 'newer confirmed pivot low with no later confirmed high: unavailable, not the older leg');
+var fb = F.compute(nl, O, {});
+eq(fb.status, 'ok', '52o: newer confirmed low without a confirmed high after it -> fallback leg, not unavailable');
+eq(fb.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22), legIndexFromLatest: 1 }, '52o: fallback is the prior pair, one confirmed low back');
+var nl2 = nl.concat([]); for (i = 40; i < 50; i++) nl2.push({ time: T(i), open: 25, high: 30, low: 22, close: 25, volume: 100 }); nl2[40] = { time: T(40), open: 25, high: 50, low: 22, close: 30, volume: 100 };
+eq(F.compute(nl2.slice(0, 45), O, {}).leg.legIndexFromLatest, 1, '52o: high at candle 40 not yet confirmed (needs candle 45 closed) -> still the fallback');
+eq(F.compute(nl2.slice(0, 46), O, {}).leg, { lowTime: T(30), low: 5, highTime: T(40), high: 50, confirmedAt: T(46), legIndexFromLatest: 0 }, '52o: once the later high confirms the leg moves forward to low 5 -> high 50');
+/* two skipped lows (index 2) and the highest high after the chosen low */
+var nl3 = nl.concat([]); for (i = 40; i < 56; i++) nl3.push({ time: T(i), open: 25, high: 30, low: 22, close: 25, volume: 100 }); nl3[40] = { time: T(40), open: 23, high: 29, low: 3, close: 24, volume: 100 };
+var l3 = F.compute(nl3, O, {}); eq(l3.leg.legIndexFromLatest, 2, '52o: two newer lows without highs -> index 2'); eq([l3.leg.low, l3.leg.high], [10, 40], '52o: index-2 leg is the Sep-style prior pair');
+eq(F.compute(nl.slice(0, 16), O, {}).status, 'unavailable', '52o: unavailable only when no confirmed low->high pair exists');
+/* item 52o review: a later confirmed high at or BELOW the low is not a leg (hand-checked; only comparisons matter, so candles may be synthetic).
+   NP: every candle low 110 / high 94, except i10 low 100 (the one pivot low) and i20 high 96 (the one pivot high): the only later confirmed high (96) is below the only low (100). */
+var np = []; for (i = 0; i < 40; i++) np.push({ time: T(i), open: 100, high: 94, low: 110, close: 100, volume: 1 }); np[10].low = 100; np[20].high = 96;
+var rnp = F.compute(np, O, {}); eq([rnp.status, rnp.reason, rnp.leg], ['unavailable', 'nonpositive leg', null], '52o review: the only later confirmed high (96) is below the only low (100) -> unavailable, reason nonpositive leg');
+eq(F.impulseLeg(np, O).available, false, '52o review: impulseLeg agrees');
+/* FO: base B (high 80 / low 70) i0-25, base B2 (high 94 / low 110) i26-59; i10 low 60 (pivot low), i20 high 90 (pivot high), i36 low 100 (pivot low), i40 high 96 (pivot high, below 100).
+   Newest low (100 @ i36) has only the lower high 96 after it -> skipped; the older low 60 @ i10 qualifies, with the highest high after it (96 @ i40): leg 60 -> 96, one confirmed low back. */
+var fo = []; for (i = 0; i < 60; i++) fo.push(i < 26 ? { time: T(i), open: 75, high: 80, low: 70, close: 75, volume: 1 } : { time: T(i), open: 100, high: 94, low: 110, close: 100, volume: 1 });
+fo[10].low = 60; fo[20].high = 90; fo[36].low = 100; fo[40].high = 96;
+var rfo = F.compute(fo, O, {}); eq(rfo.status, 'ok', '52o review: an older valid pair is found when the newer low has only a lower later high');
+ok(rfo.leg && rfo.leg.low === 60 && rfo.leg.high === 96 && rfo.leg.legIndexFromLatest === 1, '52o review: the low whose only later high is below it is skipped; leg = the older low with its highest later high | ' + JSON.stringify(rfo.leg));
+ok(rfo.leg && rfo.leg.high > rfo.leg.low, '52o review: every returned leg has high > low');
+/* same shape but the later high is ABOVE the newer low (101 > 100): the newer low qualifies (index 0) */
+var fo2 = fo.map(function (c) { return Object.assign({}, c); }); fo2[40].high = 101; var r2 = F.compute(fo2, O, {}); eq([r2.leg.low, r2.leg.high, r2.leg.legIndexFromLatest], [100, 101, 0], '52o review: a later high above the low qualifies it');
+eq(JSON.stringify(F.compute(nl, O, ctx)), JSON.stringify(F.compute(nl, O, ctx)), '52o: fallback is deterministic');
 /* determinism: appending later flat candles never changes the leg */
 var l26 = F.compute(fix(26), O, {}).leg; for (var k = 22; k <= 40; k++) eq(F.compute(fix(k), O, {}).leg, l26, 'leg unchanged when ' + k + ' candles are available');
 eq(JSON.stringify(F.compute(fix(30), O, ctx)), JSON.stringify(F.compute(fix(30), O, ctx)), 'deterministic');
