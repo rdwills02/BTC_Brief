@@ -1,21 +1,11 @@
 {
-  "version": 1,
-  "status": "uncalibrated",
-  "clustering": {
-    "name": "A",
-    "baselineMethod": "median",
-    "neighborhoodPct": 4,
-    "seedMinConcentration": 3,
-    "extendMinConcentration": 1.5,
-    "maxGapPct": 1,
-    "maxZoneWidthPct": 5
-  },
-  "cutoffs": {
-    "concentration": null,
-    "material": null
-  },
+  "version": 2,
+  "status": "frozen",
+  "clustering": { "name": "E", "baselineMethod": "mean", "neighborhoodPct": 4, "seedMinConcentration": 3, "extendMinConcentration": 1.5, "maxGapPct": 1, "maxZoneWidthPct": 5 },
+  "cutoffs": { "concentration": 2, "material": 1 },
   "staleMultiplier": 1.5,
-  "frozenBy": null,
-  "date": null,
-  "note": "cutoffs are set only by an Astra ruling on a calibration bundle"
+  "frozenBy": "Astra — Sell-Zone Calibration Bundle Review — 2026-10-15; approved for deployment by Ryan Wills",
+  "date": "2026-10-15",
+  "evidence": { "bundleId": "sellzone-calib-20261015T160309Z", "manifestSha256": "89c0bc984705b04abb21181363a5681187bb6e081c907db5db0a007ac9c4de58", "executedSellzoneCore": "5f93102f8734f06f3208ae0c8171d86f031086d8b949f9f8257a1ee835698da7", "deployedSellzoneCore": "d26f85a5", "retainedExamples": "7 pass / 2 uncertain under E, C>=2, M>=1", "sensitivity": "C=2: M 0.5/1/2 -> 9/7/5 passes; M=1: C 2->4 drops the lower Coinbase ICP zone (M 1.05, marginal)" },
+  "note": "cutoffs set only by an Astra ruling on a calibration bundle; descriptive scale/readability calibration, not a price-impact threshold"
 }
