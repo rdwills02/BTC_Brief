@@ -67,14 +67,24 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
   </section>
 </main>
 
-<script src="book-core.js"></script>
-<script src="book-codec.js"></script>
-<script src="sellzone-core.js"></script>
 <script>
-(function () {
+/* item 52p: the three modules are fetched, hashed and then EXECUTED FROM THOSE SAME BYTES (never re-fetched afterwards), so the hashes in the manifest identify the code that actually ran; the bytes are bundled under modules/. */
+window.__mods = {};
+window.__modulesReady = (async function () {
+  var names = ['book-core.js', 'book-codec.js', 'sellzone-core.js'], dec = new TextDecoder('utf-8');
+  for (var i = 0; i < names.length; i++) {
+    var r = await fetch(names[i], { cache: 'no-store' }); if (!r.ok) throw new Error('module ' + names[i] + ' HTTP ' + r.status);
+    var buf = await r.arrayBuffer(), h = Array.prototype.map.call(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    window.__mods[names[i]] = { sha256: h, bytes: new Uint8Array(buf), url: r.url };
+    var el = document.createElement('script'); el.textContent = dec.decode(buf) + '\n//# sourceURL=' + names[i]; document.head.appendChild(el);
+  }
+})();
+</script>
+<script>
+window.__modulesReady.then(function () { (function () {
   'use strict';
   var B = window.BookCore, C = window.BookCodec, S = window.SellzoneCore;
-  var PAGE_BUILD = 'a02c2135e5c23245dc5279b141804a48b9dfa908de6e6a0bfce9efe363c78659';   // sha256 of this file with this value set to 64 zeros (rule recorded in the manifest)
+  var PAGE_BUILD = '27703d4428ddf50c12cffb79f08bdcbc78be78fbbe0927b52e8935215e888e9b';   // sha256 of this file with this value set to 64 zeros (rule recorded in the manifest)
   var HOUR = 3600000, Q15 = 900000, KRAKEN_BARS = 720, LOOKBACK_SLOTS = 8, MAX_PER_VENUE = 2, MAX_PER_DAY = 3;
   var ALIAS = { XBT: 'BTC', XDG: 'DOGE' }, PRESET_BASES = ['ETH', 'SOL', 'ICP', 'TAO', 'XMR', 'JTO', 'ASTER', 'LINK', 'ADA', 'ETHFI', 'OKB'];
   var enc = new TextEncoder();
@@ -103,7 +113,7 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
   }
   async function getGz(url) {
     var last; for (var a = 0; a < 3; a++) { try { var r = await fetch(url, { cache: 'no-store' }); if (r.status === 404) return { status: 404 }; if (!r.ok) { last = 'HTTP ' + r.status; await sleep(1000); continue; } var buf = await r.arrayBuffer(), h = await sha256(buf);
-      var ds = new DecompressionStream('gzip'), txt = await new Response(new Blob([buf]).stream().pipeThrough(ds)).text(); return { status: 200, sha256: h, bytes: buf.byteLength, text: txt }; } catch (e) { last = String(e.message || e); await sleep(1000); } }
+      var ds = new DecompressionStream('gzip'), txt = await new Response(new Blob([buf]).stream().pipeThrough(ds)).text(); return { status: 200, sha256: h, bytes: buf.byteLength, text: txt, raw: new Uint8Array(buf) }; } catch (e) { last = String(e.message || e); await sleep(1000); } }
     return { status: 0, error: last };
   }
 
@@ -152,7 +162,7 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
       var verification = 'no-registry-entry', want = registry && registry.datasets && registry.datasets.book && registry.datasets.book.hashes && registry.datasets.book.hashes[path];
       if (want) verification = want === g.sha256 ? 'registry-match' : 'registry-MISMATCH';
       var batch = JSON.parse(g.text), recs = C.decodeBatch(batch), by = {}; recs.forEach(function (r) { by[r.pair] = r; });
-      return { path: path, status: 200, sha256: g.sha256, bytes: g.bytes, verification: verification, records: recs.length, by: by, metaSlot: batch.meta && batch.meta.slot };
+      return { path: path, status: 200, sha256: g.sha256, bytes: g.bytes, raw: g.raw, verification: verification, records: recs.length, by: by, metaSlot: batch.meta && batch.meta.slot };
     });
   }
   async function findDepth(base, venue, pair, cutMs) {
@@ -191,11 +201,31 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
     return S.activityBaseline(rows, venue, H);
   }
 
+  // ---------- reported global 24 h volume (item 52p; Astra Venue-Share Calibration Ruling) ----------
+  // Context only. Two sources, whichever is contemporaneous with the depth observation (S.venueContext decides; otherwise unavailable - never today's value for an older cutoff):
+  //  (1) a live CoinGecko markets request made during this run (only when the observation is within the freshness tolerance of now); the raw response is retained;
+  //  (2) the research file's own captured coins[].volume24h (the original captured source file, retained); its endpoint / vs_currency are not recorded in the file (declared below), no last_updated.
+  var globalLive = {}, globalRaw = {};
+  function getGlobalLive(cgId) {
+    if (globalLive[cgId]) return globalLive[cgId];
+    return globalLive[cgId] = sems.net.run(async function () {
+      var url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=' + encodeURIComponent(cgId) + '&per_page=1&page=1', r = await getText(url, 2), out = { coinId: cgId, endpoint: url, requestedVsCurrency: 'usd', retrievedAt: r.retrievedAt, httpStatus: r.status, responseText: r.text, error: r.error || null };
+      out.responseSha256 = await sha256(r.text); try { var j = JSON.parse(r.text), row = Array.isArray(j) ? j.filter(function (x) { return x.id === cgId; })[0] : null; if (row && typeof row.total_volume === 'number') { out.value = row.total_volume; out.lastUpdated = row.last_updated || null; } } catch (e) {}
+      return out;
+    });
+  }
+  async function globalFor(base, terms, obsMs) {
+    var cg = terms.cgBySym && terms.cgBySym[(ALIAS[base] || base)]; if (!cg || !cg.cgId) return { input: null, note: 'no CoinGecko id for ' + base + ' in the research file' };
+    if (Math.abs(Date.now() - obsMs) <= S.GLOBAL_MAX_AGE_MS) { var live = await getGlobalLive(cg.cgId); if (live && live.value > 0) return { input: { coinId: cg.cgId, endpoint: live.endpoint, vsCurrency: live.requestedVsCurrency, vsCurrencyBasis: 'requested in the URL', value: live.value, lastUpdatedMs: live.lastUpdated ? Date.parse(live.lastUpdated) : null, retrievedAtMs: Date.parse(live.retrievedAt), responseSha256: live.responseSha256, rawRef: 'global/' + safe(cg.cgId + '-' + compact(Date.parse(live.retrievedAt))) + '.json' }, live: live }; }
+    if (cg.volume24h > 0 && terms.captureTime) return { input: { coinId: cg.cgId, endpoint: 'research file ' + (terms.url || '') + ' coins[].volume24h (captured value; the capture endpoint is not recorded in the file)', vsCurrency: 'usd', vsCurrencyBasis: 'ASSUMED: not recorded in the research file; the capture is a USD-denominated markets feed', value: cg.volume24h, lastUpdatedMs: null, retrievedAtMs: Date.parse(terms.captureTime), responseSha256: terms.sha256, rawRef: 'inputs/research-latest-daily.json' } };
+    return { input: null, note: 'no global snapshot' };
+  }
+
   // ---------- E / T ----------
   async function loadTerms(url) {
     var r = await getText(url); if (r.status !== 200) return { error: r.error || 'HTTP ' + r.status, bySym: {} };
-    var j = JSON.parse(r.text), by = {}; (j.coins || []).forEach(function (c) { var ee = c.research && c.research.entryEconomics; by[String(c.symbol).toUpperCase()] = ee ? { entryLow: ee.entryLow, entryHigh: ee.entryHigh, target: ee.target, targetSource: ee.targetSource || null } : null; });
-    return { sha256: await sha256(r.text), url: url, retrievedAt: r.retrievedAt, captureTime: j.captureTime || null, captureId: j.captureId || null, bySym: by };
+    var j = JSON.parse(r.text), by = {}, cg = {}; (j.coins || []).forEach(function (c) { cg[String(c.symbol).toUpperCase()] = { cgId: c.cgId || null, volume24h: typeof c.volume24h === 'number' ? c.volume24h : null }; var ee = c.research && c.research.entryEconomics; by[String(c.symbol).toUpperCase()] = ee ? { entryLow: ee.entryLow, entryHigh: ee.entryHigh, target: ee.target, targetSource: ee.targetSource || null } : null; });
+    return { sha256: await sha256(r.text), text: r.text, url: url, retrievedAt: r.retrievedAt, captureTime: j.captureTime || null, captureId: j.captureId || null, bySym: by, cgBySym: cg };
   }
   function termsFor(key, venue, pair, terms, ovr) {
     var o = ovr[key] || ovr[pair]; if (o && isFinite(o.E) && isFinite(o.T)) return { available: true, E: +o.E, T: +o.T, source: 'manual override' };
@@ -210,16 +240,17 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
 
   // ---------- compute one example ----------
   function compactEval(res) { return { qualifying: res.qualifying, states: res.states.map(function (s) { return s.code; }), verdicts: res.zones.map(function (z) { return [z.id, z.verdict, z.concentration, z.materiality]; }) }; }
-  function computeResults(record, E, T, baseline, ps, maxAgeMs, cutMs) {
+  function computeResults(record, E, T, baseline, ps, maxAgeMs, cutMs, vctx) {
     var out = {};
     ps.clustering.forEach(function (cl) {
       var par = Object.assign({}, cl); delete par.name; var base = S.sellObstacleZones(record, record.grid, E, T, baseline, par, { asOfMs: cutMs, maxAgeMs: maxAgeMs }), evals = {};
       ps.cutoffs.forEach(function (ct) { evals[ct.name] = compactEval(S.sellObstacleZones(record, record.grid, E, T, baseline, par, { concentration: ct.concentration, material: ct.material, asOfMs: cutMs, maxAgeMs: maxAgeMs })); });
+      if (vctx) base.zones = base.zones.map(function (z) { var c = S.venueContext(vctx.local, vctx.global, vctx.quote, vctx.obsMs, { Q: z.Q, Qlo: z.Qlo, Qhi: z.Qhi }); return Object.assign({}, z, { zoneShareGlobal24h: c.zoneShareGlobal24h }); });
       out[cl.name] = { params: base.params, zones: base.zones, unassessed: base.unassessed, totalAskMassOnPath: base.totalAskMassOnPath, baseStates: base.states.map(function (s) { return s.code; }), evals: evals };
     });
     return out;
   }
-  function baselineSummary(b, candleRef) { return { status: b.status, reason: b.reason || null, median: b.median, medianLo: b.medianLo == null ? null : b.medianLo, medianHi: b.medianHi == null ? null : b.medianHi, validHours: b.validHours, missingHours: (b.missingHours || []).map(iso), method: b.method, label: b.label || null, exact: b.exact === undefined ? null : b.exact, source: b.source || null, window: b.window ? { start: iso(b.window.startMs), end: iso(b.window.endMs) } : null, dupConflicts: b.dupConflicts, clippedOutside: b.clippedOutside, malformed: b.malformed, candleRef: candleRef }; }
+  function baselineSummary(b, candleRef) { return { status: b.status, reason: b.reason || null, median: b.median, medianLo: b.medianLo == null ? null : b.medianLo, medianHi: b.medianHi == null ? null : b.medianHi, validHours: b.validHours, missingHours: (b.missingHours || []).map(iso), method: b.method, label: b.label || null, exact: b.exact === undefined ? null : b.exact, source: b.source || null, window: b.window ? { start: iso(b.window.startMs), end: iso(b.window.endMs) } : null, dupConflicts: b.dupConflicts, clippedOutside: b.clippedOutside, malformed: b.malformed, candleRef: candleRef, hourly: (b.hourly || []).map(function (h) { return [iso(h[0]), h[1], h[2], h[3]]; }) }; }
 
   // ---------- zip (stored, no compression) ----------
   var CRC = (function () { var t = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -242,10 +273,11 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
   function summarize(ps, examples, runInfo) {
     var L = [], ok = examples.filter(function (e) { return e.results; });
     L.push('# Sell-zone calibration bundle — summary', '', 'Run ' + runInfo.runId + ' · generated ' + runInfo.generatedAt + ' · page build ' + runInfo.pageBuild.slice(0, 12), '',
-      'Descriptive only: no trade outcomes appear anywhere in this bundle. Parameter and cutoff values are labelled inspection candidates, not findings. E/T are the CURRENT research terms (' + (runInfo.researchCaptureTime || 'capture time unknown') + '), applied to every cutoff.', '',
+      'Descriptive only: no trade outcomes appear anywhere in this bundle. Parameter and cutoff values are labelled inspection candidates, not findings. E/T are the CURRENT research terms (' + (runInfo.researchCaptureTime || 'capture time unknown') + '), applied to every cutoff: **current hypothetical geometry on historical books** (a scale / readability calibration, not a historical trading replay).', '',
       '- examples: ' + examples.length + ' (with depth and E/T: ' + ok.length + ')', '- venue|pairs: ' + runInfo.pairs.length + ' · cutoffs: ' + runInfo.cutoffs.join(', '),
-      '- stale rule: age > staleMultiplier (' + runInfo.staleMultiplier + ') × the pair\'s effective scheduled cadence from cadence.json (per example in examples.jsonl `freshness`).', '- baseline: Kraken = VWAP × base volume (quote turnover); Coinbase = close × base volume (ESTIMATE, bounds low×volume .. high×volume); 168 hours in [H−168h, H), running hour excluded, ≥120 valid hours required.', '');
+      '- stale rule: age > staleMultiplier (' + runInfo.staleMultiplier + ') × the pair\'s effective scheduled cadence from cadence.json (per example in examples.jsonl `freshness`).', '- baseline: Kraken = VWAP × base volume (quote turnover); Coinbase = close × base volume (ESTIMATE, bounds low×volume .. high×volume); 168 hours in [H−168h, H), running hour excluded, ≥120 valid hours required. H = the UTC hour of the SELECTED DEPTH RECORD\'s receipt (item 52p B1), not the cutoff\'s hour.', '- venue context (descriptive, no cutoff): local 24 h turnover of the pair over [H−24h, H) (all 24 hours must be valid) and the reported global 24 h volume with timestamps; unavailable whenever an hour is missing or the global snapshot is not contemporaneous with the depth observation. M is a multiple of the venue/pair\'s typical HOURLY turnover, never an absorption time.', '');
     L.push('## Baseline availability', ''); var bs = {}; examples.forEach(function (e) { if (e.baseline) { var k = e.venue + ' ' + e.baseline.status; bs[k] = (bs[k] || 0) + 1; } }); Object.keys(bs).sort().forEach(function (k) { L.push('- ' + k + ': ' + bs[k]); });
+    L.push('', '## Venue context (descriptive)', ''); var vcs = {}; examples.forEach(function (e) { if (e.venueContext) { var k = e.venue + ' pairShare24h ' + e.venueContext.pairShare24h.status + (e.venueContext.pairShare24h.status === 'unavailable' ? ' (' + String(e.venueContext.pairShare24h.reason).slice(0, 60) + ')' : ''); vcs[k] = (vcs[k] || 0) + 1; } }); Object.keys(vcs).sort().forEach(function (k) { L.push('- ' + k + ': ' + vcs[k]); }); if (!Object.keys(vcs).length) L.push('- no examples with a depth record');
     L.push('', '## Coverage of the E→T path (absolute prices)', ''); var cs = {}; ok.forEach(function (e) { var k = e.venue + ' ' + e.coverage.status; cs[k] = (cs[k] || 0) + 1; }); Object.keys(cs).sort().forEach(function (k) { L.push('- ' + k + ': ' + cs[k]); }); L.push('');
     ps.clustering.forEach(function (cl) {
       L.push('## Clustering set ' + cl.name, '', '`' + JSON.stringify(cl) + '`', '', 'Zones retained = verdict pass; suppressed = verdict fail.', '', '| cutoff set | zones listed | retained (pass) | suppressed (fail) | uncertain | unavailable | no verdict | ' + STATE_COLS.join(' | ') + ' |', '|' + new Array(7 + STATE_COLS.length + 1).join('---|'));
@@ -274,7 +306,7 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
 
   // ---------- run ----------
   async function run() {
-    resetLog(); $('run').disabled = true; $('dl').disabled = true; $('verify').disabled = true; $('outSec').hidden = true; batchCache = {}; candleCache = {}; krakenAlt = null;
+    resetLog(); $('run').disabled = true; $('dl').disabled = true; $('verify').disabled = true; $('outSec').hidden = true; batchCache = {}; candleCache = {}; krakenAlt = null; globalLive = {}; globalRaw = {};
     try {
       if (!(window.crypto && crypto.subtle && window.DecompressionStream)) throw new Error('this browser lacks crypto.subtle or DecompressionStream');
       var base = $('repo').value.trim(), keys = selectedPairs(), ps, ovr, pc = parseCutoffs();
@@ -295,19 +327,28 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
         if (dp.batch.verification === 'registry-MISMATCH') { ex.reason = 'batch hash does not match the registry'; done++; return ex; }
         var rec = dp.record; ex.depth = { recordId: rec.id, gridId: rec.grid, req: rec.req, recv: rec.recv, ageMs: tk.ct.ms - Date.parse(rec.recv), batchPath: dp.batch.path, batchSha256: dp.batch.sha256, batchVerification: dp.batch.verification, capReached: rec.capReached, farthest: rec.farthest, levels: rec.levels, denominator: rec.walls ? rec.walls.denominator : null };
         ex.record = rec; ex.freshness = S.staleMaxAgeMs(cad ? cad.table : [], venue, pair, tk.ct.ms, mult);
-        var cd = await getCandles(venue, pair, tk.ct.H), candleRef = 'candles/' + safe(venue + '-' + pair + '-' + compact(tk.ct.H)) + '.json', bl = baselineOf(venue, cd, tk.ct.H); ex.baseline = baselineSummary(bl, candleRef);
-        if (ex.terms.available && !rec.empty && !rec.excludedFromContinuous) { var g = B.gridOf(rec.grid); ex.coverage = S.coverage(rec, g, ex.terms.E, ex.terms.T); ex.results = computeResults(rec, ex.terms.E, ex.terms.T, bl, ps, ex.freshness.maxAgeMs, tk.ct.ms); }
+        var bH = S.baselineHour(rec.recv);   /* item 52p B1: the record's own receipt hour drives the candle fetch, cache key, baseline, metadata and replay; the cutoff only selects the record and judges freshness */
+        ex.cutoffH = ex.H; ex.H = iso(bH); ex.baselineH = iso(bH);
+        var cd = await getCandles(venue, pair, bH), candleRef = 'candles/' + safe(venue + '-' + pair + '-' + compact(bH)) + '.json', bl = baselineOf(venue, cd, bH); ex.baseline = baselineSummary(bl, candleRef);
+        var crows = rowsOf(venue, cd), local = crows ? S.localTurnover24h(crows, venue, bH) : { venue: venue, status: 'unavailable', reason: 'candle request failed', window: { startMs: bH - S.CONTEXT_HOURS * HOUR, endMs: bH, hours: S.CONTEXT_HOURS }, hours: [], validHours: 0, missingHours: [], subtotal: null, total: null }, quote = pair.split('/')[1], obsMs = Date.parse(rec.recv);
+        var gl = await globalFor(pair.split('/')[0].toUpperCase(), terms, obsMs); if (gl.live) globalRaw[gl.live.coinId + '|' + gl.live.retrievedAt] = gl.live;
+        var vc = S.venueContext(local, gl.input, quote, obsMs, null); ex.venueContext = { baselineH: iso(bH), local: local, globalInput: gl.input, globalNote: gl.note || null, comparability: vc.comparability, pairShare24h: vc.pairShare24h, label: vc.label };
+        if (ex.terms.available && !rec.empty && !rec.excludedFromContinuous) { var g = B.gridOf(rec.grid); ex.coverage = S.coverage(rec, g, ex.terms.E, ex.terms.T); ex.results = computeResults(rec, ex.terms.E, ex.terms.T, bl, ps, ex.freshness.maxAgeMs, tk.ct.ms, { local: local, global: gl.input, quote: quote, obsMs: obsMs }); }
         done++; if (done % 6 === 0) log('  ' + done + '/' + tasks.length + ' examples'); return ex;
       }));
       log(done + '/' + tasks.length + ' examples computed; building bundle');
-      var files = [], put = function (name, text) { files.push({ name: name, data: enc.encode(text), text: text }); };
+      var files = [], put = function (name, text) { var bin = text instanceof Uint8Array; files.push({ name: name, data: bin ? text : enc.encode(text), text: bin ? null : text }); };
       var seenC = {}; for (var k in candleCache) { var c = await candleCache[k]; if (c) { var nm = 'candles/' + safe(c.venue + '-' + c.pair + '-' + compact(c.H)) + '.json'; if (!seenC[nm]) { seenC[nm] = 1; put(nm, JSON.stringify(c, null, 1)); } } }
       put('examples.jsonl', examples.map(function (e) { return JSON.stringify(e); }).join('\n') + '\n');
       var runInfo = { runId: runId, generatedAt: iso(Date.now()), pageBuild: PAGE_BUILD, pairs: keys, cutoffs: pc.cutoffs.map(function (x) { return x.iso; }), researchCaptureTime: terms.captureTime, staleMultiplier: mult };
       put('summary.md', summarize(ps, examples, runInfo));
-      var modHashes = {}; for (var si = 0, ss = document.scripts; si < ss.length; si++) { var src = ss[si].getAttribute('src'); if (!src) continue; try { var rt = await fetch(src); modHashes[src] = rt.ok ? await sha256(await rt.text()) : null; } catch (e) { modHashes[src] = null; } }
+      /* item 52p: the exact inputs, retained as bytes: research file, cadence, the three modules as executed, the selected compressed depth batches, raw global responses. */
+      if (terms.text) put('inputs/research-latest-daily.json', terms.text); if (cr.status === 200) put('inputs/cadence.json', cr.text);
+      var modHashes = {}; Object.keys(window.__mods).forEach(function (n) { var m = window.__mods[n]; modHashes[n] = m.sha256; files.push({ name: 'modules/' + n, data: m.bytes, text: null }); });
+      for (var bk in batchCache) { var bv = await batchCache[bk]; if (bv && bv.status === 200 && bv.raw && examples.some(function (e) { return e.depth && e.depth.batchPath === bv.path; })) put('batches/' + safe(bv.path), bv.raw); }
+      for (var gk in globalRaw) { var gv = globalRaw[gk]; put('global/' + safe(gv.coinId + '-' + compact(Date.parse(gv.retrievedAt))) + '.json', JSON.stringify(gv, null, 1)); }
       var hashes = {}; for (var fi = 0; fi < files.length; fi++) hashes[files[fi].name] = await sha256(files[fi].data);
-      var manifest = { bundle: 'sellzone-calib', runId: runId, generatedAt: runInfo.generatedAt, pageBuild: PAGE_BUILD, pageBuildRule: 'sha256 of sellzone-calib.html with the PAGE_BUILD constant set to 64 zeros', moduleVersions: { sellzoneCore: S.VERSION, bookGrid: B.CURRENT_GRID_VERSION, codec: C.CODEC_VERSION }, moduleSha256: modHashes,
+      var manifest = { bundle: 'sellzone-calib', runId: runId, generatedAt: runInfo.generatedAt, pageBuild: PAGE_BUILD, pageBuildRule: 'sha256 of sellzone-calib.html with the PAGE_BUILD constant set to 64 zeros', moduleVersions: { sellzoneCore: S.VERSION, bookGrid: B.CURRENT_GRID_VERSION, codec: C.CODEC_VERSION }, moduleSha256: modHashes, moduleBytesBundled: true, moduleHashRule: 'sha256 of the exact bytes executed (modules/*), verified before execution', baselineHourRule: 'baselineH = UTC hour of the depth record receipt; baseline window = 168 valid hours ending at H',
         inputs: { repoBase: base, registrySha256: registrySha, registryBookVersion: registry ? registry.datasets.book.version : null, researchFile: { url: terms.url || $('daily').value, sha256: terms.sha256 || null, retrievedAt: terms.retrievedAt || null, captureTime: terms.captureTime || null, captureId: terms.captureId || null }, venuePairs: keys, cutoffs: runInfo.cutoffs, refusedCutoffs: pc.errs, overrides: ovr, staleMultiplier: mult, cadence: { url: base + 'book/cadence.json', sha256: cadSha, version: cad ? cad.version : null, updatedAt: cad ? cad.updatedAt : null }, lookbackSlots: LOOKBACK_SLOTS },
         parameterSets: ps, concurrency: { candlePerVenue: MAX_PER_VENUE }, counts: { examples: examples.length, withEandT: examples.filter(function (e) { return e.results; }).length, candleFiles: Object.keys(seenC).length }, files: hashes, elapsedMs: Date.now() - t0 };
       put('manifest.json', JSON.stringify(manifest, null, 1));
@@ -327,7 +368,8 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
     for (var j = 0; j < b.examples.length; j++) {
       var e = b.examples[j]; if (!e.baseline) continue; var c = candleByRef[e.baseline.candleRef]; if (!c) { bad.push('no candle file for ' + e.exampleId); continue; }
       if (await sha256(c.responseText) !== c.responseSha256) bad.push('candle response hash ' + e.baseline.candleRef);
-      if (!e.results) continue; var bl = baselineOf(e.venue, c, Date.parse(e.H)), again = computeResults(e.record, e.terms.E, e.terms.T, bl, b.ps, e.freshness.maxAgeMs, Date.parse(e.cutoff));
+      if (S.baselineHour(e.record.recv) !== Date.parse(e.H)) bad.push('baseline hour is not the record receipt hour ' + e.exampleId);
+      if (!e.results) continue; var bl = baselineOf(e.venue, c, Date.parse(e.H)), cr = rowsOf(e.venue, c), lc = cr ? S.localTurnover24h(cr, e.venue, Date.parse(e.H)) : e.venueContext.local, again = computeResults(e.record, e.terms.E, e.terms.T, bl, b.ps, e.freshness.maxAgeMs, Date.parse(e.cutoff), { local: lc, global: e.venueContext.globalInput, quote: e.pair.split('/')[1], obsMs: Date.parse(e.record.recv) });
       if (JSON.stringify(again) !== JSON.stringify(e.results)) bad.push('recompute differs ' + e.exampleId);
     }
     log(bad.length ? 'VERIFY FAILED: ' + bad.slice(0, 10).join('; ') : 'VERIFY OK: ' + (b.files.length - 1) + ' file hashes match the manifest; every example recomputes identically from the retained record and candle response');
@@ -336,8 +378,8 @@ pre { background:var(--code); border-radius:6px; padding:10px; overflow:auto; ma
   window.__verify = verify;
   $('run').onclick = run; $('verify').onclick = verify;
   $('dl').onclick = function () { var a = document.createElement('a'); a.href = URL.createObjectURL(st.bundle.blob); a.download = 'sellzone-calib-' + st.bundle.runId + '.zip'; document.body.appendChild(a); a.click(); a.remove(); };
-  window.__calib = { run: run, parseCutoffs: parseCutoffs };
-})();
+  window.__calib = { run: run, parseCutoffs: parseCutoffs, baselineHourOf: function (recv) { return S.baselineHour(recv); } };
+})(); }).catch(function (e) { var p = document.createElement('pre'); p.textContent = 'module load failed: ' + (e && e.message || e); document.body.insertBefore(p, document.body.firstChild); });
 </script>
 </body>
 </html>

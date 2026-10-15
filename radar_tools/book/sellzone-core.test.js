@@ -136,7 +136,7 @@ t('states: depth incomplete shows the covered price; stale observation; invalid 
 });
 t('total observed ask mass E->T is reported separately, with bounds at boundary bins', () => {
   const r = cb(upTo(140)), o = S.sellObstacleZones(r, G(), 100.3, 110.5, baseK(100), P, CUT); ok(o.totalAskMassOnPath.Qhi > o.totalAskMassOnPath.Qlo && o.totalAskMassOnPath.Qlo > 0); eq(o.totalAskMassOnPath.lowerBound, false);
-  const full = S.sellObstacleZones(r, G(), 100.5, 110, baseK(100), P, CUT).totalAskMassOnPath; near(full.Qlo, full.Qhi, 1e-9, 'bin-aligned path has no bounds');
+  const full = S.sellObstacleZones(r, G(), 100.5, 110, baseK(100), P, CUT).totalAskMassOnPath; const gg = G(), ti = gg.edges.findIndex(x => Math.abs(x - 110) < 1e-6) + 1, tbin = r.bins.a.filter(x => x[0] === ti)[0]; ok(tbin && tbin[2] > 0); near(full.Qhi - full.Qlo, tbin[2], 1e-6, 'item 52p B2: even a bin-aligned T has an upper bound - the bin that begins at T is unknown allocation (an ask exactly at T lies in it)');
 });
 t('a fully observed path with a non-qualifying zone still gives the all-clear only when no zone is pass/uncertain/unavailable', () => {
   const r = wallAt(105.1, 5), o = S.sellObstacleZones(r, G(), 100, 130, baseK(100), Object.assign({}, P, { seedMinConcentration: 1.4, extendMinConcentration: 1.1 }), { concentration: 50, material: 1 });
@@ -172,5 +172,68 @@ t('cadence is effective-dated: the entry in force at the judged time decides; no
   const rec = cb(upTo(140)), o = S.sellObstacleZones(rec, G(), 100, 130, baseK(100), P, { concentration: 2, material: 1, asOfMs: Date.parse(rec.recv) + 60000, maxAgeMs: null }); eq(o.states.map(s => s.code), ['freshnessUnknown']);
   let n = 0; try { S.staleMaxAgeMs(tbl, 'kraken', 'X/USD', T0, 0); } catch (e) { n++; } try { S.staleMaxAgeMs(tbl, 'kraken', 'X/USD', T0, 'x'); } catch (e) { n++; } eq(n, 2);
   eq(S.calibrationCandidates.staleMultiplier, 1.5); ok(S.calibrationCandidates.maxAgeMs === undefined, 'fixed 30 min limit is gone');
+});
+
+// ---- item 52p B2: boundary uncertainty (Astra Outstanding Package Implementation Review 2026-10-15, B2) ----
+t('B2 fixture 1: E 120 / T 121 with a 100,000-quote ask exactly at 121 -> the T bin is unknown allocation: not "1 unit on path", never an all-clear', () => {
+  const g = G(3), r = cb(upTo(140).concat([[121, 100000 / 121]]), null, g), base = S.activityBaseline(krakenRows(168, 1, 1), 'kraken', H), res = S.sellObstacleZones(r, g, 120, 121, base, P, CUT), tb = r.bins.a.filter(x => x[0] === B.binIndex(g, 121))[0];
+  ok(tb && tb[2] > 99999, 'the big ask sits in the bin that begins at T');
+  near(res.totalAskMassOnPath.Qhi - res.totalAskMassOnPath.Qlo, tb[2], 1e-6, 'upper bound includes the T bin');
+  ok(!res.states.some(s => s.code === 'noSubstantialZone'), 'no all-clear'); ok(res.zones.length >= 1 && res.zones.every(z => z.approx.T && z.Q === null && z.verdict !== 'pass' && z.verdict !== 'fail'), 'the T-bin candidate is uncertain: ' + JSON.stringify(res.zones.map(z => [z.verdict, z.materiality, z.concentration])));
+});
+t('B2 fixture 1b: T exactly at the finite upper grid edge -> tail mass is unresolved (upper bound only), no all-clear', () => {
+  const g = G(2), r = cb(upTo(119).concat([[125, 50]]), null, g), base = S.activityBaseline(krakenRows(168, 1, 1), 'kraken', H), res = S.sellObstacleZones(r, g, 110, 120, base, P, CUT);
+  ok(r.bins.a.some(x => x[0] === g.edges.length), 'the ask beyond the grid is in the tail'); ok(res.totalAskMassOnPath.tailAtTarget > 0 && res.totalAskMassOnPath.Qhi >= res.totalAskMassOnPath.Qlo + res.totalAskMassOnPath.tailAtTarget - 1e-9, 'tail adds to the upper bound only');
+  ok(res.states.some(s => s.code === 'boundaryUnresolved') && !res.states.some(s => s.code === 'noSubstantialZone'), 'flagged, no all-clear');
+});
+t('B2 fixture 2: E 124.5, cluster 124-126 holding 10,000 below E and 10 inside the path -> Q 10-10,010, C bounds, verdict uncertain (not a definite pass)', () => {
+  const g = G(3), base = S.activityBaseline(krakenRows(168, 1, 1), 'kraken', H), asks = []; for (let k = 101; k <= 139; k++) { if (k === 124) asks.push([124.2, 10000 / 124.2]); else if (k === 125) asks.push([125.2, 10 / 125.2]); else asks.push([k + 0.5, 1 / (k + 0.5)]); }
+  const r = cb(asks, null, g);
+  const res = S.sellObstacleZones(r, g, 124.5, 140, base, P, { concentration: 100, material: 5, asOfMs: ASOF, maxAgeMs: 1800000 }), z = res.zones.filter(q => q.lo <= 124 + 1e-9 && q.hi >= 126 - 1e-9)[0];
+  ok(!!z, 'cluster found: ' + JSON.stringify(res.zones.map(q => [q.lo, q.hi])));
+  near(z.Qlo, 10, 1e-6); near(z.Qhi, 10010, 1e-6); ok(z.CApprox && z.CHi > 1000 && z.CLo < 10, 'C bounds: ' + z.CLo + ' .. ' + z.CHi);
+  eq(z.concentration, 'uncertain'); ok(z.verdict !== 'pass', 'not a definite pass: ' + z.verdict); ok(!res.qualifying.includes(z.id));
+});
+t('B2: exact interior candidates are unchanged (no C bounds, same verdicts as before)', () => {
+  const g = G(3), r = wallAt(110.55, 400), res = S.sellObstacleZones(r, g, 100.5, 120, baseK(100), P, CUT);
+  ok(res.zones.length >= 1 && res.zones.every(z => !z.CApprox && z.CLo === undefined && z.CHi === undefined), 'no bounds fields on exact zones'); ok(res.zones.every(z => z.CStatus === 'ok'));
+});
+
+// ---- item 52p: venue context (Astra Venue-Share Calibration Ruling) ----
+function krRows24(skipK) { const rows = []; for (let k = 0; k < 24; k++) { if (k === skipK) continue; rows.push([(H - 24 * HR + k * HR) / 1000, 10, 10, 10, 10, 10, 100, 5]); } return rows; }   // 1000 quote per hour
+const GL = (over) => Object.assign({ coinId: 'ether-fi', endpoint: 'coins/markets', vsCurrency: 'usd', value: 40100000, lastUpdatedMs: H + 120000, retrievedAtMs: H + 180000, responseSha256: 'ab'.repeat(32) }, over || {});
+t('52p local 24 h turnover: Kraken exact (vwap x volume), window [H-24h, H), all 24 hours listed', () => {
+  const l = S.localTurnover24h(krRows24(), 'kraken', H); eq(l.status, 'complete'); eq(l.hours.length, 24); eq(l.total.quote, 24000); eq([l.total.lo, l.total.hi], [24000, 24000]); eq(l.window.startMs, H - 24 * HR); eq(l.window.endMs, H); eq(l.exact, true);
+});
+t('52p local 24 h turnover: Coinbase estimate with low/high bounds', () => {
+  const rows = []; for (let k = 0; k < 24; k++) rows.push([(H - 24 * HR + k * HR) / 1000, 9, 11, 10, 10, 100]); const l = S.localTurnover24h(rows, 'coinbase', H); eq(l.total.quote, 24000); eq(l.total.lo, 21600); eq(l.total.hi, 26400); eq(l.exact, false);
+});
+t('52p local 24 h turnover: a missing hour leaves the complete total unavailable, subtotal and count retained, no invented zero candle', () => {
+  const l = S.localTurnover24h(krRows24(7), 'kraken', H); eq(l.status, 'unavailable'); eq(l.total, null); eq(l.subtotal.count, 23); eq(l.subtotal.quote, 23000); eq(l.missingHours, [H - 24 * HR + 7 * HR]); ok(l.hours[7].valid === false && l.hours[7].quote === null);
+});
+t('52p local 24 h turnover does not inherit the 120/168-hour baseline floor (24 valid hours is complete)', () => { eq(S.localTurnover24h(krRows24(), 'kraken', H).status, 'complete'); });
+t('52p venue context: ratios, bounds, comparability, labels (35k / 40.1M = 0.0873 %)', () => {
+  const l = S.localTurnover24h(krRows24(), 'kraken', H), c = S.venueContext(l, GL(), 'USD', H + 60000, { Q: 35000, Qlo: 35000, Qhi: 35000 });
+  eq(c.label, 'reported global 24 h volume'); near(c.zoneShareGlobal24h.value, 35000 / 40100000, 1e-12); near(c.pairShare24h.value, 24000 / 40100000, 1e-12); eq(c.comparability.status, 'ok'); eq(c.comparability.differenceMs, 120000); eq(c.comparability.localWindowEndMs, H); eq(c.comparability.conversion, null);
+  const cz = S.venueContext(l, GL(), 'USD', H, { Q: null, Qlo: 10, Qhi: 10010 }); eq(cz.zoneShareGlobal24h.value, null); near(cz.zoneShareGlobal24h.lo, 10 / 40100000, 1e-12); near(cz.zoneShareGlobal24h.hi, 10010 / 40100000, 1e-12);
+  ok(!/not a price obstacle|local-to-venue/i.test(JSON.stringify(c)), 'no price-impact wording');
+});
+t('52p venue context: unavailable cases (missing hour, stale / missing / nonpositive / incompatible global, older cutoff without a snapshot)', () => {
+  const full = S.localTurnover24h(krRows24(), 'kraken', H), Q = { Q: 100, Qlo: 100, Qhi: 100 };
+  const miss = S.venueContext(S.localTurnover24h(krRows24(3), 'kraken', H), GL(), 'USD', H, Q); eq(miss.pairShare24h.status, 'unavailable'); ok(/missing hours/.test(miss.pairShare24h.reason)); eq(miss.zoneShareGlobal24h.status, 'ok');
+  eq(S.venueContext(full, GL({ lastUpdatedMs: H - 5 * HR }), 'USD', H, Q).pairShare24h.status, 'unavailable');
+  eq(S.venueContext(full, null, 'USD', H, Q).zoneShareGlobal24h.status, 'unavailable'); eq(S.venueContext(full, GL({ value: 0 }), 'USD', H, Q).pairShare24h.status, 'unavailable'); eq(S.venueContext(full, GL({ value: null }), 'USD', H, Q).pairShare24h.status, 'unavailable');
+  const inc = S.venueContext(full, GL(), 'USDT', H, Q); eq(inc.pairShare24h.status, 'unavailable'); ok(/incompatible currency/.test(inc.pairShare24h.reason));
+  const old = S.venueContext(full, GL({ lastUpdatedMs: H + 3 * 86400000, retrievedAtMs: H + 3 * 86400000 }), 'USD', H, Q); eq(old.zoneShareGlobal24h.status, 'unavailable'); ok(/never today's value/.test(old.zoneShareGlobal24h.reason));
+});
+
+// ---- item 52p B1: baseline hour comes from the record, not the cutoff (Astra fixture: record 09:59, cutoff 10:01) ----
+t('B1 cross-hour fixture: record received 09:59, cutoff 10:01 -> the record\'s window (median 550, Q 750 passes M>=1), not the cutoff\'s (median 1000, M 0.75)', () => {
+  const H9 = Date.UTC(2026, 9, 14, 9, 0, 0), rows = []; for (let k = 0; k <= 168; k++) { const v = k <= 83 ? 100 : 1000; rows.push([(H9 - 168 * HR + k * HR) / 1000, 1, 1, 1, 1, 1, v, 5]); }   // vwap 1 x volume v = quote v per hour; hour k = H9-168h+k h (k = 168 is the 09:00 hour)
+  const recv = '2026-10-14T09:59:00.000Z', cutMs = Date.UTC(2026, 9, 14, 10, 1, 0), bh = S.baselineHour(recv), cutH = Math.floor(cutMs / HR) * HR;
+  eq(bh, H9); eq(cutH, H9 + HR);
+  const live = S.activityBaseline(rows, 'kraken', bh), viaCutoff = S.activityBaseline(rows, 'kraken', cutH); eq([live.status, live.validHours, live.median], ['complete', 168, 550]); eq([viaCutoff.status, viaCutoff.validHours, viaCutoff.median], ['complete', 168, 1000]);
+  near(750 / live.median, 1.3636363636, 1e-6); near(750 / viaCutoff.median, 0.75, 1e-9); ok(750 / live.median >= 1 && 750 / viaCutoff.median < 1, 'M>=1 under the live definition, not under the cutoff window');
+  eq(S.baselineHour(Date.UTC(2026, 9, 14, 9, 0, 0)), H9); eq(S.baselineHour('2026-10-14T09:00:00.000Z'), H9);
 });
 console.log('sellzone-core tests: ' + pass + ' passed, ' + fail + ' failed'); process.exit(fail ? 1 : 0);

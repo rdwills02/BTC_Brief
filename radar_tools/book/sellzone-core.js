@@ -13,7 +13,7 @@
  *  - Cutoffs are PARAMETERS. `calibrationCandidates` is a labelled list of values to inspect, not a recommendation. */
 (function (root, factory) { if (typeof module !== 'undefined' && module.exports) module.exports = factory(require('./book-core.js')); else root.SellzoneCore = factory(root.BookCore); })(typeof self !== 'undefined' ? self : this, function (B) {
   'use strict';
-  var VERSION = 'sellzone-core/1', HOUR = 3600000, WINDOW_HOURS = 168, MIN_VALID_HOURS = 120;
+  var VERSION = 'sellzone-core/2', HOUR = 3600000, WINDOW_HOURS = 168, MIN_VALID_HOURS = 120;
   function num(v) { return typeof v === 'number' && isFinite(v); }
   function sig(x) { return num(x) ? Number(x.toPrecision(10)) : x; }
   function median(a) { var x = a.slice().sort(function (p, q) { return p - q; }), n = x.length; if (!n) return null; return n % 2 ? x[(n - 1) / 2] : (x[n / 2 - 1] + x[n / 2]) / 2; }
@@ -62,7 +62,7 @@
   function candidateZones(record, grid, E, T, params) {
     var g = asGrid(record, grid), P = resolveParams(params, E), cov = ivCov(record, g, E, T), map = askMap(record), sLo = startLo(record, g), e = g.edges, eps = 1e-9 * E, bins = [], unassessed = [], i;
     for (i = 1; i < e.length; i++) {
-      var lo = e[i - 1], hi = e[i], x = map[i]; if (hi <= E + eps || lo >= T - eps) continue;   // path = (E, T]
+      var lo = e[i - 1], hi = e[i], x = map[i]; if (hi <= E + eps || lo > T + eps) continue;   // path = (E, T]; item 52p B2: the bin that BEGINS at T is a boundary bin (an ask exactly at T lies in it; so may orders above T): kept, never skipped
       if (!x || !(x.quote > 0)) continue;
       var bn = { idx: i, lo: lo, hi: hi, quote: x.quote, density: x.quote / (hi - lo), boundary: (lo < E - eps ? 'E' : '') + (hi > T + eps ? 'T' : '') || null, seed: false, eligible: false };
       if (hi > cov.coveredTo) { unassessed.push({ idx: i, lo: lo, hi: hi, reason: 'bin-beyond-coverage' }); continue; }
@@ -77,7 +77,7 @@
     var zones = chains.filter(function (c) { return c.members.some(function (b) { return b.seed; }); }).map(function (c) {
       var zb = [], qLoSum = 0, qApprox = 0, full = 0, aE = false, aT = false;
       for (var k = 1; k < e.length; k++) {
-        var l2 = e[k - 1], h2 = e[k], y = map[k]; if (h2 <= c.lo + eps || l2 >= c.hi - eps || h2 <= E + eps || l2 >= T - eps || !y || !(y.quote > 0)) continue;
+        var l2 = e[k - 1], h2 = e[k], y = map[k]; if (h2 <= c.lo + eps || l2 >= c.hi - eps || h2 <= E + eps || l2 > T + eps || !y || !(y.quote > 0)) continue;
         var bd = (l2 < E - eps ? 'E' : '') + (h2 > T + eps ? 'T' : '') || null, mem = c.members.filter(function (m) { return m.idx === k; })[0];
         zb.push({ idx: k, lo: sig(l2), hi: sig(h2), quote: sig(y.quote), boundary: bd, seed: !!(mem && mem.seed), member: !!mem }); full += y.quote;
         if (bd) { qApprox += y.quote; if (bd.indexOf('E') >= 0) aE = true; if (bd.indexOf('T') >= 0) aT = true; } else qLoSum += y.quote;
@@ -86,6 +86,7 @@
       var z = { id: sig(c.lo) + '-' + sig(c.hi), lo: sig(c.lo), hi: sig(c.hi), widthPrice: sig(width), widthPctOfE: sig(width / E * 100), bins: zb, approx: { E: aE, T: aT }, Qlo: sig(qLoSum), Qhi: sig(qLoSum + qApprox), Q: approx ? null : sig(qLoSum), quoteFullBins: sig(full), density: sig(density),
         pctAboveEntry: { lo: sig((c.lo - E) / E * 100), hi: sig((c.hi - E) / E * 100), reference: 'E' }, baseline: nb2.available ? { value: sig(nb2.value), method: nb2.method, nbLo: nb2.nbLo, nbHi: nb2.nbHi, nBins: nb2.nBins } : { available: false, reason: nb2.reason, nbLo: nb2.nbLo, nbHi: nb2.nbHi } };
       z.C = nb2.available ? sig(density / nb2.value) : null; z.CStatus = nb2.available ? 'ok' : 'unavailable'; z.CReason = nb2.available ? null : nb2.reason; z.CBasis = approx ? 'full boundary bins (approx)' : 'exact';
+      if (approx && nb2.available) { z.CApprox = true; z.CLo = sig(qLoSum / width / nb2.value); z.CHi = z.C; }   /* item 52p B2: C bounds - CLo counts only the exact in-path bins, CHi the full boundary bins (the figure above); no sub-bin allocation is invented */
       return z;
     });
     return { zones: zones, unassessed: unassessed, coverage: cov, params: P, seeds: bins.filter(function (b) { return b.seed; }).length, pathBins: bins.length };
@@ -143,7 +144,7 @@
     out.MhiUnbounded = ok && !(num(baseline.medianLo) && baseline.medianLo > 0);
     if (!ok) out.materiality = 'unavailable'; else if (!num(cut.material)) out.materiality = null;
     else if (out.Mlo >= cut.material) out.materiality = 'pass'; else if (!out.MhiUnbounded && out.Mhi < cut.material) out.materiality = 'fail'; else out.materiality = 'uncertain';
-    out.concentration = z.CStatus !== 'ok' ? 'unavailable' : !num(cut.concentration) ? null : z.C >= cut.concentration ? 'pass' : 'fail';
+    out.concentration = z.CStatus !== 'ok' ? 'unavailable' : !num(cut.concentration) ? null : z.CApprox ? (z.CLo >= cut.concentration ? 'pass' : z.CHi < cut.concentration ? 'fail' : 'uncertain') : z.C >= cut.concentration ? 'pass' : 'fail';   // item 52p B2: boundary uncertainty reaches C and eligibility, not only M
     var a = out.concentration, b = out.materiality;
     out.verdict = (a === 'fail' || b === 'fail') ? 'fail' : (a === 'pass' && b === 'pass') ? 'pass' : (a === 'uncertain' || b === 'uncertain') ? 'uncertain' : (a == null || b == null) ? null : 'unavailable';
     return out;
@@ -153,9 +154,12 @@
     if (!(num(E) && num(T) && E > 0 && T > E)) { states.push({ code: 'pathInvalid', text: 'No valid entry < target path.' }); res.coverage = null; res.totalAskMassOnPath = null; return res; }
     if (!record || record.empty || record.excludedFromContinuous || !record.bins) { states.push({ code: 'depthIncomplete', text: 'Depth incomplete before target.', detail: 'record has no continuous depth' }); res.coverage = null; res.totalAskMassOnPath = null; return res; }
     var g = asGrid(record, grid), cz = candidateZones(record, g, E, T, params), cov = cz.coverage, map = askMap(record), e = g.edges, totLo = 0, totHi = 0, k, ep = 1e-9 * E;
-    for (k = 1; k < e.length; k++) { var lo = e[k - 1], hi = e[k], x = map[k]; if (hi <= E + ep || lo >= T - ep || !x) continue; totHi += x.quote; if (lo >= E - ep && hi <= T + ep) totLo += x.quote; }
+    for (k = 1; k < e.length; k++) { var lo = e[k - 1], hi = e[k], x = map[k]; if (hi <= E + ep || lo > T + ep || !x) continue; totHi += x.quote; if (lo >= E - ep && hi <= T + ep) totLo += x.quote; }
+    var gridTop = e[e.length - 1], tailAtT = T >= gridTop - ep && cov.tailMassBeyondGrid > 0 ? cov.tailMassBeyondGrid : 0;   /* item 52p B2: when T reaches the finite upper grid edge, the unallocated tail beyond it may hold orders at <= T: unknown allocation, upper bound only */
+    totHi += tailAtT;
     res.coverage = cov; res.params = cz.params; res.unassessed = cz.unassessed; res.baseline = baseline ? { status: baseline.status, median: baseline.median, medianLo: baseline.medianLo, medianHi: baseline.medianHi, validHours: baseline.validHours, method: baseline.method, label: baseline.label, source: baseline.source, exact: baseline.exact } : null;
     res.totalAskMassOnPath = { Qlo: sig(totLo), Qhi: sig(totHi), lowerBound: cov.status !== 'complete', note: cov.status !== 'complete' ? 'mass beyond ' + sig(cov.coveredTo) + ' is not observed' : null };
+    if (tailAtT > 0) res.totalAskMassOnPath.tailAtTarget = sig(tailAtT);
     res.zones = cz.zones.map(function (z) { var ev = evaluateZone(z, baseline, cut); return Object.assign({}, z, ev); });
     res.qualifying = res.zones.filter(function (z) { return z.verdict === 'pass'; }).map(function (z) { return z.id; });
     var stale = num(cut.asOfMs) && num(cut.maxAgeMs) && record.recv && (cut.asOfMs - Date.parse(record.recv) > cut.maxAgeMs);
@@ -167,8 +171,55 @@
     var pathUnassessed = cz.unassessed.length > 0;
     if (pathUnassessed && cov.status === 'complete') states.push({ code: 'comparisonIncomplete', text: 'Comparison depth incomplete: concentration baseline not observed for part of the path.', detail: { bins: cz.unassessed.length } });
     var open = res.zones.some(function (z) { return z.verdict !== 'fail'; });
-    if (!stale && !freshUnknown && cov.status === 'complete' && ba && !pathUnassessed && !open) states.push({ code: 'noSubstantialZone', text: 'No substantial sell zone meets the criteria between entry and target.' });
+    if (tailAtT > 0) states.push({ code: 'boundaryUnresolved', text: 'Target reaches the finite upper grid edge: mass in the tail beyond it has unknown allocation.', detail: { tailMass: sig(tailAtT) } });
+    if (!stale && !freshUnknown && cov.status === 'complete' && ba && !pathUnassessed && !open && !(tailAtT > 0)) states.push({ code: 'noSubstantialZone', text: 'No substantial sell zone meets the criteria between entry and target.' });
     return res;
+  }
+
+  // item 52p B1: the activity baseline (and the 24 h context) is keyed to the UTC hour of the SELECTED DEPTH RECORD's receipt, never to a requested cutoff's hour: a record received 09:59 uses the window ending 09:00, even when the cutoff is 10:01.
+  function baselineHour(recv) { var ms = typeof recv === 'string' ? Date.parse(recv) : recv; if (!num(ms)) throw new Error('recv must be an ISO time or epoch ms'); return Math.floor(ms / HOUR) * HOUR; }
+  // ---------- item 52p: venue context (Astra Venue-Share Calibration Ruling 2026-10-15) ----------
+  // DESCRIPTIVE only: no cutoff, no floor, no "price obstacle" verdict. The local window is the 24 complete UTC hours [H-24h, H), H = the depth observation's UTC hour start (the same H as the activity baseline).
+  // A missing hour makes the complete 24 h total unavailable (the observed subtotal and count stay); it does NOT inherit the 120/168-hour baseline floor and no zero-volume candle is invented.
+  var CONTEXT_HOURS = 24, GLOBAL_MAX_AGE_MS = 2 * HOUR;   // GLOBAL_MAX_AGE_MS: a declared data-quality convention for the global source's freshness, not a calibrated price-impact threshold
+  function localTurnover24h(candles, venue, H) {
+    if (venue !== 'kraken' && venue !== 'coinbase') throw new Error('venue must be kraken or coinbase');
+    var Hms = typeof H === 'string' ? Date.parse(H) : H; if (!num(Hms) || Hms % HOUR !== 0) throw new Error('H must be the start of a UTC hour');
+    var start = Hms - CONTEXT_HOURS * HOUR, byHour = {}, seen = {};
+    (candles || []).forEach(function (r) {
+      var c = normCandle(venue, r); if (!num(c.t) || c.t < start || c.t >= Hms || (c.t - start) % HOUR !== 0) return;
+      var sg = JSON.stringify(c); if (seen[c.t] != null) return; seen[c.t] = sg;
+      if (!num(c.vol) || c.vol < 0) return;
+      var q, lo, hi;
+      if (venue === 'kraken') { if (c.vol === 0) { q = lo = hi = 0; } else { if (!(c.vwap > 0)) return; q = c.vwap * c.vol; lo = hi = q; } }
+      else { if (!num(c.c) || !num(c.l) || !num(c.h) || c.c < 0 || c.l < 0 || c.h < 0) return; q = c.c * c.vol; lo = c.l * c.vol; hi = c.h * c.vol; }
+      byHour[c.t] = { quote: q, lo: lo, hi: hi };
+    });
+    var hours = [], missing = [], sq = 0, sl = 0, sh = 0, n = 0, k, t;
+    for (k = 0; k < CONTEXT_HOURS; k++) { t = start + k * HOUR; var h = byHour[t]; if (h) { hours.push({ t: t, valid: true, quote: sig(h.quote), lo: sig(h.lo), hi: sig(h.hi) }); sq += h.quote; sl += h.lo; sh += h.hi; n++; } else { hours.push({ t: t, valid: false, quote: null, lo: null, hi: null }); missing.push(t); } }
+    var ok = n === CONTEXT_HOURS;
+    return { venue: venue, window: { startMs: start, endMs: Hms, hours: CONTEXT_HOURS }, hours: hours, validHours: n, missingHours: missing, subtotal: { quote: sig(sq), lo: sig(sl), hi: sig(sh), count: n },
+      total: ok ? { quote: sig(sq), lo: sig(sl), hi: sig(sh) } : null, status: ok ? 'complete' : 'unavailable', reason: ok ? null : 'missing hours: ' + missing.length + ' of ' + CONTEXT_HOURS,
+      method: venue === 'kraken' ? 'vwap x base volume' : 'close x base volume (ESTIMATE; bounds low x volume .. high x volume)', exact: venue === 'kraken' };
+  }
+  // global: { coinId, endpoint, vsCurrency, value, lastUpdatedMs|null, retrievedAtMs, responseSha256, label } or null.  quote: the pair's quote currency.  obsMs: the depth observation time (recv).  Q: { Q, Qlo, Qhi } of a zone (optional).
+  function venueContext(local, global, quote, obsMs, Q, opt) {
+    opt = opt || {}; var maxAge = num(opt.maxGlobalAgeMs) ? opt.maxGlobalAgeMs : GLOBAL_MAX_AGE_MS, un = function (reason) { return { status: 'unavailable', reason: reason, value: null, lo: null, hi: null }; };
+    var cmp = { localWindowEndMs: local ? local.window.endMs : null, globalTimestampMs: null, differenceMs: null, conversion: null, note: 'a complete-hour local window compared with the source\'s rolling 24 h window: not exactly aligned', status: 'unavailable', reason: null };
+    var gReason = null, gts = null;
+    if (!global) gReason = 'no global snapshot'; else if (!num(global.value) || !(global.value > 0)) gReason = 'global value missing or nonpositive';
+    else { gts = num(global.lastUpdatedMs) ? global.lastUpdatedMs : (num(global.retrievedAtMs) ? global.retrievedAtMs : null); if (gts == null) gReason = 'global timestamp missing'; }
+    if (!gReason && String(global.vsCurrency || '').toLowerCase() !== String(quote || '').toLowerCase()) gReason = 'incompatible currency: global ' + global.vsCurrency + ' vs pair quote ' + quote + ' (no conversion is invented)';
+    if (!gReason && num(obsMs) && Math.abs(gts - obsMs) > maxAge) gReason = 'global snapshot not contemporaneous with the depth observation (' + Math.round(Math.abs(gts - obsMs) / 60000) + ' min apart; tolerance ' + Math.round(maxAge / 60000) + ' min): never today\'s value for an older cutoff';
+    if (gts != null) { cmp.globalTimestampMs = gts; cmp.differenceMs = local ? gts - local.window.endMs : null; }
+    if (gReason) cmp.reason = gReason; else { cmp.status = 'ok'; }
+    var out = { label: 'reported global 24 h volume', comparability: cmp, global: global ? { coinId: global.coinId || null, endpoint: global.endpoint || null, vsCurrency: global.vsCurrency || null, value: global.value == null ? null : global.value, lastUpdatedMs: num(global.lastUpdatedMs) ? global.lastUpdatedMs : null, retrievedAtMs: num(global.retrievedAtMs) ? global.retrievedAtMs : null, responseSha256: global.responseSha256 || null } : null };
+    if (gReason) { out.pairShare24h = un(gReason); out.zoneShareGlobal24h = un(gReason); return out; }
+    var gv = global.value;
+    if (!local || local.status !== 'complete' || !local.total) out.pairShare24h = un('local 24 h turnover unavailable (' + (local ? local.reason : 'no candles') + ')');
+    else out.pairShare24h = { status: 'ok', value: sig(local.total.quote / gv), lo: sig(local.total.lo / gv), hi: sig(local.total.hi / gv), scope: 'one pair (' + local.venue + ') 24 h quote turnover over the reported global 24 h volume; not all turnover on the venue' };
+    if (!Q || !(num(Q.Qlo) || num(Q.Q))) out.zoneShareGlobal24h = un('no zone mass'); else { var lo = num(Q.Qlo) ? Q.Qlo : Q.Q, hi = num(Q.Qhi) ? Q.Qhi : Q.Q, v = num(Q.Q) ? Q.Q : null; out.zoneShareGlobal24h = { status: 'ok', value: v == null ? null : sig(v / gv), lo: sig(lo / gv), hi: sig(hi / gv), scope: 'resting asks in the zone over the reported global 24 h volume; an inventory-to-flow ratio, not an absorption time or a price-impact measure' }; }
+    return out;
   }
   // Labelled candidate values to INSPECT during calibration. Not findings, not recommendations, not defaults.
   var calibrationCandidates = {
@@ -183,5 +234,5 @@
       { name: 'k4', concentration: 4, material: 0.5 }, { name: 'k5', concentration: 4, material: 1 }, { name: 'k6', concentration: 4, material: 2 }],
     staleMultiplier: 1.5   // stale when record age > staleMultiplier x the pair's effective scheduled cadence (cadence.json); labelled parameter, not a finding
   };
-  return { VERSION: VERSION, MIN_VALID_HOURS: MIN_VALID_HOURS, WINDOW_HOURS: WINDOW_HOURS, coverage: coverage, candidateZones: candidateZones, activityBaseline: activityBaseline, evaluateZone: evaluateZone, staleMaxAgeMs: staleMaxAgeMs, sellObstacleZones: sellObstacleZones, resolveParams: resolveParams, calibrationCandidates: calibrationCandidates };
+  return { VERSION: VERSION, MIN_VALID_HOURS: MIN_VALID_HOURS, WINDOW_HOURS: WINDOW_HOURS, CONTEXT_HOURS: CONTEXT_HOURS, baselineHour: baselineHour, GLOBAL_MAX_AGE_MS: GLOBAL_MAX_AGE_MS, localTurnover24h: localTurnover24h, venueContext: venueContext, coverage: coverage, candidateZones: candidateZones, activityBaseline: activityBaseline, evaluateZone: evaluateZone, staleMaxAgeMs: staleMaxAgeMs, sellObstacleZones: sellObstacleZones, resolveParams: resolveParams, calibrationCandidates: calibrationCandidates };
 });
