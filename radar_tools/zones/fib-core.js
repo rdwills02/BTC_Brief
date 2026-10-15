@@ -5,7 +5,7 @@
  *   price pivot high at i : high[i] is STRICTLY greater than the highs of the 5 candles before and the 5 after
  *   a pivot is CONFIRMED only once candle i+5 has closed (confirmedAt = close of candle i+5); the forming candle never confirms.
  *   leg = the most recent confirmed pivot low L that has a confirmed pivot high after it (item 52o: walk back through confirmed lows until one qualifies; legIndexFromLatest = lows skipped, 0 = the latest confirmed low),
- *   then the highest high among confirmed pivot highs that occur AFTER L and are ABOVE L's price (earliest on a tie; a later high at or below the low disqualifies that low). No qualifying pair -> status 'unavailable': reason 'nonpositive leg' if confirmed highs follow some low but none is above it, else 'no confirmed impulse'. Bullish legs only in v1 (bearish legs = backlog).
+ *   then the highest high among confirmed pivot highs that occur AFTER L and are ABOVE L's price - TIE RULE (item 52p, pinned text): highest such confirmed high, earliest on a tie - ( a later high at or below the low disqualifies that low). No qualifying pair -> status 'unavailable': reason 'nonpositive leg' if confirmed highs follow some low but none is above it, else 'no confirmed impulse'. Bullish legs only in v1 (bearish legs = backlog).
  *   leg.confirmedAt = the later of the two pivots' confirmation times. Results depend on closed candles up to that time only.
  * LEVELS (range = high - low): retracements 0.618 / 0.705 / 0.786 -> price = high - r*range ; extensions 1.272 / 1.618 -> price = low + e*range ; reference 0 (= high) and 1 (= low).
  * CONFLUENCE: for each level, every item whose price range intersects [price*(1-tol), price*(1+tol)] (tol = 1 %, inclusive): entry zone, stop S, target T, demand boxes, supply boxes, current sell-liquidity zones (venue, $).
@@ -17,6 +17,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   var L = 5, RETR = [0.618, 0.705, 0.786], EXT = [1.272, 1.618];
+  var VERSION = 'fib-core/2';   /* item 52p */
   var DEF = { id: 'fib impulse leg v1', pivotLength: L, tie: 'strict', retracements: RETR, extensions: EXT, tolerance: 0.01 };
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
   function closed(candles, iv, nowMs) {
@@ -51,7 +52,7 @@
     for (var k = p.lows.length - 1; k >= 0; k--) {
       var low = p.lows[k], best = null;
       p.highs.forEach(function (h) { if (h.idx > low.idx) sawLater = true; if (h.idx > low.idx && h.price > low.price && (best == null || h.price > best.price)) best = h; });
-      if (best) return { available: true, reason: null, leg: { lowTime: low.time, low: low.price, highTime: best.time, high: best.price, confirmedAt: Math.max(low.confirmedAt, best.confirmedAt), legIndexFromLatest: p.lows.length - 1 - k } };
+      if (best) return { available: true, reason: null, leg: { lowTime: low.time, low: low.price, highTime: best.time, high: best.price, confirmedAt: Math.max(low.confirmedAt, best.confirmedAt), lowConfirmedAt: low.confirmedAt, highConfirmedAt: best.confirmedAt, legIndexFromLatest: p.lows.length - 1 - k } };
     }
     return { available: false, reason: sawLater ? 'nonpositive leg' : 'no confirmed impulse', leg: null };   /* item 52o: a later confirmed high at or below the low is not an impulse; 'nonpositive leg' = highs exist after a low but none above it */
   }
@@ -70,13 +71,13 @@
     if (isNum(ctx.target)) it.push({ kind: 'target', id: 'T', lo: ctx.target, hi: ctx.target });
     (ctx.demand || []).forEach(function (z, i) { if (z && isNum(z.bottom) && isNum(z.top)) it.push({ kind: 'demand', id: z.label || ('D' + (i + 1)), zoneId: z.id || null, lo: z.bottom, hi: z.top }); });
     (ctx.supply || []).forEach(function (z, i) { if (z && isNum(z.bottom) && isNum(z.top)) it.push({ kind: 'supply', id: z.label || ('H' + (i + 1)), zoneId: z.id || null, lo: z.bottom, hi: z.top }); });
-    (ctx.sell || []).forEach(function (z, i) { if (z && isNum(z.lo) && isNum(z.hi)) it.push({ kind: 'sell', id: z.label || ('A' + (i + 1)), venue: z.venue || null, usd: isNum(z.usd) ? z.usd : null, txt: typeof z.txt === 'string' ? z.txt : null, lo: z.lo, hi: z.hi }); });
+    (ctx.sell || []).forEach(function (z, i) { if (z && isNum(z.lo) && isNum(z.hi)) it.push({ kind: 'sell', id: z.label || ('A' + (i + 1)), venue: z.venue || null, usd: isNum(z.usd) ? z.usd : null, txt: typeof z.txt === 'string' ? z.txt : null, status: typeof z.status === 'string' ? z.status : null, time: isNum(z.time) ? z.time : null, lo: z.lo, hi: z.hi }); });
     return it;
   }
   /* compute(candles, opt, ctx) -> { detector, status, reason, leg, levels[{ratio,kind,price,confluence[]}] }
        opt: { intervalSec, nowMs } ; ctx: { entry:{low,high}, stop, target, demand:[{top,bottom,id,label}], supply:[...], sell:[{lo,hi,venue,usd,label}] } */
   function compute(candles, opt, ctx) {
-    var r = impulseLeg(candles, opt), res = { detector: DEF, status: r.available ? 'ok' : 'unavailable', reason: r.reason, leg: r.leg, levels: [] };
+    var r = impulseLeg(candles, opt), res = { detector: DEF, version: VERSION, status: r.available ? 'ok' : 'unavailable', reason: r.reason, leg: r.leg, levels: [] };
     if (!r.available) return res;
     var items = normaliseItems(ctx), tol = DEF.tolerance;
     res.levels = levelsFor(r.leg).map(function (lv) {
@@ -86,5 +87,5 @@
     });
     return res;
   }
-  return { DEF: DEF, compute: compute, impulseLeg: impulseLeg, levelsFor: levelsFor, pivots: pivots, closed: closed };
+  return { VERSION: VERSION, DEF: DEF, compute: compute, impulseLeg: impulseLeg, levelsFor: levelsFor, pivots: pivots, closed: closed };
 });

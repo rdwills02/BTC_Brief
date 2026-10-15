@@ -30,6 +30,7 @@
  *   3. Ties: the Pine reference does not state how equal volumes are treated in ta.pivothigh. v1 requires the pivot volume to be STRICTLY greater than all ten neighbours (a tie yields no pivot).
  *   4. Only CLOSED candles are used (candle.time + intervalSec <= nowMs/1000); the forming candle never confirms or invalidates anything.
  *   5. A pivot window that touches a candle without a finite volume cannot be a pivot; a series with no usable volume at all is reported unavailable ('volume'), never replaced by another venue's volume or book depth.
+ *   6. (item 52p) A pivot window with a missing volume value is reported in result.unevaluable (with the window and the missing times); result.partialVolume is true and result.partialRanges holds the merged ranges. Zones that can be established are kept; "no zone" is not concluded for a partial range. Missing volume is never replaced by zero.
  * Candles: {time (UTC seconds, interval start), open, high, low, close, volume}. Results never depend on candles appended later (replay-safe): a zone's fields at candle t are a function of candles <= t only, except the series start, which fixes os's initial value (0) exactly as the script's first bar does.
  */
 (function (root, factory) {
@@ -56,13 +57,30 @@
     return out;
   }
 
+  /* item 52p (B4): a pivot window with a missing/non-finite volume is NOT silently skipped. unevalWindow returns an entry when the window of candle t-L (candles t-2L..t) holds a missing volume AND the finite values do not already rule the pivot out (the candle's own volume is finite and strictly greater than every finite neighbour, or the candle's own volume is missing). Missing volume is never replaced by zero or another venue's value. */
+  function unevalWindow(c, t, L, iv, side) {
+    var p = c[t - L], v = p.volume, miss = [], ruledOut = false;
+    for (var j = t - 2 * L; j <= t; j++) {
+      var vj = c[j].volume;
+      if (!isNum(vj)) { miss.push(c[j].time); continue; }
+      if (j !== t - L && isNum(v) && !(v > vj)) ruledOut = true;
+    }
+    if (!miss.length || ruledOut) return null;
+    return { originTime: p.time, side: side, windowFrom: c[t - 2 * L].time, windowTo: c[t].time + iv, confirmedAt: c[t].time + iv, missingVolumeTimes: miss, priceLow: p.low, priceHigh: p.high, reason: 'missing-volume' };   /* priceLow / priceHigh = the origin candle's range: where a zone from this pivot could lie */
+  }
+  function mergeRanges(list) {
+    var r = list.map(function (u) { return { from: u.windowFrom, to: u.windowTo }; }).sort(function (a, b) { return a.from - b.from; }), out = [];
+    r.forEach(function (x) { var l = out[out.length - 1]; if (l && x.from <= l.to) { if (x.to > l.to) l.to = x.to; } else out.push({ from: x.from, to: x.to }); });
+    return out;
+  }
+
   /* detectBearish(candles, { intervalSec, nowMs, mitigation }) ->
        { detector, available, reason, intervalSec, closedCount, firstTime, lastClosedTime, zones[] }
      zones[]: { id, originTime, confirmedAt, top, bottom, mid, volume, quoteEst, mitigatedAt, mitigatedBy, rule } — mitigated zones stay in the list with mitigatedAt. */
   function detectBearish(candles, opt) {
     opt = opt || {}; var L = DETECTOR.pivotLength, iv = isNum(opt.intervalSec) && opt.intervalSec > 0 ? opt.intervalSec : 86400, mit = opt.mitigation === 'close' ? 'close' : 'wick';
     var c = closedSeries(candles, iv, opt.nowMs), n = c.length;
-    var res = { detector: DETECTOR, available: false, reason: null, intervalSec: iv, closedCount: n, firstTime: n ? c[0].time : null, lastClosedTime: n ? c[n - 1].time : null, zones: [] };
+    var res = { detector: DETECTOR, available: false, reason: null, intervalSec: iv, closedCount: n, firstTime: n ? c[0].time : null, lastClosedTime: n ? c[n - 1].time : null, zones: [], unevaluable: [], partialVolume: false, partialRanges: [] };
     if (n < 2 * L + 1) { res.reason = 'lookback'; return res; }
     var anyVol = false; for (var i = 0; i < n; i++) if (isNum(c[i].volume) && c[i].volume > 0) { anyVol = true; break; }
     if (!anyVol) { res.reason = 'volume'; return res; }
@@ -79,13 +97,14 @@
           var top = p.high, bottom = (p.high + p.low) / 2;
           var z = { id: 'hs1-' + p.time, originTime: p.time, confirmedAt: c[t].time + iv, top: top, bottom: bottom, mid: (top + bottom) / 2, volume: v, quoteEst: isNum(p.close) ? p.close * v : null, mitigatedAt: null, mitigatedBy: null, rule: null };
           res.zones.push(z); active.push(z);
-        }
+        } else if (!ok && os === 0) { var u0 = unevalWindow(c, t, L, iv, 'supply'); if (u0) res.unevaluable.push(u0); }
       }
       if (upper != null && active.length) {
         var target = mit === 'close' ? hcl : upper;
         active = active.filter(function (z) { if (target > z.top) { z.mitigatedAt = c[t].time + iv; z.mitigatedBy = c[t].time; z.rule = mit; return false; } return true; });
       }
     }
+    res.partialVolume = res.unevaluable.length > 0; res.partialRanges = mergeRanges(res.unevaluable);
     return res;
   }
 
@@ -93,7 +112,7 @@
   function detectBullish(candles, opt) {
     opt = opt || {}; var L = DETECTOR.pivotLength, iv = isNum(opt.intervalSec) && opt.intervalSec > 0 ? opt.intervalSec : 86400, mit = opt.mitigation === 'close' ? 'close' : 'wick';
     var c = closedSeries(candles, iv, opt.nowMs), n = c.length;
-    var res = { detector: DETECTOR, available: false, reason: null, intervalSec: iv, closedCount: n, firstTime: n ? c[0].time : null, lastClosedTime: n ? c[n - 1].time : null, zones: [] };
+    var res = { detector: DETECTOR, available: false, reason: null, intervalSec: iv, closedCount: n, firstTime: n ? c[0].time : null, lastClosedTime: n ? c[n - 1].time : null, zones: [], unevaluable: [], partialVolume: false, partialRanges: [] };
     if (n < 2 * L + 1) { res.reason = 'lookback'; return res; }
     var anyVol = false; for (var i = 0; i < n; i++) if (isNum(c[i].volume) && c[i].volume > 0) { anyVol = true; break; }
     if (!anyVol) { res.reason = 'volume'; return res; }
@@ -110,14 +129,41 @@
           var top = (p.high + p.low) / 2, bottom = p.low;
           var z = { id: 'hd1-' + p.time, originTime: p.time, confirmedAt: c[t].time + iv, top: top, bottom: bottom, mid: (top + bottom) / 2, volume: v, quoteEst: isNum(p.close) ? p.close * v : null, mitigatedAt: null, mitigatedBy: null, rule: null };
           res.zones.push(z); active.push(z);
-        }
+        } else if (!ok && os === 1) { var u1 = unevalWindow(c, t, L, iv, 'demand'); if (u1) res.unevaluable.push(u1); }
       }
       if (lower != null && active.length) {
         var target = mit === 'close' ? lcl : lower;
         active = active.filter(function (z) { if (target < z.bottom) { z.mitigatedAt = c[t].time + iv; z.mitigatedBy = c[t].time; z.rule = mit; return false; } return true; });
       }
     }
+    res.partialVolume = res.unevaluable.length > 0; res.partialRanges = mergeRanges(res.unevaluable);
     return res;
+  }
+
+  /* item 52p (B4): replayRecord(candles, res, meta) -> the record needed to replay a detection exactly. meta: { source, pair, intervalSec, rawInputSha256, asOfMs }. The first input timestamp is kept because the initial regime (os = 0) depends on the series start. Missing bars stay explicit (missingBarTimes), never treated as a contiguous calendar series. */
+  function replayRecord(candles, res, meta) {
+    meta = meta || {}; var iv = res && res.intervalSec ? res.intervalSec : (meta.intervalSec || 86400), asOf = meta.asOfMs;
+    var seen = {}, dup = 0, forming = 0, bad = 0, times = [];
+    (candles || []).forEach(function (c) {
+      if (!c || !isNum(c.time) || !isNum(c.high) || !isNum(c.low) || !isNum(c.open) || !isNum(c.close)) { bad++; return; }
+      if (seen[c.time]) { dup++; return; } seen[c.time] = 1;
+      if (isNum(asOf) && (c.time + iv) * 1000 > asOf) { forming++; return; }
+      times.push(c.time);
+    });
+    times.sort(function (a, b) { return a - b; });
+    var missing = []; for (var i = 1; i < times.length; i++) for (var t = times[i - 1] + iv; t < times[i]; t += iv) missing.push(t);
+    return {
+      record: 'supply-zones-replay/1', source: meta.source || null, pair: meta.pair || null, intervalSec: iv,
+      firstInputTime: times.length ? times[0] : null, lastClosedTime: times.length ? times[times.length - 1] : null, closedCount: times.length,
+      rawInputSha256: meta.rawInputSha256 || null, asOfMs: isNum(asOf) ? asOf : null,
+      formingBarExclusion: 'a candle is closed only when time + intervalSec <= asOf; ' + forming + ' excluded',
+      missingDuplicatePolicy: 'duplicates: first occurrence kept (' + dup + ' dropped); non-finite OHLC dropped (' + bad + '); missing bars listed in missingBarTimes, not interpolated; missing volume is never zero-filled (see unevaluable)',
+      missingBarTimes: missing,
+      detector: { id: DETECTOR.id, sourceSha256: DETECTOR.sourceSha256, pivotLength: DETECTOR.pivotLength, mitigation: res && res.mitigation || DETECTOR.mitigation, tie: DETECTOR.tie },
+      zones: ((res && res.zones) || []).map(function (z) { return { id: z.id, originTime: z.originTime, confirmedAt: z.confirmedAt, mitigatedAt: z.mitigatedAt }; }),
+      unevaluable: ((res && res.unevaluable) || []).map(function (u) { return { originTime: u.originTime, side: u.side, windowFrom: u.windowFrom, windowTo: u.windowTo }; }),
+      partialVolume: !!(res && res.partialVolume)
+    };
   }
 
   /* selectDisplay(zones, ctx) -> { mode, total, shown[], all[] }
@@ -149,5 +195,5 @@
     return { mode: path ? 'path' : 'context', total: set.length, shown: set.slice(0, 3), all: set };
   }
 
-  return { DETECTOR: DETECTOR, detectBearish: detectBearish, detectBullish: detectBullish, selectDemandDisplay: selectDemandDisplay, selectDisplay: selectDisplay, closedSeries: closedSeries };
+  return { DETECTOR: DETECTOR, detectBearish: detectBearish, detectBullish: detectBullish, selectDemandDisplay: selectDemandDisplay, selectDisplay: selectDisplay, replayRecord: replayRecord, closedSeries: closedSeries };
 });

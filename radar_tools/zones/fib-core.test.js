@@ -18,7 +18,7 @@ function fix(N) {
 }
 var r = F.compute(fix(26), O, {});
 eq(r.status, 'ok', 'leg available on the hand-checked fixture');
-eq(r.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22), legIndexFromLatest: 0 }, 'leg selection: most recent confirmed low, highest confirmed pivot high after it; confirmedAt = later confirmation');
+eq(r.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22), lowConfirmedAt: T(16), highConfirmedAt: T(22), legIndexFromLatest: 0 }, 'leg selection: most recent confirmed low, highest confirmed pivot high after it; confirmedAt = later confirmation');
 var want = { 0: 40, 0.618: 21.46, 0.705: 18.85, 0.786: 16.42, 1: 10, 1.272: 48.16, 1.618: 58.54 };
 eq(r.levels.map(function (l) { return l.ratio; }), [0, 0.618, 0.705, 0.786, 1, 1.272, 1.618], 'levels: reference 0, three retracements, reference 1, two extensions');
 r.levels.forEach(function (l) { near(l.price, want[l.ratio], 'level ' + l.ratio + ' arithmetic'); });
@@ -49,10 +49,10 @@ eq(F.compute(fix(8), O, {}).reason, 'lookback', 'short series -> lookback');
 var nl = fix(26).concat([]); for (i = 26; i < 40; i++) nl.push({ time: T(i), open: 25, high: 30, low: 22, close: 25, volume: 100 }); nl[30] = { time: T(30), open: 20, high: 29, low: 5, close: 20, volume: 100 };
 var fb = F.compute(nl, O, {});
 eq(fb.status, 'ok', '52o: newer confirmed low without a confirmed high after it -> fallback leg, not unavailable');
-eq(fb.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22), legIndexFromLatest: 1 }, '52o: fallback is the prior pair, one confirmed low back');
+eq(fb.leg, { lowTime: T(10), low: 10, highTime: T(16), high: 40, confirmedAt: T(22), lowConfirmedAt: T(16), highConfirmedAt: T(22), legIndexFromLatest: 1 }, '52o: fallback is the prior pair, one confirmed low back');
 var nl2 = nl.concat([]); for (i = 40; i < 50; i++) nl2.push({ time: T(i), open: 25, high: 30, low: 22, close: 25, volume: 100 }); nl2[40] = { time: T(40), open: 25, high: 50, low: 22, close: 30, volume: 100 };
 eq(F.compute(nl2.slice(0, 45), O, {}).leg.legIndexFromLatest, 1, '52o: high at candle 40 not yet confirmed (needs candle 45 closed) -> still the fallback');
-eq(F.compute(nl2.slice(0, 46), O, {}).leg, { lowTime: T(30), low: 5, highTime: T(40), high: 50, confirmedAt: T(46), legIndexFromLatest: 0 }, '52o: once the later high confirms the leg moves forward to low 5 -> high 50');
+eq(F.compute(nl2.slice(0, 46), O, {}).leg, { lowTime: T(30), low: 5, highTime: T(40), high: 50, confirmedAt: T(46), lowConfirmedAt: T(36), highConfirmedAt: T(46), legIndexFromLatest: 0 }, '52o: once the later high confirms the leg moves forward to low 5 -> high 50');
 /* two skipped lows (index 2) and the highest high after the chosen low */
 var nl3 = nl.concat([]); for (i = 40; i < 56; i++) nl3.push({ time: T(i), open: 25, high: 30, low: 22, close: 25, volume: 100 }); nl3[40] = { time: T(40), open: 23, high: 29, low: 3, close: 24, volume: 100 };
 var l3 = F.compute(nl3, O, {}); eq(l3.leg.legIndexFromLatest, 2, '52o: two newer lows without highs -> index 2'); eq([l3.leg.low, l3.leg.high], [10, 40], '52o: index-2 leg is the Sep-style prior pair');
@@ -76,4 +76,20 @@ eq(JSON.stringify(F.compute(nl, O, ctx)), JSON.stringify(F.compute(nl, O, ctx)),
 var l26 = F.compute(fix(26), O, {}).leg; for (var k = 22; k <= 40; k++) eq(F.compute(fix(k), O, {}).leg, l26, 'leg unchanged when ' + k + ' candles are available');
 eq(JSON.stringify(F.compute(fix(30), O, ctx)), JSON.stringify(F.compute(fix(30), O, ctx)), 'deterministic');
 ok(F.DEF.pivotLength === 5 && F.DEF.tie === 'strict' && F.DEF.tolerance === 0.01, 'definition constants');
+/* ---- item 52p ---- */
+eq([F.compute(fix(26), O, {}).version, F.VERSION], ['fib-core/2', 'fib-core/2'], 'result records the module version');
+/* tie rule: two confirmed highs of equal price after the low -> the EARLIEST is chosen */
+var tie = []; for (var ti = 0; ti < 40; ti++) tie.push({ time: T(ti), open: 19, high: 20, low: 18, close: 19, volume: 1 });
+tie[10] = { time: T(10), open: 15, high: 19, low: 10, close: 15, volume: 1 };
+for (ti = 11; ti <= 15; ti++) tie[ti] = { time: T(ti), open: 18, high: 21, low: 15, close: 18, volume: 1 };
+tie[16] = { time: T(16), open: 22, high: 40, low: 20, close: 35, volume: 1 };
+for (ti = 17; ti <= 27; ti++) tie[ti] = { time: T(ti), open: 25, high: 30, low: 22, close: 25, volume: 1 };
+tie[28] = { time: T(28), open: 25, high: 40, low: 22, close: 25, volume: 1 };
+for (ti = 29; ti < 40; ti++) tie[ti] = { time: T(ti), open: 25, high: 30, low: 22, close: 25, volume: 1 };
+var tr = F.compute(tie, O, {});
+eq([tr.status, tr.leg.highTime, tr.leg.high, tr.leg.highConfirmedAt], ['ok', T(16), 40, T(22)], 'tie rule: highest such confirmed high, earliest on a tie');
+/* sell items carry status and observation time into the confluence */
+var sc = F.compute(fix(26), O, { sell: [{ lo: 40, hi: 41, venue: 'kraken', usd: 1000, label: '#1', status: 'uncertain', time: 123 }] }), at0 = sc.levels.filter(function (l) { return l.ratio === 0; })[0].confluence[0];
+eq([at0.status, at0.time], ['uncertain', 123], 'confluence item carries status and time');
+eq(F.compute(fix(26), O, { sell: [{ lo: 40, hi: 41 }] }).levels[0].confluence[0].status, null, 'status defaults to null');
 console.log(n + ' checks' + (process.exitCode ? ' — FAILURES' : ', 0 failures'));

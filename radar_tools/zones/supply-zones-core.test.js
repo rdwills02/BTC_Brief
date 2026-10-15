@@ -98,7 +98,8 @@ var bt = bfix(30); bt[8].volume = 500; eq(C.detectBullish(bt, { intervalSec: D, 
 eq(C.detectBullish(bfix(8), { intervalSec: D, nowMs: NOW }).reason, 'lookback', 'bullish: short series -> lookback');
 eq(C.detectBullish(bfix(30).map(function (x) { return Object.assign({}, x, { volume: null }); }), { intervalSec: D, nowMs: NOW }).reason, 'volume', 'bullish: no volume -> unavailable (volume)');
 /* bearish byte-identical to 52j: sha256 of the 52j module's output on the bearish fixture (+ selectDisplay) */
-var h = require('crypto').createHash('sha256').update(JSON.stringify(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 })) + JSON.stringify(C.selectDisplay(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 }).zones, { E: 5, T: 20 }))).digest('hex');
+function old52j(r) { var o = Object.assign({}, r); delete o.unevaluable; delete o.partialVolume; delete o.partialRanges; return o; }   /* item 52p: the three added result fields are excluded; every 52j field is hashed as before */
+var h = require('crypto').createHash('sha256').update(JSON.stringify(old52j(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 }))) + JSON.stringify(C.selectDisplay(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 }).zones, { E: 5, T: 20 }))).digest('hex');
 eq(h, 'e06ca536ca24f4be465280769020fab13c19c1673872c28631b55a5023f0abe9', 'bearish output byte-identical to 52j');
 /* selectDemandDisplay */
 function DZ(id, bottom, top, o, mit) { return { id: id, originTime: o, bottom: bottom, top: top, mitigatedAt: mit || null }; }
@@ -109,4 +110,43 @@ eq(ds.shown.map(function (x) { return x.id; }), ['a', 'b', 'c'], 'three nearest 
 eq(ds.all.map(function (x) { return x.id; }), ['a', 'b', 'c', 'd'], 'expandable list complete');
 var dx = C.selectDemandDisplay(dzs, { ref: 100, vlo: 65, vhi: 130 }); eq([dx.mode, dx.all.map(function (x) { return x.id; })], ['context', ['a', 'b', 'c', 'd']], 'demand context mode: viewport, below the latest close');
 eq(C.selectDemandDisplay(dzs, {}).total, 0, 'demand: no path, no viewport -> nothing');
+/* ---- item 52p (B4): incomplete volume ---- */
+var base11 = fix(30).slice(0, 23);   /* complete-volume baseline: one supply zone */
+eq(C.detectBearish(base11, { intervalSec: D, nowMs: NOW }).zones.length, 1, 'B4 baseline: complete volume -> one supply zone');
+eq([C.detectBearish(base11, { intervalSec: D, nowMs: NOW }).partialVolume, C.detectBearish(base11, { intervalSec: D, nowMs: NOW }).unevaluable.length], [false, 0], 'B4: complete volume -> not partial');
+/* Astra 11-candle case: pivot at index 5 of 11 (candles 0..10), one neighbour volume removed */
+function eleven(side) { var cs = []; for (var i = 0; i < 11; i++) cs.push(side === 'bull' ? { time: T(i), open: 9.5, high: 10, low: 9, close: 9.6, volume: 100 } : { time: T(i), open: 9.5, high: 10, low: 9, close: 9.6, volume: 100 }); cs[5] = side === 'bull' ? { time: T(5), open: 10, high: 10, low: 6, close: 7, volume: 500 } : { time: T(5), open: 10, high: 14, low: 10, close: 13.5, volume: 500 }; return cs; }
+var e11 = eleven('bear'), e11full = C.detectBearish(e11, { intervalSec: D, nowMs: NOW });
+eq([e11full.available, e11full.zones.length, e11full.partialVolume], [true, 1, false], 'B4: 11-candle fixture, complete volume -> one supply zone');
+var e11m = e11.map(function (x) { return Object.assign({}, x); }); e11m[8].volume = null;
+var rm = C.detectBearish(e11m, { intervalSec: D, nowMs: NOW });
+eq([rm.available, rm.reason, rm.zones.length, rm.partialVolume, rm.unevaluable.length], [true, null, 0, true, 1], 'B4: one neighbour volume removed -> pivot is UNEVALUABLE, not silently skipped');
+eq([rm.unevaluable[0].originTime, rm.unevaluable[0].side, rm.unevaluable[0].windowFrom, rm.unevaluable[0].windowTo, rm.unevaluable[0].missingVolumeTimes], [T(5), 'supply', T(0), T(11), [T(8)]], 'B4: unevaluable entry carries the window and the missing time');
+eq([rm.unevaluable[0].priceLow, rm.unevaluable[0].priceHigh], [e11[5].low, e11[5].high], 'B4: unevaluable entry carries the origin candle price range');
+eq(rm.partialRanges, [{ from: T(0), to: T(11) }], 'B4: partial range reported');
+/* zones that can be established are retained: the complete fixture plus a gap far from the zone */
+var kept = fix(40).map(function (x) { return Object.assign({}, x); }); kept[30].volume = 500; kept[33].volume = null;
+var kr = C.detectBearish(kept, { intervalSec: D, nowMs: NOW });
+eq([kr.zones.length, kr.zones[0].id, kr.partialVolume, kr.unevaluable.map(function (u) { return u.originTime; })], [1, 'hs1-' + T(12), true, [T(30), T(33)]], 'B4: established zone retained; later gap reported as partial (pivot candidate 30 with a missing neighbour is not ruled out)');
+/* a missing neighbour that is ruled out by a finite larger neighbour is not unevaluable */
+var ro = fix(30).map(function (x) { return Object.assign({}, x); }); ro[5].volume = null; ro[3].volume = 100;   /* index 8 (window 3..13) is not a pivot anyway: volume 100 vs 100 tie */
+var rr1 = C.detectBearish(ro, { intervalSec: D, nowMs: NOW });
+ok(rr1.unevaluable.every(function (u) { return u.missingVolumeTimes.length > 0; }), 'B4: every unevaluable entry names at least one missing time');
+eq(C.detectBearish(fix(30).map(function (x) { return Object.assign({}, x, { volume: null }); }), { intervalSec: D, nowMs: NOW }).reason, 'volume', 'B4: no volume at all stays unavailable (volume)');
+eq(C.detectBearish(fix(30), { intervalSec: D, nowMs: NOW }).unevaluable, [], 'B4: complete series -> empty unevaluable');
+/* bullish mirror */
+var b11 = eleven('bull'), b11full = C.detectBullish(b11, { intervalSec: D, nowMs: NOW });
+var os1 = b11full.zones.length;   /* bullish needs os = 1 at confirmation; the low-wick candle sets it */
+eq([b11full.available, os1, b11full.partialVolume], [true, 1, false], 'B4 bullish: 11-candle fixture, complete volume -> one demand zone');
+var b11m = b11.map(function (x) { return Object.assign({}, x); }); b11m[8].volume = null;
+var bm = C.detectBullish(b11m, { intervalSec: D, nowMs: NOW });
+eq([bm.available, bm.reason, bm.zones.length, bm.partialVolume, bm.unevaluable.length, bm.unevaluable[0] && bm.unevaluable[0].side], [true, null, 0, true, 1, 'demand'], 'B4 bullish: one neighbour volume removed -> unevaluable (demand)');
+eq(bm.partialRanges, [{ from: T(0), to: T(11) }], 'B4 bullish: partial range reported');
+/* the bearish detector does not report the demand-side pivot and vice versa */
+eq([C.detectBearish(b11m, { intervalSec: D, nowMs: NOW }).unevaluable.length, C.detectBullish(e11m, { intervalSec: D, nowMs: NOW }).unevaluable.length], [0, 0], 'B4: unevaluable follows the regime side (os)');
+/* replay record */
+var rc = C.replayRecord(fix(30).concat([{ time: T(30), open: 9, high: 10, low: 9, close: 9.5, volume: 1 }, { time: T(12), open: 1, high: 1, low: 1, close: 1, volume: 1 }]).filter(function (x) { return x.time !== T(20); }), full, { source: 'kraken', pair: 'ETH/USD', intervalSec: D, rawInputSha256: 'ab'.repeat(32), asOfMs: T(30) * 1000 });
+eq([rc.source, rc.pair, rc.intervalSec, rc.firstInputTime, rc.rawInputSha256, rc.asOfMs], ['kraken', 'ETH/USD', D, T(0), 'ab'.repeat(32), T(30) * 1000], 'replay record: source, pair, interval, first input, raw hash, as-of');
+eq([rc.missingBarTimes, rc.lastClosedTime, rc.formingBarExclusion.indexOf('1 excluded') > 0, /1 dropped/.test(rc.missingDuplicatePolicy)], [[T(20)], T(29), true, true], 'replay record: missing bar explicit, forming bar excluded, duplicate dropped');
+eq([rc.detector.sourceSha256, rc.detector.pivotLength, rc.zones[0].id, rc.zones[0].confirmedAt, rc.zones[0].mitigatedAt], [C.DETECTOR.sourceSha256, 5, 'hs1-' + T(12), T(18), T(23)], 'replay record: detector hash/settings and zone times');
 console.log(n + ' checks' + (process.exitCode ? ' — FAILURES' : ', 0 failures'));
