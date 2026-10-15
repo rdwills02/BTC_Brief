@@ -236,4 +236,31 @@ t('B1 cross-hour fixture: record received 09:59, cutoff 10:01 -> the record\'s w
   near(750 / live.median, 1.3636363636, 1e-6); near(750 / viaCutoff.median, 0.75, 1e-9); ok(750 / live.median >= 1 && 750 / viaCutoff.median < 1, 'M>=1 under the live definition, not under the cutoff window');
   eq(S.baselineHour(Date.UTC(2026, 9, 14, 9, 0, 0)), H9); eq(S.baselineHour('2026-10-14T09:00:00.000Z'), H9);
 });
+// ---- item 52q B2 (Astra 2026-10-15): boundary seed on in-path allocation ----
+const PE = { name: 'E', baselineMethod: 'mean', neighborhoodPct: 4, seedMinConcentration: 3, extendMinConcentration: 1.5, maxGapPct: 1, maxZoneWidthPct: 5 };
+const fx3 = (extraPrice, usd) => { const asks = []; for (let i = 0; i <= Math.round((140 - 100.1) / 0.1); i++) { const px = r6(100.1 + 0.1 * i); asks.push([px, 10 / px]); } asks.push([extraPrice, (usd || 100) / extraPrice]); return cb(asks, null, G(3)); };   // ordinary asks 10 USD per 0.1 (about 100 USD/unit) + 100 USD at extraPrice
+t('B2 fixture 3 (Astra 2026-10-15): boundary seed on in-path allocation -> no noSubstantialZone; an uncertain boundary candidate (Q null, Qhi >= 100), total Qhi 300 unchanged', () => {
+  const g = G(3), r = fx3(120.995), base = S.activityBaseline(krakenRows(168, 1, 1), 'kraken', H), res = S.sellObstacleZones(r, g, 120.99, 121, base, PE, CUT);
+  ok(!res.states.some(s => s.code === 'noSubstantialZone'), 'no all-clear: ' + JSON.stringify(res.states.map(s => s.code)));
+  const unk = (res.unassessed || []).filter(u => u.reason === 'boundary-allocation-unknown'), zs = res.zones;
+  ok((zs.length === 1 && zs[0].verdict === 'uncertain' && (zs[0].approx.T || zs[0].approx.E) && zs[0].Q === null && zs[0].Qhi >= 100) || (zs.length === 0 && unk.length === 1), 'one uncertain boundary zone or one unassessed entry: ' + JSON.stringify(zs.map(z => [z.id, z.verdict, z.approx, z.Qlo, z.Qhi])) + JSON.stringify(res.unassessed));
+  eq([res.totalAskMassOnPath.Qlo, res.totalAskMassOnPath.Qhi], [0, 300], 'total path mass unchanged');
+  const eb = r.bins.a.filter(x => x[0] === B.binIndex(g, 120.995))[0]; near(eb[2], 200, 1e-6, 'the E bin holds the ladder (100) plus the 100 ask');
+});
+t('B2 fixture 3 densityHi: the E bin carries in-path density (quote / (T - E)) and ratioHi; seed fails on the full bin yet seedPossible; interior bins carry no new fields', () => {
+  const g = G(3), r = fx3(120.995), cz = S.candidateZones(r, g, 120.99, 121, PE), z = cz.zones[0], eb = z.bins.filter(b => b.boundary === 'E')[0];
+  ok(z && eb && eb.uncertainMember === true, 'E bin is an uncertain member'); near(eb.inPathWidth, 0.01, 1e-9); ok(eb.ratioHi > 3 * 50, 'ratioHi huge vs c0: ' + eb.ratioHi);
+  const r2 = wallAt(110.55, 400), cz2 = S.candidateZones(r2, G(3), 100.5, 120, P); ok(cz2.zones.length >= 1 && cz2.zones.every(q => q.bins.every(b => b.uncertainMember === undefined && b.inPathWidth === undefined)), 'interior zones: no new fields');
+});
+t('B2 fixture 3b: 50 USD at 120.995 (ordinary 100/unit, baseline 1/hr) -> one boundary zone [120,121), verdict uncertain, CHi from the in-path width, no noSubstantialZone', () => {
+  const g = G(3), r = fx3(120.995, 50), base = S.activityBaseline(krakenRows(168, 1, 1), 'kraken', H), res = S.sellObstacleZones(r, g, 120.99, 121, base, PE, CUT);
+  eq(res.zones.map(z => [z.lo, z.hi, z.verdict]), [[120, 121, 'uncertain']], 'one uncertain zone'); const z = res.zones[0];
+  ok(z.boundaryCandidate === true && z.Q === null && z.approx.E, 'flagged boundary candidate'); near(z.inPathWidth, 0.01, 1e-9); near(z.CHi, 150 / 0.01 / 100, 1e-6, 'CHi = zone quote / in-path width / baseline'); ok(z.CLo === 0 && z.Qlo === 0 && z.Qhi > 149.9 && z.Qhi < 150.1);
+  ok(!res.states.some(s => s.code === 'noSubstantialZone'), 'an uncertain boundary candidate suppresses the all-clear');
+});
+t('B2 fixture 3 negative (replaces the withdrawn 121.6 case): 100 USD at 120.995 with baseline 1,000 quote/hour -> Qhi 200, MHi 0.2 < 1 -> verdict fail, noSubstantialZone emitted', () => {
+  const g = G(3), r = fx3(120.995), base = S.activityBaseline(krakenRows(168, 1, 1000), 'kraken', H), res = S.sellObstacleZones(r, g, 120.99, 121, base, PE, CUT);
+  eq(res.zones.length, 1); const z = res.zones[0]; near(z.Qhi, 200, 1e-6); near(z.Mhi, 0.2, 1e-9); ok(z.CHi >= 2, 'concentration alone is feasible: ' + z.CHi); eq(z.verdict, 'fail');
+  ok(res.states.some(s => s.code === 'noSubstantialZone'), 'a failed boundary candidate does not suppress the all-clear: ' + JSON.stringify(res.states.map(s => s.code)));
+});
 console.log('sellzone-core tests: ' + pass + ' passed, ' + fail + ' failed'); process.exit(fail ? 1 : 0);

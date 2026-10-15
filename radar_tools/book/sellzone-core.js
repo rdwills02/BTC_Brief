@@ -10,10 +10,12 @@
  *    a chain is a candidate zone only if it holds a seed. Zone mass counts ALL ask bins inside the zone's price range (gap bins included). Greedy and deterministic.
  *  - C(zone) = zone density (full bins) / baseline density of comparable bins in [zone - nb, zone + nb] with the zone excluded; unavailable unless that neighborhood is covered (grid AND book).
  *  - M(zone) = Q / median hourly quote turnover (same venue/pair, 168 complete UTC hours in [H-168h, H)); bounds from the baseline bounds and Q bounds. materiality: pass | fail | uncertain (bounds straddle the cutoff) | unavailable.
+ *  - item 52q B2 (Astra 2026-10-15): a boundary bin ('E'/'T') also carries densityHi = bin quote / its IN-PATH width ((E,T] intersected with the bin; same price-unit width basis as the E/T tests above) and ratioHi = densityHi / baseline; interior bins carry none.
+ *    Eligibility: seed / eligible as before (exact, full-bin density); seedPossible = ratioHi >= c0 and eligiblePossible = ratioHi >= c1 start / extend an UNCERTAIN candidate among the bins outside every exact-seeded chain (approx flags, Q null, C bounds); an exact-seeded zone is never widened or changed. A boundary candidate's CHi = zone quote / (in-path width of the zone) / baseline (feasible allocation), so its verdict is uncertain while a feasible allocation can pass and fail only when none can. A bin that begins at T has in-path width 0: no densityHi, today's exact rule applies.
  *  - Cutoffs are PARAMETERS. `calibrationCandidates` is a labelled list of values to inspect, not a recommendation. */
 (function (root, factory) { if (typeof module !== 'undefined' && module.exports) module.exports = factory(require('./book-core.js')); else root.SellzoneCore = factory(root.BookCore); })(typeof self !== 'undefined' ? self : this, function (B) {
   'use strict';
-  var VERSION = 'sellzone-core/2', HOUR = 3600000, WINDOW_HOURS = 168, MIN_VALID_HOURS = 120;
+  var VERSION = 'sellzone-core/3', HOUR = 3600000, WINDOW_HOURS = 168, MIN_VALID_HOURS = 120;
   function num(v) { return typeof v === 'number' && isFinite(v); }
   function sig(x) { return num(x) ? Number(x.toPrecision(10)) : x; }
   function median(a) { var x = a.slice().sort(function (p, q) { return p - q; }), n = x.length; if (!n) return null; return n % 2 ? x[(n - 1) / 2] : (x[n / 2 - 1] + x[n / 2]) / 2; }
@@ -68,25 +70,44 @@
       if (hi > cov.coveredTo) { unassessed.push({ idx: i, lo: lo, hi: hi, reason: 'bin-beyond-coverage' }); continue; }
       var nb = nbBaseline(g, map, cov, sLo, lo, hi, P.neighborhoodPrice, P.baselineMethod);
       if (!nb.available) { unassessed.push({ idx: i, lo: lo, hi: hi, reason: nb.reason }); continue; }
-      bn.ratio = bn.density / nb.value; bn.eligible = bn.ratio >= P.c1; bn.seed = bn.ratio >= P.c0; bins.push(bn);
+      bn.ratio = bn.density / nb.value; bn.eligible = bn.ratio >= P.c1; bn.seed = bn.ratio >= P.c0;
+      if (bn.boundary) {   /* item 52q B2: allocation uncertainty reaches seeding / extension, not only the final verdict. In-path width = (E, T] intersected with the bin; a bin beginning at T has width 0 and keeps the exact rule */
+        var inW = Math.min(hi, T) - Math.max(lo, E);
+        if (inW > eps) { bn.inPathWidth = sig(inW); bn.densityHi = x.quote / inW; bn.ratioHi = bn.densityHi / nb.value; bn.seedPossible = bn.ratioHi >= P.c0; bn.eligiblePossible = bn.ratioHi >= P.c1; }
+      }
+      bins.push(bn);
     }
-    var chains = [], cur = null;
-    bins.filter(function (b) { return b.eligible; }).forEach(function (b) {
-      if (cur && b.lo - cur.hi <= P.maxGapPrice + eps && b.hi - cur.lo <= P.maxZoneWidthPrice + eps) { cur.members.push(b); cur.hi = b.hi; } else { cur = { lo: b.lo, hi: b.hi, members: [b] }; chains.push(cur); }
-    });
-    var zones = chains.filter(function (c) { return c.members.some(function (b) { return b.seed; }); }).map(function (c) {
+    function chainOf(list, barriers) {   // greedy left-to-right chaining; a barrier bin (one already in an exact zone) lying between two members ends the chain
+      var out = [], cur = null;
+      list.forEach(function (b) {
+        var cut = cur && barriers.some(function (q) { return q.lo >= cur.hi - eps && q.hi <= b.lo + eps; });
+        if (cur && !cut && b.lo - cur.hi <= P.maxGapPrice + eps && b.hi - cur.lo <= P.maxZoneWidthPrice + eps) { cur.members.push(b); cur.hi = b.hi; } else { cur = { lo: b.lo, hi: b.hi, members: [b] }; out.push(cur); }
+      });
+      return out;
+    }
+    /* item 52q B2: exact chains first, exactly as before (an exact-seeded zone is never widened or changed by an uncertain member); then the bins outside every exact-seeded chain are re-chained with eligiblePossible bins, and a chain holding a seedPossible bin is an UNCERTAIN candidate */
+    var exact = chainOf(bins.filter(function (b) { return b.eligible; }), []).filter(function (c) { return c.members.some(function (b) { return b.seed; }); }), taken = [];
+    exact.forEach(function (c) { c.members.forEach(function (b) { taken.push(b); }); });
+    var rest = chainOf(bins.filter(function (b) { return (b.eligible || b.eligiblePossible) && taken.indexOf(b) < 0; }), taken).filter(function (c) { return c.members.some(function (b) { return b.seedPossible; }); });
+    rest.forEach(function (c) { c.uncertainSeed = true; });
+    var chains = exact.concat(rest).sort(function (p, q) { return p.lo - q.lo; });
+    var zones = chains.map(function (c) {
       var zb = [], qLoSum = 0, qApprox = 0, full = 0, aE = false, aT = false;
       for (var k = 1; k < e.length; k++) {
         var l2 = e[k - 1], h2 = e[k], y = map[k]; if (h2 <= c.lo + eps || l2 >= c.hi - eps || h2 <= E + eps || l2 > T + eps || !y || !(y.quote > 0)) continue;
         var bd = (l2 < E - eps ? 'E' : '') + (h2 > T + eps ? 'T' : '') || null, mem = c.members.filter(function (m) { return m.idx === k; })[0];
-        zb.push({ idx: k, lo: sig(l2), hi: sig(h2), quote: sig(y.quote), boundary: bd, seed: !!(mem && mem.seed), member: !!mem }); full += y.quote;
+        var zbe = { idx: k, lo: sig(l2), hi: sig(h2), quote: sig(y.quote), boundary: bd, seed: !!(mem && mem.seed), member: !!mem }; if (mem && ((!mem.seed && mem.seedPossible) || (!mem.eligible && mem.eligiblePossible))) { zbe.uncertainMember = true; zbe.inPathWidth = mem.inPathWidth; zbe.ratioHi = sig(mem.ratioHi); } zb.push(zbe); full += y.quote;
         if (bd) { qApprox += y.quote; if (bd.indexOf('E') >= 0) aE = true; if (bd.indexOf('T') >= 0) aT = true; } else qLoSum += y.quote;
       }
       var width = c.hi - c.lo, density = full / width, nb2 = nbBaseline(g, map, cov, sLo, c.lo, c.hi, P.neighborhoodPrice, P.baselineMethod), approx = qApprox > 0;
       var z = { id: sig(c.lo) + '-' + sig(c.hi), lo: sig(c.lo), hi: sig(c.hi), widthPrice: sig(width), widthPctOfE: sig(width / E * 100), bins: zb, approx: { E: aE, T: aT }, Qlo: sig(qLoSum), Qhi: sig(qLoSum + qApprox), Q: approx ? null : sig(qLoSum), quoteFullBins: sig(full), density: sig(density),
         pctAboveEntry: { lo: sig((c.lo - E) / E * 100), hi: sig((c.hi - E) / E * 100), reference: 'E' }, baseline: nb2.available ? { value: sig(nb2.value), method: nb2.method, nbLo: nb2.nbLo, nbHi: nb2.nbHi, nBins: nb2.nBins } : { available: false, reason: nb2.reason, nbLo: nb2.nbLo, nbHi: nb2.nbHi } };
       z.C = nb2.available ? sig(density / nb2.value) : null; z.CStatus = nb2.available ? 'ok' : 'unavailable'; z.CReason = nb2.available ? null : nb2.reason; z.CBasis = approx ? 'full boundary bins (approx)' : 'exact';
-      if (approx && nb2.available) { z.CApprox = true; z.CLo = sig(qLoSum / width / nb2.value); z.CHi = z.C; }   /* item 52p B2: C bounds - CLo counts only the exact in-path bins, CHi the full boundary bins (the figure above); no sub-bin allocation is invented */
+      if (approx && nb2.available) { z.CApprox = true; z.CLo = sig(qLoSum / width / nb2.value); z.CHi = z.C; }
+      if (c.uncertainSeed && nb2.available) {   /* item 52q B2 (Astra 2026-10-15): a boundary candidate's concentration upper bound uses its feasible in-path allocation: all zone quote inside (E, T] */
+        var inWz = Math.min(c.hi, T) - Math.max(c.lo, E); z.boundaryCandidate = true; z.inPathWidth = sig(inWz);
+        if (inWz > eps) z.CHi = sig(full / inWz / nb2.value);
+      }   /* item 52p B2: C bounds - CLo counts only the exact in-path bins, CHi the full boundary bins (the figure above); no sub-bin allocation is invented */
       return z;
     });
     return { zones: zones, unassessed: unassessed, coverage: cov, params: P, seeds: bins.filter(function (b) { return b.seed; }).length, pathBins: bins.length };
