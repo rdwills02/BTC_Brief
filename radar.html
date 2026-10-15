@@ -380,6 +380,7 @@
     '.rd52n-tb{margin-bottom:6px}.rd52n-tb:last-child{margin-bottom:0}.rd52n-tb b{display:block;font-size:11.5px;color:#fff;margin-bottom:2px}.rd52n-tb .r{display:flex;justify-content:space-between;gap:14px;font:11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.rd52n-tb .r span:first-child{color:#8b93a7}' +
     '.rd52-panel .ph .pl{font:10.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted,#9aa3b2);margin-left:8px;font-weight:400}.rd52n-note{font-size:10.5px;color:var(--muted,#9aa3b2);margin:4px 0 0}';
   /* end item 52n — pane */
+  RD.css += '.rd52n-note[data-rd52n="pathline"]{font:10.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0 0 4px}';   /* item 52o */
   RD.css += '.rd52-bar .rd52-ctl{flex:1 1 100%}.rd52-tip{white-space:normal;max-width:340px}.rd52n-sec .rd52-msg{position:static;max-width:none;background:none;padding:0 0 3px;pointer-events:auto;white-space:pre-line}.rd52n-sec .rd52-panel{border:0;padding:0;margin:0 0 6px;color:var(--muted,#9aa3b2)}.rd52n-sec .rd52-panel .ph{margin:2px 0}.rd52-bar{padding:6px 12px}';
   (function () { var st = document.createElement('style'); st.id = 'rd52-css'; st.textContent = RD.css; (document.head || document.documentElement).appendChild(st); })();
 
@@ -443,7 +444,7 @@
     function inp(k) { return ctl.querySelector('input[data-rd52-in="' + k + '"]'); }
     /* item 52j hook: the historical-supply layer lives in its own block (below); the mount only hands it the chart, the view state and the intended path */
     var H = RD.hist52j ? RD.hist52j({ o: o, st: st, nst: nst, sec: histSec, bar: bar, after: function () { return panels; }, plot: function () { return plot(); }, path: function () { var t = termsNow(); return pathFor({ quote: (t && t.quote) || o.quote || 'USD' }); }, terms: function () { return termsNow(); }, price: function () { return curPrice(); }, sched: function () { sched(); }, sellOn: function () { return !st.off; } }) : null;
-    var F = RD.fib52n ? RD.fib52n({ o: o, nst: nst, sec: fibSec, sched: function () { sched(); }, terms: function () { return termsNow(); }, xOf: function (t) { return H ? H.xOf(t) : null; }, hist: function () { return H; }, sell: function () { return sellItems(); }, sellOn: function () { return !st.off; }, histOn: function () { return !!st.hs; } }) : null;
+    var F = RD.fib52n ? RD.fib52n({ o: o, nst: nst, sec: fibSec, sched: function () { sched(); }, terms: function () { return termsNow(); }, xOf: function (t) { return H ? H.xOf(t) : null; }, hist: function () { return H; }, sell: function () { return sellItems(); }, sellOn: function () { return !st.off; }, histOn: function () { return !!st.hs; }, tagsBottom: function () { return tagsBottom(); }, sellX0: function () { return lastX0; }, rects: function () { return H ? H.rects() : []; } }) : null;
     function paintCtl() {
       Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { var a = b.getAttribute('data-rd52'), v = b.getAttribute('data-v'); b.classList.toggle('on', a === 'off' ? !st.off : a === 'hs' ? !!st.hs : a === 'fib' ? !!nst.fib : a === 'held' ? held : st[a] === v); });
       var ie = inp('E'); if (ie) ie.disabled = held;
@@ -523,7 +524,7 @@
       raf = 0; if (dead) return;
       var P = plot(), dpr = window.devicePixelRatio || 1; cv.style.width = P.w + 'px'; cv.style.height = P.h + 'px'; cv.width = Math.round(P.w * dpr); cv.height = Math.round(P.h * dpr);
       var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, P.w, P.h);
-      pulseDrawn = null; lastLabels = []; lastRects = []; lastUnobs = []; lastX0 = null; lastChip = null; collapsedZ = []; if (st.off) { if (H) H.draw(g, P); if (F) F.draw(g, P); setOff(''); return; }
+      pulseDrawn = null; lastLabels = []; lastRects = []; lastUnobs = []; lastX0 = null; lastChip = null; collapsedZ = []; if (st.off) { if (H) H.draw(g, P); if (F) { F.draw(g, P); F.dots(g, P); } setOff(''); return; }
       var lastT = null; try { var dd = o.series.data(); if (dd && dd.length) lastT = dd[dd.length - 1].time; } catch (e) {}
       var xl = null; try { if (lastT != null) xl = o.chart.timeScale().timeToCoordinate(lastT); } catch (e) {}
       /* item 52i: the book is the CURRENT book. Its zones start at the latest bar (the observation is "now") and run right into the gutter; nothing is painted over the historical candles. */
@@ -558,6 +559,7 @@
         if (ab) offs.push((visible().length > 1 ? VCOL[m.v].n + ': ' : '') + pl(ab) + ' above the viewport'); if (bl) offs.push((visible().length > 1 ? VCOL[m.v].n + ': ' : '') + pl(bl) + ' below the viewport');
       });
       if (!anchored && visible().length) notes.push('the latest observation is ' + (xl != null && isFinite(xl) && xl >= P.pw ? 'right of the visible bars (scroll right or use Fit)' : 'not on the visible time axis'));
+      if (F) F.dots(g, P);   /* item 52o: confluence dots sit on top of the band edges */
       lastLabels = labels.map(function (l) { return l.t[0]; });
       /* item 52h/52i labels: at the vertical centre of the band, right-aligned inside the gutter (never left of the latest bar), 1 px dark backing. Ranked by Q: widest text that fits the gutter; a label overlapping a placed one is nudged down by its height (max two), then shortened to "#n" and moved left of whatever it meets (never left of the latest bar). The list below the chart keeps the full labels. */
       var HL = 14, tb = tagsBottom(), chipY = null; if (stale.length) { chipY = tb + 8; tb += 18; }
@@ -672,7 +674,7 @@
       if (m.err) return h + '<div class="ph"><b>' + esc(V) + '</b></div><div class="rd52n-chips">' + ps(m.err, 'w') + '</div></div>';
       var d = m.d;
       if (d.status === 'nopair') return h + '<div class="ph"><b>' + esc(V) + '</b></div><div class="rd52n-chips">' + ps('no mapped pair for ' + o.symbol, 'w') + '</div></div>';
-      h += '<div class="ph"><b>' + esc(V) + ' ' + esc(d.pair) + '</b>' + (m.path && m.path.valid ? ' <span class="pl">' + esc(pathLine(m)) + '</span>' : '') + '</div>';
+      h += '<div class="ph"><b>' + esc(V) + ' ' + esc(d.pair) + '</b></div>';   /* item 52o: the Path line is printed once, above the venue panels */
       if (d.status !== 'ok') return h + '<div class="rd52n-chips">' + ps('depth incomplete', 'w') + ps(d.reason || 'no observations', 'w') + '</div></div>';
       var p = m.path;
       if (!p.valid) return h + '<div class="rd52n-chips">' + (p.reason === 'quote' ? ps('E/T quote ≠ ' + d.quote, 'w', 'E/T unavailable: ' + p.srcQuote + ' terms have no declared conversion to ' + d.quote + '. Enter an entry and target in ' + d.quote + '.') : ps('set entry below target', 'w', 'Set an entry below a target to evaluate the path.')) + '</div></div>';
@@ -697,7 +699,7 @@
     }
     function render() {
       var ms = Object.keys(models).map(function (v) { return models[v]; }).filter(Boolean), bd = PN.body(sellSec);
-      if (st.off || !ms.length) bd.innerHTML = ''; else bd.innerHTML = ms.map(panelHtml).join('');
+      if (st.off || !ms.length) bd.innerHTML = ''; else { var pm = ms.filter(function (m) { return m.d && m.d.status === 'ok' && m.path && m.path.valid; })[0]; bd.innerHTML = (pm ? '<div class="rd52n-note" data-rd52n="pathline">' + esc(pathLine(pm)) + '</div>' : '') + ms.map(panelHtml).join(''); }
       bd.insertBefore(msg, bd.firstChild);
       PN.sum(sellSec, sellSummary(ms)); paintStamp();
       var parts = [];
@@ -791,7 +793,7 @@
         ['vs nearby', z.C == null ? 'n/a' : cTxt(z) + '×'], ['hours of turnover', hrTxt(z)], ['seen', p.unavailable ? 'n/a' : (p.n || 0) + '/' + (p.N || 0) + ' · ' + w] ] };
     }
     function onMove(param) {
-      var hl = H ? H.hover(param) : null;   /* item 52j: a historical box's own block; never merged with a current zone's figures */
+      var hl = H ? H.hover(param) : null, fh = F ? F.hover(param) : null; if (fh) hl = fh.concat(hl || []);   /* item 52o: a fib confluence dot's own block; item 52j: a historical box's own block; never merged with a current zone's figures */
       if (!param || !param.point || (st.off && !hl)) { tip.style.display = 'none'; return; }
       var pr = o.series.coordinateToPrice(param.point.y), P = plot(), blocks = [], inSell = !st.off && pr != null && param.point.x <= P.pw && lastX0 != null && param.point.x >= lastX0; if (!inSell && !hl) { tip.style.display = 'none'; return; }
       if (inSell) visible().forEach(function (m) { var HS = hideRead(); m.ev.drawn.forEach(function (z) { if (!isHid(HS, o.symbol, m.v, z) && pr >= z.lo && pr < z.hi) blocks.push(zoneBlock(m, z)); }); });
@@ -1020,9 +1022,10 @@
   /* The fib (impulse) overlay and its confluence panel. All arithmetic lives in fib-core.js (pure, loaded when the layer is first turned on, never on page load). This block draws five dotted level lines and the faint leg diagonal on the chart canvas, never touches the price scale (Fit E→T stays the zoom action), and writes the "Fib & confluence" section. It reads E / S / T, the historical boxes and the current sell zones through the mount and never writes to any of them. Descriptive only. */
   try { (function () {
     var ZMODS = 'radar_tools/zones/', FC = '150,160,255';
-    RD.terms.fib = ['fib impulse leg (pinned v1)', 'The most recent confirmed swing low on the daily candles and the highest confirmed swing high after it (swing = a candle whose low/high is strictly beyond the 5 candles either side; confirmed once the fifth candle after it has closed). Bullish legs only; levels measured on it are geometry, not a forecast.'];
+    RD.terms.fib = ['fib impulse leg (pinned v1)', 'The most recent confirmed swing low on the daily candles that has a confirmed swing high after it, to the highest such high (swing = a candle whose low/high is strictly beyond the 5 candles either side; confirmed once the fifth candle after it has closed). Bullish legs only; levels measured on it are geometry, not a forecast.'];
     RD.terms.fibLevel = ['retracement / extension level', 'Retracements 0.618, 0.705 and 0.786 of the leg (price = leg high − ratio × leg range) and extensions 1.272 and 1.618 (price = leg low + ratio × leg range), plus the leg low and high as reference.'];
     RD.terms.confluence = ['confluence (listed, not scored)', 'Anything whose price range lies within ±1 % of a fib level: the entry zone, stop, target, historical demand/supply boxes and current sell-liquidity zones. They are listed side by side; nothing is counted, weighted or ranked.'];
+    function rlab(x) { return x === 0 ? '0' : x === 1 ? '1.0' : x < 1 ? x.toFixed(3).replace(/^0/, '') : String(x); }   /* item 52o: ratio labels - 0 = leg high, 1.0 = leg low (fib-core's own convention) */
     var _fm = null;
     function fmod() {
       if (window.FibCore) return Promise.resolve(window.FibCore);
@@ -1067,23 +1070,50 @@
         return core.compute(c, { intervalSec: 86400, nowMs: Date.now() }, ctxFor(t, lo, hi));
       }
       function draw(g, P) {
-        drawn = { lines: [], leg: null };
+        drawn = { lines: [], leg: null, ruler: null, note: null, dots: [] };
         if (!nst.fib) { if (sec && uiKey) { uiKey = ''; if (bodyEl) bodyEl.innerHTML = ''; } if (sec) PN.sum(sec, 'off'); last = null; return; }
         var chip = PN.chip;
         if (!core) { ui(chip(loadErr || 'loading…', loadErr ? 'w' : ''), '', loadErr ? 'unavailable' : 'loading…'); return; }
         var t = h.terms ? h.terms() : null, r = compute(t); last = r;
         if (!r || r.status !== 'ok') { ui(chip('1D impulse · pinned v1', 'dim') + chip(r && r.reason ? r.reason : 'unavailable', 'w'), '', 'unavailable · ' + (r && r.reason || 'no result')); return; }
         g.save(); g.beginPath(); g.rect(0, 0, P.pw, P.ph); g.clip();
-        var X = h.xOf, leg = r.leg, off = 0;
-        var xl = X ? X(leg.lowTime) : null, xh = X ? X(leg.highTime) : null, yl = o.series.priceToCoordinate(leg.low), yh = o.series.priceToCoordinate(leg.high);
-        if (xl != null && xh != null && yl != null && yh != null && xl > -1e8) { g.strokeStyle = 'rgba(' + FC + ',0.35)'; g.lineWidth = 1; g.setLineDash([]); g.beginPath(); g.moveTo(xl, yl); g.lineTo(xh, yh); g.stroke(); drawn.leg = { x1: xl, y1: yl, x2: xh, y2: yh }; }
-        g.font = '600 9px sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'right';
+        var X = h.xOf, leg = r.leg, off = 0, tb = h.tagsBottom ? h.tagsBottom() : 0;
+        var xl = X ? X(leg.lowTime) : null, xhR = X ? X(leg.highTime) : null, yl = o.series.priceToCoordinate(leg.low), yh = o.series.priceToCoordinate(leg.high);
+        var geo = xhR != null && isFinite(xhR) && xhR > -1e8 && yl != null && yh != null, rx = geo ? Math.round(xhR) + 0.5 : null, rulerOn = geo && rx >= 0 && rx <= P.pw, lineX = geo && rx <= P.pw ? Math.max(0, rx) : null;
+        if (xl != null && xhR != null && yl != null && yh != null && xl > -1e8 && geo) { g.strokeStyle = 'rgba(' + FC + ',0.35)'; g.lineWidth = 1; g.setLineDash([]); g.beginPath(); g.moveTo(xl, yl); g.lineTo(xhR, yh); g.stroke(); drawn.leg = { x1: xl, y1: yl, x2: xhR, y2: yh }; }
+        var ticks = [], extOff = [];
         r.levels.forEach(function (lv) {
-          if (lv.kind === 'ref') return; var y = o.series.priceToCoordinate(lv.price); if (y == null || y < 0 || y > P.ph) { off++; return; }
-          g.strokeStyle = 'rgba(' + FC + ',0.55)'; g.lineWidth = 1; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(0, Math.round(y) + 0.5); g.lineTo(P.pw, Math.round(y) + 0.5); g.stroke(); g.setLineDash([]);
-          var txt = lv.ratio + ' ' + fx(lv.price), w = Math.ceil(g.measureText(txt).width) + 6; g.fillStyle = 'rgba(11,12,20,0.85)'; g.fillRect(P.pw - 4 - w, y - 6, w, 12); g.fillStyle = 'rgba(' + FC + ',1)'; g.fillText(txt, P.pw - 7, y);
-          drawn.lines.push({ ratio: lv.ratio, price: lv.price, y: y, label: txt });
+          var y = o.series.priceToCoordinate(lv.price), inV = y != null && y >= 0 && y <= P.ph;
+          if (lv.kind === 'ref') { if (inV) ticks.push({ ratio: lv.ratio, price: lv.price, y: y, ref: true }); return; }
+          if (!inV) { if (lv.kind === 'extension') extOff.push({ ratio: lv.ratio, price: lv.price, up: y == null ? lv.price > leg.high : y < 0 }); else off++; return; }
+          ticks.push({ ratio: lv.ratio, price: lv.price, y: y, ref: false, kind: lv.kind });
+          if (lineX != null) { g.strokeStyle = 'rgba(' + FC + ',0.45)'; g.lineWidth = 1; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(lineX, Math.round(y) + 0.5); g.lineTo(P.pw, Math.round(y) + 0.5); g.stroke(); g.setLineDash([]); }
+          drawn.lines.push({ ratio: lv.ratio, price: lv.price, y: y, x1: lineX, label: rlab(lv.ratio) + ' ' + fx(lv.price) });
         });
+        drawn.ruler = null; drawn.note = null; drawn.dots = [];
+        if (rulerOn && ticks.length) {
+          /* item 52o: the ruler stands at the leg's high bar from the leg low (ratio 1) up through the leg high (ratio 0) and any on-screen extension; labels sit LEFT of it, right-aligned (RIGHT of it when fewer than 90 px of plot lie to its left); never in the gutter, never through the 52i packer */
+          var ys = ticks.map(function (t) { return t.y; }), y1 = Math.min.apply(null, ys), y2 = Math.max.apply(null, ys), flip = rx < 90, ax = flip ? rx + 8 : rx - 8;
+          g.strokeStyle = 'rgba(' + FC + ',0.9)'; g.lineWidth = 1.2; g.setLineDash([]); g.beginPath(); g.moveTo(rx, y1); g.lineTo(rx, y2); g.stroke(); g.lineWidth = 1;
+          g.beginPath(); ticks.forEach(function (t) { var ty = Math.round(t.y) + 0.5; g.moveTo(rx - 4, ty); g.lineTo(rx + 4, ty); }); g.stroke();
+          var lab = ticks.slice().sort(function (a, b) { return a.y - b.y; }).map(function (t) { return { t: t, y: t.y }; }), GAP = 11, i;
+          for (i = 1; i < lab.length; i++) if (lab[i].y < lab[i - 1].y + GAP) lab[i].y = lab[i - 1].y + GAP;
+          var bound = P.ph - 6; for (i = lab.length - 1; i >= 0; i--) { if (lab[i].y > bound) lab[i].y = bound; bound = lab[i].y - GAP; }
+          g.font = '600 9.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; g.textBaseline = 'middle'; g.textAlign = flip ? 'left' : 'right';
+          var labs = [];
+          lab.forEach(function (l) {
+            if (l.y < tb + 6) return;   /* never under the research tags row */
+            var txt = rlab(l.t.ratio) + ' ' + fx(l.t.price), w = Math.ceil(g.measureText(txt).width) + 4;
+            g.fillStyle = 'rgba(11,12,20,0.7)'; g.fillRect(flip ? ax - 2 : ax - w + 2, l.y - 6, w, 12); g.fillStyle = 'rgba(' + FC + ',' + (l.t.ref ? '0.65' : '1') + ')'; g.fillText(txt, ax, l.y);
+            labs.push({ ratio: l.t.ratio, text: txt, x: ax, y: l.y, align: g.textAlign });
+          });
+          if (extOff.length) {
+            var nt = extOff.map(function (e) { return rlab(e.ratio) + ' ' + fx(e.price) + (e.up ? ' ↑' : ' ↓'); }).join(' · '), ny = Math.max(tb + 8, y1 - 14);
+            g.font = '9px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; g.textAlign = 'center'; var nw = g.measureText(nt).width, nx = Math.max(nw / 2 + 4, Math.min(P.pw - nw / 2 - 4, rx));
+            g.fillStyle = 'rgba(' + FC + ',0.6)'; g.fillText(nt, nx, ny); drawn.note = { text: nt, x: nx, y: ny };
+          }
+          drawn.ruler = { x: rx, y1: y1, y2: y2, side: flip ? 'right' : 'left', ticks: ticks.map(function (t) { return { ratio: t.ratio, y: t.y }; }), labels: labs };
+        }
         g.restore();
         var E = t && isFinite(t.E) ? t.E : null, five = r.levels.filter(function (l) { return l.kind !== 'ref'; }), nConf = five.filter(function (l) { return l.confluence.length; }).length;
         var rows = r.levels.slice().sort(function (a, b) { return b.price - a.price; });
@@ -1096,12 +1126,44 @@
         var chips = chip('1D · pinned v1', 'dim', 'impulse leg: last confirmed swing low to the highest confirmed swing high after it') + chip('leg ' + PN.dshort(leg.lowTime) + ' → ' + PN.dshort(leg.highTime), 'dim');
         if (!(t && isFinite(t.T))) chips += chip('no trade path: E / S / T not compared', 'w');
         if (!h.sellOn()) chips += chip('sell layer off: not compared', 'dim'); if (!h.histOn()) chips += chip('hist. layer off: boxes not compared', 'dim');
-        if (off) chips += chip(off + ' outside the price range', 'w');
-        ui(chips, tb, 'leg ' + fx(leg.low) + '→' + fx(leg.high) + ' · ' + nConf + ' level' + (nConf === 1 ? '' : 's') + ' with confluence');
+        var extN = r.levels.filter(function (l) { return l.kind === 'extension'; }).length - drawn.lines.filter(function (l) { return l.ratio > 1; }).length; if (off + extN) chips += chip((off + extN) + ' outside the price range', 'w');
+        if (!drawn.ruler) chips += chip('ruler outside the visible range', 'w'); if (leg.legIndexFromLatest > 0) chips += chip('fallback leg · ' + leg.legIndexFromLatest + ' back', 'dim', 'the latest confirmed swing low has no confirmed swing high after it yet; this is the most recent confirmed low that does');
+        ui(chips, tb, 'leg ' + fx(leg.low) + '→' + fx(leg.high) + ' (' + (leg.legIndexFromLatest || 0) + ' back) · ' + nConf + ' level' + (nConf === 1 ? '' : 's') + ' with confluence');
+      }
+      /* item 52o: a 3.5 px dot where a level line meets the left edge of a current sell-liquidity band or a historical box it coincides with (the fib-core +-1 % rule); drawn after the book layer so it sits on top */
+      function dots(g, P) {
+        drawn.dots = []; if (!nst.fib || !core || !last || last.status !== 'ok' || !drawn.lines.length) return;
+        var rc = h.rects ? h.rects() : [], sx = h.sellX0 ? h.sellX0() : null, by = {};
+        drawn.lines.forEach(function (ln) {
+          var lv = last.levels.filter(function (l) { return l.ratio === ln.ratio; })[0]; if (!lv || ln.x1 == null) return;
+          lv.confluence.forEach(function (it) {
+            var x = null;
+            if (it.kind === 'sell') { if (sx != null) x = sx; }
+            else if (it.kind === 'supply' || it.kind === 'demand') { var rr = rc.filter(function (q) { return q.label === it.id && q.kind === it.kind; })[0]; if (rr) x = rr.x1; }
+            if (x == null) return; x = Math.max(x, ln.x1); if (x > P.pw) return;
+            var k = ln.ratio + '@' + Math.round(x); if (!by[k]) { by[k] = { ratio: ln.ratio, price: ln.price, x: x, y: ln.y, level: lv, ids: [] }; drawn.dots.push(by[k]); } by[k].ids.push(it.id);
+          });
+        });
+        if (!drawn.dots.length) return;
+        g.save(); g.beginPath(); g.rect(0, 0, P.pw, P.ph); g.clip(); g.lineWidth = 1; g.setLineDash([]);
+        drawn.dots.forEach(function (d) { g.fillStyle = 'rgba(' + FC + ',1)'; g.strokeStyle = 'rgba(11,12,20,0.9)'; g.beginPath(); g.arc(d.x, d.y, 3.5, 0, 6.2832); g.fill(); g.stroke(); });
+        g.restore();
+      }
+      function hover(param) {
+        if (!nst.fib || !param || !param.point || !drawn.dots || !drawn.dots.length) return null;
+        var hit = drawn.dots.filter(function (d) { return Math.abs(param.point.x - d.x) <= 7 && Math.abs(param.point.y - d.y) <= 7; })[0]; if (!hit) return null;
+        var rows = hit.level.confluence.map(function (x) {
+          if (x.kind === 'entry') return ['entry zone', fx(x.lo) + (x.hi > x.lo ? ' – ' + fx(x.hi) : '')];
+          if (x.kind === 'stop') return ['stop S', fx(x.lo)]; if (x.kind === 'target') return ['target T', fx(x.lo)];
+          if (x.kind === 'sell') return ['sell · ' + (x.venue === 'coinbase' ? 'CB' : 'KRK'), x.txt || (x.usd != null ? money(x.usd) : fx(x.lo) + ' – ' + fx(x.hi))];
+          return [x.id + (x.kind === 'demand' ? ' demand' : ' supply'), fx(x.lo) + ' – ' + fx(x.hi)];
+        });
+        if (rows.length > 6) rows = rows.slice(0, 5).concat([['+' + (rows.length - 5) + ' more', 'see the Fib section']]);
+        return [{ title: 'fib ' + rlab(hit.ratio) + ' · ' + fx(hit.price), rows: rows }];
       }
       function destroy() { dead = true; if (bodyEl) bodyEl.innerHTML = ''; }
       if (nst.fib) toggled();
-      return { draw: draw, toggled: toggled, destroy: destroy, lines: function () { return drawn.lines.slice(); }, leg: function () { return drawn.leg; }, result: function () { return last; }, ready: function () { return !!core; } };
+      return { draw: draw, dots: dots, hover: hover, toggled: toggled, destroy: destroy, lines: function () { return drawn.lines.slice(); }, leg: function () { return drawn.leg; }, ruler: function () { return drawn.ruler; }, note: function () { return drawn.note; }, dotList: function () { return (drawn.dots || []).slice(); }, result: function () { return last; }, ready: function () { return !!core; } };
     };
   })(); } catch (e) { try { console.warn('item 52n fib block failed: ' + (e && e.message)); } catch (e2) {} }
 /* end item 52n — fib */
@@ -4627,7 +4689,7 @@ function p3Build(panel) {
   o.chip = document.createElement('span'); o.chip.id = 'dp-fitchip'; o.chip.className = 'p3-chip'; o.strip.appendChild(o.chip);
   o.verdict = document.createElement('div'); o.verdict.id = 'dp-verdict'; o.verdict.className = 'p3-verdict';   // verdict / entry / score block (id kept from 17-B)
   o.analysis = document.createElement('div'); o.analysis.id = 'dp-analysis'; o.analysis.className = 'p3-analysis';   // Step 17-E
-  o.sVd = p3Sec('verdict', 'Trade plan'); o.sVd.b.appendChild(o.verdict); o.sVd.b.appendChild(o.analysis);
+  o.sVd = p3Sec('verdict', 'Trade plan'); o.sVd.b.appendChild(o.verdict);   /* item 52o: the research narrative lives in Research detail */
   o.slot = document.createElement('span'); o.slot.id = 'dp-recent-slot'; o.slot.className = 'p3-slot'; o.slot.setAttribute('data-p2', 'pending'); o.slot.hidden = true; o.strip.appendChild(o.slot);
   // sections
   o.sLv = p3Sec('levels', 'Levels'); o.sLv.b.appendChild(o.levels);
@@ -4637,7 +4699,7 @@ function p3Build(panel) {
   o.ckAll.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); p3ChecksToggleAll(); } });
   o.checks.addEventListener('click', function (e) { var row = e.target.closest ? e.target.closest('.p3-check.has-explain') : null; if (row && o.checks.contains(row)) p3ChecksToggle(row.getAttribute('data-gate')); });
   o.checks.addEventListener('keydown', function (e) { if (e.key !== 'Enter' && e.key !== ' ') return; var row = e.target.closest ? e.target.closest('.p3-check.has-explain') : null; if (row && o.checks.contains(row)) { e.preventDefault(); p3ChecksToggle(row.getAttribute('data-gate')); } });
-  o.sRd = p3Sec('rdetail', 'Research detail'); o.rd = document.createElement('div'); o.rd.id = 'dp-rdetail'; o.rd.className = 'p3-rd'; o.sRd.b.appendChild(o.rd);
+  o.sRd = p3Sec('rdetail', 'Research detail'); o.rd = document.createElement('div'); o.rd.id = 'dp-rdetail'; o.rd.className = 'p3-rd'; o.sRd.b.appendChild(o.analysis); o.sRd.b.appendChild(o.rd);
   // 13e: the collapsed Legacy section is gone from the research view. The old panel blocks that openDetail() still fills by id (score tiles, position, explanation, action, invalidation) move into a hidden holder so those writes keep landing; the holder shows nothing.
   o.hold = document.createElement('div'); o.hold.id = 'dp-p3-hold'; o.hold.hidden = true; o.hold.style.display = 'none';
   [o.scoreDs, o.posDs, o.anaDs, o.recDs, o.invDs].forEach(function (d) { o.hold.appendChild(d); });
@@ -4734,8 +4796,8 @@ function p3VerdictHTML(r, rs) {
     for (var i = 0; i < gs.length; i++) if (gs[i].id === 'C7.floor' && typeof gs[i].threshold === 'number') fl = gs[i].threshold;
     if (fl == null) fl = (rr.timeframe === '4d-grid') ? ACT_SCORE_FLOOR_GRID : ACT_SCORE_FLOOR_1D;
   }
-  h += rr ? pane52nTradeHTML(r, rs, fl) : '';
-  return h;
+  var tiles = rr ? pane52nTradeHTML(r, rs, fl) : '';
+  return tiles || h;   /* item 52o: with the tiles present the body holds ONLY the tiles (the verdict sentence is the header line); the sentence stays only where there are no tiles to show */
 }
 function p3RenderPanel(r, rs) {
   var o = P3; if (!o) return;
