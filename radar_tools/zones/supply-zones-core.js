@@ -5,10 +5,16 @@
  *   author   : LuxAlgo
  *   url      : https://www.tradingview.com/script/KvGhxGxY-Order-Block-Detector-LuxAlgo/
  *   updated  : Mar 10, 2023 (the page shows no further version number; the script has no version string)
- *   license  : the source is marked CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike); this module is a derivative port of the BEARISH-block logic. Attribution is carried here and in the UI label.
+ *   license  : the source is marked CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike); this module is a derivative port of the BEARISH-block logic (52j) and the BULLISH-block logic (52n). Attribution is carried here and in the UI label.
  *   source sha256 (the displayed source text, gutter line numbers removed, fetched in-page 2026-10-14): 9563ced646fa13fed127c3e1f37a63e492251dd3ae64e13b4284d6c9792314dc
  *
- * SETTINGS FIXED AS v1 CONSTANTS (the script's own defaults, read from its inputs): Volume Pivot Length = 5; Mitigation Methods = 'Wick'. Bullish blocks are NOT implemented (demand zones = backlog).
+ * SETTINGS FIXED AS v1 CONSTANTS (the script's own defaults, read from its inputs): Volume Pivot Length = 5; Mitigation Methods = 'Wick'. Bullish blocks are implemented from 52n (see BULLISH PORT below).
+ *
+ * BULLISH PORT (item 52n; verified against the pinned source text in-page 2026-10-14): the script uses the SAME volume pivot HIGH (phv = ta.pivothigh(volume, 5, 5)) for both sides; the side is chosen by os.
+ *   bullish zone when phv(t) and os(t) == 1: top = hl2[t-5] = (high+low)/2 ; bottom = low[t-5] ; reference line = (top+bottom)/2 ; origin = candle t-5
+ *   mitigation (Wick): target(t) = lowest low of t-4..t; every active bullish zone with target(t) < bottom is removed at candle t. ('Close' = lowest close.)
+ *   The same differences 1-5 below apply unchanged (confirmedAt, no look-ahead, strict ties, closed candles only, volume availability). detectBearish output is unchanged from 52j.
+ * (The 52n build prompt said "volume pivot LOW"; the pinned script does not use ta.pivotlow. The script's behaviour is what is ported.)
  *
  * PORTED LOGIC (script -> here), per closed candle t (index in the closed series):
  *   upper(t) = highest high of candles t-4..t ; lower(t) = lowest low of t-4..t               (ta.highest / ta.lowest, length 5, current candle included)
@@ -83,6 +89,37 @@
     return res;
   }
 
+  /* detectBullish(candles, opt) -> same shape as detectBearish; zones[]: { id 'hd1-<originTime>', originTime, confirmedAt, top = hl2 of origin, bottom = low of origin, mid, volume, quoteEst, mitigatedAt, mitigatedBy, rule }. */
+  function detectBullish(candles, opt) {
+    opt = opt || {}; var L = DETECTOR.pivotLength, iv = isNum(opt.intervalSec) && opt.intervalSec > 0 ? opt.intervalSec : 86400, mit = opt.mitigation === 'close' ? 'close' : 'wick';
+    var c = closedSeries(candles, iv, opt.nowMs), n = c.length;
+    var res = { detector: DETECTOR, available: false, reason: null, intervalSec: iv, closedCount: n, firstTime: n ? c[0].time : null, lastClosedTime: n ? c[n - 1].time : null, zones: [] };
+    if (n < 2 * L + 1) { res.reason = 'lookback'; return res; }
+    var anyVol = false; for (var i = 0; i < n; i++) if (isNum(c[i].volume) && c[i].volume > 0) { anyVol = true; break; }
+    if (!anyVol) { res.reason = 'volume'; return res; }
+    res.available = true;
+    var os = 0, active = [];
+    for (var t = 0; t < n; t++) {
+      var upper = null, lower = null, lcl = null;
+      if (t >= L - 1) { upper = -Infinity; lower = Infinity; lcl = Infinity; for (var k = t - L + 1; k <= t; k++) { if (c[k].high > upper) upper = c[k].high; if (c[k].low < lower) lower = c[k].low; if (c[k].close < lcl) lcl = c[k].close; } }
+      if (t >= L && upper != null) { if (c[t - L].high > upper) os = 0; else if (c[t - L].low < lower) os = 1; }
+      if (t >= 2 * L) {
+        var p = c[t - L], v = p.volume, ok = isNum(v);
+        for (var j = t - 2 * L; ok && j <= t; j++) { if (j === t - L) continue; var vj = c[j].volume; if (!isNum(vj) || !(v > vj)) ok = false; }
+        if (ok && os === 1) {
+          var top = (p.high + p.low) / 2, bottom = p.low;
+          var z = { id: 'hd1-' + p.time, originTime: p.time, confirmedAt: c[t].time + iv, top: top, bottom: bottom, mid: (top + bottom) / 2, volume: v, quoteEst: isNum(p.close) ? p.close * v : null, mitigatedAt: null, mitigatedBy: null, rule: null };
+          res.zones.push(z); active.push(z);
+        }
+      }
+      if (lower != null && active.length) {
+        var target = mit === 'close' ? lcl : lower;
+        active = active.filter(function (z) { if (target < z.bottom) { z.mitigatedAt = c[t].time + iv; z.mitigatedBy = c[t].time; z.rule = mit; return false; } return true; });
+      }
+    }
+    return res;
+  }
+
   /* selectDisplay(zones, ctx) -> { mode, total, shown[], all[] }
        ctx: { E, T }  valid path (T > E > 0)  -> mode 'path': active zones whose range intersects (E, T], i.e. top > E and bottom < T
             { ref, vlo, vhi } no valid path    -> mode 'context': active zones above ref (the latest close) intersecting the viewport [vlo, vhi]
@@ -97,5 +134,20 @@
     return { mode: path ? 'path' : 'context', total: set.length, shown: set.slice(0, 3), all: set };
   }
 
-  return { DETECTOR: DETECTOR, detectBearish: detectBearish, selectDisplay: selectDisplay, closedSeries: closedSeries };
+  /* selectDemandDisplay(zones, ctx) -> { mode, total, shown[], all[] }  (demand mirror of selectDisplay; 52n)
+       ctx: { S, T, ref }  valid path (T > S > 0) -> mode 'path': active zones whose range intersects [S, T] (top >= S and bottom <= T) and lie BELOW price (top < ref when ref is given)
+            { ref, vlo, vhi } no valid path       -> mode 'context': active zones below ref intersecting the viewport [vlo, vhi]
+     shown = up to 3 nearest below price, ordered by UPPER boundary descending (stable: originTime, then id); all = the same set (the expandable list). */
+  function selectDemandDisplay(zones, ctx) {
+    ctx = ctx || {}; var path = isNum(ctx.S) && isNum(ctx.T) && ctx.S > 0 && ctx.T > ctx.S, set;
+    var act = (zones || []).filter(function (z) { return z.mitigatedAt == null; });
+    var below = function (z) { return !isNum(ctx.ref) || z.top < ctx.ref; };
+    if (path) set = act.filter(function (z) { return z.top >= ctx.S && z.bottom <= ctx.T && below(z); });
+    else if (isNum(ctx.vlo) && isNum(ctx.vhi)) set = act.filter(function (z) { return z.top >= ctx.vlo && z.bottom <= ctx.vhi && below(z); });
+    else set = [];
+    set = set.slice().sort(function (a, b) { return (b.top - a.top) || (a.originTime - b.originTime) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); });
+    return { mode: path ? 'path' : 'context', total: set.length, shown: set.slice(0, 3), all: set };
+  }
+
+  return { DETECTOR: DETECTOR, detectBearish: detectBearish, detectBullish: detectBullish, selectDemandDisplay: selectDemandDisplay, selectDisplay: selectDisplay, closedSeries: closedSeries };
 });

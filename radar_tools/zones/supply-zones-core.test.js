@@ -65,4 +65,48 @@ eq(s.all.map(function (x) { return x.id; }), ['a', 'b', 'c', 'd', 'e'], 'the exp
 eq(C.selectDisplay(zs, { E: 100, T: 125 }).total, 2, 'a zone whose bottom is at/above T is not on the path'); /* a (110-120) and b (110-125); c bottom 130 >= 125 */
 var cx = C.selectDisplay(zs, { ref: 105, vlo: 100, vhi: 145 }); eq([cx.mode, cx.shown.map(function (x) { return x.id; })], ['context', ['a', 'b', 'c']], 'no valid path: viewport context, zones above the latest close');
 eq(C.selectDisplay(zs, {}).total, 0, 'no path and no viewport: nothing');
+/* ===== item 52n — demand (bullish) blocks =====
+ * HAND-CHECKED BULLISH FIXTURE: i 0..11 flat (high 10, low 9, vol 100); i 12: open 9, high 10, low 6, close 6.5, vol 500 (the volume pivot; low 6 < the lows of 13..17 -> os = 1 at candle 17);
+ * i 13..21: high 12, low 9, vol 100; i 22: high 12, low 5.5 -> lowest low of 18..22 = 5.5 < bottom 6 -> mitigated at candle 22.
+ * Expected: bottom = low 6, top = hl2 = (10+6)/2 = 8, mid 7, originTime T(12), confirmedAt T(18), mitigatedAt T(23), volume 500, quoteEst 6.5*500 = 3250. */
+function bfix(N) {
+  var cs = []; for (var i = 0; i < N; i++) cs.push({ time: T(i), open: 9.5, high: 10, low: 9, close: 9.6, volume: 100 });
+  cs[12] = { time: T(12), open: 9, high: 10, low: 6, close: 6.5, volume: 500 };
+  for (i = 13; i <= 21 && i < N; i++) cs[i] = { time: T(i), open: 9.5, high: 12, low: 9, close: 9.6, volume: 100 };
+  if (N > 22) cs[22] = { time: T(22), open: 9.5, high: 12, low: 5.5, close: 9.8, volume: 100 };
+  return cs;
+}
+var bf = C.detectBullish(bfix(30), { intervalSec: D, nowMs: NOW }), bz = bf.zones[0];
+ok(bf.available && bf.zones.length === 1, 'bullish: one zone on the hand-checked fixture');
+eq([bz.bottom, bz.top, bz.mid], [6, 8, 7], 'bullish geometry: bottom = L, top = (H+L)/2, midpoint');
+eq([bz.originTime, bz.confirmedAt, bz.id], [T(12), T(18), 'hd1-' + T(12)], 'bullish: origin and confirmation separate; id prefix hd1');
+eq([bz.mitigatedAt, bz.mitigatedBy, bz.rule], [T(23), T(22), 'wick'], 'bullish: mitigation at the declared candle, zone retained');
+eq([bz.volume, bz.quoteEst], [500, 3250], 'bullish: candle volume and quote estimate');
+eq(C.detectBearish(bfix(30), { intervalSec: D, nowMs: NOW }).zones.length, 0, 'the bullish fixture yields no bearish zone (os = 1 at the pivot)');
+eq(C.detectBullish(fix(30), { intervalSec: D, nowMs: NOW }).zones.length, 0, 'the bearish fixture yields no bullish zone (os = 0)');
+eq(C.detectBullish(bfix(30).slice(0, 17), { intervalSec: D, nowMs: NOW }).zones.length, 0, 'bullish: no zone with candles 0..16');
+eq(C.detectBullish(bfix(30).slice(0, 18), { intervalSec: D, nowMs: NOW }).zones[0].confirmedAt, T(18), 'bullish: zone once candle 17 has closed');
+eq(C.detectBullish(bfix(30), { intervalSec: D, nowMs: (T(17) + D / 2) * 1000 }).zones.length, 0, 'bullish: forming candle 17 does not confirm');
+eq(C.detectBullish(bfix(30), { intervalSec: D, nowMs: (T(22) + D / 2) * 1000 }).zones[0].mitigatedAt, null, 'bullish: forming candle 22 does not mitigate');
+for (k = 18; k <= 30; k++) {
+  var bpre = C.detectBullish(bfix(30).slice(0, k), { intervalSec: D, nowMs: NOW });
+  bpre.zones.forEach(function (p) { var f = bf.zones.filter(function (q) { return q.id === p.id; })[0]; ok(!!f, 'bullish prefix zone present (' + k + ')'); eq([p.top, p.bottom, p.originTime, p.confirmedAt, p.volume], [f.top, f.bottom, f.originTime, f.confirmedAt, f.volume], 'bullish prefix ' + k + ' identical'); ok(p.mitigatedAt == null || p.mitigatedAt === f.mitigatedAt, 'bullish prefix ' + k + ': mitigation never revised'); });
+}
+var bc = bfix(30); bc[22] = { time: T(22), open: 9.5, high: 12, low: 7, close: 5.8, volume: 100 };
+eq([C.detectBullish(bc, { intervalSec: D, nowMs: NOW }).zones[0].mitigatedAt, C.detectBullish(bc, { intervalSec: D, nowMs: NOW, mitigation: 'close' }).zones[0].mitigatedAt], [null, T(23)], "bullish: 'wick' needs a low below the bottom, 'close' needs a close below it");
+var bt = bfix(30); bt[8].volume = 500; eq(C.detectBullish(bt, { intervalSec: D, nowMs: NOW }).zones.length, 0, 'bullish: a tied volume neighbour yields no pivot (strict)');
+eq(C.detectBullish(bfix(8), { intervalSec: D, nowMs: NOW }).reason, 'lookback', 'bullish: short series -> lookback');
+eq(C.detectBullish(bfix(30).map(function (x) { return Object.assign({}, x, { volume: null }); }), { intervalSec: D, nowMs: NOW }).reason, 'volume', 'bullish: no volume -> unavailable (volume)');
+/* bearish byte-identical to 52j: sha256 of the 52j module's output on the bearish fixture (+ selectDisplay) */
+var h = require('crypto').createHash('sha256').update(JSON.stringify(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 })) + JSON.stringify(C.selectDisplay(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 }).zones, { E: 5, T: 20 }))).digest('hex');
+eq(h, 'e06ca536ca24f4be465280769020fab13c19c1673872c28631b55a5023f0abe9', 'bearish output byte-identical to 52j');
+/* selectDemandDisplay */
+function DZ(id, bottom, top, o, mit) { return { id: id, originTime: o, bottom: bottom, top: top, mitigatedAt: mit || null }; }
+var dzs = [DZ('a', 90, 95, 1), DZ('b', 80, 85, 2), DZ('c', 70, 75, 3), DZ('d', 60, 65, 4), DZ('m', 88, 92, 5, 99), DZ('up', 110, 120, 6), DZ('far', 10, 20, 7)];
+var ds = C.selectDemandDisplay(dzs, { S: 55, T: 130, ref: 100 });
+eq([ds.mode, ds.total], ['path', 4], 'demand path: active zones intersecting [S,T] and below price; mitigated, above-price and below-S excluded');
+eq(ds.shown.map(function (x) { return x.id; }), ['a', 'b', 'c'], 'three nearest below price by upper boundary, descending');
+eq(ds.all.map(function (x) { return x.id; }), ['a', 'b', 'c', 'd'], 'expandable list complete');
+var dx = C.selectDemandDisplay(dzs, { ref: 100, vlo: 65, vhi: 130 }); eq([dx.mode, dx.all.map(function (x) { return x.id; })], ['context', ['a', 'b', 'c', 'd']], 'demand context mode: viewport, below the latest close');
+eq(C.selectDemandDisplay(dzs, {}).total, 0, 'demand: no path, no viewport -> nothing');
 console.log(n + ' checks' + (process.exitCode ? ' — FAILURES' : ', 0 failures'));
