@@ -6,7 +6,7 @@
  *   url      : https://www.tradingview.com/script/KvGhxGxY-Order-Block-Detector-LuxAlgo/
  *   updated  : Mar 10, 2023 (the page shows no further version number; the script has no version string)
  *   license  : the source is marked CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike); this module is a derivative port of the BEARISH-block logic (52j) and the BULLISH-block logic (52n). Attribution is carried here and in the UI label.
- *   source sha256 (the displayed source text, gutter line numbers removed, fetched in-page 2026-10-14): 9563ced646fa13fed127c3e1f37a63e492251dd3ae64e13b4284d6c9792314dc
+ *   reference text: third-party/order-block-detector-luxalgo.pine.txt, sha256 e095c9513be0936a19919866abfb1b8e10b51539105169533b9e601669363a10 (an earlier 9563ced6… value recorded 2026-10-14 is historical and unreproduced)
  *
  * SETTINGS FIXED AS v1 CONSTANTS (the script's own defaults, read from its inputs): Volume Pivot Length = 5; Mitigation Methods = 'Wick'. Bullish blocks are implemented from 52n (see BULLISH PORT below).
  *
@@ -41,7 +41,9 @@
   var DETECTOR = {
     id: 'historical supply zones v1', name: 'Order Block Detector [LuxAlgo]', version: 'Mar 10, 2023 (Pine v5)', pinned: true,
     url: 'https://www.tradingview.com/script/KvGhxGxY-Order-Block-Detector-LuxAlgo/', author: 'LuxAlgo', license: 'CC BY-NC-SA 4.0',
-    sourceSha256: '9563ced646fa13fed127c3e1f37a63e492251dd3ae64e13b4284d6c9792314dc', pivotLength: 5, mitigation: 'wick', tie: 'strict'
+    sourceSha256: 'e095c9513be0936a19919866abfb1b8e10b51539105169533b9e601669363a10',
+    sourceSha256Superseded: '9563ced646fa13fed127c3e1f37a63e492251dd3ae64e13b4284d6c9792314dc',   // recorded 2026-10-14, unreproduced; Astra ruling 2026-10-15
+    pivotLength: 5, mitigation: 'wick', tie: 'strict'
   };
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
 

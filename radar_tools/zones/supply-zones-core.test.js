@@ -98,7 +98,7 @@ var bt = bfix(30); bt[8].volume = 500; eq(C.detectBullish(bt, { intervalSec: D, 
 eq(C.detectBullish(bfix(8), { intervalSec: D, nowMs: NOW }).reason, 'lookback', 'bullish: short series -> lookback');
 eq(C.detectBullish(bfix(30).map(function (x) { return Object.assign({}, x, { volume: null }); }), { intervalSec: D, nowMs: NOW }).reason, 'volume', 'bullish: no volume -> unavailable (volume)');
 /* bearish byte-identical to 52j: sha256 of the 52j module's output on the bearish fixture (+ selectDisplay) */
-function old52j(r) { var o = Object.assign({}, r); delete o.unevaluable; delete o.partialVolume; delete o.partialRanges; return o; }   /* item 52p: the three added result fields are excluded; every 52j field is hashed as before */
+function old52j(r) { var o = Object.assign({}, r); delete o.unevaluable; delete o.partialVolume; delete o.partialRanges; if (o.detector) { o.detector = Object.assign({}, o.detector, { sourceSha256: '9563ced646fa13fed127c3e1f37a63e492251dd3ae64e13b4284d6c9792314dc' }); delete o.detector.sourceSha256Superseded; } return o; }   /* item 52p: the three added result fields are excluded; every 52j field is hashed as before. Item 52r: the detector pin is restored to the 52j value (9563ced6, now sourceSha256Superseded) so the golden hash is unchanged */
 var h = require('crypto').createHash('sha256').update(JSON.stringify(old52j(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 }))) + JSON.stringify(C.selectDisplay(C.detectBearish(fix(30), { intervalSec: D, nowMs: T(40) * 1000 }).zones, { E: 5, T: 20 }))).digest('hex');
 eq(h, 'e06ca536ca24f4be465280769020fab13c19c1673872c28631b55a5023f0abe9', 'bearish output byte-identical to 52j');
 /* selectDemandDisplay */
