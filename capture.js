@@ -1717,6 +1717,201 @@ function fwdRealGit() {
   };
 }
 function fwdRealDeps() { return { fs, path, crypto, EC, OC, now: () => Date.now(), pid: process.pid, hooks: null, git: fwdRealGit() }; }
+
+// ===== P1 PRACTITIONER ARM (item 52s) — the capture-time step. I/O only; every decision rule is in p1-core.js. =====================================================
+// Called ONCE per canonical capture, after fwdCommitSequence returned 'canonical' (the cohort's single push is already made), inside its own try/catch, on DEEP COPIES of the capture's research rows,
+// execution context, candles and fetched evidence, plus the forward clock (the capture object). It never reads mutable cohort / shadow / episode state, never writes outside data/forward/p1/, and never
+// changes production timing (it runs after the production commit; capture.yml's own commit step carries its files). DORMANT unless data/forward/p1/p1-config.json exists and validates.
+// Files per generation (append-only; a generation directory is never rewritten): data/forward/p1/gen-<generationId>/{opportunities.json, pairs.json, ledger-T.json, ledger-L.json, evidence-refs.json} + data/forward/p1/CURRENT.json.
+var P1_DIR = 'p1', P1_LOOKBACK_SLOTS = 8, P1_Q15_MS = 900000, P1_HOUR_MS = 3600000, P1_BOOK_BASE = 'https://raw.githubusercontent.com/rdwills02/BTC_Brief-data/rolling/', P1_MAX_EVIDENCE_ITER = 8;
+function p1Paths(d, root) {
+  var dir = d.path.join(root, 'forward', P1_DIR);
+  return { dir: dir, config: d.path.join(dir, 'p1-config.json'), current: d.path.join(dir, 'CURRENT.json'), gen: function (id) { return d.path.join(dir, 'gen-' + id); }, params: d.path.join(root, 'book', 'sellzone-params.json') };
+}
+function p1Clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
+function p1Iso(ms) { return new Date(ms).toISOString(); }
+function p1Sha(d, s) { return d.crypto.createHash('sha256').update(typeof s === 'string' ? Buffer.from(s, 'utf8') : s).digest('hex'); }
+function p1Modules(io) {
+  if (io && io.modules) return io.modules;
+  return { P1: require('./p1-core.js'), SZ: require('./radar_tools/book/sellzone-core.js'), BC: require('./radar_tools/book/book-codec.js'), FIB: require('./radar_tools/zones/fib-core.js') };
+}
+// rolling-repo depth batch at one 15-minute slot: gunzip -> codec decode -> records by pair. Cached per (venue, slot) for the run.
+async function p1Batch(d, io, base, venue, slotMs, cache) {
+  var s = p1Iso(slotMs), rel = 'book/' + venue + '/' + s.slice(0, 10) + '/' + s.slice(11, 13) + s.slice(14, 16) + '.json.gz', key = venue + '|' + slotMs;
+  if (cache[key]) return cache[key];
+  var out = { path: rel, status: 0, by: {}, sha256: null, error: null };
+  try {
+    var buf = await io.fetchBuffer(base + rel);
+    if (!buf) { out.status = 404; }
+    else { out.status = 200; out.sha256 = p1Sha(d, buf); var txt = io.gunzip(buf).toString('utf8'), batch = JSON.parse(txt), recs = p1Modules(io).BC.decodeBatch(batch); out.records = recs.length; out.slot = batch.meta && batch.meta.slot || null; recs.forEach(function (r) { out.by[r.pair] = r; }); }
+  } catch (e) { out.status = 0; out.error = e && e.message ? e.message : String(e); }
+  cache[key] = out; return out;
+}
+// newest depth record for the pair received at/before the decision time, looking back P1_LOOKBACK_SLOTS slots (exactly as the calibration page does)
+async function p1FindDepth(d, io, base, venue, bookPair, decisionMs, cache) {
+  var slot = Math.floor(decisionMs / P1_Q15_MS) * P1_Q15_MS, tried = [];
+  for (var i = 0; i < P1_LOOKBACK_SLOTS; i++) {
+    var b = await p1Batch(d, io, base, venue, slot - i * P1_Q15_MS, cache); tried.push({ path: b.path, status: b.status });
+    if (b.status !== 200) continue;
+    var r = b.by[bookPair]; if (r && Date.parse(r.recv) <= decisionMs) return { record: r, batch: { path: b.path, sha256: b.sha256, slot: b.slot, records: b.records }, tried: tried };
+  }
+  return { record: null, tried: tried };
+}
+// Kraken hourly candles for the 168 h activity baseline ending at H (the depth record's receipt hour): one request per pair, raw rows handed to SellzoneCore.activityBaseline
+async function p1Baseline(io, SZ, altname, H) {
+  var start = H - SZ.WINDOW_HOURS * P1_HOUR_MS, url = 'https://api.kraken.com/0/public/OHLC?pair=' + encodeURIComponent(altname) + '&interval=60&since=' + (start / 1000 - 1), out = { requestUrl: url, H: p1Iso(H), status: null, baseline: null, error: null };
+  try {
+    var j = await io.fetchJson(url); if (j && j.error && j.error.length) throw new Error(j.error.join(';'));
+    var ks = Object.keys(j.result || {}).filter(function (k) { return k !== 'last'; }), rows = ks.length ? j.result[ks[0]] : null; if (!Array.isArray(rows)) throw new Error('no OHLC rows');
+    out.status = 200; out.rows = rows.length; out.baseline = SZ.activityBaseline(rows, 'kraken', H);
+  } catch (e) { out.error = e && e.message ? e.message : String(e); out.baseline = { status: 'unavailable', reason: 'candle request failed: ' + out.error, median: null, medianLo: null, medianHi: null, validHours: 0 }; }
+  return out;
+}
+// Sell zones on the execution venue for one eligible opportunity: depth record -> baseline -> SellzoneCore.sellObstacleZones under the frozen params; returns the lean zonesForVenue object p1-core consumes plus provenance.
+async function p1Zones(d, io, M, inputs, o) {   // o: { bookPair, altname, E, T, decisionMs }
+  var SZ = M.SZ, res = { available: false, reason: null, states: [], zones: [], snapshot: null, baseline: null, freshness: null, params: inputs.paramsRef };
+  if (!inputs.params) { res.reason = 'sellzone-params-unavailable'; return res; }
+  if (!o.bookPair) { res.reason = 'book-pair-unmapped'; return res; }
+  var dp = await p1FindDepth(d, io, inputs.bookBase, 'kraken', o.bookPair, o.decisionMs, inputs.batchCache);
+  res.lookback = dp.tried;
+  if (!dp.record) { res.reason = 'no-depth-record-within-' + (P1_LOOKBACK_SLOTS * 15) + 'min'; return res; }
+  var rec = dp.record, recvMs = Date.parse(rec.recv), H = SZ.baselineHour(recvMs), bl = await p1Baseline(io, SZ, o.altname, H);
+  res.snapshot = { id: rec.id, recv: rec.recv, grid: rec.grid, batchPath: dp.batch.path, batchSha256: dp.batch.sha256, slot: dp.batch.slot, ageMs: o.decisionMs - recvMs };
+  res.baseline = { H: bl.H, requestUrl: bl.requestUrl, status: bl.baseline.status, reason: bl.baseline.reason || null, median: bl.baseline.median, medianLo: bl.baseline.medianLo, medianHi: bl.baseline.medianHi, validHours: bl.baseline.validHours, error: bl.error };
+  var fr = SZ.staleMaxAgeMs(inputs.cadence ? inputs.cadence.table : [], 'kraken', o.bookPair, o.decisionMs, inputs.params.staleMultiplier);
+  res.freshness = { maxAgeMs: fr.maxAgeMs, cadenceMs: fr.cadenceMs, tier: fr.tier, multiplier: fr.multiplier, reason: fr.reason || null };
+  var par = Object.assign({}, inputs.params.clustering); delete par.name;
+  var z = SZ.sellObstacleZones(rec, rec.grid, o.E, o.T, bl.baseline, par, { concentration: inputs.params.cutoffs.concentration, material: inputs.params.cutoffs.material, asOfMs: o.decisionMs, maxAgeMs: fr.maxAgeMs });
+  res.available = true; res.states = z.states.map(function (s) { return s.code; }); res.coverage = z.coverage ? { status: z.coverage.status, coveredTo: z.coverage.coveredTo } : null;
+  res.zones = z.zones.map(function (x) { return { id: x.id, lo: x.lo, hi: x.hi, verdict: x.verdict, concentration: x.concentration, materiality: x.materiality, Q: x.Q, Qlo: x.Qlo, Qhi: x.Qhi, C: x.C, M: x.M, Mlo: x.Mlo, Mhi: x.Mhi, MhiUnbounded: x.MhiUnbounded }; });
+  res.qualifying = z.qualifying; res.selector = { sellzoneCore: SZ.VERSION, pathE: 'L (the P1 limit)', pathT: 'T' };
+  return res;
+}
+function p1Fib(M, candles, decisionMs) {   // fib levels from the capture's daily candles, positive confirmed leg available at decision time, else unavailable
+  var FIB = M.FIB, out = { available: false, reason: null, version: FIB.VERSION, leg: null, levels: [], candles: (candles || []).length };
+  if (!candles || candles.length < 11) { out.reason = 'lookback'; return out; }
+  var r = FIB.compute(candles.map(function (c) { return { time: c.time != null ? c.time : c.id, open: c.open, high: c.high, low: c.low, close: c.close }; }), { intervalSec: 86400, nowMs: decisionMs }, {});
+  if (r.status !== 'ok' || !r.leg) { out.reason = r.reason || 'unavailable'; return out; }
+  if (!(r.leg.confirmedAt * 1000 <= decisionMs)) { out.reason = 'leg-confirmed-after-decision'; out.leg = r.leg; return out; }   // causal: never a leg the decision could not have seen
+  out.available = true; out.leg = r.leg; out.levels = r.levels.map(function (l) { return { ratio: l.ratio, kind: l.kind, price: l.price }; });
+  return out;
+}
+// evidence loop for P1's own pairs: the same adapters as the cohort (5-minute OHLC, covered Trades), fetched ONCE per need, on P1's own copies - production inputs are never touched.
+async function p1Adjudicate(d, io, M, cfg, pairs, frozen, capture, refs) {
+  var ev = { bars5: p1Clone(frozen.ev && frozen.ev.bars5 || {}), trades: p1Clone(frozen.ev && frozen.ev.trades || {}) }, attempted = {}, dailyExtra = {}, out = pairs.slice();
+  var key = function (n) { return [n.kind, n.pair || '', n.fromSec || '', n.toSec || ''].join('|'); };
+  Object.keys(ev.bars5).forEach(function (cg) { if (ev.bars5[cg] && ev.bars5[cg].length) refs.push({ kind: 'bars5', cgId: cg, source: 'cohort-copy', count: ev.bars5[cg].length }); });
+  Object.keys(ev.trades).forEach(function (cg) { (ev.trades[cg] || []).forEach(function (s) { refs.push({ kind: 'trades', cgId: cg, source: 'cohort-copy', fromSec: s.fromSec, toSec: s.toSec, complete: s.complete === true }); }); });
+  for (var iter = 0; iter < P1_MAX_EVIDENCE_ITER; iter++) {
+    var needs = [];
+    for (var i = 0; i < out.length; i++) {
+      var P = out[i]; if (!M.P1.isActive(P)) continue;
+      var coin = frozen.coins[P.cgId], candles = coin && coin.candles ? coin.candles : (dailyExtra[P.cgId] || null);
+      if (!candles) {   // the coin left the fetch list: P1 reads daily candles for its own obligation, read-only (no cache write)
+        try { var raw = await io.fetchKrakenDaily(String(P.pair).replace(/USD$/, '')); candles = (raw || []).filter(function (c) { return c && c.time + 86400 <= capture.issueSec; }).map(function (c) { return { id: c.time, time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }); refs.push({ kind: 'daily', cgId: P.cgId, pair: P.pair, source: 'kraken', count: candles.length }); }
+        catch (e) { candles = []; refs.push({ kind: 'daily', cgId: P.cgId, pair: P.pair, source: 'kraken', error: e.message }); }
+        dailyExtra[P.cgId] = candles;
+      }
+      var r = M.P1.adjudicatePair(P, { capture: capture, candles: candles, bars5: ev.bars5[P.cgId] || [], trades: ev.trades[P.cgId] || [] }, cfg);
+      out[i] = r.pair; r.needs.forEach(function (n) { needs.push(n); });
+    }
+    var todo = needs.filter(function (n) { return !attempted[key(n)]; }); if (!todo.length) break;
+    todo.forEach(function (n) { attempted[key(n)] = 1; });
+    for (var k = 0; k < todo.length; k++) {
+      var n = todo[k];
+      if (n.kind === 'bars5') {
+        var rb = await fwdFetchBars5(io.fetchJson, n.pair, n.fromSec - FWD_BAR5);
+        refs.push({ kind: 'bars5', cgId: n.cgId, pair: n.pair, source: 'kraken', fromSec: n.fromSec, toSec: n.toSec, ok: rb.ok, count: rb.bars.length, error: rb.ok ? null : rb.error });
+        if (rb.ok) { var have = {}; (ev.bars5[n.cgId] || []).forEach(function (b) { have[b.id] = b; }); rb.bars.forEach(function (b) { have[b.id] = b; }); ev.bars5[n.cgId] = Object.keys(have).map(Number).sort(function (a, b) { return a - b; }).map(function (x) { return have[x]; }); }
+      } else if (n.kind === 'trades') {
+        var sl = await fwdFetchTradesSlice(io.fetchJson, n.pair, n.fromSec, n.toSec, { nowSec: Math.floor(io.now() / 1000) });
+        refs.push({ kind: 'trades', cgId: n.cgId, pair: n.pair, source: 'kraken', fromSec: n.fromSec, toSec: n.toSec, complete: sl.complete, count: sl.trades.length, reason: sl.reason || null });
+        (ev.trades[n.cgId] = ev.trades[n.cgId] || []).push(sl);
+      }
+      await io.sleep(EXCHANGE_DELAY_MS);
+    }
+  }
+  return out;
+}
+function p1Ledger(M, pairs, twin, meta) {
+  return Object.assign({ schemaVersion: 1, arm: 'P1', twin: twin }, meta, { rows: pairs.map(function (P) {
+    var tw = P.twins[twin], res = M.P1.pairResult(P), pnl = twin === 'T' ? res.netPnL_T : res.netPnL_L;
+    return { pairId: P.pairId, cgId: P.cgId, pair: P.pair, study: P.study, status: res.status, issueDate: P.issueDate, entryStatus: P.entry.status, fill: P.entry.fill ? { price: P.entry.fill.price, tSec: P.entry.fill.tSec, lots: P.entry.fill.lots, reason: P.entry.fill.reason } : null,
+      S: P.geometry.S, L: P.geometry.L, T: P.geometry.T, Q: P.geometry.Q, Bcents: P.geometry.Bcents, rungsPlanned: twin === 'L' ? tw.rungs.length : 0, rungsFilled: twin === 'L' ? tw.rungs.filter(function (r) { return r.filled; }).length : 0,
+      exits: tw.exits.map(function (x) { return { reason: x.reason, price: x.price, lots: x.lots, barId: x.barId, tSec: x.tSec, interval: x.interval, holdingDay: x.holdingDay, rungK: x.rungK, pnlLeg: x.notionalCents - x.feeCents - x.frictionCents }; }),
+      remainingLots: tw.remainingLots, closed: tw.closed, netPnLCents: pnl, R: pnl == null ? null : pnl / P.geometry.Bcents, unresolved: res.flags.unresolved }; }) });
+}
+async function fwdP1Step(d, root, capture, frozen, io) {
+  var P = p1Paths(d, root), log = function (m) { console.log('p1: ' + m); };
+  if (!d.fs.existsSync(P.config)) { log('dormant (no data/forward/p1/p1-config.json)'); return { status: 'dormant' }; }
+  var cfgTxt = d.fs.readFileSync(P.config, 'utf8'), cfg = JSON.parse(cfgTxt), cfgSha = p1Sha(d, cfgTxt), M = p1Modules(io);
+  var errs = M.P1.validateConfig(cfg); if (errs.length) { console.error('p1: CONFIGURATION ERROR in p1-config.json - ' + errs.join('; ') + ' - P1 step skipped'); return { status: 'config-error', errors: errs }; }
+  var genId = capture.generationId || capture.captureId, gdir = P.gen(genId);
+  if (d.fs.existsSync(d.path.join(gdir, 'pairs.json'))) { log('generation ' + genId + ' already has P1 records - nothing to do'); return { status: 'already-done' }; }
+  io = Object.assign({ now: function () { return Date.now(); }, sleep: sleep, gunzip: function (b) { return require('zlib').gunzipSync(b); }, fetchKrakenDaily: function (t) { return EX.fetchKrakenDaily(t); }, bookBase: P1_BOOK_BASE }, io || {});
+  if (!io.fetchBuffer) io.fetchBuffer = async function (u) { var r = await fetch(u); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); };
+  var study = M.P1.isStudy(cfg), decisionMs = capture.issueSec * 1000, refs = [], warnings = [];
+  // prior P1 state (its own CURRENT pointer; never the cohort's)
+  var cur = fwdReadJson(d, P.current), prior = cur && cur.generationId ? fwdReadJson(d, d.path.join(P.gen(cur.generationId), 'pairs.json')) : null;
+  var pairs = prior && Array.isArray(prior.pairs) ? prior.pairs : [], controller = prior && prior.controller ? prior.controller : {};
+  if (cur && cur.generationId && !prior) warnings.push('prior pairs.json unreadable for ' + cur.generationId + ': starting from an empty pair list');
+  // 1. adjudicate P1's own open pairs on the cohort's evidence copies + P1's own fetches
+  pairs = await p1Adjudicate(d, io, M, cfg, pairs, frozen, capture, refs);
+  // 2. inputs for new opportunities: frozen selector params, cadence, altname -> wsname map, fib per coin
+  var inputs = { bookBase: io.bookBase, batchCache: {}, params: null, paramsRef: null, cadence: null, cadenceRef: null };
+  try { var pt = d.fs.readFileSync(P.params, 'utf8'); inputs.params = JSON.parse(pt); inputs.paramsRef = { path: 'data/book/sellzone-params.json', sha256: p1Sha(d, pt), status: inputs.params.status || null, clustering: inputs.params.clustering && inputs.params.clustering.name || null, cutoffs: inputs.params.cutoffs || null, staleMultiplier: inputs.params.staleMultiplier }; }
+  catch (e) { warnings.push('sellzone-params.json unavailable: ' + e.message); }
+  try { var ct = await io.fetchJson(io.bookBase + 'book/cadence.json'); inputs.cadence = ct; inputs.cadenceRef = { url: io.bookBase + 'book/cadence.json', version: ct.version || null, entries: ct.table ? ct.table.length : null, sha256: p1Sha(d, JSON.stringify(ct)) }; } catch (e) { warnings.push('cadence.json unavailable: ' + e.message); }
+  var ws = {}; try { var ap = await io.fetchJson('https://api.kraken.com/0/public/AssetPairs'); Object.keys(ap.result || {}).forEach(function (k) { var v = ap.result[k]; if (v && v.altname && v.wsname) ws[v.altname] = v.wsname; }); } catch (e) { warnings.push('AssetPairs (wsname map) unavailable: ' + e.message); }
+  var opps = [], toSubmit = [], cgIds = Object.keys(frozen.research || {}).sort();
+  for (var i = 0; i < cgIds.length; i++) {
+    var cg = cgIds[i], row = frozen.research[cg], coin = frozen.coins[cg] || {}, ctx = { pair: coin.pair || null, venueEligible: coin.venueEligible !== false && !!coin.pair, meta: coin.meta || null };
+    if (!row) continue;
+    var el = M.P1.eligibility(row, ctx, cfg), fib = p1Fib(M, coin.candles || [], decisionMs);
+    var cstate = controller[cg] || null, cpair = cstate && cstate.pairId ? pairs.filter(function (x) { return x.pairId === cstate.pairId; })[0] : null;
+    var ra = M.P1.rearm(cstate, { price: row.price, activePair: !!(cpair && M.P1.isActive(cpair)), captureId: capture.captureId }, cfg);
+    controller[cg] = ra.state;
+    var ee = row.entryEconomics || {}, zone = Array.isArray(ee.entryZone) ? ee.entryZone : [ee.entryLow, ee.entryHigh];
+    var opp = { cgId: cg, pair: ctx.pair, venue: 'kraken', bookPair: ctx.pair ? (ws[ctx.pair] || null) : null, price: row.price, entryZone: zone, envelopeHi: el.entryZoneGate.override.envelopeHi, entryKind: el.entryKind, distanceToZoneTopPct: el.distanceToZoneTopPct,
+      eligible: el.eligible, reasons: el.reasons, gates: el.gates, entryZoneGate: el.entryZoneGate, geometry: el.geometry, controller: { allow: ra.allow, reason: ra.reason, priorPairId: cstate ? cstate.pairId : null },
+      fib: fib.available ? { available: true, version: fib.version, leg: fib.leg, levels: fib.levels } : { available: false, reason: fib.reason, version: fib.version, leg: fib.leg },
+      zones: null, plan: null, pairId: null, outcome: null, meta: ctx.meta, quoteAtCapture: coin.quote || null, context: { fitId: row.fit ? row.fit.fitId : null, lifecycleState: row.fit ? row.fit.lifecycleState : null, score: row.score == null ? null : row.score, structuralFit: !!row.structuralFit } };
+    if (!el.eligible) opp.outcome = 'ineligible';
+    else if (!ra.allow) opp.outcome = 'controller-blocked';
+    else {
+      try { opp.zones = await p1Zones(d, io, M, inputs, { bookPair: opp.bookPair, altname: ctx.pair, E: el.geometry.L, T: el.geometry.T, decisionMs: decisionMs }); }
+      catch (e) { opp.zones = { available: false, reason: 'zones-error: ' + (e && e.message ? e.message : e), states: [], zones: [] }; }
+      opp.plan = M.P1.ladderPlan(opp.zones, opp.fib.available ? opp.fib : { available: false, reason: opp.fib.reason, levels: [] }, el.geometry, cfg);
+      toSubmit.push({ opp: opp, el: el });
+    }
+    opps.push(opp);
+  }
+  // 3. one submission-time Ticker request for the pairs being issued (after t_dec, as the cohort does), then the pairs
+  var quotes = {};
+  if (toSubmit.length) { try { quotes = await fwdFetchQuotes(io.fetchJson, Array.from(new Set(toSubmit.map(function (x) { return x.opp.pair; }))), frozen.assetPairs || {}, io.now); } catch (e) { warnings.push('Ticker@issuance failed: ' + e.message); } }
+  toSubmit.forEach(function (x) {
+    var o = x.opp, q = quotes[o.pair] || { tSubSec: Math.ceil(io.now() / 1000), missing: true, error: 'no Ticker response' };
+    var pr = M.P1.newPair({ cgId: o.cgId, pair: o.pair, venue: 'kraken', entryKind: o.entryKind, zone: { Elo: o.entryZone[0], Ehi: o.entryZone[1], envelopeHi: o.envelopeHi }, context: { fitId: o.context.fitId, lifecycleState: o.context.lifecycleState, book: o.zones && o.zones.snapshot || null, fib: o.fib.available ? { leg: o.fib.leg, version: o.fib.version } : null, selector: o.zones ? o.zones.selector || null : null, params: inputs.paramsRef } }, x.el.geometry, o.plan, q, capture, cfg);
+    pairs.push(pr); controller[o.cgId] = M.P1.controllerAfterPair(pr); o.pairId = pr.pairId; o.outcome = pr.entry.status === 'open' ? 'pair-filled-at-submission' : pr.entry.status === 'resting' ? 'pair-resting' : pr.entry.status;
+  });
+  // 4. records (append-only generation directory + P1's own CURRENT pointer)
+  var results = pairs.map(function (p) { return M.P1.pairResult(p); });
+  var counts = { opportunities: opps.length, eligible: opps.filter(function (o) { return o.eligible; }).length, controllerBlocked: opps.filter(function (o) { return o.outcome === 'controller-blocked'; }).length, pairsCreated: toSubmit.length,
+    plansWithRung: opps.filter(function (o) { return o.plan && !o.plan.tOnly; }).length, tOnlyByReason: {}, pairsTotal: pairs.length, pairsActive: pairs.filter(function (p) { return M.P1.isActive(p); }).length, pairsUnresolved: results.filter(function (r) { return r.flags.unresolved; }).length, pairsTerminal: results.filter(function (r) { return r.terminal; }).length };
+  opps.forEach(function (o) { if (o.plan && o.plan.tOnly) counts.tOnlyByReason[o.plan.fallbackReason] = (counts.tOnlyByReason[o.plan.fallbackReason] || 0) + 1; });
+  var meta = { generationId: genId, captureId: capture.captureId, date: capture.date, issueTimeUtc: capture.issueTimeUtc, decisionTimeUtc: p1Iso(decisionMs), protocolVersion: capture.protocolVersion || null, study: study, config: { sha256: cfgSha, status: cfg.status, frozenAt: cfg.frozenAt || null, X_low: cfg.X_low, X_high: cfg.X_high, F: cfg.F, Y: cfg.Y, B: cfg.B, horizonHoldingDays: cfg.horizonHoldingDays, costScenario: cfg.costScenario },
+    versions: { p1Core: M.P1.VERSION, sellzoneCore: M.SZ.VERSION, fibCore: M.FIB.VERSION, bookCodec: M.BC.CODEC_VERSION }, inputs: { bookBase: io.bookBase, params: inputs.paramsRef, cadence: inputs.cadenceRef, wsnameMapSize: Object.keys(ws).length }, warnings: warnings };
+  var files = { 'opportunities.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { counts: counts, opportunities: opps }),
+    'pairs.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { counts: counts, pairs: pairs, controller: controller, results: results }),
+    'ledger-T.json': p1Ledger(M, pairs, 'T', meta), 'ledger-L.json': p1Ledger(M, pairs, 'L', meta),
+    'evidence-refs.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { refs: refs }) };
+  d.fs.mkdirSync(gdir, { recursive: true });
+  var shas = {}; Object.keys(files).forEach(function (f) { var txt = JSON.stringify(files[f]); shas[f] = p1Sha(d, txt); fwdAtomicWrite(d, d.path.join(gdir, f), txt); });
+  fwdAtomicWrite(d, P.current, JSON.stringify({ generationId: genId, captureId: capture.captureId, date: capture.date, writtenAt: p1Iso(io.now()), p1Core: M.P1.VERSION, configSha256: cfgSha, study: study, status: 'ok', counts: counts, files: shas }));
+  log('generation ' + genId + ' | opportunities ' + counts.opportunities + ' | eligible ' + counts.eligible + ' | pairs created ' + counts.pairsCreated + ' | plans with rung ' + counts.plansWithRung + ' | T-only ' + JSON.stringify(counts.tOnlyByReason) + ' | pairs total ' + counts.pairsTotal + ' active ' + counts.pairsActive + ' unresolved ' + counts.pairsUnresolved + (warnings.length ? ' | warnings: ' + warnings.join('; ') : ''));
+  return { status: 'ok', counts: counts, files: shas };
+}
+// ===== P1 END ==================================================================================================================================================
 // Kraken AssetPairs (tick_size, lot_decimals, ordermin) + Ticker (last trade) for the designated pairs, fetched once per capture.
 async function fwdFetchKrakenInfo(pairIds) {
   const info = { assetPairs: {}, prices: {}, quotes: {}, priceFetchedAt: null, errors: [] };
@@ -2291,6 +2486,10 @@ async function main() {
         if (r.status === 'canonical') console.log('forward: CANONICAL capture', capture.captureId, 'committed', r.sha || '(no git)', '| episodes', gen.episodes.episodes.length, 'orders', gen.orders.orders.length);
         else if (r.status === 'push-rejected') { console.error('forward: PUSH REJECTED - this run is an extra capture (no rebase, no force):', r.reason); process.exitCode = 1; }
         else console.warn('forward: EXTRA CAPTURE — no forward update (aborted: ' + r.reason + '); this run\'s own partial generation was removed');
+        if (r.status === 'canonical') {   // item 52s P1 Practitioner arm: ONE guarded call, only after the canonical generation is committed and pushed; deep copies of this capture's inputs and clock; a P1 fault never touches production
+          try { await fwdP1Step(fwdDeps, DATA_DIR, p1Clone(capture), p1Clone({ research: fwdResearchByCoin, coins: coinsIn, ev: fwdEv, assetPairs: (fwdInfo && fwdInfo.assetPairs) || {} }), { fetchJson: fwdFetchJson }); }
+          catch (e) { console.error('p1: step failed (production unaffected):', e && e.message ? e.message : e); }
+        }
         }
       }
     } catch (e) {

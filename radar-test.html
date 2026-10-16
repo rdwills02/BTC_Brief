@@ -2985,6 +2985,186 @@ D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recor
 } catch (e) { try { console.warn('item 45 block failed: ' + (e && e.message)); } catch (e2) {} } })();
 /* end item 45 */
 
+/* item 52t — P1 PRACTITIONER panel (display only). Reads data/forward/p1/CURRENT.json and gen-<id>/{opportunities,pairs,ledger-T,ledger-L,evidence-refs}.json written by the 52s capture step;
+   derives nothing new: every number is a field or a count of records. No cohort section, number or test is touched: new DOM only, appended as the last section of the page by wrapping render (the item 45 test pins Exec summary → Accounts adjacency).
+   Contract: Radar Registration Request — P1 Practitioner arm (2026-10-15) + Astra P1 Practitioner Registration Review (2026-10-15). No interval, no decision-rule verdict on the page. */
+var P1DEF = {   /* hover definitions (≤ 6 lines each); the page's TERMS popovers are the cohort's and are not extended */
+  p1Delta: 'Δ (paired difference) = R_L − R_T for one pair.\nR_L: the laddered twin’s net R; R_T: the exit-at-target twin’s net R; R = net P&L ÷ B, same B in both twins.\nBoth twins share one entry fill, quantity, stop and target, so Δ isolates the exit rule.\nA pair with no valid ladder has Δ = 0 by construction (P1-L is identical to P1-T) and still counts.\nΔ is defined only once both twins are closed.',
+  p1B: 'B = USD 225 per pair: 1.5 % of a fixed USD 15,000 reference capital.\nQuantity = floor(B ÷ (L − S)) in lots, identical in both twins; never resized or compounded.\nR = net realised P&L ÷ B.\nB is a normalisation budget: fees, friction and gap stops can make a realised loss larger than 1 R.',
+  p1Tier: 'Tier rule: a pass sell zone coinciding with a fib level (±1 %) becomes a rung by its M lower bound.\nM ≥ 10: sell all remaining; M ≥ 3: sell F = 0.5 of remaining (lot-floored, dust to the final exit); below 3: no rung.\nRung price = fib price rounded up to tick; must be above L, below T and net-positive under the declared costs.\nPrices ascending, each zone used once, identical prices deduplicated, first three, nothing after an all-out rung.\nStale, uncertain, failed or unbounded-M zones are filtered before any slot is used.\nNo valid rung → T-only, with the reason shown (no-confluence | input-unavailable | all-below-tier).',
+  p1Rearm: 'Re-arm rule: one pair per coin.\nNo new pair while either twin is pending, open or unresolved.\nAfter both are terminal, the capture price must leave the frozen zone + envelope and a later capture price must return inside before another pair.\nSampled at capture times only; expiry and rejection re-arm by the same rule.\nA repeated capture never duplicates a pending pair; the prior boundary never moves.',
+  p1Unresolved: 'Unresolved: execution evidence is missing for an interval after entry (or around a resting order); nothing is assumed.\nOHLC-only intervals keep the cohort’s conservative convention; where covered Trades are required there is no fallback.\nAn unresolved twin leaves the pair without Δ; it is never read as “no rung filled”.\nAt the evidence deadline an unresolved pair that could change Δ makes the primary result inconclusive (registered rule).',
+  p1Study: 'study:false = written while the registration is unfrozen (development observations).\nstudy:true = written after the freeze.\nThe two kinds are never pooled: counts and summaries are shown per kind.\nOnly study records enter the registered analysis.'
+};
+function p1tm(key) { var t = P1DEF[key]; return t ? '<span class="tm tmi p1tm" data-p1def="' + esc(key) + '" tabindex="0" title="' + esc(t) + '" aria-label="' + esc('P1 definition: ' + key) + '"></span>' : ''; }
+(function () { try {
+  var P1 = { cur: null, files: {}, err: {}, absent: false, state: 'idle' };
+  var P1_FILES = ['opportunities', 'pairs', 'ledger-T', 'ledger-L', 'evidence-refs'];
+  var st = document.createElement('style'); st.id = 'p1-css';
+  st.textContent = '#sec-p1 details.p1d>summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap}#sec-p1 .p1h{font:600 11.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text2);font-weight:500}' +
+    '#sec-p1 .inner{padding:4px 12px 10px}#sec-p1 .p1flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px;font-size:12px}#sec-p1 .p1flow .fs{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px}' +
+    '#sec-p1 .p1flow .fs b{font-variant-numeric:tabular-nums}#sec-p1 .p1flow .arr{color:var(--muted)}#sec-p1 .p1sub{color:var(--muted);font-size:11.5px;margin:2px 0 8px}' +
+    '#sec-p1 table{font-size:11.5px}#sec-p1 td.num,#sec-p1 th.num{text-align:right;font-variant-numeric:tabular-nums}#sec-p1 tr.p1row{cursor:pointer}#sec-p1 tr.p1row:hover td{background:var(--surface2)}' +
+    '#sec-p1 .p1sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0}#sec-p1 .p1sum .t{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px}#sec-p1 .p1sum .k{color:var(--muted);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}#sec-p1 .p1sum .v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}#sec-p1 .p1sum .d{color:var(--muted);font-size:11px}' +
+    '#sec-p1 .p1chk span{margin-right:12px;font-size:11.5px}#sec-p1 .p1chk .ok{color:var(--bull)}#sec-p1 .p1chk .bad{color:var(--red)}#sec-p1 .p1chk .mut{color:var(--muted)}#sec-p1 .p1none{color:var(--muted);font-size:12px;padding:6px 0}' +
+    '.p1pane table{font-size:11.5px;width:100%;border-collapse:collapse;margin:4px 0 10px}.p1pane td,.p1pane th{padding:3px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.p1pane th{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}.p1pane h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:12px 0 4px}.p1pane .g-pass{color:var(--bull)}.p1pane .g-fail{color:var(--red)}.p1pane .g-unknown{color:var(--muted)}.p1pane code{font-size:11px}';
+  document.head.appendChild(st);
+  function p1Load() {
+    P1 = { cur: null, files: {}, err: {}, absent: false, state: 'loading' };
+    return getJSON('data/forward/p1/CURRENT.json').then(function (cur) {
+      if (!cur || typeof cur.generationId !== 'string') throw new Error('CURRENT.json has no generationId');
+      P1.cur = cur; var base = 'data/forward/p1/gen-' + cur.generationId + '/';
+      return Promise.all(P1_FILES.map(function (f) { return getJSON(base + f + '.json').then(function (j) { P1.files[f] = j; }, function (e) { P1.err[f] = e.message || String(e); }); }));
+    }).then(function () { P1.state = 'ok'; }, function (e) { P1.absent = !!(e && e.status === 404); P1.err.CURRENT = e.message || String(e); P1.state = P1.absent ? 'absent' : 'error'; });
+  }
+  var _load52t = load; load = function () { return _load52t().then(function () { return p1Load(); }, function () { return p1Load(); }); };
+  // ---- read-only accessors ----
+  function opps() { var o = P1.files.opportunities; return o && Array.isArray(o.opportunities) ? o.opportunities : []; }
+  function pairs() { var p = P1.files.pairs; return p && Array.isArray(p.pairs) ? p.pairs : []; }
+  function results() { var p = P1.files.pairs, m = {}; (p && Array.isArray(p.results) ? p.results : []).forEach(function (r) { m[r.pairId] = r; }); return m; }
+  function refs() { var r = P1.files['evidence-refs']; return r && Array.isArray(r.refs) ? r.refs : []; }
+  function active(p) { return p.status === 'pending' || p.status === 'open' || p.status === 'unresolved'; }
+  function px(x) { return isNum(x) ? String(parseFloat(x.toPrecision(10))) : '—'; }   /* record prices at full precision: the page never rounds a frozen level */
+  function fmtR(x) { return isNum(x) ? (x > 0 ? '+' : '') + x.toFixed(3) : '—'; }
+  function pct(x) { return isNum(x) ? (x > 0 ? '+' : '') + x.toFixed(2) + ' %' : '—'; }
+  function qty(p) { var q = p.geometry && p.geometry.qty; return isNum(q) ? String(parseFloat(q.toPrecision(8))) : '—'; }
+  function planText(p) {
+    var pl = p.plan; if (!pl) return '—';
+    if (pl.tOnly) return 'T-only: ' + dash(pl.fallbackReason);
+    return 'rungs: ' + pl.rungs.map(function (r) { return px(r.price) + (r.tier === 'all' ? ' all' : ' ×' + (pl.inputs && isNum(pl.inputs.F) ? pl.inputs.F : 'F')); }).join(', ');
+  }
+  function twinText(p, k) {
+    var tw = p.twins && p.twins[k]; if (!tw) return '—';
+    if (!p.entry || !p.entry.fill) return p.entry ? esc(p.entry.status) : '—';
+    if (!tw.exits.length) return p.status === 'unresolved' ? 'open · unresolved' : 'open';
+    var xs = tw.exits.map(function (x) { return x.reason + (x.rungK != null ? ' #' + x.rungK : ''); }).join(' → ');
+    return (tw.closed ? 'closed: ' : 'open: ') + esc(xs);
+  }
+  function fillDate(p) { return p.entry && p.entry.fill && isNum(p.entry.fill.tSec) ? dateOf(p.entry.fill.tSec) + (p.entry.fill.daily ? ' (bar)' : ' ' + hms(p.entry.fill.tSec).slice(0, 5) + 'Z') : (p.entry ? esc(p.entry.status) : '—'); }
+  function groupReason(reasons) {
+    var r = reasons && reasons[0] || ''; if (!r) return 'other';
+    if (r.indexOf('gate:') === 0) return 'retained-gate fail';
+    if (/^(no-execution-pair|metadata-unavailable)$/.test(r)) return 'no pair / metadata';
+    if (/^(above-envelope|below-entry-zone)$/.test(r)) return 'outside envelope';
+    return 'geometry / inputs';
+  }
+  // ---- header + flow ----
+  function header() {
+    var c = P1.cur, pa = pairs(), rs = results(), cfg = P1.files.opportunities && P1.files.opportunities.config, o = opps();
+    var resolved = pa.filter(function (p) { var r = rs[p.pairId]; return r && isNum(r.delta); }).length, unres = pa.filter(function (p) { return p.status === 'unresolved'; }).length, open = pa.filter(active).length;
+    var status = cfg ? (cfg.status === 'frozen' ? 'frozen since ' + esc(String(cfg.frozenAt || '').slice(0, 10)) : 'unfrozen') : (c && c.study ? 'frozen' : 'unfrozen');
+    return 'P1 · ' + status + ' · gen <span title="' + esc(c.generationId) + '">' + esc(shortGen(c.generationId)) + '</span> · ' + o.length + ' opportunities · ' + o.filter(function (x) { return x.eligible; }).length + ' eligible · ' + pa.length + ' pairs · ' + open + ' open · ' + resolved + ' resolved · ' + unres + ' unresolved';
+  }
+  function flow() {
+    var o = opps(), el = o.filter(function (x) { return x.eligible; }), inel = o.filter(function (x) { return !x.eligible; }), g = {}, all = {};
+    inel.forEach(function (x) { var k = groupReason(x.reasons); g[k] = (g[k] || 0) + 1; (x.reasons || []).forEach(function (r) { all[r] = (all[r] || 0) + 1; }); });
+    var sub = o.filter(function (x) { return x.pairId; }), filled = sub.filter(function (x) { return x.outcome === 'pair-filled-at-submission'; }), rej = sub.filter(function (x) { return /^rejected/.test(x.outcome || ''); });
+    var pa = pairs(), fAll = pa.filter(function (p) { return p.entry && p.entry.fill; }).length, exp = pa.filter(function (p) { return p.entry && p.entry.status === 'expired'; }).length, rejAll = pa.filter(function (p) { return p.entry && /^rejected/.test(p.entry.status); }).length, rest = pa.filter(function (p) { return p.entry && (p.entry.status === 'resting' || p.entry.status === 'pending-unresolved'); }).length;
+    var zone = el.filter(function (x) { return x.entryKind === 'zone'; }).length, env = el.filter(function (x) { return x.entryKind === 'envelope'; }).length;
+    var allTitle = Object.keys(all).sort().map(function (k) { return k + ' ' + all[k]; }).join('\n');
+    var fs = function (label, n, title, id) { return '<span class="fs"' + (title ? ' title="' + esc(title) + '"' : '') + (id ? ' id="' + id + '"' : '') + '>' + label + ' <b>' + n + '</b></span>'; }, arr = '<span class="arr">→</span>';
+    var inelTxt = Object.keys(g).sort().map(function (k) { return k + ' ' + g[k]; }).join(' · ');
+    return '<div class="p1flow" id="p1-flow">' + fs('opportunities', o.length, null, 'p1-f-opps') + arr + fs('eligible', el.length, 'ineligible by FIRST reason: ' + (inelTxt || 'none') + '\n\nall reasons (an opportunity may carry several):\n' + allTitle, 'p1-f-elig') +
+      '<span class="fs mut" id="p1-f-inel" title="' + esc(allTitle) + '">ineligible ' + inel.length + (inelTxt ? ' (' + esc(inelTxt) + ')' : '') + '</span>' + arr + fs('submitted', sub.length, 'pairs created in this capture', 'p1-f-sub') + arr +
+      fs('filled at submission', filled.length, 'fresh ask at or below L at submission (taker, adverse)', 'p1-f-fill') + ' ' + fs('rejected', rej.length, 'ask at or below S at submission', 'p1-f-rej') +
+      '<span class="fs" id="p1-f-kind" title="eligible opportunities by entry kind: zone = Elo ≤ p ≤ Ehi; envelope = Ehi &lt; p ≤ Ehi × (1 + Y)">entryKind zone <b>' + zone + '</b> / envelope <b>' + env + '</b></span></div>' +
+      '<div class="p1sub" id="p1-allpairs">all pairs on record: ' + pa.length + ' · filled ' + fAll + ' · resting ' + rest + ' · expired ' + exp + ' · rejected ' + rejAll + '</div>';
+  }
+  // ---- pairs table ----
+  function table() {
+    var pa = pairs().slice().sort(function (a, b) { var x = a.captureId || '', y = b.captureId || ''; if (x !== y) return x < y ? 1 : -1; return a.pairId < b.pairId ? -1 : 1; }), rs = results();
+    var th = function (t, k, num) { return '<th' + (num ? ' class="num"' : '') + '>' + t + (k ? ' ' + (P1DEF[k] ? p1tm(k) : tm44(k)) : '') + '</th>'; };
+    var h = ['<div class="tablewrap"><table id="p1-table"><thead><tr>' + th('Coin') + th('Fill (UTC)') + th('Kind') + th('L / S / T', null, 1) + th('Qty', null, 1) + th('Plan', 'p1Tier') + th('Twin T') + th('Twin L') + th('R_T', 'R', 1) + th('R_L', 'R', 1) + th('Δ', 'p1Delta', 1) + th('Unres.', 'p1Unresolved') + th('Study', 'p1Study') + '</tr></thead><tbody>'];
+    pa.forEach(function (p) {
+      var r = rs[p.pairId] || {}, g = p.geometry || {}, dcls = isNum(r.delta) ? (r.delta > 0 ? 'pos' : r.delta < 0 ? 'neg' : 'mut') : 'mut';
+      h.push('<tr class="p1row" data-p1pair="' + esc(p.pairId) + '"><td><b>' + esc(p.pair || p.cgId) + '</b><br><span class="mut">' + esc(p.cgId) + '</span></td><td>' + fillDate(p) + '</td><td>' + esc(dash(p.entryKind)) + '</td><td class="num">' + px(g.L) + ' / ' + px(g.S) + ' / ' + px(g.T) + '</td><td class="num">' + qty(p) + '</td><td>' + esc(planText(p)) + '</td><td>' + twinText(p, 'T') + '</td><td>' + twinText(p, 'L') + '</td>' +
+        '<td class="num">' + fmtR(r.R_T) + '</td><td class="num">' + fmtR(r.R_L) + '</td><td class="num ' + dcls + '">' + fmtR(r.delta) + '</td><td>' + (p.status === 'unresolved' ? '<span class="flagtxt">UNRESOLVED</span>' : '—') + '</td><td>' + (p.study ? 'study' : '<span class="mut">dev</span>') + '</td></tr>');
+    });
+    if (!pa.length) h.push('<tr><td colspan="13" class="mut">No pairs on record.</td></tr>');
+    return h.join('') + '</tbody></table></div>';
+  }
+  // ---- summary (per record kind, only when ≥ 1 resolved pair of that kind; never pooled) ----
+  function summaryFor(kind, list) {
+    var rs = results(), res = list.filter(function (p) { var r = rs[p.pairId]; return r && isNum(r.delta); }); if (!res.length) return '';
+    var n = res.length, sum = 0, aff = [], pos = 0, partial = 0, stopRem = 0, finalT = 0;
+    res.forEach(function (p) { var r = rs[p.pairId]; sum += r.delta; if (r.flags && r.flags.affected) aff.push(r.delta); var L = p.twins.L; if (isNum(r.netPnL_L) && r.netPnL_L > 0) pos++; if (L.exits.some(function (x) { return x.rungK != null; })) partial++; if (L.exits.some(function (x) { return /stop/.test(x.reason); })) stopRem++; if (L.exits.some(function (x) { return /target/.test(x.reason); })) finalT++; });
+    var mean = sum / n, affMean = aff.length ? aff.reduce(function (a, b) { return a + b; }, 0) / aff.length : null;
+    var tile = function (k, v, d, id) { return '<div class="t" id="' + id + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div></div>'; };
+    return '<h3 style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:10px 0 2px">' + kind + ' records · summary ' + p1tm('p1Study') + '</h3><div class="p1sum" data-p1sum="' + kind + '">' +
+      tile('mean Δ ' + p1tm('p1Delta'), fmtR(mean), 'n = ' + n + ' resolved pairs (fallback pairs included at Δ = 0)', 'p1-s-delta-' + kind) + tile('affected pairs', aff.length + ' <small>/ ' + n + '</small>', 'pairs with ≥ 1 rung filled · mean Δ ' + fmtR(affMean), 'p1-s-aff-' + kind) +
+      tile('positive net P&amp;L (L)', pos + ' / ' + n, 'numerator: resolved pairs with netPnL_L &gt; 0 · denominator: resolved pairs', 'p1-s-pos-' + kind) + tile('any partial exit', partial + ' / ' + n, 'numerator: L twin with ≥ 1 rung filled · denominator: resolved pairs', 'p1-s-part-' + kind) +
+      tile('stop on remaining', stopRem + ' / ' + n, 'numerator: L twin with a stop exit · denominator: resolved pairs', 'p1-s-stop-' + kind) + tile('final T', finalT + ' / ' + n, 'numerator: L twin with a target exit · denominator: resolved pairs', 'p1-s-t-' + kind) +
+      tile('sampled MFE / MAE', '0 <small>/ ' + n + '</small>', 'coverage: not recorded in the P1 records (A6 disposition pending)', 'p1-s-mfe-' + kind) + '</div><div class="p1sub">No interval and no decision rule here: the one-sided 90 % lower bound of Δ is computed by the registered analysis implementation at the evidence deadline.</div>';
+  }
+  function summary() {
+    var pa = pairs(), study = pa.filter(function (p) { return p.study; }), dev = pa.filter(function (p) { return !p.study; });
+    return '<div class="p1sub" id="p1-kinds">study records: ' + study.length + ' · development records: ' + dev.length + ' ' + p1tm('p1Study') + '</div>' + summaryFor('study', study) + summaryFor('development', dev);
+  }
+  function checks() {
+    var out = [], c = P1.cur, loaded = P1_FILES.filter(function (f) { return P1.files[f]; }).length;
+    out.push(loaded === P1_FILES.length ? { ok: true, t: 'files loaded ' + loaded + '/' + P1_FILES.length } : { ok: false, t: 'files loaded ' + loaded + '/' + P1_FILES.length + ' (missing: ' + P1_FILES.filter(function (f) { return !P1.files[f]; }).map(function (f) { return f + ' ' + (P1.err[f] || ''); }).join(', ') + ')' });
+    if (S.cur) out.push(c.generationId === S.cur.generationId ? { ok: true, t: 'CURRENT.p1 generation = cohort generation' } : { ok: null, t: 'CURRENT.p1 generation ≠ cohort generation (P1 ' + esc(shortGen(c.generationId)) + ' vs cohort ' + esc(shortGen(S.cur.generationId)) + ': P1 lags or leads by a capture)' });
+    var cfg = P1.files.opportunities && P1.files.opportunities.config;
+    if (cfg && cfg.status === 'frozen') { var pin = c.pinned && c.pinned.config; out.push(pin ? (pin === cfg.sha256 ? { ok: true, t: 'config hash matches CURRENT.pinned' } : { ok: false, t: 'config hash ≠ CURRENT.pinned' }) : { ok: false, t: 'frozen but CURRENT.pinned carries no config hash' }); }
+    else out.push({ ok: null, t: 'config unfrozen (' + (cfg ? esc(String(cfg.sha256 || '').slice(0, 8)) : '—') + '): pin check applies after the freeze' });
+    return '<div class="p1chk" id="p1-checks">' + out.map(function (x) { return '<span class="' + (x.ok === true ? 'ok' : x.ok === false ? 'bad' : 'mut') + '">' + (x.ok === true ? '✓ ' : x.ok === false ? '✗ ' : '· ') + x.t + '</span>'; }).join('') + '</div>';
+  }
+  function body() {
+    if (P1.state !== 'ok' || !P1.cur) return '<div class="p1none" id="p1-none">' + (P1.state === 'absent' ? 'no P1 records yet (data/forward/p1/CURRENT.json not found)' : 'P1 records unavailable (' + esc(P1.err.CURRENT || 'not loaded') + ')') + '</div>';
+    return flow() + table() + summary() + checks();
+  }
+  function p1Section() {
+    try {
+      var ok = P1.state === 'ok' && !!P1.cur;
+      return '<section id="sec-p1"><details class="p1d" id="p1-details"><summary><span>P1 Practitioner</span><span class="p1h" id="p1-head">' + (ok ? header() : (P1.state === 'absent' ? 'no P1 records yet' : 'P1 records unavailable')) + '</span> ' + p1tm('p1B') + p1tm('p1Rearm') + '</summary><div class="inner" id="p1-body">' + body() + '</div></details></section>';
+    } catch (e) { return '<section id="sec-p1"><h2>P1 Practitioner</h2><div class="secerr" id="err-p1">P1 panel could not be displayed (' + esc((e && e.message) || e) + ').</div></section>'; }
+  }
+  var _render52t = render;   /* appended after the cohort sections: the item 45 test pins Exec summary → Accounts adjacency, so the P1 section is the last section on the page (flagged in the handoff) */
+  render = function () { _render52t(); try { var main = $('main'); if (main && S.cur && !document.getElementById('sec-p1')) main.insertAdjacentHTML('beforeend', p1Section()); } catch (e) {} };
+  // ---- detail pane ----
+  function gatesHtml(o) {
+    var g = o.gates || {}, order = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C2.entry-zone', 'C1.trend', 'C3.fresh-touch', 'C3.no-recent-break', 'C7.floor', 'C2.width', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
+    var role = function (id) { return id === 'C2.entry-zone' ? 'replaced' : /^(data|struct)\./.test(id) ? 'retained' : 'omitted (diagnostic)'; };
+    var ov = o.entryZoneGate && o.entryZoneGate.override;
+    return '<table id="p1-gates"><thead><tr><th>gate</th><th>role</th><th>logged</th></tr></thead><tbody>' + order.map(function (id) { var s = g[id] || 'unknown'; return '<tr data-gate="' + esc(id) + '"><td><code>' + esc(id) + '</code></td><td>' + role(id) + '</td><td class="g-' + esc(s) + '">' + esc(s) + '</td></tr>'; }).join('') + '</tbody></table>' +
+      (ov ? '<div id="p1-override">P1 entry override (recorded separately from the logged C2.entry-zone result “' + esc(o.entryZoneGate.original) + '”): <code>' + esc(ov.rule) + '</code>, Y = ' + esc(ov.Y) + ' → <b class="g-' + (ov.pass ? 'pass' : 'fail') + '">' + (ov.pass ? 'pass' : 'fail') + '</b> · p ' + px(ov.price) + ' · Elo ' + px(ov.Elo) + ' · Ehi ' + px(ov.Ehi) + ' · envelopeHi ' + px(ov.envelopeHi) + ' · entryKind ' + esc(dash(o.entryKind)) + '</div>' : '');
+  }
+  function planHtml(p) {
+    var pl = p.plan; if (!pl) return '<div class="mut">no plan recorded</div>';
+    var h = ['<div>' + esc(planText(p)) + (pl.remainingAfterLadder != null ? ' · remaining after ladder ' + pl.remainingAfterLadder + ' lots (to the final exit)' : '') + '</div>'];
+    if (pl.rungs && pl.rungs.length) h.push('<table id="p1-rungs"><thead><tr><th>#</th><th>price</th><th>fib</th><th>zone</th><th>M lower</th><th>tier</th><th>lots</th><th>net / unit</th></tr></thead><tbody>' + pl.rungs.map(function (r) { return '<tr><td>' + r.k + '</td><td>' + px(r.price) + '</td><td>' + r.fibRatio + ' (' + px(r.fibPrice) + ')</td><td><code>' + esc(r.zoneId) + '</code></td><td>' + (isNum(r.Mlo) ? r.Mlo.toFixed(2) : '—') + '</td><td>' + esc(r.tier) + '</td><td>' + r.lots + '</td><td>' + px(r.netPerUnit) + '</td></tr>'; }).join('') + '</tbody></table>');
+    var rj = pl.rejected || [];
+    h.push('<div class="mut">rejected candidates: ' + rj.length + '</div>' + (rj.length ? '<table id="p1-rejected"><thead><tr><th>kind</th><th>id / level</th><th>reason</th><th>detail</th></tr></thead><tbody>' + rj.map(function (x) { return '<tr><td>' + esc(x.kind) + '</td><td>' + esc(x.id != null ? x.id : (x.ratio != null ? x.ratio + ' → ' + px(x.rungPrice) : '—')) + '</td><td>' + esc(x.reason) + '</td><td class="mut">' + esc(x.detail != null ? (typeof x.detail === 'object' ? JSON.stringify(x.detail) : x.detail) : '') + '</td></tr>'; }).join('') + '</tbody></table>' : ''));
+    if (pl.inputs) h.push('<div class="mut">inputs: fib ' + (pl.inputs.fibAvailable ? 'available' : 'unavailable (' + esc(dash(pl.inputs.fibReason)) + ')') + ' · zones ' + (pl.inputs.zonesAvailable ? 'available' + (pl.inputs.zoneStates && pl.inputs.zoneStates.length ? ' [' + esc(pl.inputs.zoneStates.join(', ')) + ']' : '') : 'unavailable (' + esc(dash(pl.inputs.zonesReason)) + ')') + ' · X_low ' + pl.inputs.X_low + ' · X_high ' + pl.inputs.X_high + ' · F ' + pl.inputs.F + ' · coincidence ±' + pl.inputs.coincidencePct + ' % · cost ' + esc(pl.inputs.costScenario) + '</div>');
+    return h.join('');
+  }
+  function execsHtml(p, k) {
+    var tw = p.twins && p.twins[k]; if (!tw) return '';
+    var rows = tw.exits.map(function (x) { return '<tr><td>' + esc(x.reason) + (x.rungK != null ? ' #' + x.rungK : '') + '</td><td>' + px(x.price) + '</td><td>' + x.lots + '</td><td>' + (isNum(x.tSec) ? esc(iso(x.tSec)) : (x.interval ? 'bar [' + esc(iso(x.interval[0])) + ', ' + esc(iso(x.interval[1])) + ')' : '—')) + '</td><td>' + (x.holdingDay == null ? '—' : x.holdingDay) + '</td><td>' + usd(x.notionalCents - x.feeCents - x.frictionCents) + '</td></tr>'; });
+    return '<h3>twin ' + k + ' · ' + (tw.closed ? 'closed' : 'open') + ' · remaining ' + tw.remainingLots + ' lots</h3>' + (rows.length ? '<table data-p1exec="' + k + '"><thead><tr><th>execution</th><th>price</th><th>lots</th><th>time / bar interval</th><th>day</th><th>net proceeds</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' : '<div class="mut">no executions</div>');
+  }
+  function openP1(pairId) {
+    var p = pairs().filter(function (x) { return x.pairId === pairId; })[0]; if (!p) return;
+    var o = opps().filter(function (x) { return x.pairId === pairId; })[0] || null, r = results()[pairId] || {}, g = p.geometry || {}, sb = p.submission || {}, f = p.entry && p.entry.fill;
+    var rf = refs().filter(function (x) { return x.cgId === p.cgId || x.pair === p.pair; });
+    paneShell(pairId);
+    $('pane-body').innerHTML = '<div class="p1pane" id="p1-pane">' +
+      '<div class="mut">' + esc(p.pair) + ' · ' + esc(p.cgId) + ' · issued ' + esc(p.issueTimeUtc || p.issueDate) + ' · capture ' + esc(p.captureId) + ' · status <b>' + esc(p.status) + '</b> · ' + (p.study ? 'study record' : 'development record (study:false)') + '</div>' +
+      '<h3>geometry</h3><div>L ' + px(g.L) + ' · S ' + px(g.S) + ' (' + esc(dash(g.stopSource)) + ') · T ' + px(g.T) + ' (' + esc(dash(g.targetSource)) + ') · qty ' + qty(p) + ' (' + g.Q + ' lots × ' + g.lot + ') · B ' + usd(g.Bcents) + ' of ' + usd(isNum(g.referenceCapitalUsd) ? g.referenceCapitalUsd * 100 : null) + ' · tick ' + g.tick + ' · minOrder ' + g.minOrder + '</div>' +
+      '<div class="mut">submission: ' + esc(iso(sb.submittedAtSec)) + ' · quote ' + esc(dash(sb.quoteState || sb.quoteStatus)) + (sb.quote ? ' ask ' + px(sb.quote.ask) : '') + (isNum(sb.quoteAgeMs) ? ' · age ' + sb.quoteAgeMs + ' ms' : '') + (f ? ' · fill ' + esc(f.reason) + ' @ ' + px(f.price) + ' ' + esc(iso(f.tSec)) : ' · entry ' + esc(p.entry ? p.entry.status : '—')) + '</div>' +
+      '<h3>frozen plan ' + p1tm('p1Tier') + '</h3>' + planHtml(p) +
+      '<h3>gates at issue</h3>' + (o ? gatesHtml(o) : '<div class="mut">opportunity record not in this generation’s opportunities.json (pair issued in an earlier capture)</div>') +
+      '<h3>result ' + p1tm('p1Delta') + '</h3><div>netPnL_T ' + usd(r.netPnL_T) + ' · netPnL_L ' + usd(r.netPnL_L) + ' · R_T ' + fmtR(r.R_T) + ' · R_L ' + fmtR(r.R_L) + ' · Δ <b>' + fmtR(r.delta) + '</b>' + (r.flags ? ' · ' + (r.flags.unresolved ? 'UNRESOLVED · ' : '') + (r.flags.fallbackTonly ? 'T-only fallback (' + esc(dash(r.fallbackReason)) + ') · ' : '') + (r.flags.affected ? 'affected (≥ 1 rung filled)' : 'not affected') : '') + '</div>' +
+      execsHtml(p, 'L') + execsHtml(p, 'T') +
+      '<h3>evidence refs (this generation)</h3>' + (rf.length ? '<table id="p1-refs"><thead><tr><th>kind</th><th>source</th><th>interval</th><th>count</th><th>note</th></tr></thead><tbody>' + rf.map(function (x) { return '<tr><td>' + esc(x.kind) + '</td><td>' + esc(dash(x.source)) + '</td><td>' + (isNum(x.fromSec) ? esc(iso(x.fromSec)) + ' → ' + esc(iso(x.toSec)) : '—') + '</td><td>' + (x.count == null ? '—' : x.count) + '</td><td class="mut">' + esc(x.error || x.reason || (x.complete === false ? 'incomplete' : x.ok === false ? 'failed' : '')) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="mut">none recorded for this pair in this generation</div>') +
+      (o && o.zones && o.zones.snapshot ? '<div class="mut">book snapshot ' + esc(o.zones.snapshot.id) + ' · recv ' + esc(o.zones.snapshot.recv) + ' · ' + esc(o.zones.snapshot.batchPath) + ' · baseline ' + esc(o.zones.baseline ? o.zones.baseline.status : '—') + '</div>' : '') +
+      '</div>';
+  }
+  document.addEventListener('click', function (ev) { var row = ev.target && ev.target.closest && ev.target.closest('tr[data-p1pair]'); if (row) openP1(row.getAttribute('data-p1pair')); });
+  window.RT52T = { state: function () { return P1; }, open: openP1, load: p1Load, html: p1Section };
+} catch (e) { try { console.warn('item 52t block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 52t */
+
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target;
