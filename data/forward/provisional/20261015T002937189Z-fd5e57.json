@@ -6,8 +6,8 @@
   "orders.json": "cbc96c1879e3114637304d6cfa01dbb95e766a70601cd8053a65677590520f5f",
   "shadow/orders.json": "39cd3a65e99a1640a569899399fac28af709c8599ee71a320efb6975ce7bd6e0"
  },
- "evidenceCutoffSec": 1792107900,
- "producedAt": "2026-10-15T23:52:36.762Z",
+ "evidenceCutoffSec": 1792108800,
+ "producedAt": "2026-10-16T00:07:32.581Z",
  "orders": [
   {
    "id": "N0-2026-10-13-ethereum",
@@ -25,14 +25,14 @@
      "at": 1792030800,
      "price": 2361.71
     },
-    "markPrice": 2437.19,
-    "markAt": 1792107900,
+    "markPrice": 2439.39,
+    "markAt": 1792108800,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
     "notYetObservedFrom": null,
     "windowsExhausted": false,
-    "partialDay": true
+    "partialDay": false
    }
   },
   {
@@ -51,14 +51,14 @@
      "at": 1792030800,
      "price": 0.31169
     },
-    "markPrice": 0.3552,
-    "markAt": 1792107900,
+    "markPrice": 0.35394,
+    "markAt": 1792108800,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
     "notYetObservedFrom": null,
     "windowsExhausted": false,
-    "partialDay": true
+    "partialDay": false
    }
   },
   {
@@ -73,12 +73,12 @@
     "fillPrice": 0.11268,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.11817,
-    "markAt": 1792107900,
-    "unrealisedCents": 12695,
+    "markPrice": 0.11882,
+    "markAt": 1792108800,
+    "unrealisedCents": 14333,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792107900,
+    "notYetObservedFrom": 1792108800,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -95,14 +95,14 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.047,
-    "markAt": 1792107900,
-    "unrealisedCents": -431,
+    "markPrice": 3.052,
+    "markAt": 1792108800,
+    "unrealisedCents": -13,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792107900,
+    "notYetObservedFrom": 1792108800,
     "windowsExhausted": false,
-    "partialDay": true
+    "partialDay": false
    }
   },
   {
@@ -117,14 +117,14 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.047,
-    "markAt": 1792107900,
-    "unrealisedCents": -439,
+    "markPrice": 3.052,
+    "markAt": 1792108800,
+    "unrealisedCents": -14,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792107900,
+    "notYetObservedFrom": 1792108800,
     "windowsExhausted": false,
-    "partialDay": true
+    "partialDay": false
    }
   },
   {
@@ -139,14 +139,14 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.047,
-    "markAt": 1792107900,
-    "unrealisedCents": -431,
+    "markPrice": 3.052,
+    "markAt": 1792108800,
+    "unrealisedCents": -13,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792107900,
+    "notYetObservedFrom": 1792108800,
     "windowsExhausted": false,
-    "partialDay": true
+    "partialDay": false
    }
   },
   {
@@ -161,12 +161,12 @@
     "fillPrice": 1.7148,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7466,
-    "markAt": 1792107900,
-    "unrealisedCents": 3866,
+    "markPrice": 1.7478,
+    "markAt": 1792108800,
+    "unrealisedCents": 4052,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792107900,
+    "notYetObservedFrom": 1792108800,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -175,27 +175,27 @@
  "coverage": {
   "perPair": {
    "ALGOUSD": {
-    "bars": 280,
+    "bars": 283,
     "gaps": 0,
     "complete": true
    },
    "ATOMUSD": {
-    "bars": 280,
+    "bars": 283,
     "gaps": 0,
     "complete": true
    },
    "CRVUSD": {
-    "bars": 285,
+    "bars": 288,
     "gaps": 0,
     "complete": true
    },
    "ETHUSD": {
-    "bars": 285,
+    "bars": 288,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 285,
+    "bars": 288,
     "gaps": 0,
     "complete": true
    }
