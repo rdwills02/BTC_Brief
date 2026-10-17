@@ -585,22 +585,38 @@
    "low": 0.11313,
    "close": 0.11346,
    "firstObservedAt": "2026-10-17T06:10:09.735Z"
+  },
+  {
+   "id": 1792217100,
+   "open": 0.11339,
+   "high": 0.1137,
+   "low": 0.11339,
+   "close": 0.11351,
+   "firstObservedAt": "2026-10-17T06:22:33.512Z"
+  },
+  {
+   "id": 1792217400,
+   "open": 0.11353,
+   "high": 0.11353,
+   "low": 0.11344,
+   "close": 0.11344,
+   "firstObservedAt": "2026-10-17T06:22:33.512Z"
   }
  ],
  "trades": [],
  "coverage": [
   {
    "fromSec": 1792195200,
-   "toSec": 1792217100,
+   "toSec": 1792217700,
    "complete": true
   }
  ],
  "cursors": {
-  "lastBarId": 1792216800,
+  "lastBarId": 1792217400,
   "lastTradesToSec": null
  },
  "completeness": {
-  "bars": 73,
+  "bars": 75,
   "gaps": 0,
   "complete": true
  }
