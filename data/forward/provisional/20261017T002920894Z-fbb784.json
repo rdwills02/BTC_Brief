@@ -1,13 +1,13 @@
 {
  "schemaVersion": 1,
- "baseGenerationId": "20261016T002907590Z-2d5d5d",
- "baseCaptureId": "20261016T002907590Z-2d5d5d",
+ "baseGenerationId": "20261017T002920894Z-fbb784",
+ "baseCaptureId": "20261017T002920894Z-fbb784",
  "baseChecksums": {
-  "orders.json": "0c3de460487ff7ca53b4b44995679a3253336dccb6c6a273f661d0580548a48f",
-  "shadow/orders.json": "dbbcadc4109bbd3735a631d91c6008ccdf314543280fb78715e0c9e142280e5a"
+  "orders.json": "6cac51763a9d31b49d29715d55ac9bdc61565d0a8445878843094efda68019e0",
+  "shadow/orders.json": "2899c46842ae44571eaa980f08bfd090431a226d80f85da943c92b947a882a74"
  },
- "evidenceCutoffSec": 1792195200,
- "producedAt": "2026-10-17T00:07:35.312Z",
+ "evidenceCutoffSec": 1792197000,
+ "producedAt": "2026-10-17T00:37:38.606Z",
  "orders": [
   {
    "id": "N0-2026-10-15-algorand",
@@ -21,14 +21,14 @@
     "fillPrice": 0.11268,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.11537,
-    "markAt": 1792195200,
-    "unrealisedCents": 5641,
+    "markPrice": 0.11461,
+    "markAt": 1792197000,
+    "unrealisedCents": 3727,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -36,21 +36,21 @@
    "policyId": "N0",
    "cgId": "cosmos",
    "pair": "ATOMUSD",
-   "status": "resting",
+   "status": "open",
    "projected": {
     "status": "open",
     "fillAt": 1792122000,
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7742,
-    "markAt": 1792195200,
-    "unrealisedCents": 6880,
+    "markPrice": 1.7537,
+    "markAt": 1792197000,
+    "unrealisedCents": 3881,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -65,14 +65,14 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.029,
-    "markAt": 1792195200,
-    "unrealisedCents": -1937,
+    "markPrice": 3.005,
+    "markAt": 1792197000,
+    "unrealisedCents": -3944,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -80,21 +80,21 @@
    "policyId": "C1",
    "cgId": "cosmos",
    "pair": "ATOMUSD",
-   "status": "resting",
+   "status": "open",
    "projected": {
     "status": "open",
     "fillAt": 1792122000,
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7742,
-    "markAt": 1792195200,
-    "unrealisedCents": 7032,
+    "markPrice": 1.7537,
+    "markAt": 1792197000,
+    "unrealisedCents": 3966,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -109,14 +109,14 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.029,
-    "markAt": 1792195200,
-    "unrealisedCents": -1971,
+    "markPrice": 3.005,
+    "markAt": 1792197000,
+    "unrealisedCents": -4014,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -124,21 +124,21 @@
    "policyId": "CTRL",
    "cgId": "cosmos",
    "pair": "ATOMUSD",
-   "status": "resting",
+   "status": "open",
    "projected": {
     "status": "open",
     "fillAt": 1792122000,
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7742,
-    "markAt": 1792195200,
-    "unrealisedCents": 7155,
+    "markPrice": 1.7537,
+    "markAt": 1792197000,
+    "unrealisedCents": 4035,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -153,14 +153,14 @@
     "fillPrice": 3.04,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 3.029,
-    "markAt": 1792195200,
-    "unrealisedCents": -1937,
+    "markPrice": 3.005,
+    "markAt": 1792197000,
+    "unrealisedCents": -3944,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -175,31 +175,31 @@
     "fillPrice": 1.7148,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7742,
-    "markAt": 1792195200,
-    "unrealisedCents": 8145,
+    "markPrice": 1.7537,
+    "markAt": 1792197000,
+    "unrealisedCents": 4967,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792195200,
+    "notYetObservedFrom": 1792197000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   }
  ],
  "coverage": {
   "perPair": {
    "ALGOUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "ATOMUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "ICPUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    }
