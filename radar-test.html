@@ -2985,29 +2985,39 @@ D('exProjSuffix', 'proj (status from the projection)', 'The ledger has not recor
 } catch (e) { try { console.warn('item 45 block failed: ' + (e && e.message)); } catch (e2) {} } })();
 /* end item 45 */
 
-/* item 52t — P1 PRACTITIONER panel (display only). Reads data/forward/p1/CURRENT.json and gen-<id>/{opportunities,pairs,ledger-T,ledger-L,evidence-refs}.json written by the 52s capture step;
-   derives nothing new: every number is a field or a count of records. No cohort section, number or test is touched: new DOM only, appended as the last section of the page by wrapping render (the item 45 test pins Exec summary → Accounts adjacency).
-   Contract: Radar Registration Request — P1 Practitioner arm (2026-10-15) + Astra P1 Practitioner Registration Review (2026-10-15). No interval, no decision-rule verdict on the page. */
+/* item 52u — P1 PRACTITIONER re-cut to the cohort's format (display only). Replaces the item 52t flow strip + pairs table; keeps the 52t checks entries and the absent-files path.
+   Reads data/forward/p1/CURRENT.json and gen-<id>/{opportunities,pairs,ledger-T,ledger-L,evidence-refs}.json written by the 52s capture step; derives nothing beyond counts and the per-pair R already in results[].
+   Same components as the cohort, different data source: an EXEC SUMMARY tile block (.ex-tiles / .ex-tile, inserted INSIDE #sec-exec45 directly under the cohort's two tile rows and before the account cards, so the item 45 Exec → Accounts adjacency is untouched),
+   an ORDERS table in the #orders-table column format (appended inside #sec-orders after the cohort table, so the item 44 Orders → Order charts adjacency is untouched), and the cohort's detail-pane layout (.rec figures, marks, evidence) plus Ladder and Gates blocks.
+   Study and development records are never pooled: tiles show the study set once it exists and the development set before that, with the label stating which. No interval, no decision-rule verdict on the page.
+   Contract: Radar Registration Request — P1 Practitioner arm (2026-10-15) + Astra P1 Practitioner Registration Review (2026-10-15). */
 var P1DEF = {   /* hover definitions (≤ 6 lines each); the page's TERMS popovers are the cohort's and are not extended */
-  p1Delta: 'Δ (paired difference) = R_L − R_T for one pair.\nR_L: the laddered twin’s net R; R_T: the exit-at-target twin’s net R; R = net P&L ÷ B, same B in both twins.\nBoth twins share one entry fill, quantity, stop and target, so Δ isolates the exit rule.\nA pair with no valid ladder has Δ = 0 by construction (P1-L is identical to P1-T) and still counts.\nΔ is defined only once both twins are closed.',
+  p1Delta: 'Δ (paired difference) = R_L − R_T for one pair.\nR_L: the laddered twin’s net R; R_T: the exit-at-target twin’s net R; R = net P&L ÷ B, same B in both twins.\nBoth twins share one entry fill, quantity, stop and target, so Δ isolates the exit rule.\nA pair with no valid ladder has Δ = 0 by construction (P1-L is identical to P1-T) and still counts.\nΔ is defined only once both twins are closed; the tile shows the mean over resolved pairs with its n.',
   p1B: 'B = USD 225 per pair: 1.5 % of a fixed USD 15,000 reference capital.\nQuantity = floor(B ÷ (L − S)) in lots, identical in both twins; never resized or compounded.\nR = net realised P&L ÷ B.\nB is a normalisation budget: fees, friction and gap stops can make a realised loss larger than 1 R.',
   p1Tier: 'Tier rule: a pass sell zone coinciding with a fib level (±1 %) becomes a rung by its M lower bound.\nM ≥ 10: sell all remaining; M ≥ 3: sell F = 0.5 of remaining (lot-floored, dust to the final exit); below 3: no rung.\nRung price = fib price rounded up to tick; must be above L, below T and net-positive under the declared costs.\nPrices ascending, each zone used once, identical prices deduplicated, first three, nothing after an all-out rung.\nStale, uncertain, failed or unbounded-M zones are filtered before any slot is used.\nNo valid rung → T-only, with the reason shown (no-confluence | input-unavailable | all-below-tier).',
   p1Rearm: 'Re-arm rule: one pair per coin.\nNo new pair while either twin is pending, open or unresolved.\nAfter both are terminal, the capture price must leave the frozen zone + envelope and a later capture price must return inside before another pair.\nSampled at capture times only; expiry and rejection re-arm by the same rule.\nA repeated capture never duplicates a pending pair; the prior boundary never moves.',
   p1Unresolved: 'Unresolved: execution evidence is missing for an interval after entry (or around a resting order); nothing is assumed.\nOHLC-only intervals keep the cohort’s conservative convention; where covered Trades are required there is no fallback.\nAn unresolved twin leaves the pair without Δ; it is never read as “no rung filled”.\nAt the evidence deadline an unresolved pair that could change Δ makes the primary result inconclusive (registered rule).',
-  p1Study: 'study:false = written while the registration is unfrozen (development observations).\nstudy:true = written after the freeze.\nThe two kinds are never pooled: counts and summaries are shown per kind.\nOnly study records enter the registered analysis.'
+  p1Study: 'study:false = written while the registration is unfrozen (development observations).\nstudy:true = written after the freeze.\nThe two kinds are never pooled: the tiles show the study set once it exists and the development set before that; the label says which.\nOnly study records enter the registered analysis.',
+  p1Stopped: 'STOPPED OUT = pairs whose exit-at-target twin (P1-T) closed at the stop.\nP1-T is the cohort-equivalent twin: one entry, one stop, one target, no partial exits.\nThe laddered twin shares the same stop; its own exits are in the TWIN L column and the detail pane.',
+  p1Target: 'TARGET HIT = pairs whose exit-at-target twin (P1-T) closed at the target.\nP1-T is the cohort-equivalent twin: one entry, one stop, one target, no partial exits.\nThe laddered twin’s partial exits are in the TWIN L column and the detail pane.',
+  p1Open: 'OPEN = pairs filled and still holding (P1-T not closed), unresolved pairs included.\nCounted once per pair, not per twin.',
+  p1Resting: 'RESTING = pairs whose entry order is waiting at L and has not filled.\nThe order rests until the end of D+2; if the price never comes down to L it lapses (expired).',
+  p1Win: 'WIN RATE = w / resolved.\nresolved: pairs with both twins closed (Δ defined in results[]).\nw: resolved pairs whose exit-at-target twin (P1-T) closed with net P&L > 0 after fees.\nNo percentage: numerator and denominator are the record counts.',
+  p1Rungs: 'RUNGS HIT = pairs with ≥ 1 partial exit filled / pairs whose frozen plan has a ladder (≥ 1 rung).\nSubtitle: filled rungs over planned rungs across those pairs.\nT-only pairs have no ladder and are outside both counts.',
+  p1Kind: 'KIND = entry kind at issue: zone (Elo ≤ p ≤ Ehi) or envelope (Ehi < p ≤ Ehi × (1 + Y), Y = 0.02).\nThe envelope is P1’s entry override, recorded separately from the logged C2.entry-zone gate result.',
+  p1Plan: 'PLAN = the frozen exit plan of the laddered twin (P1-L): T-only (no valid rung; the reason is shown beneath) or n rungs (≤ 3).\nFrozen at issue, never re-fit; the rungs, tiers and rejected candidates are in the detail pane’s Ladder block.',
+  p1TwinL: 'TWIN L = status of the laddered twin: resting / open (rungs hit so far) / closed (exit sequence) / unresolved.\nIt shares the entry fill, quantity, stop and target with P1-T; only the exit rule differs.\nThe base columns (Status, Fill, Exit, Result) describe P1-T, the cohort-equivalent twin.'
 };
-function p1tm(key) { var t = P1DEF[key]; return t ? '<span class="tm tmi p1tm" data-p1def="' + esc(key) + '" tabindex="0" title="' + esc(t) + '" aria-label="' + esc('P1 definition: ' + key) + '"></span>' : ''; }
+function p1tm(key, title) { var t = title || P1DEF[key]; return t ? '<span class="tm tmi p1tm" data-p1def="' + esc(key) + '" tabindex="0" title="' + esc(t) + '" aria-label="' + esc('P1 definition: ' + key) + '"></span>' : ''; }
 (function () { try {
   var P1 = { cur: null, files: {}, err: {}, absent: false, state: 'idle' };
   var P1_FILES = ['opportunities', 'pairs', 'ledger-T', 'ledger-L', 'evidence-refs'];
   var st = document.createElement('style'); st.id = 'p1-css';
-  st.textContent = '#sec-p1 details.p1d>summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap}#sec-p1 .p1h{font:600 11.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text2);font-weight:500}' +
-    '#sec-p1 .inner{padding:4px 12px 10px}#sec-p1 .p1flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px;font-size:12px}#sec-p1 .p1flow .fs{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px}' +
-    '#sec-p1 .p1flow .fs b{font-variant-numeric:tabular-nums}#sec-p1 .p1flow .arr{color:var(--muted)}#sec-p1 .p1sub{color:var(--muted);font-size:11.5px;margin:2px 0 8px}' +
-    '#sec-p1 table{font-size:11.5px}#sec-p1 td.num,#sec-p1 th.num{text-align:right;font-variant-numeric:tabular-nums}#sec-p1 tr.p1row{cursor:pointer}#sec-p1 tr.p1row:hover td{background:var(--surface2)}' +
-    '#sec-p1 .p1sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0}#sec-p1 .p1sum .t{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px}#sec-p1 .p1sum .k{color:var(--muted);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}#sec-p1 .p1sum .v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}#sec-p1 .p1sum .d{color:var(--muted);font-size:11px}' +
-    '#sec-p1 .p1chk span{margin-right:12px;font-size:11.5px}#sec-p1 .p1chk .ok{color:var(--bull)}#sec-p1 .p1chk .bad{color:var(--red)}#sec-p1 .p1chk .mut{color:var(--muted)}#sec-p1 .p1none{color:var(--muted);font-size:12px;padding:6px 0}' +
-    '.p1pane table{font-size:11.5px;width:100%;border-collapse:collapse;margin:4px 0 10px}.p1pane td,.p1pane th{padding:3px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.p1pane th{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}.p1pane h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:12px 0 4px}.p1pane .g-pass{color:var(--bull)}.p1pane .g-fail{color:var(--red)}.p1pane .g-unknown{color:var(--muted)}.p1pane code{font-size:11px}';
+  st.textContent = '#p1-exec{margin:2px 0 14px;padding-top:10px;border-top:1px dashed var(--border2)}#p1-exec .p1head{font:600 11.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text2);font-weight:500;margin-bottom:2px}' +
+    '#p1-exec .exsub{margin:0 0 10px}.ex-tiles.p1tiles{grid-template-columns:repeat(8,1fr)}@media(max-width:900px){.ex-tiles.p1tiles{grid-template-columns:repeat(4,1fr)}}@media(max-width:560px){.ex-tiles.p1tiles{grid-template-columns:repeat(2,1fr)}}' +
+    '.p1chk span{margin-right:12px;font-size:11.5px}.p1chk .ok{color:var(--bull)}.p1chk .bad{color:var(--red)}.p1chk .mut{color:var(--muted)}.p1none{color:var(--muted);font-size:12px;padding:6px 0}' +
+    '#p1-orders{margin-top:18px}#p1-table td.num,#p1-table th.num{text-align:right;font-variant-numeric:tabular-nums}' +
+    '.p1pane .g-pass{color:var(--bull)}.p1pane .g-fail{color:var(--red)}.p1pane .g-unknown{color:var(--muted)}.p1pane code{font-size:11px}.p1pane .rec th.sub{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:500}';
   document.head.appendChild(st);
   function p1Load() {
     P1 = { cur: null, files: {}, err: {}, absent: false, state: 'loading' };
@@ -3017,30 +3027,20 @@ function p1tm(key) { var t = P1DEF[key]; return t ? '<span class="tm tmi p1tm" d
       return Promise.all(P1_FILES.map(function (f) { return getJSON(base + f + '.json').then(function (j) { P1.files[f] = j; }, function (e) { P1.err[f] = e.message || String(e); }); }));
     }).then(function () { P1.state = 'ok'; }, function (e) { P1.absent = !!(e && e.status === 404); P1.err.CURRENT = e.message || String(e); P1.state = P1.absent ? 'absent' : 'error'; });
   }
-  var _load52t = load; load = function () { return _load52t().then(function () { return p1Load(); }, function () { return p1Load(); }); };
+  var _load52u = load; load = function () { return _load52u().then(function () { return p1Load(); }, function () { return p1Load(); }); };
   // ---- read-only accessors ----
   function opps() { var o = P1.files.opportunities; return o && Array.isArray(o.opportunities) ? o.opportunities : []; }
   function pairs() { var p = P1.files.pairs; return p && Array.isArray(p.pairs) ? p.pairs : []; }
   function results() { var p = P1.files.pairs, m = {}; (p && Array.isArray(p.results) ? p.results : []).forEach(function (r) { m[r.pairId] = r; }); return m; }
   function refs() { var r = P1.files['evidence-refs']; return r && Array.isArray(r.refs) ? r.refs : []; }
-  function active(p) { return p.status === 'pending' || p.status === 'open' || p.status === 'unresolved'; }
-  function px(x) { return isNum(x) ? String(parseFloat(x.toPrecision(10))) : '—'; }   /* record prices at full precision: the page never rounds a frozen level */
+  function cfgOf() { var o = P1.files.opportunities; return o && o.config ? o.config : null; }
+  function px(x) { return isNum(x) ? String(parseFloat(x.toPrecision(10))) : '—'; }   /* record prices at full precision in the detail: the page never rounds a frozen level */
   function fmtR(x) { return isNum(x) ? (x > 0 ? '+' : '') + x.toFixed(3) : '—'; }
-  function pct(x) { return isNum(x) ? (x > 0 ? '+' : '') + x.toFixed(2) + ' %' : '—'; }
-  function qty(p) { var q = p.geometry && p.geometry.qty; return isNum(q) ? String(parseFloat(q.toPrecision(8))) : '—'; }
-  function planText(p) {
-    var pl = p.plan; if (!pl) return '—';
-    if (pl.tOnly) return 'T-only: ' + dash(pl.fallbackReason);
-    return 'rungs: ' + pl.rungs.map(function (r) { return px(r.price) + (r.tier === 'all' ? ' all' : ' ×' + (pl.inputs && isNum(pl.inputs.F) ? pl.inputs.F : 'F')); }).join(', ');
-  }
-  function twinText(p, k) {
-    var tw = p.twins && p.twins[k]; if (!tw) return '—';
-    if (!p.entry || !p.entry.fill) return p.entry ? esc(p.entry.status) : '—';
-    if (!tw.exits.length) return p.status === 'unresolved' ? 'open · unresolved' : 'open';
-    var xs = tw.exits.map(function (x) { return x.reason + (x.rungK != null ? ' #' + x.rungK : ''); }).join(' → ');
-    return (tw.closed ? 'closed: ' : 'open: ') + esc(xs);
-  }
-  function fillDate(p) { return p.entry && p.entry.fill && isNum(p.entry.fill.tSec) ? dateOf(p.entry.fill.tSec) + (p.entry.fill.daily ? ' (bar)' : ' ' + hms(p.entry.fill.tSec).slice(0, 5) + 'Z') : (p.entry ? esc(p.entry.status) : '—'); }
+  function rtxt(x) { return isNum(x) ? (x < 0 ? '−' : '') + Math.abs(x).toFixed(2) : '—'; }
+  function qtyOf(p) { var q = p.geometry && p.geometry.qty; return isNum(q) ? String(parseFloat(q.toPrecision(8))) : '—'; }
+  function mmdd(sec) { return isNum(sec) ? dateOf(sec).slice(5) : null; }
+  function sorted() { return pairs().slice().sort(function (a, b) { var x = a.issueTimeUtc || '', y = b.issueTimeUtc || ''; if (x !== y) return x < y ? 1 : -1; return a.pairId < b.pairId ? -1 : 1; }); }
+  function plist(list, fmt) { var m = {}, ord = []; list.forEach(function (x) { var k = fmt(x); if (!(k in m)) { m[k] = 0; ord.push(k); } m[k]++; }); return ord.map(function (k) { return k + (m[k] > 1 ? ' ×' + m[k] : ''); }).join(' · '); }
   function groupReason(reasons) {
     var r = reasons && reasons[0] || ''; if (!r) return 'other';
     if (r.indexOf('gate:') === 0) return 'retained-gate fail';
@@ -3048,122 +3048,199 @@ function p1tm(key) { var t = P1DEF[key]; return t ? '<span class="tm tmi p1tm" d
     if (/^(above-envelope|below-entry-zone)$/.test(r)) return 'outside envelope';
     return 'geometry / inputs';
   }
-  // ---- header + flow ----
-  function header() {
-    var c = P1.cur, pa = pairs(), rs = results(), cfg = P1.files.opportunities && P1.files.opportunities.config, o = opps();
-    var resolved = pa.filter(function (p) { var r = rs[p.pairId]; return r && isNum(r.delta); }).length, unres = pa.filter(function (p) { return p.status === 'unresolved'; }).length, open = pa.filter(active).length;
-    var status = cfg ? (cfg.status === 'frozen' ? 'frozen since ' + esc(String(cfg.frozenAt || '').slice(0, 10)) : 'unfrozen') : (c && c.study ? 'frozen' : 'unfrozen');
-    return 'P1 · ' + status + ' · gen <span title="' + esc(c.generationId) + '">' + esc(shortGen(c.generationId)) + '</span> · ' + o.length + ' opportunities · ' + o.filter(function (x) { return x.eligible; }).length + ' eligible · ' + pa.length + ' pairs · ' + open + ' open · ' + resolved + ' resolved · ' + unres + ' unresolved';
+  /* effective state of one pair, read like the cohort reads an order: the exit-at-target twin (P1-T) is the cohort-equivalent order; the laddered twin is reported beside it */
+  function effP(p) {
+    var tw = p.twins && p.twins.T, ex = tw && tw.exits && tw.exits.length ? tw.exits[tw.exits.length - 1] : null, r = results()[p.pairId] || {};
+    var filled = !!(p.entry && p.entry.fill), est = p.entry ? String(p.entry.status || '—') : '—';
+    var e = { p: p, r: r, exit: ex, key: 'other', text: est, filled: filled };
+    if (tw && tw.closed && ex) { e.key = ex.reason === 'stop' ? 'stop' : ex.reason === 'target' ? 'target' : ex.reason === 'horizon' ? 'horizon' : 'exitother'; e.text = 'exited'; }
+    else if (filled) { e.key = 'open'; e.text = 'open'; }
+    else if (p.entry && (est === 'resting' || est === 'pending-unresolved')) { e.key = 'rest'; }
+    e.exitAt = ex ? (isNum(ex.tSec) ? ex.tSec : (ex.interval && isNum(ex.interval[0]) ? ex.interval[0] : (isNum(ex.barId) ? ex.barId : null))) : null;
+    e.resolved = isNum(r.delta); e.win = e.resolved && isNum(r.netPnL_T) && r.netPnL_T > 0;
+    e.unresolved = p.status === 'unresolved' || !!(r.flags && r.flags.unresolved);
+    var L = p.twins && p.twins.L, planned = p.plan && !p.plan.tOnly && Array.isArray(p.plan.rungs) ? p.plan.rungs.length : 0;
+    e.planned = planned; e.rungsHit = L && Array.isArray(L.exits) ? L.exits.filter(function (x) { return x.rungK != null; }).length : 0;
+    return e;
   }
-  function flow() {
-    var o = opps(), el = o.filter(function (x) { return x.eligible; }), inel = o.filter(function (x) { return !x.eligible; }), g = {}, all = {};
-    inel.forEach(function (x) { var k = groupReason(x.reasons); g[k] = (g[k] || 0) + 1; (x.reasons || []).forEach(function (r) { all[r] = (all[r] || 0) + 1; }); });
-    var sub = o.filter(function (x) { return x.pairId; }), filled = sub.filter(function (x) { return x.outcome === 'pair-filled-at-submission'; }), rej = sub.filter(function (x) { return /^rejected/.test(x.outcome || ''); });
-    var pa = pairs(), fAll = pa.filter(function (p) { return p.entry && p.entry.fill; }).length, exp = pa.filter(function (p) { return p.entry && p.entry.status === 'expired'; }).length, rejAll = pa.filter(function (p) { return p.entry && /^rejected/.test(p.entry.status); }).length, rest = pa.filter(function (p) { return p.entry && (p.entry.status === 'resting' || p.entry.status === 'pending-unresolved'); }).length;
-    var zone = el.filter(function (x) { return x.entryKind === 'zone'; }).length, env = el.filter(function (x) { return x.entryKind === 'envelope'; }).length;
-    var allTitle = Object.keys(all).sort().map(function (k) { return k + ' ' + all[k]; }).join('\n');
-    var fs = function (label, n, title, id) { return '<span class="fs"' + (title ? ' title="' + esc(title) + '"' : '') + (id ? ' id="' + id + '"' : '') + '>' + label + ' <b>' + n + '</b></span>'; }, arr = '<span class="arr">→</span>';
-    var inelTxt = Object.keys(g).sort().map(function (k) { return k + ' ' + g[k]; }).join(' · ');
-    return '<div class="p1flow" id="p1-flow">' + fs('opportunities', o.length, null, 'p1-f-opps') + arr + fs('eligible', el.length, 'ineligible by FIRST reason: ' + (inelTxt || 'none') + '\n\nall reasons (an opportunity may carry several):\n' + allTitle, 'p1-f-elig') +
-      '<span class="fs mut" id="p1-f-inel" title="' + esc(allTitle) + '">ineligible ' + inel.length + (inelTxt ? ' (' + esc(inelTxt) + ')' : '') + '</span>' + arr + fs('submitted', sub.length, 'pairs created in this capture', 'p1-f-sub') + arr +
-      fs('filled at submission', filled.length, 'fresh ask at or below L at submission (taker, adverse)', 'p1-f-fill') + ' ' + fs('rejected', rej.length, 'ask at or below S at submission', 'p1-f-rej') +
-      '<span class="fs" id="p1-f-kind" title="eligible opportunities by entry kind: zone = Elo ≤ p ≤ Ehi; envelope = Ehi &lt; p ≤ Ehi × (1 + Y)">entryKind zone <b>' + zone + '</b> / envelope <b>' + env + '</b></span></div>' +
-      '<div class="p1sub" id="p1-allpairs">all pairs on record: ' + pa.length + ' · filled ' + fAll + ' · resting ' + rest + ' · expired ' + exp + ' · rejected ' + rejAll + '</div>';
+  function recordSet() { var pa = pairs(), study = pa.filter(function (p) { return p.study; }), dev = pa.filter(function (p) { return !p.study; }); return { study: study, dev: dev, kind: study.length ? 'study' : 'development', list: study.length ? study : dev }; }
+  function statusLine() { var cfg = cfgOf(), c = P1.cur; return cfg ? (cfg.status === 'frozen' ? 'frozen since ' + esc(String(cfg.frozenAt || '').slice(0, 10)) : 'unfrozen') : (c && c.study ? 'frozen' : 'unfrozen'); }
+  // ---- EXEC SUMMARY strip (second row inside #sec-exec45) ----
+  function ordersHover(set) {
+    var o = opps(), el = o.filter(function (x) { return x.eligible; }), inel = o.filter(function (x) { return !x.eligible; }), g = {};
+    inel.forEach(function (x) { var k = groupReason(x.reasons); g[k] = (g[k] || 0) + 1; });
+    var sub = o.filter(function (x) { return x.pairId; }), fillAtSub = sub.filter(function (x) { return x.outcome === 'pair-filled-at-submission'; }).length, rejAtSub = sub.filter(function (x) { return /^rejected/.test(x.outcome || ''); }).length, blocked = o.filter(function (x) { return x.outcome === 'controller-blocked'; }).length;
+    var pa = pairs(), fAll = pa.filter(function (p) { return p.entry && p.entry.fill; }).length, exp = pa.filter(function (p) { return p.entry && p.entry.status === 'expired'; }).length, rejAll = pa.filter(function (p) { return p.entry && /^rejected/.test(p.entry.status); }).length, rest = pa.filter(function (p) { return p.entry && !p.entry.fill && (p.entry.status === 'resting' || p.entry.status === 'pending-unresolved'); }).length;
+    return 'ORDERS = pairs issued in the ' + set.kind + ' set (one pair = twin P1-T + twin P1-L on one entry fill); subtitle: pairs by entry kind.\n' +
+      'This capture: opportunities ' + o.length + ' → eligible ' + el.length + ' (ineligible ' + inel.length + (inel.length ? ': ' + Object.keys(g).sort().map(function (k) { return k + ' ' + g[k]; }).join(' · ') : '') + ')' + (blocked ? ' · controller-blocked ' + blocked : '') + '\n' +
+      'submitted ' + sub.length + ' · filled at submission ' + fillAtSub + ' · rejected ' + rejAtSub + '\n' +
+      'All pairs on record (' + pa.length + '): filled ' + fAll + ' · resting ' + rest + ' · expired ' + exp + ' · rejected ' + rejAll + '\n' +
+      'Study records: ' + set.study.length + ' · development records: ' + set.dev.length + ' (never pooled).';
   }
-  // ---- pairs table ----
-  function table() {
-    var pa = pairs().slice().sort(function (a, b) { var x = a.captureId || '', y = b.captureId || ''; if (x !== y) return x < y ? 1 : -1; return a.pairId < b.pairId ? -1 : 1; }), rs = results();
-    var th = function (t, k, num) { return '<th' + (num ? ' class="num"' : '') + '>' + t + (k ? ' ' + (P1DEF[k] ? p1tm(k) : tm44(k)) : '') + '</th>'; };
-    var h = ['<div class="tablewrap"><table id="p1-table"><thead><tr>' + th('Coin') + th('Fill (UTC)') + th('Kind') + th('L / S / T', null, 1) + th('Qty', null, 1) + th('Plan', 'p1Tier') + th('Twin T') + th('Twin L') + th('R_T', 'R', 1) + th('R_L', 'R', 1) + th('Δ', 'p1Delta', 1) + th('Unres.', 'p1Unresolved') + th('Study', 'p1Study') + '</tr></thead><tbody>'];
-    pa.forEach(function (p) {
-      var r = rs[p.pairId] || {}, g = p.geometry || {}, dcls = isNum(r.delta) ? (r.delta > 0 ? 'pos' : r.delta < 0 ? 'neg' : 'mut') : 'mut';
-      h.push('<tr class="p1row" data-p1pair="' + esc(p.pairId) + '"><td><b>' + esc(p.pair || p.cgId) + '</b><br><span class="mut">' + esc(p.cgId) + '</span></td><td>' + fillDate(p) + '</td><td>' + esc(dash(p.entryKind)) + '</td><td class="num">' + px(g.L) + ' / ' + px(g.S) + ' / ' + px(g.T) + '</td><td class="num">' + qty(p) + '</td><td>' + esc(planText(p)) + '</td><td>' + twinText(p, 'T') + '</td><td>' + twinText(p, 'L') + '</td>' +
-        '<td class="num">' + fmtR(r.R_T) + '</td><td class="num">' + fmtR(r.R_L) + '</td><td class="num ' + dcls + '">' + fmtR(r.delta) + '</td><td>' + (p.status === 'unresolved' ? '<span class="flagtxt">UNRESOLVED</span>' : '—') + '</td><td>' + (p.study ? 'study' : '<span class="mut">dev</span>') + '</td></tr>');
-    });
-    if (!pa.length) h.push('<tr><td colspan="13" class="mut">No pairs on record.</td></tr>');
-    return h.join('') + '</tbody></table></div>';
-  }
-  // ---- summary (per record kind, only when ≥ 1 resolved pair of that kind; never pooled) ----
-  function summaryFor(kind, list) {
-    var rs = results(), res = list.filter(function (p) { var r = rs[p.pairId]; return r && isNum(r.delta); }); if (!res.length) return '';
-    var n = res.length, sum = 0, aff = [], pos = 0, partial = 0, stopRem = 0, finalT = 0;
-    res.forEach(function (p) { var r = rs[p.pairId]; sum += r.delta; if (r.flags && r.flags.affected) aff.push(r.delta); var L = p.twins.L; if (isNum(r.netPnL_L) && r.netPnL_L > 0) pos++; if (L.exits.some(function (x) { return x.rungK != null; })) partial++; if (L.exits.some(function (x) { return /stop/.test(x.reason); })) stopRem++; if (L.exits.some(function (x) { return /target/.test(x.reason); })) finalT++; });
-    var mean = sum / n, affMean = aff.length ? aff.reduce(function (a, b) { return a + b; }, 0) / aff.length : null;
-    var tile = function (k, v, d, id) { return '<div class="t" id="' + id + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div></div>'; };
-    return '<h3 style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:10px 0 2px">' + kind + ' records · summary ' + p1tm('p1Study') + '</h3><div class="p1sum" data-p1sum="' + kind + '">' +
-      tile('mean Δ ' + p1tm('p1Delta'), fmtR(mean), 'n = ' + n + ' resolved pairs (fallback pairs included at Δ = 0)', 'p1-s-delta-' + kind) + tile('affected pairs', aff.length + ' <small>/ ' + n + '</small>', 'pairs with ≥ 1 rung filled · mean Δ ' + fmtR(affMean), 'p1-s-aff-' + kind) +
-      tile('positive net P&amp;L (L)', pos + ' / ' + n, 'numerator: resolved pairs with netPnL_L &gt; 0 · denominator: resolved pairs', 'p1-s-pos-' + kind) + tile('any partial exit', partial + ' / ' + n, 'numerator: L twin with ≥ 1 rung filled · denominator: resolved pairs', 'p1-s-part-' + kind) +
-      tile('stop on remaining', stopRem + ' / ' + n, 'numerator: L twin with a stop exit · denominator: resolved pairs', 'p1-s-stop-' + kind) + tile('final T', finalT + ' / ' + n, 'numerator: L twin with a target exit · denominator: resolved pairs', 'p1-s-t-' + kind) +
-      tile('sampled MFE / MAE', '0 <small>/ ' + n + '</small>', 'coverage: not recorded in the P1 records (A6 disposition pending)', 'p1-s-mfe-' + kind) + '</div><div class="p1sub">No interval and no decision rule here: the one-sided 90 % lower bound of Δ is computed by the registered analysis implementation at the evidence deadline.</div>';
-  }
-  function summary() {
-    var pa = pairs(), study = pa.filter(function (p) { return p.study; }), dev = pa.filter(function (p) { return !p.study; });
-    return '<div class="p1sub" id="p1-kinds">study records: ' + study.length + ' · development records: ' + dev.length + ' ' + p1tm('p1Study') + '</div>' + summaryFor('study', study) + summaryFor('development', dev);
+  function tileP(key, label, hoverKey, hoverText, vcls, v, d) { return '<div class="ex-tile" data-p1tile="' + key + '"><div class="k">' + esc(label) + ' ' + p1tm(hoverKey, hoverText) + '</div><div class="v ' + vcls + '">' + v + '</div><div class="d">' + d + '</div></div>'; }
+  function execTiles() {
+    var set = recordSet(), E = set.list.map(effP), sym = function (e) { return sym42(e.p); };
+    var stop = E.filter(function (e) { return e.key === 'stop'; }), tgt = E.filter(function (e) { return e.key === 'target'; }), open = E.filter(function (e) { return e.key === 'open'; }), rest = E.filter(function (e) { return e.key === 'rest'; });
+    var res = E.filter(function (e) { return e.resolved; }), wins = res.filter(function (e) { return e.win; });
+    var lad = E.filter(function (e) { return e.planned > 0; }), hit = lad.filter(function (e) { return e.rungsHit > 0; }), rPlanned = lad.reduce(function (a, e) { return a + e.planned; }, 0), rHit = lad.reduce(function (a, e) { return a + e.rungsHit; }, 0);
+    var zone = set.list.filter(function (p) { return p.entryKind === 'zone'; }).length, env = set.list.filter(function (p) { return p.entryKind === 'envelope'; }).length;
+    var dates = function (L) { return L.map(function (e) { return mmdd(e.exitAt); }).filter(Boolean).filter(function (x, i, a) { return a.indexOf(x) === i; }).sort(); };
+    var sd = dates(stop), td = dates(tgt), exp = rest.map(function (e) { return e.p.entry && e.p.entry.expiryAtSec; }).filter(isNum).sort(function (a, b) { return a - b; })[0];
+    var mean = res.length ? res.reduce(function (a, e) { return a + e.r.delta; }, 0) / res.length : null;
+    return '<div class="ex-tiles p1tiles" id="p1-tiles">' +
+      tileP('orders', 'Orders', 'p1Orders', ordersHover(set), '', set.list.length, 'zone ' + zone + ' · envelope ' + env) +
+      tileP('stopped', 'Stopped out', 'p1Stopped', null, stop.length ? 'down' : '', stop.length, stop.length ? esc(plist(stop, sym) + (sd.length ? ' (' + sd.join(', ') + ')' : '')) : '—') +
+      tileP('target', 'Target hit', 'p1Target', null, tgt.length ? 'up' : '', tgt.length, tgt.length ? esc(plist(tgt, sym) + (td.length ? ' (' + td.join(', ') + ')' : '')) : '—') +
+      tileP('open', 'Open', 'p1Open', null, open.length ? 'amber' : '', open.length, open.length ? esc(plist(open, sym)) : '—') +
+      tileP('resting', 'Resting', 'p1Resting', null, '', rest.length, rest.length ? esc(plist(rest, sym) + (exp != null ? ' · expires ' + mmdd(exp) : '')) : '—') +
+      tileP('win', 'Win rate', 'p1Win', null, '', wins.length + ' / ' + res.length, 'w / resolved pairs') +
+      tileP('rungs', 'Rungs hit', 'p1Rungs', null, '', hit.length + ' / ' + lad.length, lad.length ? rHit + ' of ' + rPlanned + ' planned rungs filled' : 'no pair with a ladder') +
+      tileP('delta', 'Δ', 'p1Delta', null, res.length ? (mean > 0 ? 'up' : mean < 0 ? 'down' : 'mut') : 'mut', res.length ? fmtR(mean) : '—', res.length ? 'mean R_L − R_T · n = ' + res.length + ' resolved' : 'no resolved pair yet · n = 0') +
+      '</div>';
   }
   function checks() {
     var out = [], c = P1.cur, loaded = P1_FILES.filter(function (f) { return P1.files[f]; }).length;
     out.push(loaded === P1_FILES.length ? { ok: true, t: 'files loaded ' + loaded + '/' + P1_FILES.length } : { ok: false, t: 'files loaded ' + loaded + '/' + P1_FILES.length + ' (missing: ' + P1_FILES.filter(function (f) { return !P1.files[f]; }).map(function (f) { return f + ' ' + (P1.err[f] || ''); }).join(', ') + ')' });
     if (S.cur) out.push(c.generationId === S.cur.generationId ? { ok: true, t: 'CURRENT.p1 generation = cohort generation' } : { ok: null, t: 'CURRENT.p1 generation ≠ cohort generation (P1 ' + esc(shortGen(c.generationId)) + ' vs cohort ' + esc(shortGen(S.cur.generationId)) + ': P1 lags or leads by a capture)' });
-    var cfg = P1.files.opportunities && P1.files.opportunities.config;
+    var cfg = cfgOf();
     if (cfg && cfg.status === 'frozen') { var pin = c.pinned && c.pinned.config; out.push(pin ? (pin === cfg.sha256 ? { ok: true, t: 'config hash matches CURRENT.pinned' } : { ok: false, t: 'config hash ≠ CURRENT.pinned' }) : { ok: false, t: 'frozen but CURRENT.pinned carries no config hash' }); }
     else out.push({ ok: null, t: 'config unfrozen (' + (cfg ? esc(String(cfg.sha256 || '').slice(0, 8)) : '—') + '): pin check applies after the freeze' });
     return '<div class="p1chk" id="p1-checks">' + out.map(function (x) { return '<span class="' + (x.ok === true ? 'ok' : x.ok === false ? 'bad' : 'mut') + '">' + (x.ok === true ? '✓ ' : x.ok === false ? '✗ ' : '· ') + x.t + '</span>'; }).join('') + '</div>';
   }
-  function body() {
-    if (P1.state !== 'ok' || !P1.cur) return '<div class="p1none" id="p1-none">' + (P1.state === 'absent' ? 'no P1 records yet (data/forward/p1/CURRENT.json not found)' : 'P1 records unavailable (' + esc(P1.err.CURRENT || 'not loaded') + ')') + '</div>';
-    return flow() + table() + summary() + checks();
-  }
-  function p1Section() {
+  function p1Exec() {
     try {
       var ok = P1.state === 'ok' && !!P1.cur;
-      return '<section id="sec-p1"><details class="p1d" id="p1-details"><summary><span>P1 Practitioner</span><span class="p1h" id="p1-head">' + (ok ? header() : (P1.state === 'absent' ? 'no P1 records yet' : 'P1 records unavailable')) + '</span> ' + p1tm('p1B') + p1tm('p1Rearm') + '</summary><div class="inner" id="p1-body">' + body() + '</div></details></section>';
-    } catch (e) { return '<section id="sec-p1"><h2>P1 Practitioner</h2><div class="secerr" id="err-p1">P1 panel could not be displayed (' + esc((e && e.message) || e) + ').</div></section>'; }
+      if (!ok) return '<div id="p1-exec"><div class="p1head" id="p1-head">P1 PRACTITIONER · ' + (P1.state === 'absent' ? 'no P1 records yet' : 'P1 records unavailable') + '</div><div class="p1none" id="p1-none">' + (P1.state === 'absent' ? 'no P1 records yet (data/forward/p1/CURRENT.json not found)' : 'P1 records unavailable (' + esc(P1.err.CURRENT || 'not loaded') + ')') + '</div></div>';
+      var set = recordSet(), c = P1.cur;
+      var head = 'P1 PRACTITIONER · ' + statusLine() + ' · development ' + set.dev.length + ' / study ' + set.study.length + ' · gen <span title="' + esc(c.generationId) + '">' + esc(shortGen(c.generationId)) + '</span>';
+      var sub = 'tiles show the <b>' + set.kind + '</b> set (' + set.list.length + ' pair' + (set.list.length === 1 ? '' : 's') + (set.kind === 'development' ? ', study:false — no study record yet' : '; development records are listed in the table but never pooled') + ') ' + p1tm('p1Study') + ' · B ' + p1tm('p1B') + ' · re-arm ' + p1tm('p1Rearm') + ' · unresolved ' + p1tm('p1Unresolved');
+      return '<div id="p1-exec"><div class="p1head" id="p1-head">' + head + '</div><div class="exsub" id="p1-sub">' + sub + '</div>' + execTiles() + checks() + '</div>';
+    } catch (e) { return '<div id="p1-exec"><div class="secerr" id="err-p1">P1 strip could not be displayed (' + esc((e && e.message) || e) + ').</div></div>'; }
   }
-  var _render52t = render;   /* appended after the cohort sections: the item 45 test pins Exec summary → Accounts adjacency, so the P1 section is the last section on the page (flagged in the handoff) */
-  render = function () { _render52t(); try { var main = $('main'); if (main && S.cur && !document.getElementById('sec-p1')) main.insertAdjacentHTML('beforeend', p1Section()); } catch (e) {} };
-  // ---- detail pane ----
-  function gatesHtml(o) {
-    var g = o.gates || {}, order = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C2.entry-zone', 'C1.trend', 'C3.fresh-touch', 'C3.no-recent-break', 'C7.floor', 'C2.width', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
-    var role = function (id) { return id === 'C2.entry-zone' ? 'replaced' : /^(data|struct)\./.test(id) ? 'retained' : 'omitted (diagnostic)'; };
-    var ov = o.entryZoneGate && o.entryZoneGate.override;
-    return '<table id="p1-gates"><thead><tr><th>gate</th><th>role</th><th>logged</th></tr></thead><tbody>' + order.map(function (id) { var s = g[id] || 'unknown'; return '<tr data-gate="' + esc(id) + '"><td><code>' + esc(id) + '</code></td><td>' + role(id) + '</td><td class="g-' + esc(s) + '">' + esc(s) + '</td></tr>'; }).join('') + '</tbody></table>' +
-      (ov ? '<div id="p1-override">P1 entry override (recorded separately from the logged C2.entry-zone result “' + esc(o.entryZoneGate.original) + '”): <code>' + esc(ov.rule) + '</code>, Y = ' + esc(ov.Y) + ' → <b class="g-' + (ov.pass ? 'pass' : 'fail') + '">' + (ov.pass ? 'pass' : 'fail') + '</b> · p ' + px(ov.price) + ' · Elo ' + px(ov.Elo) + ' · Ehi ' + px(ov.Ehi) + ' · envelopeHi ' + px(ov.envelopeHi) + ' · entryKind ' + esc(dash(o.entryKind)) + '</div>' : '');
+  var _strip52u = renderStrip;
+  renderStrip = function () {   /* second tile block inside the exec-summary section: directly under the cohort's two tile rows (#ex-tiles, #ex-money), before the N0/C1 account cards; when that section is absent (item 45 failed) the strip stands alone after the header strip */
+    var out = _strip52u(), i = out.indexOf('id="sec-exec45"'), k = i >= 0 ? out.indexOf('<div class="ex-acct"', i) : -1, j = i >= 0 ? out.indexOf('</section>', i) : -1;
+    if (k >= 0 && (j < 0 || k < j)) return out.slice(0, k) + p1Exec() + out.slice(k);
+    if (j >= 0) return out.slice(0, j) + p1Exec() + out.slice(j);
+    return out + '<section id="sec-p1">' + p1Exec() + '</section>';
+  };
+  // ---- ORDERS table (cohort #orders-table format + KIND · PLAN · TWIN L · Δ) ----
+  function badgeFor(e) { var t = e.text, cls = e.key === 'open' ? 'b-open' : (e.key === 'stop' || e.key === 'target' || e.key === 'horizon' || e.key === 'exitother') ? 'b-exited' : 'b-' + t.replace(/[^a-z0-9-]/gi, '-'); return '<span class="badge ' + esc(cls) + '">' + esc(t) + '</span>'; }
+  function sizeCellP(p) {
+    var g = p.geometry || {}, f = p.entry && p.entry.fill;
+    if (!isNum(g.qty) || !isNum(g.Bcents)) return '<td data-col="size">—</td>';
+    return '<td data-col="size">' + T42('qty', qtyOf(p)) + ' ' + esc(sym42(p)) + (f && isNum(f.notionalCents) ? ' · ' + T42('notional', usd(f.notionalCents)) : '') + ' · ' + T42('risk', 'risk') + ' ' + usd(g.Bcents) +
+      '<br><span class="mut">B ' + (isNum(g.Busd) ? g.Busd : '—') + ' of ' + (isNum(g.referenceCapitalUsd) ? g.referenceCapitalUsd.toLocaleString('en-US') : '—') + ' USD · Q ' + g.Q + ' lots · lot ' + px(g.lot) + '</span></td>';
   }
-  function planHtml(p) {
-    var pl = p.plan; if (!pl) return '<div class="mut">no plan recorded</div>';
-    var h = ['<div>' + esc(planText(p)) + (pl.remainingAfterLadder != null ? ' · remaining after ladder ' + pl.remainingAfterLadder + ' lots (to the final exit)' : '') + '</div>'];
-    if (pl.rungs && pl.rungs.length) h.push('<table id="p1-rungs"><thead><tr><th>#</th><th>price</th><th>fib</th><th>zone</th><th>M lower</th><th>tier</th><th>lots</th><th>net / unit</th></tr></thead><tbody>' + pl.rungs.map(function (r) { return '<tr><td>' + r.k + '</td><td>' + px(r.price) + '</td><td>' + r.fibRatio + ' (' + px(r.fibPrice) + ')</td><td><code>' + esc(r.zoneId) + '</code></td><td>' + (isNum(r.Mlo) ? r.Mlo.toFixed(2) : '—') + '</td><td>' + esc(r.tier) + '</td><td>' + r.lots + '</td><td>' + px(r.netPerUnit) + '</td></tr>'; }).join('') + '</tbody></table>');
+  function askCellP(p) {
+    var q = p.submission && p.submission.quote || {}, L = p.geometry && p.geometry.L;
+    if (!(isNum(q.ask) && isNum(L))) return '—';
+    return 'ask ' + pr(q.ask) + ' <span class="mut">(' + esc(dash(p.submission.quoteState || p.submission.quoteStatus)) + ')</span><br><span class="mut">' + (q.ask > L ? 'above L' : 'at or below L') + '</span>';
+  }
+  function windowCell(p) {
+    var en = p.entry || {}, pos = p.position || {};
+    return 'w0 ' + dash(en.w0) + ' · h ' + dash(pos.hDone) + ' / ' + dash(p.horizonHoldingDays) + ' · elig ' + dash(en.eligibleDone) + ' · ' + esc(dash(p.expiry)) + (isNum(en.expiryAtSec) ? '<br><span class="mut">expires ' + dateOf(en.expiryAtSec) + '</span>' : '');
+  }
+  function fillCell(p) { var f = p.entry && p.entry.fill; return f ? pr(f.price) + ' <span class="mut">' + esc(dash(f.kind)) + ' · ' + esc(dash(f.reason)) + ' · fee ' + usd(f.feeCents) + '</span>' : '—'; }
+  function exitCell(e) { var x = e.exit; return x ? pr(x.price) + ' <span class="mut">' + esc(dash(x.reason)) + ' · fee ' + usd(x.feeCents) + (isNum(x.tSec) ? '' : (x.interval ? ' · bar' : '')) + '</span>' : '—'; }
+  function resultCell(e) { var r = e.r; return isNum(r.netPnL_T) ? '<span class="' + (r.netPnL_T >= 0 ? 'pos' : 'neg') + '" title="results[].netPnL_T (twin P1-T, after fees); R_T = netPnL_T ÷ B from the record">' + usd(r.netPnL_T) + ' (' + rtxt(r.R_T) + ' R)</span>' : '—'; }
+  function flagsCell(e) { var f = []; if (e.unresolved) f.push('<span class="flagtxt" title="' + esc(JSON.stringify(e.p.position && e.p.position.unresolved || e.r.flags || {})) + '">UNRESOLVED</span>'); f.push(e.p.study ? '<span class="p1kind" title="study:true — written after the freeze">study</span>' : '<span class="mut p1kind" title="study:false — development record (unfrozen)">dev</span>'); return f.join(' '); }
+  function planCell(p) { var pl = p.plan; if (!pl) return '—'; if (pl.tOnly) return 'T-only<br><span class="mut">' + esc(dash(pl.fallbackReason)) + '</span>'; var n = (pl.rungs || []).length; return n + ' rung' + (n === 1 ? '' : 's') + '<br><span class="mut">' + esc(pl.rungs.map(function (r) { return pr(r.price) + (r.tier === 'all' ? ' all' : ' ×' + (pl.inputs && isNum(pl.inputs.F) ? pl.inputs.F : 'F')); }).join(', ')) + '</span>'; }
+  function twinLCell(p, e) {
+    var tw = p.twins && p.twins.L; if (!tw) return '—';
+    if (!e.filled) return esc(e.text);
+    if (!tw.exits.length) return (e.unresolved ? 'open · unresolved' : 'open') + (e.planned ? '<br><span class="mut">0 / ' + e.planned + ' rungs hit</span>' : '<br><span class="mut">no ladder</span>');
+    var xs = tw.exits.map(function (x) { return esc(x.reason) + (x.rungK != null ? ' #' + x.rungK : ''); }).join(' → ');
+    return (tw.closed ? 'closed' : 'open') + '<br><span class="mut">' + xs + (e.planned ? ' · ' + e.rungsHit + ' / ' + e.planned + ' rungs hit' : '') + '</span>';
+  }
+  function p1Orders() {
+    try {
+      if (P1.state !== 'ok' || !P1.cur) return '';
+      var pa = sorted(), set = recordSet();
+      var th = function (t, k, num) { return '<th' + (num ? ' class="num"' : '') + '>' + t + (k ? ' ' + p1tm(k) : '') + '</th>'; };
+      var h = ['<div id="p1-orders"><h2>P1 Orders<small>' + pa.length + ' pair' + (pa.length === 1 ? '' : 's') + ' on record, newest first · development ' + set.dev.length + ' / study ' + set.study.length + ' · base columns describe twin P1-T; the laddered twin is in TWIN L. Click a row for the detail pane.</small></h2>'];
+      h.push('<div class="tablewrap"><table id="p1-table"><thead><tr><th>Policy</th><th>Coin</th><th>Issued</th><th>L / S / T</th><th>Size</th><th>Ask vs L</th><th>Status</th><th>Window</th><th>Fill</th><th>Exit</th><th>Result</th><th>Flags</th>' + th('Kind', 'p1Kind') + th('Plan', 'p1Plan') + th('Twin L', 'p1TwinL') + th('Δ', 'p1Delta', 1) + '</tr></thead><tbody>');
+      pa.forEach(function (p) {
+        var e = effP(p), g = p.geometry || {}, r = e.r, dcls = isNum(r.delta) ? (r.delta > 0 ? 'pos' : r.delta < 0 ? 'neg' : 'mut') : 'mut';
+        h.push('<tr class="row p1row" data-p1pair="' + esc(p.pairId) + '"><td>P1</td><td>' + esc(p.cgId) + ' <span class="mut">' + esc(dash(p.pair)) + '</span></td><td>' + esc(local(p.issueTimeUtc)) + '</td>' +
+          '<td>' + pr(g.L) + ' / ' + pr(g.S) + ' / ' + pr(g.T) + '</td>' + sizeCellP(p) + '<td>' + askCellP(p) + '</td><td>' + badgeFor(e) + '</td><td>' + windowCell(p) + '</td><td>' + fillCell(p) + '</td><td>' + exitCell(e) + '</td><td>' + resultCell(e) + '</td><td>' + flagsCell(e) + '</td>' +
+          '<td>' + esc(dash(p.entryKind)) + '</td><td>' + planCell(p) + '</td><td>' + twinLCell(p, e) + '</td><td class="num ' + dcls + '">' + fmtR(r.delta) + '</td></tr>');
+      });
+      if (!pa.length) h.push('<tr><td colspan="16" class="mut">No pairs on record.</td></tr>');
+      h.push('</tbody></table></div></div>');
+      return h.join('');
+    } catch (e) { return '<div id="p1-orders"><div class="secerr" id="err-p1-orders">P1 orders could not be displayed (' + esc((e && e.message) || e) + ').</div></div>'; }
+  }
+  var _orders52u = renderOrders;
+  renderOrders = function () { return _orders52u() + p1Orders(); };   /* appended inside #sec-orders after the cohort table (the item 44 test pins Orders → Order charts adjacency); re-rendered with the chip filters like the cohort table */
+  // ---- detail pane: the cohort's layout (.rec figures, events, marks, evidence) + Ladder + Gates ----
+  function fmtWhen(x) { return isNum(x.tSec) ? esc(iso(x.tSec)) : (x.interval ? 'bar [' + esc(iso(x.interval[0])) + ', ' + esc(iso(x.interval[1])) + ')' : '—'); }
+  function execRows(p, k) {
+    var tw = p.twins && p.twins[k]; if (!tw) return [[k, '—']];
+    var rows = [['closed', String(!!tw.closed) + (tw.closedAtHoldingDay != null ? ' (holding day ' + tw.closedAtHoldingDay + ')' : '')], ['remainingLots', valCell('remainingLots', tw.remainingLots)]];
+    if (!tw.exits.length) rows.push(['exits', '<span class="mut">none</span>']);
+    tw.exits.forEach(function (x, i) { rows.push(['exit ' + (i + 1) + ' · ' + esc(x.reason) + (x.rungK != null ? ' #' + x.rungK : ''), px(x.price) + ' · ' + x.lots + ' lots · ' + fmtWhen(x) + ' · day ' + (x.holdingDay == null ? '—' : x.holdingDay) + ' · net ' + usd(x.notionalCents - x.feeCents - x.frictionCents) + ' <span class="mut">(notional ' + usd(x.notionalCents) + ' · fee ' + usd(x.feeCents) + ' · friction ' + usd(x.frictionCents) + ')</span>']); });
+    return rows;
+  }
+  function ladderHtml(p) {
+    var pl = p.plan, L = p.twins && p.twins.L, fills = {}; if (L) (L.exits || []).forEach(function (x) { if (x.rungK != null) fills[x.rungK] = x; });
+    var h = ['<table class="rec" id="p1-ladder"><thead><tr><th colspan="2">Ladder ' + p1tm('p1Tier') + '</th></tr></thead><tbody>'];
+    if (!pl) { h.push('<tr><td>plan</td><td>—</td></tr></tbody></table>'); return h.join(''); }
+    h.push('<tr><td>plan</td><td>' + (pl.tOnly ? 'T-only (' + esc(dash(pl.fallbackReason)) + ')' : (pl.rungs || []).length + ' rung(s), frozen at issue') + (pl.remainingAfterLadder != null ? ' · remaining after ladder ' + pl.remainingAfterLadder + ' lots (to the final exit)' : '') + '</td></tr>');
+    if (pl.inputs) h.push('<tr><td>inputs</td><td>fib ' + (pl.inputs.fibAvailable ? 'available' : 'unavailable (' + esc(dash(pl.inputs.fibReason)) + ')') + ' · zones ' + (pl.inputs.zonesAvailable ? 'available' + (pl.inputs.zoneStates && pl.inputs.zoneStates.length ? ' [' + esc(pl.inputs.zoneStates.join(', ')) + ']' : '') : 'unavailable (' + esc(dash(pl.inputs.zonesReason)) + ')') + ' · X_low ' + pl.inputs.X_low + ' · X_high ' + pl.inputs.X_high + ' · F ' + pl.inputs.F + ' · coincidence ±' + pl.inputs.coincidencePct + ' % · cost ' + esc(pl.inputs.costScenario) + '</td></tr>');
+    h.push('</tbody></table>');
+    if (pl.rungs && pl.rungs.length) h.push('<table class="rec" id="p1-rungs"><thead><tr><th class="sub">#</th><th class="sub">price</th><th class="sub">fraction</th><th class="sub">tier · M lower</th><th class="sub">lots</th><th class="sub">fib · zone</th><th class="sub">status</th></tr></thead><tbody>' + pl.rungs.map(function (r) {
+      var f = fills[r.k], frac = r.tier === 'all' ? 'all remaining' : 'F = ' + (pl.inputs && isNum(pl.inputs.F) ? pl.inputs.F : 'F') + ' of remaining';
+      return '<tr data-rung="' + r.k + '"><td>' + r.k + '</td><td>' + px(r.price) + '</td><td>' + frac + '</td><td>' + esc(r.tier) + ' · ' + (isNum(r.Mlo) ? r.Mlo.toFixed(2) : '—') + '</td><td>' + r.lots + '</td><td>' + r.fibRatio + ' (' + px(r.fibPrice) + ') · <code>' + esc(r.zoneId) + '</code></td><td class="' + (f ? 'g-pass' : 'mut') + '">' + (f ? 'filled · ' + px(f.price) + ' · ' + fmtWhen(f) : 'unfilled') + '</td></tr>';
+    }).join('') + '</tbody></table>');
     var rj = pl.rejected || [];
-    h.push('<div class="mut">rejected candidates: ' + rj.length + '</div>' + (rj.length ? '<table id="p1-rejected"><thead><tr><th>kind</th><th>id / level</th><th>reason</th><th>detail</th></tr></thead><tbody>' + rj.map(function (x) { return '<tr><td>' + esc(x.kind) + '</td><td>' + esc(x.id != null ? x.id : (x.ratio != null ? x.ratio + ' → ' + px(x.rungPrice) : '—')) + '</td><td>' + esc(x.reason) + '</td><td class="mut">' + esc(x.detail != null ? (typeof x.detail === 'object' ? JSON.stringify(x.detail) : x.detail) : '') + '</td></tr>'; }).join('') + '</tbody></table>' : ''));
-    if (pl.inputs) h.push('<div class="mut">inputs: fib ' + (pl.inputs.fibAvailable ? 'available' : 'unavailable (' + esc(dash(pl.inputs.fibReason)) + ')') + ' · zones ' + (pl.inputs.zonesAvailable ? 'available' + (pl.inputs.zoneStates && pl.inputs.zoneStates.length ? ' [' + esc(pl.inputs.zoneStates.join(', ')) + ']' : '') : 'unavailable (' + esc(dash(pl.inputs.zonesReason)) + ')') + ' · X_low ' + pl.inputs.X_low + ' · X_high ' + pl.inputs.X_high + ' · F ' + pl.inputs.F + ' · coincidence ±' + pl.inputs.coincidencePct + ' % · cost ' + esc(pl.inputs.costScenario) + '</div>');
+    h.push('<table class="rec" id="p1-rejected"><thead><tr><th class="sub" colspan="4">rejected candidates (' + rj.length + ')</th></tr></thead><tbody>' + (rj.length ? rj.map(function (x) { return '<tr><td>' + esc(x.kind) + '</td><td>' + esc(x.id != null ? x.id : (x.ratio != null ? x.ratio + ' → ' + px(x.rungPrice) : '—')) + '</td><td>' + esc(x.reason) + '</td><td class="mut">' + esc(x.detail != null ? (typeof x.detail === 'object' ? JSON.stringify(x.detail) : x.detail) : '') + '</td></tr>'; }).join('') : '<tr><td colspan="4" class="mut">—</td></tr>') + '</tbody></table>');
     return h.join('');
   }
-  function execsHtml(p, k) {
-    var tw = p.twins && p.twins[k]; if (!tw) return '';
-    var rows = tw.exits.map(function (x) { return '<tr><td>' + esc(x.reason) + (x.rungK != null ? ' #' + x.rungK : '') + '</td><td>' + px(x.price) + '</td><td>' + x.lots + '</td><td>' + (isNum(x.tSec) ? esc(iso(x.tSec)) : (x.interval ? 'bar [' + esc(iso(x.interval[0])) + ', ' + esc(iso(x.interval[1])) + ')' : '—')) + '</td><td>' + (x.holdingDay == null ? '—' : x.holdingDay) + '</td><td>' + usd(x.notionalCents - x.feeCents - x.frictionCents) + '</td></tr>'; });
-    return '<h3>twin ' + k + ' · ' + (tw.closed ? 'closed' : 'open') + ' · remaining ' + tw.remainingLots + ' lots</h3>' + (rows.length ? '<table data-p1exec="' + k + '"><thead><tr><th>execution</th><th>price</th><th>lots</th><th>time / bar interval</th><th>day</th><th>net proceeds</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' : '<div class="mut">no executions</div>');
+  function gatesHtml(o) {
+    var h = ['<table class="rec" id="p1-gates"><thead><tr><th>Gates at issue (16)</th><th class="sub">role</th><th class="sub">logged</th></tr></thead><tbody>'];
+    if (!o) { h.push('<tr><td colspan="3" class="mut">opportunity record not in this generation’s opportunities.json (pair issued in an earlier capture)</td></tr></tbody></table>'); return h.join(''); }
+    var g = o.gates || {}, order = ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail', 'C2.entry-zone', 'C1.trend', 'C3.fresh-touch', 'C3.no-recent-break', 'C7.floor', 'C2.width', 'C6.spike', 'H6.rr', 'C4.volume24h', 'C4.touch-volume', 'C5.btc-regime'];
+    var role = function (id) { return id === 'C2.entry-zone' ? 'replaced' : /^(data|struct)\./.test(id) ? 'retained' : 'omitted (diagnostic)'; };
+    h.push(order.map(function (id) { var s = g[id] || 'unknown'; return '<tr data-gate="' + esc(id) + '"><td><code>' + esc(id) + '</code></td><td>' + role(id) + '</td><td class="g-' + esc(s) + '">' + esc(s) + '</td></tr>'; }).join('') + '</tbody></table>');
+    var ov = o.entryZoneGate && o.entryZoneGate.override;
+    if (ov) h.push('<div class="note" id="p1-override">P1 entry override (recorded separately from the logged C2.entry-zone result “' + esc(o.entryZoneGate.original) + '”): <code>' + esc(ov.rule) + '</code>, Y = ' + esc(ov.Y) + ' → <b class="g-' + (ov.pass ? 'pass' : 'fail') + '">' + (ov.pass ? 'pass' : 'fail') + '</b> · p ' + px(ov.price) + ' · Elo ' + px(ov.Elo) + ' · Ehi ' + px(ov.Ehi) + ' · envelopeHi ' + px(ov.envelopeHi) + ' · entryKind ' + esc(dash(o.entryKind)) + '</div>');
+    return h.join('');
   }
   function openP1(pairId) {
     var p = pairs().filter(function (x) { return x.pairId === pairId; })[0]; if (!p) return;
-    var o = opps().filter(function (x) { return x.pairId === pairId; })[0] || null, r = results()[pairId] || {}, g = p.geometry || {}, sb = p.submission || {}, f = p.entry && p.entry.fill;
+    var o = opps().filter(function (x) { return x.pairId === pairId; })[0] || null, r = results()[pairId] || {}, g = p.geometry || {}, sb = p.submission || {}, en = p.entry || {}, pos = p.position || {}, e = effP(p);
     var rf = refs().filter(function (x) { return x.cgId === p.cgId || x.pair === p.pair; });
-    paneShell(pairId);
-    $('pane-body').innerHTML = '<div class="p1pane" id="p1-pane">' +
-      '<div class="mut">' + esc(p.pair) + ' · ' + esc(p.cgId) + ' · issued ' + esc(p.issueTimeUtc || p.issueDate) + ' · capture ' + esc(p.captureId) + ' · status <b>' + esc(p.status) + '</b> · ' + (p.study ? 'study record' : 'development record (study:false)') + '</div>' +
-      '<h3>geometry</h3><div>L ' + px(g.L) + ' · S ' + px(g.S) + ' (' + esc(dash(g.stopSource)) + ') · T ' + px(g.T) + ' (' + esc(dash(g.targetSource)) + ') · qty ' + qty(p) + ' (' + g.Q + ' lots × ' + g.lot + ') · B ' + usd(g.Bcents) + ' of ' + usd(isNum(g.referenceCapitalUsd) ? g.referenceCapitalUsd * 100 : null) + ' · tick ' + g.tick + ' · minOrder ' + g.minOrder + '</div>' +
-      '<div class="mut">submission: ' + esc(iso(sb.submittedAtSec)) + ' · quote ' + esc(dash(sb.quoteState || sb.quoteStatus)) + (sb.quote ? ' ask ' + px(sb.quote.ask) : '') + (isNum(sb.quoteAgeMs) ? ' · age ' + sb.quoteAgeMs + ' ms' : '') + (f ? ' · fill ' + esc(f.reason) + ' @ ' + px(f.price) + ' ' + esc(iso(f.tSec)) : ' · entry ' + esc(p.entry ? p.entry.status : '—')) + '</div>' +
-      '<h3>frozen plan ' + p1tm('p1Tier') + '</h3>' + planHtml(p) +
-      '<h3>gates at issue</h3>' + (o ? gatesHtml(o) : '<div class="mut">opportunity record not in this generation’s opportunities.json (pair issued in an earlier capture)</div>') +
-      '<h3>result ' + p1tm('p1Delta') + '</h3><div>netPnL_T ' + usd(r.netPnL_T) + ' · netPnL_L ' + usd(r.netPnL_L) + ' · R_T ' + fmtR(r.R_T) + ' · R_L ' + fmtR(r.R_L) + ' · Δ <b>' + fmtR(r.delta) + '</b>' + (r.flags ? ' · ' + (r.flags.unresolved ? 'UNRESOLVED · ' : '') + (r.flags.fallbackTonly ? 'T-only fallback (' + esc(dash(r.fallbackReason)) + ') · ' : '') + (r.flags.affected ? 'affected (≥ 1 rung filled)' : 'not affected') : '') + '</div>' +
-      execsHtml(p, 'L') + execsHtml(p, 'T') +
-      '<h3>evidence refs (this generation)</h3>' + (rf.length ? '<table id="p1-refs"><thead><tr><th>kind</th><th>source</th><th>interval</th><th>count</th><th>note</th></tr></thead><tbody>' + rf.map(function (x) { return '<tr><td>' + esc(x.kind) + '</td><td>' + esc(dash(x.source)) + '</td><td>' + (isNum(x.fromSec) ? esc(iso(x.fromSec)) + ' → ' + esc(iso(x.toSec)) : '—') + '</td><td>' + (x.count == null ? '—' : x.count) + '</td><td class="mut">' + esc(x.error || x.reason || (x.complete === false ? 'incomplete' : x.ok === false ? 'failed' : '')) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="mut">none recorded for this pair in this generation</div>') +
-      (o && o.zones && o.zones.snapshot ? '<div class="mut">book snapshot ' + esc(o.zones.snapshot.id) + ' · recv ' + esc(o.zones.snapshot.recv) + ' · ' + esc(o.zones.snapshot.batchPath) + ' · baseline ' + esc(o.zones.baseline ? o.zones.baseline.status : '—') + '</div>' : '') +
-      '</div>';
+    paneShell(pairId); S.pane = null;
+    var out = ['<div class="p1pane" id="p1-pane">'];
+    out.push('<div><a class="lnk" href="radar.html" id="lnk-radar">Open in Radar</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(tvUrl(p.pair)) + '" id="lnk-tv">TradingView</a><a class="lnk" target="_blank" rel="noopener" href="' + esc(cgUrl(p.cgId)) + '" id="lnk-cg">CoinGecko</a></div>');
+    out.push('<div class="note" id="p1-pane-note">P1 pair · ' + (p.study ? 'study record' : 'development record (study:false)') + ' · status <b>' + esc(p.status) + '</b> · twin P1-T ' + esc(e.text) + ' · no chart: the P1 pane reads only the P1 records (no candle request).</div>');
+    out.push(rec('Identity', [['pairId', esc(p.pairId)], ['arm / venue', 'P1 / ' + esc(dash(p.venue))], ['configStatus', esc(dash(p.configStatus))], ['study', valCell('study', p.study)], ['captureId', esc(dash(p.captureId))], ['generationId', esc(dash(p.generationId))], ['issueDate', esc(dash(p.issueDate))], ['issueTimeUtc', esc(dash(p.issueTimeUtc))], hmsPair(p, 'tDecSec'),
+      ['dId', isNum(p.dId) ? esc(dateOf(p.dId)) + ' <span class="mut">(' + p.dId + ')</span>' : '—'], ['cgId / pair', esc(p.cgId) + ' / ' + esc(dash(p.pair))], ['entryKind', esc(dash(p.entryKind))]]));
+    out.push(rec('Levels', [['L', px(g.L)], ['S', px(g.S) + ' <span class="mut">(' + esc(dash(g.stopSource)) + ')</span>'], ['T', px(g.T) + ' <span class="mut">(' + esc(dash(g.targetSource)) + ')</span>']].concat(g.raw ? Object.keys(g.raw).map(function (k) { return ['raw.' + k, valCell(k, g.raw[k])]; }) : [])));
+    out.push(rec('Sizing', [['Q', valCell('Q', g.Q)], ['qty', qtyOf(p)], ['Bcents', valCell('Bcents', g.Bcents)], ['Busd / referenceCapitalUsd', dash(g.Busd) + ' / ' + dash(g.referenceCapitalUsd)], ['tick', px(g.tick)], ['lot', px(g.lot)], ['lotsInv', valCell('lotsInv', g.lotsInv)], ['minOrder', valCell('minOrder', g.minOrder)]]));
+    out.push(rec('Execution', [['submittedAtSec', valCell('submittedAtSec', sb.submittedAtSec)], ['quoteObservedAtSec', valCell('quoteObservedAtSec', sb.quoteObservedAtSec)], ['quote.ask / bid / last', sb.quote ? px(sb.quote.ask) + ' / ' + px(sb.quote.bid) + ' / ' + px(sb.quote.last) : '—'], ['quoteState / quoteStatus', esc(dash(sb.quoteState)) + ' / ' + esc(dash(sb.quoteStatus)) + (isNum(sb.quoteAgeMs) ? ' <span class="mut">(age ' + sb.quoteAgeMs + ' ms)</span>' : '')], ['submission.error', valCell('error', sb.error)],
+      ['entry.status', esc(dash(en.status))], ['w0', valCell('w0', en.w0)], ['eligibleDone', valCell('eligibleDone', en.eligibleDone)], ['hDone', valCell('hDone', pos.hDone) + ' <span class="mut">of ' + dash(p.horizonHoldingDays) + ' holding days</span>'], ['cursorSec', valCell('cursorSec', pos.cursorSec != null ? pos.cursorSec : en.cursorSec)], ['expiry', esc(dash(p.expiry))], ['expiryAtSec', isNum(en.expiryAtSec) ? esc(dateOf(en.expiryAtSec)) + ' <span class="mut">(' + en.expiryAtSec + ')</span>' : '—'], ['unresolved', valCell('unresolved', pos.unresolved != null ? pos.unresolved : en.unresolved)]]));
+    out.push(rec('Fill', en.fill ? objPairs(en.fill) : [['fill', '—']]));
+    out.push('<table class="rec" data-p1exec="T"><thead><tr><th colspan="2">Exit · twin T (exit at target)</th></tr></thead><tbody>' + execRows(p, 'T').map(function (x) { return '<tr><td>' + x[0] + '</td><td>' + x[1] + '</td></tr>'; }).join('') + '</tbody></table>');
+    out.push('<table class="rec" data-p1exec="L"><thead><tr><th colspan="2">Exit · twin L (ladder)</th></tr></thead><tbody>' + execRows(p, 'L').map(function (x) { return '<tr><td>' + x[0] + '</td><td>' + x[1] + '</td></tr>'; }).join('') + '</tbody></table>');
+    out.push(rec('Result', [['netPnL_T', valCell('netPnL_T', r.netPnL_T)], ['netPnL_L', valCell('netPnL_L', r.netPnL_L)], ['R_T', fmtR(r.R_T)], ['R_L', fmtR(r.R_L)], ['Δ', '<b>' + fmtR(r.delta) + '</b> ' + p1tm('p1Delta')], ['flags', r.flags ? esc(Object.keys(r.flags).filter(function (k) { return r.flags[k]; }).join(', ') || 'none') + (r.flags.fallbackTonly ? ' <span class="mut">(T-only fallback: ' + esc(dash(r.fallbackReason)) + ')</span>' : '') : '—']]));
+    out.push(rec('Charges', objPairs(p.charges)));
+    var ev = (p.events || []).map(function (x) { var rest = {}; Object.keys(x).forEach(function (k) { if (k !== 'type' && k !== 'captureId' && k !== 'date') rest[k] = x[k]; }); return '<li><b>' + esc(dash(x.date)) + '</b> · ' + esc(dash(x.type)) + ' <span class="mut">' + esc(JSON.stringify(rest)) + '</span></li>'; });
+    out.push('<table class="rec"><thead><tr><th>Events (' + (p.events || []).length + ')</th></tr></thead></table><ul class="tl" id="p1-events">' + (ev.join('') || '<li class="mut">—</li>') + '</ul>');
+    var mk = (p.marks || []).map(function (m) { return '<tr><td>' + esc(dash(m.date)) + '</td><td>' + pr(m.mark) + '</td><td>' + usd(m.valueCents) + '</td><td>' + dash(m.staleCount) + '</td></tr>'; });
+    out.push('<table class="rec" id="p1-marks"><thead><tr><th>Marks (' + (p.marks || []).length + ')</th><th>mark</th><th>value</th><th>staleCount</th></tr></thead><tbody>' + (mk.join('') || '<tr><td colspan="4" class="mut">— (P1 records carry no marks; positions are not valued between captures)</td></tr>') + '</tbody></table>');
+    out.push('<table class="rec" id="p1-refs"><thead><tr><th>Evidence refs (' + rf.length + ', this generation)</th><th class="sub">source</th><th class="sub">interval</th><th class="sub">count</th><th class="sub">note</th></tr></thead><tbody>' + (rf.length ? rf.map(function (x) { return '<tr><td>' + esc(x.kind) + '</td><td>' + esc(dash(x.source)) + '</td><td>' + (isNum(x.fromSec) ? esc(iso(x.fromSec)) + ' → ' + esc(iso(x.toSec)) : '—') + '</td><td>' + (x.count == null ? '—' : x.count) + '</td><td class="mut">' + esc(x.error || x.reason || (x.complete === false ? 'incomplete' : x.ok === false ? 'failed' : '')) + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="mut">none recorded for this pair in this generation</td></tr>') + '</tbody></table>');
+    if (o && o.zones && o.zones.snapshot) out.push('<div class="note">book snapshot ' + esc(o.zones.snapshot.id) + ' · recv ' + esc(o.zones.snapshot.recv) + ' · ' + esc(o.zones.snapshot.batchPath) + ' · baseline ' + esc(o.zones.baseline ? o.zones.baseline.status : '—') + '</div>');
+    out.push(ladderHtml(p));
+    out.push(gatesHtml(o));
+    out.push('</div>');
+    $('pane-body').innerHTML = out.join('');
   }
   document.addEventListener('click', function (ev) { var row = ev.target && ev.target.closest && ev.target.closest('tr[data-p1pair]'); if (row) openP1(row.getAttribute('data-p1pair')); });
-  window.RT52T = { state: function () { return P1; }, open: openP1, load: p1Load, html: p1Section };
-} catch (e) { try { console.warn('item 52t block failed: ' + (e && e.message)); } catch (e2) {} } })();
-/* end item 52t */
+  window.RT52U = { state: function () { return P1; }, open: openP1, load: p1Load, exec: p1Exec, orders: p1Orders, set: recordSet };
+} catch (e) { try { console.warn('item 52u block failed: ' + (e && e.message)); } catch (e2) {} } })();
+/* end item 52u */
 
 /* ---------- wiring ---------- */
 document.addEventListener('click', function (ev) {
