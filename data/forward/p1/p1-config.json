@@ -1,9 +1,9 @@
 {
   "arm": "P1",
-  "title": "P1 Practitioner arm — paired-exit study (P1-L laddered confluence exit vs P1-T exit-at-target) on a shared opportunity stream",
-  "status": "unfrozen",
-  "frozenAt": null,
-  "note": "status unfrozen = every record is written with study:false (development observations, never pooled with study records). Constants are provisional conventions (Astra registration review 2026-10-15), not calibrated thresholds; they change before the freeze only for a documented usability reason.",
+  "title": "P1 Practitioner arm \u2014 paired-exit study (P1-L laddered confluence exit vs P1-T exit-at-target) on a shared opportunity stream",
+  "status": "frozen",
+  "frozenAt": "2026-10-19T02:14:47.000Z",
+  "note": "status frozen = every eligible pair issued from the first canonical capture after frozenAt is written with study:true; the 60-day issuance calendar is derived once from that anchor capture and persisted in CURRENT.json / generation meta (exclusive boundaries: issuance +60d, fill +2d, horizon +19d, evidence +7d). Development records before the anchor stay study:false and are never pooled.",
   "X_low": 3,
   "X_high": 10,
   "F": 0.5,
@@ -14,8 +14,39 @@
   "expiry": "end-D+2",
   "costScenario": "base",
   "quoteFreshnessMs": 30000,
-  "ratios": [0.618, 0.705, 0.786, 1.272, 1.618],
+  "ratios": [
+    0.618,
+    0.705,
+    0.786,
+    1.272,
+    1.618
+  ],
   "coincidencePct": 1,
-  "pinned": { "capture": null, "p1Core": null, "ordersCore": null, "episodesCore": null, "channelCore": null, "bookCore": null, "bookCodec": null, "sellzoneCore": null, "sellzoneParams": null, "fibCore": null, "analysis": null },
-  "registration": { "request": "Radar Registration Request — P1 Practitioner arm (paired-exit study) — 2026-10-15.md", "requestSha256": "09e67afa505e287de5bf9ae8010e92bc7e6582ed305f17fc3c5b8a49ebe40c7d", "review": "Astra P1 Practitioner Registration Review — 2026-10-15.md", "build": "IMP 52s" }
+  "pinned": {
+    "capture": "cb12890468b2c7ec154a352926a6090491eb01a8a4a66b669b0f8caab1fff52c",
+    "p1Core": "77dfee13fcc3aa55a2d03e33ca989614652186f3780709d71570a21d80913daf",
+    "ordersCore": "a0f2e931b81b7c4b4ad6914da55335040c96a51b4e587be5f12b0769f1cdb1af",
+    "episodesCore": "2c057648abb02b48bebeff8778578ebde6e01254ce6b7ada9ca4612fab2658d8",
+    "channelCore": "786af0acf666c9f8c71f78ca49fd1f1fa251e2344c022bb2448264c804e9291e",
+    "bookCore": "8cb38a4083367d475ca0f310c3bad95f4d46c7b6c850964e7ac1df7361cf2526",
+    "bookCodec": "1e40d336dca9eb577080673b5657fddc6e678fdf77ec98214c7cff08fa068bdd",
+    "sellzoneCore": "d26f85a5ba6ba77b8d3c2f72fefc9873e6823842a63deb25ef6511204972ba68",
+    "sellzoneParams": "3a40c792a8f99b6b911473210617e280a6a7d78d5737f05de041f1ea3eda1034",
+    "fibCore": "eaf2a55be98d424b49d09a0a14382f139e88fa20bd9241b17ed7910df9a151b4",
+    "analysis": "27867528c0fb28d5571bf028e868255060e4c78b2e9244fde86ad392a670f65e"
+  },
+  "registration": {
+    "request": "Radar Registration Request \u2014 P1 Practitioner arm (paired-exit study) \u2014 2026-10-15.md",
+    "requestSha256": "09e67afa505e287de5bf9ae8010e92bc7e6582ed305f17fc3c5b8a49ebe40c7d",
+    "review": "Astra P1 Practitioner Registration Review \u2014 2026-10-15.md",
+    "build": "IMP 52s; freeze blockers IMP 52v + 52w (main 5facaed)",
+    "freezeRequest": "Radar P1 Freeze Record \u2014 request to freeze the registration \u2014 2026-10-18.md",
+    "freezeRequestSha256": "c3512e7d4608eb96a04e4c3fcf8240c3e7d5667714d3fbacaec2c2b0154f7b2c",
+    "freezeReviews": [
+      "Astra P1 Freeze Record Review \u2014 2026-10-18.md",
+      "Astra P1 Freeze 52v Verification Review \u2014 2026-10-18.md",
+      "Astra P1 Freeze Confirmation \u2014 2026-10-18.md"
+    ],
+    "analysisKernel": "radar_tools/regression-runner.js (documentary pin: step14Cell('exp'), 10000 reps, seed 20260925, blocks 20 (10/40), interpolated 10th percentile)"
+  }
 }
