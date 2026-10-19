@@ -1,4 +1,4 @@
-/* p1-core.js — P1 Practitioner arm (item 52s): paired-exit study on a shared opportunity stream. Pure functions (no fetch, no clock, no I/O), UMD (node + browser).
+/* p1-core.js — P1 Practitioner arm (item 52s; 52v freeze blockers B1-B3 per Astra Freeze Record Review 2026-10-18): paired-exit study on a shared opportunity stream. Pure functions (no fetch, no clock, no I/O), UMD (node + browser).
  * Design authority: `Radar Registration Request — P1 Practitioner arm (paired-exit study) — 2026-10-15.md` §1–§7 as amended by `Astra P1 Practitioner Registration Review — 2026-10-15.md`
  * (BLOCKS A gate table, BLOCKS B stop / quantity / horizon, BLOCKS C freeze). Where the two differ, the review wins. Nothing here reads or writes cohort (N0 / C1), shadow or episode state.
  *
@@ -11,19 +11,21 @@
  * Required execution inputs: designated pair on the execution venue, tick / lot / minOrder, finite geometry (S < L < T, qty >= 1 lot and >= minOrder). Rows come from the research capture directly: no screenOf, no episode-day candidates, no N0 admission.
  * GEOMETRY (BLOCKS B): S = ceilTo(fit.invalidation, tick) (never entryEconomics.stop); L = floorTo(p, tick); T = floorTo(entryEconomics.target, tick), targetSource 'independent' required; qty = floorTo(B / (L - S), lot); B = cfg.B USD (225 of 15,000).
  * LADDER (§4 + review B3): pass zones with a finite M lower bound, filtered BEFORE slot consumption (stale / uncertain / fail / unavailable / bounded-unavailable / below X_low); coincidence = inclusive intersection of [lo, hi] with [fib x (1 - c), fib x (1 + c)];
- *   rung = ceilTo(fib, tick), eligible when > L, < T and net-positive under the declared costs; prices ascending, at each price the unused coincident zone with the greatest M lower bound (tie: zone id), consumed once; identical rounded prices deduplicated; first three;
+ *   rung = ceilTo(fib, tick), eligible when > L, < T and net-positive under the declared costs (52v B2: the round trip on the lots it carries, entered at L at the permitted taker + adverse charge, exited as a maker, cents per leg); prices ascending, at each price the unused coincident zone with the greatest M lower bound (tie: zone id), consumed once; identical rounded prices deduplicated; first three;
  *   tier Mlo >= X_high all-out, >= X_low fraction F of the remaining lots (lot-floored; a zero-lot partial is not a rung; dust to the final exit); no rungs after an all-out rung; no valid rung -> T-only with reason no-confluence | input-unavailable | all-below-tier.
  * EXECUTION (review B1): the cohort's evidence semantics (5-minute bars + covered Trades on the fill day and the submission-straddling bar; daily bars after; OHLC-only intervals keep the conservative convention; no Trades -> OHLC fallback) extended for partial exits:
- *   stop first in a conflict bar, no entry-bar profit credit, gap pricing at the open, crossed rungs filled ascending in one bar, T closes the remainder, bar interval recorded when the exact time is unknown, missing evidence after entry = unresolved (never "no rung filled").
+ *   known opening gaps first (52v B1: gap-stop, gap-target, gap-rungs at the open), then stop first in a conflict bar, no entry-bar profit credit, crossed rungs filled ascending in one bar, T closes the remainder, bar interval recorded when the exact time is unknown, missing evidence after entry = unresolved (never "no rung filled").
  * CONTROLLER (review B2): one pair per coin; no new pair while either twin is pending / open / unresolved; after both are terminal a capture-sampled departure (price outside the frozen zone + envelope) then return (inside) re-arms; expiry / rejection re-arm by the same rule.
  * RESULT: netPnL_T, netPnL_L (cents), R_T = netPnL_T / B, R_L = netPnL_L / B, Δ = R_L − R_T, flags { unresolved, fallbackTonly, affected }. Records carry study: false while cfg.status is 'unfrozen' (development observations, never pooled with study records).
+ *   52v B3: a frozen config must name frozenAt and every pinned identity (validateConfig); the study calendar is derived once from the anchor capture (deriveCalendar) and only captures inside [issuanceStart, issuanceEndExclusive) issue study pairs (studyPhase);
+ *   the capture step holds P1 on any identity mismatch (identityCheck) and discloses development pairs that block a study issuance.
  * SUBMISSION: the cohort's ordinary-limit / fresh-ask rule, inherited exactly: ask <= S -> rejected-invalid-at-submission; fresh ask <= L -> fill now at the ask (taker, adverse); otherwise REST at L - a stale or missing quote rests too (quoteState fresh | stale | missing + age recorded). */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory(require('./orders-core.js'));
   else root.P1Core = factory(root.OrdersCore);
 })(typeof self !== 'undefined' ? self : this, function (OC) {
   'use strict';
-  var VERSION = 'p1-core/1', SCHEMA = 1, DAY = 86400, BAR5 = 300;
+  var VERSION = 'p1-core/2', SCHEMA = 1, DAY = 86400, BAR5 = 300;
   var GATES = {
     retained: ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail'],
     replaced: 'C2.entry-zone',
@@ -55,15 +57,76 @@
     if (cfg.status !== 'unfrozen' && cfg.status !== 'frozen') e.push("status must be 'unfrozen' | 'frozen'");
     if (cfg.status === 'frozen' && !(typeof cfg.frozenAt === 'string' && isFinite(Date.parse(cfg.frozenAt)))) e.push('frozenAt must be an ISO time when status is frozen');
     if (!cfg.pinned || typeof cfg.pinned !== 'object') e.push('pinned must be an object');
+    else if (cfg.status === 'frozen') PINNED_REQUIRED.forEach(function (k) { if (!isSha256(cfg.pinned[k])) e.push('pinned.' + k + ' must be a 64-hex sha256 when status is frozen'); });   // 52v B3(a): a frozen config names every identity the run-time guard compares
+    if (cfg.calendar != null) { var ce = validateCalendar(cfg.calendar); if (ce.length) e.push('calendar: ' + ce.join('; ')); }   // 52v B3(a)/(b): the calendar is derived once from the anchor; when it is written into the config it must be the derived one
     return e;
   }
-  function isStudy(cfg) { return !!(cfg && cfg.status === 'frozen'); }
+  // 52v B3: the run-time identity manifest (Astra Freeze Record Review 2026-10-18 §2 B3 + identity manifest). Keys of cfg.pinned -> repo file; `capture` and `analysis` are documentary (not compared by the guard).
+  var PINNED_REQUIRED = ['p1Core', 'ordersCore', 'episodesCore', 'channelCore', 'bookCore', 'bookCodec', 'sellzoneCore', 'fibCore', 'sellzoneParams'];
+  var PINNED_FILES = { p1Core: 'p1-core.js', ordersCore: 'orders-core.js', episodesCore: 'episodes-core.js', channelCore: 'channel-core.js', bookCore: 'radar_tools/book/book-core.js', bookCodec: 'radar_tools/book/book-codec.js',
+    sellzoneCore: 'radar_tools/book/sellzone-core.js', fibCore: 'radar_tools/zones/fib-core.js', sellzoneParams: 'data/book/sellzone-params.json' };
+  function isSha256(s) { return typeof s === 'string' && /^[0-9a-f]{64}$/.test(s); }
+  // identityCheck: actual = { key: sha256 of the loaded file }. Any pinned key missing from `actual` or differing is a mismatch; P1 holds (the caller writes the held record and does nothing else).
+  function identityCheck(cfg, actual) {
+    var mm = []; actual = actual || {};
+    PINNED_REQUIRED.forEach(function (k) { if (!cfg || !cfg.pinned || actual[k] !== cfg.pinned[k]) mm.push({ key: k, file: PINNED_FILES[k], pinned: cfg && cfg.pinned ? cfg.pinned[k] : null, actual: actual[k] || null }); });
+    return { ok: mm.length === 0, mismatches: mm };
+  }
+  // 52v B3(b): the study calendar, derived ONCE from the anchor (the first canonical capture date on or after frozenAt) and persisted (CURRENT.json + every generation's meta). Exclusive next-midnight UTC bounds.
+  // Astra: "issuance through December 18, fills through December 20, twenty holding days through January 8, evidence grace through January 15 - express end-of-day boundaries as exclusive next-midnight timestamps
+  // (December 19, December 21, January 9 and January 16)" for an October 20 start: start + 60 d, + 2 d, + 19 d (fill day = holding day 1, so day 20 ends 19 days after the last fill day's end), + 7 d.
+  var CAL = { issuanceDays: 60, fillDays: 2, evidenceDays: 7 };
+  function isoDay(sec) { return new Date(sec * 1000).toISOString().slice(0, 10); }
+  function dayStartSec(dateStr) { var t = Date.parse(String(dateStr).slice(0, 10) + 'T00:00:00.000Z'); return isFinite(t) ? t / 1000 : null; }
+  function deriveCalendar(anchorDate, horizonHoldingDays) {
+    var a = dayStartSec(anchorDate); if (a == null) return null;
+    var H = num(horizonHoldingDays) ? horizonHoldingDays : 20, s0 = a, s1 = s0 + CAL.issuanceDays * DAY, f1 = s1 + CAL.fillDays * DAY, h1 = f1 + (H - 1) * DAY, e1 = h1 + CAL.evidenceDays * DAY;
+    var iso = function (sec) { return new Date(sec * 1000).toISOString(); };
+    return { anchor: isoDay(a), issuanceDays: CAL.issuanceDays, horizonHoldingDays: H, issuanceStart: iso(s0), issuanceEndExclusive: iso(s1), fillEndExclusive: iso(f1), horizonEndExclusive: iso(h1), evidenceDeadlineExclusive: iso(e1) };
+  }
+  function validateCalendar(cal) {
+    if (!cal || typeof cal !== 'object') return ['calendar must be an object'];
+    var want = deriveCalendar(cal.anchor, cal.horizonHoldingDays); if (!want) return ['anchor must be a YYYY-MM-DD UTC date'];
+    var e = [];
+    ['issuanceStart', 'issuanceEndExclusive', 'fillEndExclusive', 'horizonEndExclusive', 'evidenceDeadlineExclusive'].forEach(function (k) {
+      if (!(typeof cal[k] === 'string' && isFinite(Date.parse(cal[k])))) e.push(k + ' must be an ISO time'); else if (Date.parse(cal[k]) !== Date.parse(want[k])) e.push(k + ' must be ' + want[k] + ' for anchor ' + want.anchor);
+    });
+    if (cal.issuanceDays !== CAL.issuanceDays) e.push('issuanceDays must be ' + CAL.issuanceDays);
+    return e;
+  }
+  // 52v B3(c): what this capture may do. cfg status unfrozen -> development issuance (study:false). Frozen before frozenAt -> development issuance as today. Frozen, at/after frozenAt, no calendar yet -> this capture's
+  // date anchors the calendar (anchorNow) and it issues study pairs. Within [issuanceStart, issuanceEndExclusive) -> study issuance. At/after issuanceEndExclusive -> adjudication only, nothing new.
+  // capture: { date 'YYYY-MM-DD', issueSec }. calendar: the persisted calendar or null. Returns { phase, study, issue, calendar, anchorNow }.
+  function studyPhase(cfg, calendar, capture) {
+    var out = { phase: 'development', study: false, issue: true, calendar: calendar || null, anchorNow: false };
+    if (!cfg || cfg.status !== 'frozen') return out;
+    var fz = Date.parse(cfg.frozenAt) / 1000, tIss = capture && num(capture.issueSec) ? capture.issueSec : dayStartSec(capture && capture.date);
+    if (!(num(fz) && num(tIss))) { out.phase = 'invalid'; out.issue = false; return out; }
+    if (tIss < fz) { out.phase = 'pre-freeze'; return out; }   // frozen status, before frozenAt: development issuance, study:false
+    var cal = calendar;
+    if (!cal) { cal = deriveCalendar(capture.date, cfg.horizonHoldingDays); out.anchorNow = !!cal; if (!cal) { out.phase = 'invalid'; out.issue = false; return out; } }
+    out.calendar = cal;
+    var d0 = dayStartSec(capture.date), s0 = Date.parse(cal.issuanceStart) / 1000, s1 = Date.parse(cal.issuanceEndExclusive) / 1000;
+    if (d0 >= s0 && d0 < s1) { out.phase = 'study-issuance'; out.study = true; out.issue = true; return out; }
+    out.phase = d0 < s0 ? 'pre-anchor' : 'post-issuance'; out.study = false; out.issue = false;   // pre-anchor cannot happen with a derived calendar (the anchor is the first such capture); kept explicit
+    return out;
+  }
+  function isStudy(cfg) { return !!(cfg && cfg.status === 'frozen'); }   // the config's declared status only; whether a GIVEN issuance is a study issuance is studyPhase(...).study
   // Charges of the declared EXISTING cost scenario (OrdersCore.CFG basis points), recorded on every pair so the record is self-describing.
   function chargesOf(cfg) {
     var C = OC.CFG, all = cfg && cfg.costScenario === 'allAdverse';
     return { scenario: cfg ? cfg.costScenario : null, makerBp: C.MAKER_BP, takerBp: C.TAKER_BP, frictionBaseBp: C.FRICTION_BASE_BP, frictionAdverseBp: C.FRICTION_ADVERSE_BP, mode: all ? 'allAdverse' : 'base' };
   }
   function charges(nCents, kind, adverse, cfg) { return OC.sideCharges(nCents, kind, adverse, chargesOf(cfg).mode); }
+  // 52v B2: the entry charge the inherited fresh-ask rule can incur (taker + adverse friction) and the resting-exit charge (maker + base friction), in the declared scenario ('allAdverse' makes both taker + adverse).
+  function entryBp(ch) { return ch.takerBp + ch.frictionAdverseBp; }
+  function exitBp(ch) { return ch.mode === 'allAdverse' ? ch.takerBp + ch.frictionAdverseBp : ch.makerBp + ch.frictionBaseBp; }
+  // Round trip of `lots` entered at L (taker, adverse) and exited at `price` (maker, base), each leg in cents exactly as applyEntryFill / exec compute it. Returns cents (negative = loss).
+  function rungNet(L, price, lots, lotsInv, cfg) {
+    var ch = chargesOf(cfg), nIn = notional(lots, lotsInv, L), cIn = charges(nIn, 'taker', true, cfg), nOut = notional(lots, lotsInv, price), cOut = charges(nOut, 'maker', false, cfg);
+    var net = nOut - cOut.feeCents - cOut.frictionCents - (nIn + cIn.feeCents + cIn.frictionCents);
+    return { netCents: net, netPerUnit: sig(net / 100 / (lots / lotsInv)), lots: lots, entryChargeBp: entryBp(ch), exitChargeBp: exitBp(ch), entry: { notionalCents: nIn, feeCents: cIn.feeCents, frictionCents: cIn.frictionCents }, exit: { notionalCents: nOut, feeCents: cOut.feeCents, frictionCents: cOut.frictionCents } };
+  }
 
   // ---------- 1a eligibility ----------
   function gateStates(row) {
@@ -127,7 +190,7 @@
   // fibLevels: { available, reason, levels:[{ ratio, kind, price }], leg }. geometry: orderGeometry() result. Deterministic; every rejected candidate is listed with its reason.
   function ladderPlan(zonesForVenue, fibLevels, geometry, cfg) {
     var ch = chargesOf(cfg), rej = [], plan = { version: VERSION, rungs: [], tOnly: true, fallbackReason: null, rejected: rej, remainingAfterLadder: null,
-      inputs: { X_low: cfg.X_low, X_high: cfg.X_high, F: cfg.F, coincidencePct: cfg.coincidencePct, ratios: cfg.ratios.slice(), costScenario: ch.scenario, exitChargeBp: ch.makerBp + ch.frictionBaseBp,
+      inputs: { X_low: cfg.X_low, X_high: cfg.X_high, F: cfg.F, coincidencePct: cfg.coincidencePct, ratios: cfg.ratios.slice(), costScenario: ch.scenario, entryChargeBp: entryBp(ch), exitChargeBp: exitBp(ch), netTest: 'round trip on the allocated lots at L, entry taker + adverse friction, exit maker + base friction, cents per leg (52v B2)',
         fibAvailable: !!(fibLevels && fibLevels.available), fibReason: fibLevels ? (fibLevels.reason || null) : 'missing', zonesAvailable: !!(zonesForVenue && zonesForVenue.available), zonesReason: zonesForVenue ? (zonesForVenue.reason || null) : 'missing', zoneStates: zonesForVenue && zonesForVenue.states ? zonesForVenue.states.slice() : null } };
     if (!geometry || !geometry.ok) { plan.fallbackReason = 'input-unavailable'; rej.push({ kind: 'geometry', reason: 'geometry-unavailable' }); return plan; }
     var remaining = geometry.Q, L = geometry.L, T = geometry.T, tick = geometry.tick;
@@ -155,7 +218,7 @@
     var coinc = function (z, lv) { return z.hi >= lv.lo && z.lo <= lv.hi; };
     var anyCoincident = false, tierCoincident = false;
     levels.forEach(function (lv) { if (passFinite.some(function (z) { return coinc(z, lv); })) anyCoincident = true; if (usable.some(function (z) { return coinc(z, lv); })) tierCoincident = true; });
-    var seen = {}, allOut = false, bp = (ch.makerBp + ch.frictionBaseBp) / 10000;
+    var seen = {}, allOut = false;
     for (var i = 0; i < levels.length; i++) {
       var lv = levels[i], base = { kind: 'level', ratio: lv.ratio, fibPrice: sig(lv.fibPrice), rungPrice: lv.rungPrice };
       if (allOut) { rej.push(Object.assign({ reason: 'after-all-out-rung' }, base)); continue; }
@@ -163,16 +226,18 @@
       if (seen[lv.rungPrice]) { rej.push(Object.assign({ reason: 'duplicate-price' }, base)); continue; }
       if (!(lv.rungPrice > L)) { rej.push(Object.assign({ reason: 'at-or-below-entry' }, base)); continue; }
       if (!(lv.rungPrice < T)) { rej.push(Object.assign({ reason: 'at-or-above-target' }, base)); continue; }
-      var netPerUnit = lv.rungPrice - L - (lv.rungPrice + L) * bp;
-      if (!(netPerUnit > 0)) { rej.push(Object.assign({ reason: 'not-net-positive', detail: { netPerUnit: sig(netPerUnit) } }, base)); continue; }
       var cands = usable.filter(function (z) { return !z.used && coinc(z, lv); });
       if (!cands.length) { rej.push(Object.assign({ reason: 'no-coincident-zone' }, base)); continue; }
       cands.sort(function (a, b) { return b.Mlo - a.Mlo || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); });
-      var z = cands[0]; z.used = true;
-      var tier = z.Mlo >= cfg.X_high ? 'all' : 'fraction', lots = tier === 'all' ? remaining : Math.floor(remaining * cfg.F + 1e-9);
+      var z = cands[0], tier = z.Mlo >= cfg.X_high ? 'all' : 'fraction', lots = tier === 'all' ? remaining : Math.floor(remaining * cfg.F + 1e-9);
+      // 52v B2: net-positive = the round trip on the lots this rung would carry, entered at L under the permitted entry charge (taker + adverse friction: the fresh-ask fill's actual charge) and exited at the rung
+      // as a maker under base friction, each leg rounded to cents exactly as applyEntryFill / exec will round. Tested before the zone is consumed, so a rejected rung leaves its zone free for a higher level.
+      var net = rungNet(L, lv.rungPrice, lots >= 1 ? lots : remaining, geometry.lotsInv, cfg);
+      if (!(net.netCents > 0)) { rej.push(Object.assign({ reason: 'not-net-positive', zoneId: z.id, detail: { lots: lots >= 1 ? lots : remaining, netCents: net.netCents, netPerUnit: net.netPerUnit, entryChargeBp: net.entryChargeBp, exitChargeBp: net.exitChargeBp } }, base)); continue; }
+      z.used = true;
       if (!(lots >= 1)) { rej.push(Object.assign({ reason: 'zero-lot-partial', zoneId: z.id, detail: { remainingLots: remaining, F: cfg.F } }, base)); continue; }
       seen[lv.rungPrice] = 1; remaining -= lots;
-      plan.rungs.push({ k: plan.rungs.length + 1, price: lv.rungPrice, fibRatio: lv.ratio, fibKind: lv.kind, fibPrice: sig(lv.fibPrice), zoneId: z.id, zoneLo: z.lo, zoneHi: z.hi, Mlo: z.Mlo, Mhi: z.Mhi, tier: tier, lots: lots, qty: lots / geometry.lotsInv, netPerUnit: sig(netPerUnit) });
+      plan.rungs.push({ k: plan.rungs.length + 1, price: lv.rungPrice, fibRatio: lv.ratio, fibKind: lv.kind, fibPrice: sig(lv.fibPrice), zoneId: z.id, zoneLo: z.lo, zoneHi: z.hi, Mlo: z.Mlo, Mhi: z.Mhi, tier: tier, lots: lots, qty: lots / geometry.lotsInv, netPerUnit: net.netPerUnit, netCents: net.netCents, netTest: { entryChargeBp: net.entryChargeBp, exitChargeBp: net.exitChargeBp } });
       if (tier === 'all') allOut = true;
     }
     plan.remainingAfterLadder = remaining;
@@ -201,14 +266,15 @@
 
   // ---------- pair creation: the cohort's ordinary-limit / fresh-ask submission rule on one shared entry ----------
   // opp: { cgId, pair, venue, entryKind, zone:{Elo,Ehi,envelopeHi}, context }; geometry: orderGeometry(); plan: ladderPlan(); quote: { tSubSec, quoteObservedAtSec, ask, bid, last } | { tSubSec, missing:true, error }; capture: { captureId, generationId, date, issueTimeUtc, issueSec, inputCutoffSec }.
-  function newPair(opp, geometry, plan, quote, capture, cfg) {
-    var tDec = capture.issueSec, q = quote || null, ch = chargesOf(cfg);
+  // phase (52v B3(c), optional): studyPhase(...) for this capture; its .study labels the pair. Without it the label falls back to the declared status (development callers / fixtures).
+  function newPair(opp, geometry, plan, quote, capture, cfg, phase) {
+    var tDec = capture.issueSec, q = quote || null, ch = chargesOf(cfg), study = phase && typeof phase.study === 'boolean' ? phase.study : isStudy(cfg);
     // quote states (analysis-thread ruling 2026-10-16 on the 52s ambiguity): fresh = usable for the fill-at-ask decision; stale = present but older than cfg.quoteFreshnessMs (or observed before t_dec); missing = no ask.
     // A stale or missing quote never rejects: the order RESTS at L from the attempted-fetch time, exactly the cohort's ordinary-limit / fresh-ask rule.
     var hasAsk = !!q && !q.missing && num(q.tSubSec) && num(q.quoteObservedAtSec) && num(q.ask) && q.ask > 0 && q.quoteObservedAtSec <= q.tSubSec;
     var ageMs = hasAsk ? (q.tSubSec - q.quoteObservedAtSec) * 1000 : null, qOk = hasAsk && ageMs <= cfg.quoteFreshnessMs && q.tSubSec >= tDec, quoteState = qOk ? 'fresh' : hasAsk ? 'stale' : 'missing';
     var tSub = q && num(q.tSubSec) && q.tSubSec >= tDec ? q.tSubSec : tDec;   // never earlier than t_dec; never "midnight"
-    var P = { schemaVersion: SCHEMA, pairId: 'P1-' + capture.date + '-' + opp.cgId, cgId: opp.cgId, pair: opp.pair, venue: opp.venue || 'kraken', study: isStudy(cfg), configStatus: cfg.status,
+    var P = { schemaVersion: SCHEMA, pairId: 'P1-' + capture.date + '-' + opp.cgId, cgId: opp.cgId, pair: opp.pair, venue: opp.venue || 'kraken', study: study, phase: phase ? phase.phase : null, configStatus: cfg.status,
       captureId: capture.captureId, generationId: capture.generationId || capture.captureId, issueDate: capture.date, issueTimeUtc: capture.issueTimeUtc || null, tDecSec: tDec, dId: capture.inputCutoffSec,
       entryKind: opp.entryKind || null, zone: clone(opp.zone), context: clone(opp.context || null),
       geometry: { S: geometry.S, L: geometry.L, T: geometry.T, tick: geometry.tick, lot: geometry.lot, lotsInv: geometry.lotsInv, minOrder: geometry.minOrder, Q: geometry.Q, qty: geometry.qty, Bcents: geometry.Bcents, Busd: geometry.Busd, referenceCapitalUsd: geometry.referenceCapitalUsd, stopSource: geometry.stopSource, targetSource: geometry.targetSource, raw: clone(geometry.raw) },
@@ -253,7 +319,10 @@
   }
   function openRungs(twin) { return twin.rungs.filter(function (r) { return !r.filled; }).sort(function (a, b) { return a.price - b.price; }); }
   function nextBarrier(twin, T) { var r = openRungs(twin); return r.length ? Math.min(r[0].price, T) : T; }
-  // One FULL bar (5-minute or daily) for one twin. Stop first; gap pricing at the open; crossed rungs ascending; T closes the remainder; horizon closes at the bar's close. Trade-through convention (price + tick) as OrdersCore.exitRules.
+  // One FULL bar (5-minute or daily) for one twin. Trade-through convention (price + tick) as OrdersCore.exitRules. Order (52v B1, Astra Freeze Record Review 2026-10-18):
+  //   (1) open <= S -> gap-stop, all. (2) KNOWN opening events first: open >= T + tick -> gap-target for every remaining lot (the resting rung and T orders all trade through at the open; one exit at the open, as the
+  //   T twin records it); else every open rung with open >= rung + tick -> gap-rung at the open, ascending. (3) only then the conservative convention for whatever remains, whose intrabar order is unknown:
+  //   low <= S -> stop, a conflict-stop (adverse) when a still-open rung or T was also reachable intrabar; else intrabar-crossed rungs ascending at their prices; then T closes the remainder; horizon closes at the close.
   function twinBar(P, twin, bar, isHorizon) {
     var g = P.geometry, S = g.S, T = g.T, tk = g.tick, upT = clean(T + tk), out = [], rem = twin.remainingLots;
     if (twin.closed || rem <= 0) return out;
@@ -262,13 +331,17 @@
       return out;
     }
     if (bar.open <= S) { out.push({ reason: 'gap-stop', price: bar.open, kind: 'taker', adverse: true, lots: rem }); return out; }
-    var crossed = openRungs(twin).filter(function (x) { return bar.high >= clean(x.price + tk); }), tHit = bar.high >= upT;
-    if (bar.low <= S) { out.push({ reason: (crossed.length || tHit) ? 'conflict-stop' : 'stop', price: S, kind: 'taker', adverse: !!(crossed.length || tHit), lots: rem }); return out; }
-    crossed.forEach(function (x) {
-      if (rem <= 0) return; var gap = bar.open >= clean(x.price + tk), lots = Math.min(x.lots, rem);
-      out.push({ reason: gap ? 'gap-rung' : 'rung', price: gap ? bar.open : x.price, kind: 'maker', adverse: false, lots: lots, rungK: x.k }); rem -= lots;
+    if (bar.open >= upT) { out.push({ reason: 'gap-target', price: bar.open, kind: 'maker', adverse: false, lots: rem }); return out; }
+    var open = openRungs(twin), later = [];
+    open.forEach(function (x) {
+      if (bar.open >= clean(x.price + tk)) { if (rem <= 0) return; var lots = Math.min(x.lots, rem); out.push({ reason: 'gap-rung', price: bar.open, kind: 'maker', adverse: false, lots: lots, rungK: x.k }); rem -= lots; }
+      else later.push(x);
     });
-    if (tHit && rem > 0) { var gapT = bar.open >= upT; out.push({ reason: gapT ? 'gap-target' : 'target', price: gapT ? bar.open : T, kind: 'maker', adverse: false, lots: rem }); rem = 0; }
+    if (rem <= 0) return out;
+    var crossed = later.filter(function (x) { return bar.high >= clean(x.price + tk); }), tHit = bar.high >= upT;
+    if (bar.low <= S) { out.push({ reason: (crossed.length || tHit) ? 'conflict-stop' : 'stop', price: S, kind: 'taker', adverse: !!(crossed.length || tHit), lots: rem }); return out; }
+    crossed.forEach(function (x) { if (rem <= 0) return; var lots = Math.min(x.lots, rem); out.push({ reason: 'rung', price: x.price, kind: 'maker', adverse: false, lots: lots, rungK: x.k }); rem -= lots; });
+    if (tHit && rem > 0) { out.push({ reason: 'target', price: T, kind: 'maker', adverse: false, lots: rem }); rem = 0; }
     if (isHorizon && rem > 0) out.push({ reason: 'horizon', price: bar.close, kind: 'taker', adverse: false, lots: rem });
     return out;
   }
@@ -465,7 +538,8 @@
   }
 
   return { VERSION: VERSION, SCHEMA: SCHEMA, GATES: GATES, ALL_GATES: ALL_GATES, FALLBACKS: FALLBACKS, DAY: DAY, BAR5: BAR5,
-    validateConfig: validateConfig, isStudy: isStudy, chargesOf: chargesOf, gateStates: gateStates,
+    validateConfig: validateConfig, isStudy: isStudy, chargesOf: chargesOf, gateStates: gateStates, rungNet: rungNet,
+    PINNED_REQUIRED: PINNED_REQUIRED, PINNED_FILES: PINNED_FILES, identityCheck: identityCheck, deriveCalendar: deriveCalendar, validateCalendar: validateCalendar, studyPhase: studyPhase,
     eligibility: eligibility, orderGeometry: orderGeometry, ladderPlan: ladderPlan, rearm: rearm, controllerAfterPair: controllerAfterPair, newPair: newPair, isActive: isActive, statusOf: statusOf,
     adjudicatePair: adjudicatePair, pairResult: pairResult, twinBar: twinBar, twinTrades: twinTrades };
 });

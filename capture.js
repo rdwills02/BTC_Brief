@@ -1718,7 +1718,7 @@ function fwdRealGit() {
 }
 function fwdRealDeps() { return { fs, path, crypto, EC, OC, now: () => Date.now(), pid: process.pid, hooks: null, git: fwdRealGit() }; }
 
-// ===== P1 PRACTITIONER ARM (item 52s) — the capture-time step. I/O only; every decision rule is in p1-core.js. =====================================================
+// ===== P1 PRACTITIONER ARM (item 52s; 52v freeze blockers B3: identity guard, derived calendar, windowed issuance) — the capture-time step. I/O only; every decision rule is in p1-core.js. ========
 // Called ONCE per canonical capture, after fwdCommitSequence returned 'canonical' (the cohort's single push is already made), inside its own try/catch, on DEEP COPIES of the capture's research rows,
 // execution context, candles and fetched evidence, plus the forward clock (the capture object). It never reads mutable cohort / shadow / episode state, never writes outside data/forward/p1/, and never
 // changes production timing (it runs after the production commit; capture.yml's own commit step carries its files). DORMANT unless data/forward/p1/p1-config.json exists and validates.
@@ -1735,6 +1735,21 @@ function p1Modules(io) {
   if (io && io.modules) return io.modules;
   return { P1: require('./p1-core.js'), SZ: require('./radar_tools/book/sellzone-core.js'), BC: require('./radar_tools/book/book-codec.js'), FIB: require('./radar_tools/zones/fib-core.js') };
 }
+// 52v B3(d): sha256 of the files P1 actually runs on (the module files require() resolves beside capture.js, and the frozen selector params under data/). io.identityFiles may override the path map (fixtures).
+function p1Identity(d, io, root, P) {
+  var files = (io && io.identityFiles) || null, out = { actual: {}, files: {}, errors: {} }, rq = typeof require === 'function' ? require : null;
+  Object.keys(p1Modules.PINNED || {}).forEach(function (k) {
+    var rel = p1Modules.PINNED[k], f;
+    try {
+      if (files && files[k]) f = files[k];
+      else if (k === 'sellzoneParams') f = P.params;
+      else { f = null; if (rq && rq.resolve) { try { f = rq.resolve('./' + rel); } catch (e) { f = null; } } if (!f) f = d.path.join(__dirname, rel); }
+      out.files[k] = f; out.actual[k] = p1Sha(d, d.fs.readFileSync(f));
+    } catch (e) { out.errors[k] = e && e.message ? e.message : String(e); out.actual[k] = null; }
+  });
+  return out;
+}
+p1Modules.PINNED = { p1Core: 'p1-core.js', ordersCore: 'orders-core.js', episodesCore: 'episodes-core.js', channelCore: 'channel-core.js', bookCore: 'radar_tools/book/book-core.js', bookCodec: 'radar_tools/book/book-codec.js', sellzoneCore: 'radar_tools/book/sellzone-core.js', fibCore: 'radar_tools/zones/fib-core.js', sellzoneParams: 'data/book/sellzone-params.json' };
 // rolling-repo depth batch at one 15-minute slot: gunzip -> codec decode -> records by pair. Cached per (venue, slot) for the run.
 async function p1Batch(d, io, base, venue, slotMs, cache) {
   var s = p1Iso(slotMs), rel = 'book/' + venue + '/' + s.slice(0, 10) + '/' + s.slice(11, 13) + s.slice(14, 16) + '.json.gz', key = venue + '|' + slotMs;
@@ -1850,11 +1865,34 @@ async function fwdP1Step(d, root, capture, frozen, io) {
   if (d.fs.existsSync(d.path.join(gdir, 'pairs.json'))) { log('generation ' + genId + ' already has P1 records - nothing to do'); return { status: 'already-done' }; }
   io = Object.assign({ now: function () { return Date.now(); }, sleep: sleep, gunzip: function (b) { return require('zlib').gunzipSync(b); }, fetchKrakenDaily: function (t) { return EX.fetchKrakenDaily(t); }, bookBase: P1_BOOK_BASE }, io || {});
   if (!io.fetchBuffer) io.fetchBuffer = async function (u) { var r = await fetch(u); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); };
-  var study = M.P1.isStudy(cfg), decisionMs = capture.issueSec * 1000, refs = [], warnings = [];
+  var decisionMs = capture.issueSec * 1000, refs = [], warnings = [];
   // prior P1 state (its own CURRENT pointer; never the cohort's)
   var cur = fwdReadJson(d, P.current), prior = cur && cur.generationId ? fwdReadJson(d, d.path.join(P.gen(cur.generationId), 'pairs.json')) : null;
   var pairs = prior && Array.isArray(prior.pairs) ? prior.pairs : [], controller = prior && prior.controller ? prior.controller : {};
   if (cur && cur.generationId && !prior) warnings.push('prior pairs.json unreadable for ' + cur.generationId + ': starting from an empty pair list');
+  // 52v B3(d): identity guard. A frozen config names the sha256 of every module P1 runs on; the files actually loaded are hashed now and compared. Any mismatch -> P1 HOLDS: a held record, no issuance, no
+  // adjudication, CURRENT's generation pointer untouched (the pair list is never dropped). Production is not involved either way (this step runs after the cohort's commit, on copies).
+  var identity = p1Identity(d, io, root, P);
+  if (cfg.status === 'frozen') {
+    var idc = M.P1.identityCheck(cfg, identity.actual);
+    if (!idc.ok) {
+      var held = { schemaVersion: 1, arm: 'P1', held: 'identity-mismatch', generationId: genId, captureId: capture.captureId, date: capture.date, issueTimeUtc: capture.issueTimeUtc, writtenAt: p1Iso(io.now()), config: { sha256: cfgSha, status: cfg.status, frozenAt: cfg.frozenAt || null },
+        mismatches: idc.mismatches, identity: identity, note: 'P1 issued nothing and adjudicated nothing in this capture; CURRENT.generationId still points at the last generation with pairs.json' };
+      d.fs.mkdirSync(gdir, { recursive: true }); fwdAtomicWrite(d, d.path.join(gdir, 'held.json'), JSON.stringify(held));
+      fwdAtomicWrite(d, P.current, JSON.stringify(Object.assign({}, cur || {}, { held: { reason: 'identity-mismatch', generationId: genId, captureId: capture.captureId, date: capture.date, writtenAt: held.writtenAt, mismatches: idc.mismatches.map(function (m) { return m.key; }) } })));
+      console.error('p1: HELD identity-mismatch - ' + idc.mismatches.map(function (m) { return m.key + ' pinned ' + String(m.pinned).slice(0, 8) + ' actual ' + String(m.actual).slice(0, 8); }).join(', ') + ' - P1 issued nothing, adjudicated nothing');
+      return { status: 'held', reason: 'identity-mismatch', mismatches: idc.mismatches };
+    }
+  }
+  // 52v B3(b)/(c): the study calendar is derived ONCE from the anchor (this capture, when it is the first canonical capture at/after frozenAt) and persisted in CURRENT.json (+ every generation's meta);
+  // a calendar written into the config must agree with the persisted one. The phase decides whether this capture issues at all and whether its pairs are study pairs.
+  var calendar = cfg.calendar || (cur && cur.calendar) || null;
+  if (cfg.calendar && cur && cur.calendar && JSON.stringify(cfg.calendar) !== JSON.stringify(cur.calendar)) { console.error('p1: CONFIGURATION ERROR - config.calendar differs from the persisted CURRENT.calendar - P1 step skipped'); return { status: 'config-error', errors: ['calendar mismatch config vs CURRENT'] }; }
+  if (calendar && M.P1.validateCalendar(calendar).length) { console.error('p1: CONFIGURATION ERROR - persisted calendar malformed: ' + M.P1.validateCalendar(calendar).join('; ') + ' - P1 step skipped'); return { status: 'config-error', errors: M.P1.validateCalendar(calendar) }; }
+  var phase = M.P1.studyPhase(cfg, calendar, capture), study = phase.study;
+  if (phase.phase === 'invalid') { console.error('p1: CONFIGURATION ERROR - study phase undeterminable (frozenAt / capture date) - P1 step skipped'); return { status: 'config-error', errors: ['study phase undeterminable'] }; }
+  if (phase.anchorNow) { calendar = phase.calendar; log('frozen: first canonical capture at/after frozenAt ' + cfg.frozenAt + ' -> calendar anchored at ' + calendar.anchor + ' (issuance until ' + calendar.issuanceEndExclusive + ' exclusive)'); }
+  log('phase ' + phase.phase + (phase.issue ? '' : ' - no new pairs this capture') + (study ? ' (study issuance)' : ''));
   // 1. adjudicate P1's own open pairs on the cohort's evidence copies + P1's own fetches
   pairs = await p1Adjudicate(d, io, M, cfg, pairs, frozen, capture, refs);
   // 2. inputs for new opportunities: frozen selector params, cadence, altname -> wsname map, fib per coin
@@ -1876,8 +1914,10 @@ async function fwdP1Step(d, root, capture, frozen, io) {
       eligible: el.eligible, reasons: el.reasons, gates: el.gates, entryZoneGate: el.entryZoneGate, geometry: el.geometry, controller: { allow: ra.allow, reason: ra.reason, priorPairId: cstate ? cstate.pairId : null },
       fib: fib.available ? { available: true, version: fib.version, leg: fib.leg, levels: fib.levels } : { available: false, reason: fib.reason, version: fib.version, leg: fib.leg },
       zones: null, plan: null, pairId: null, outcome: null, meta: ctx.meta, quoteAtCapture: coin.quote || null, context: { fitId: row.fit ? row.fit.fitId : null, lifecycleState: row.fit ? row.fit.lifecycleState : null, score: row.score == null ? null : row.score, structuralFit: !!row.structuralFit } };
+    if (!ra.allow && cpair) opp.controller.blockedBy = cpair.study ? 'study-pair' : 'development-pair';   // 52v B3(e): a still-active development pair blocking an issuance is disclosed, never relabeled or reset
     if (!el.eligible) opp.outcome = 'ineligible';
     else if (!ra.allow) opp.outcome = 'controller-blocked';
+    else if (!phase.issue) opp.outcome = 'outside-issuance-window';   // 52v B3(c): frozen and past issuanceEndExclusive (or before a configured start): adjudication continues, nothing new is issued
     else {
       try { opp.zones = await p1Zones(d, io, M, inputs, { bookPair: opp.bookPair, altname: ctx.pair, E: el.geometry.L, T: el.geometry.T, decisionMs: decisionMs }); }
       catch (e) { opp.zones = { available: false, reason: 'zones-error: ' + (e && e.message ? e.message : e), states: [], zones: [] }; }
@@ -1891,15 +1931,17 @@ async function fwdP1Step(d, root, capture, frozen, io) {
   if (toSubmit.length) { try { quotes = await fwdFetchQuotes(io.fetchJson, Array.from(new Set(toSubmit.map(function (x) { return x.opp.pair; }))), frozen.assetPairs || {}, io.now); } catch (e) { warnings.push('Ticker@issuance failed: ' + e.message); } }
   toSubmit.forEach(function (x) {
     var o = x.opp, q = quotes[o.pair] || { tSubSec: Math.ceil(io.now() / 1000), missing: true, error: 'no Ticker response' };
-    var pr = M.P1.newPair({ cgId: o.cgId, pair: o.pair, venue: 'kraken', entryKind: o.entryKind, zone: { Elo: o.entryZone[0], Ehi: o.entryZone[1], envelopeHi: o.envelopeHi }, context: { fitId: o.context.fitId, lifecycleState: o.context.lifecycleState, book: o.zones && o.zones.snapshot || null, fib: o.fib.available ? { leg: o.fib.leg, version: o.fib.version } : null, selector: o.zones ? o.zones.selector || null : null, params: inputs.paramsRef } }, x.el.geometry, o.plan, q, capture, cfg);
+    var pr = M.P1.newPair({ cgId: o.cgId, pair: o.pair, venue: 'kraken', entryKind: o.entryKind, zone: { Elo: o.entryZone[0], Ehi: o.entryZone[1], envelopeHi: o.envelopeHi }, context: { fitId: o.context.fitId, lifecycleState: o.context.lifecycleState, book: o.zones && o.zones.snapshot || null, fib: o.fib.available ? { leg: o.fib.leg, version: o.fib.version } : null, selector: o.zones ? o.zones.selector || null : null, params: inputs.paramsRef } }, x.el.geometry, o.plan, q, capture, cfg, phase);
     pairs.push(pr); controller[o.cgId] = M.P1.controllerAfterPair(pr); o.pairId = pr.pairId; o.outcome = pr.entry.status === 'open' ? 'pair-filled-at-submission' : pr.entry.status === 'resting' ? 'pair-resting' : pr.entry.status;
   });
   // 4. records (append-only generation directory + P1's own CURRENT pointer)
   var results = pairs.map(function (p) { return M.P1.pairResult(p); });
   var counts = { opportunities: opps.length, eligible: opps.filter(function (o) { return o.eligible; }).length, controllerBlocked: opps.filter(function (o) { return o.outcome === 'controller-blocked'; }).length, pairsCreated: toSubmit.length,
+    blockedByDevelopmentPair: opps.filter(function (o) { return o.outcome === 'controller-blocked' && o.controller.blockedBy === 'development-pair'; }).length, outsideIssuanceWindow: opps.filter(function (o) { return o.outcome === 'outside-issuance-window'; }).length,
+    studyPairsCreated: toSubmit.filter(function (x) { return x.opp.pairId && pairs.some(function (p) { return p.pairId === x.opp.pairId && p.study === true; }); }).length,
     plansWithRung: opps.filter(function (o) { return o.plan && !o.plan.tOnly; }).length, tOnlyByReason: {}, pairsTotal: pairs.length, pairsActive: pairs.filter(function (p) { return M.P1.isActive(p); }).length, pairsUnresolved: results.filter(function (r) { return r.flags.unresolved; }).length, pairsTerminal: results.filter(function (r) { return r.terminal; }).length };
   opps.forEach(function (o) { if (o.plan && o.plan.tOnly) counts.tOnlyByReason[o.plan.fallbackReason] = (counts.tOnlyByReason[o.plan.fallbackReason] || 0) + 1; });
-  var meta = { generationId: genId, captureId: capture.captureId, date: capture.date, issueTimeUtc: capture.issueTimeUtc, decisionTimeUtc: p1Iso(decisionMs), protocolVersion: capture.protocolVersion || null, study: study, config: { sha256: cfgSha, status: cfg.status, frozenAt: cfg.frozenAt || null, X_low: cfg.X_low, X_high: cfg.X_high, F: cfg.F, Y: cfg.Y, B: cfg.B, horizonHoldingDays: cfg.horizonHoldingDays, costScenario: cfg.costScenario },
+  var meta = { generationId: genId, captureId: capture.captureId, date: capture.date, issueTimeUtc: capture.issueTimeUtc, decisionTimeUtc: p1Iso(decisionMs), protocolVersion: capture.protocolVersion || null, study: study, phase: phase.phase, calendar: calendar, identity: identity, config: { sha256: cfgSha, status: cfg.status, frozenAt: cfg.frozenAt || null, X_low: cfg.X_low, X_high: cfg.X_high, F: cfg.F, Y: cfg.Y, B: cfg.B, horizonHoldingDays: cfg.horizonHoldingDays, costScenario: cfg.costScenario },
     versions: { p1Core: M.P1.VERSION, sellzoneCore: M.SZ.VERSION, fibCore: M.FIB.VERSION, bookCodec: M.BC.CODEC_VERSION }, inputs: { bookBase: io.bookBase, params: inputs.paramsRef, cadence: inputs.cadenceRef, wsnameMapSize: Object.keys(ws).length }, warnings: warnings };
   var files = { 'opportunities.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { counts: counts, opportunities: opps }),
     'pairs.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { counts: counts, pairs: pairs, controller: controller, results: results }),
@@ -1907,8 +1949,8 @@ async function fwdP1Step(d, root, capture, frozen, io) {
     'evidence-refs.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { refs: refs }) };
   d.fs.mkdirSync(gdir, { recursive: true });
   var shas = {}; Object.keys(files).forEach(function (f) { var txt = JSON.stringify(files[f]); shas[f] = p1Sha(d, txt); fwdAtomicWrite(d, d.path.join(gdir, f), txt); });
-  fwdAtomicWrite(d, P.current, JSON.stringify({ generationId: genId, captureId: capture.captureId, date: capture.date, writtenAt: p1Iso(io.now()), p1Core: M.P1.VERSION, configSha256: cfgSha, study: study, status: 'ok', counts: counts, files: shas }));
-  log('generation ' + genId + ' | opportunities ' + counts.opportunities + ' | eligible ' + counts.eligible + ' | pairs created ' + counts.pairsCreated + ' | plans with rung ' + counts.plansWithRung + ' | T-only ' + JSON.stringify(counts.tOnlyByReason) + ' | pairs total ' + counts.pairsTotal + ' active ' + counts.pairsActive + ' unresolved ' + counts.pairsUnresolved + (warnings.length ? ' | warnings: ' + warnings.join('; ') : ''));
+  fwdAtomicWrite(d, P.current, JSON.stringify({ generationId: genId, captureId: capture.captureId, date: capture.date, writtenAt: p1Iso(io.now()), p1Core: M.P1.VERSION, configSha256: cfgSha, study: study, phase: phase.phase, calendar: calendar, status: 'ok', counts: counts, files: shas }));
+  log('generation ' + genId + ' | phase ' + phase.phase + ' | opportunities ' + counts.opportunities + ' | eligible ' + counts.eligible + ' | pairs created ' + counts.pairsCreated + (counts.outsideIssuanceWindow ? ' | outside window ' + counts.outsideIssuanceWindow : '') + (counts.blockedByDevelopmentPair ? ' | blocked by development pair ' + counts.blockedByDevelopmentPair : '') + ' | plans with rung ' + counts.plansWithRung + ' | T-only ' + JSON.stringify(counts.tOnlyByReason) + ' | pairs total ' + counts.pairsTotal + ' active ' + counts.pairsActive + ' unresolved ' + counts.pairsUnresolved + (warnings.length ? ' | warnings: ' + warnings.join('; ') : ''));
   return { status: 'ok', counts: counts, files: shas };
 }
 // ===== P1 END ==================================================================================================================================================
