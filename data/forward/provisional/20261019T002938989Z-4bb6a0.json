@@ -1,0 +1,165 @@
+{
+ "schemaVersion": 1,
+ "baseGenerationId": "20261019T002938989Z-4bb6a0",
+ "baseCaptureId": "20261019T002938989Z-4bb6a0",
+ "baseChecksums": {
+  "orders.json": "76d7e67ec2837369928939a4ff7dd409efe14b73097d3f09a8f9e434b13b90de",
+  "shadow/orders.json": "ff11d49235a4422ab520fed9f156971ba8f4d3d0b886b4f152f40d0a886ed66d"
+ },
+ "evidenceCutoffSec": 1792369800,
+ "producedAt": "2026-10-19T00:37:32.814Z",
+ "orders": [
+  {
+   "id": "N0-2026-10-15-algorand",
+   "policyId": "N0",
+   "cgId": "algorand",
+   "pair": "ALGOUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792030500,
+    "fillPrice": 0.11268,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 0.11096,
+    "markAt": 1792369800,
+    "unrealisedCents": -5469,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792369800,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "N0-2026-10-16-cosmos",
+   "policyId": "N0",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792122000,
+    "fillPrice": 1.7203,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6944,
+    "markAt": 1792369800,
+    "unrealisedCents": -4797,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792369800,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "C1-2026-10-16-cosmos",
+   "policyId": "C1",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792122000,
+    "fillPrice": 1.7203,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6944,
+    "markAt": 1792369800,
+    "unrealisedCents": -4903,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792369800,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "CTRL-2026-10-16-cosmos",
+   "policyId": "CTRL",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792122000,
+    "fillPrice": 1.7203,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6944,
+    "markAt": 1792369800,
+    "unrealisedCents": -4991,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792369800,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "NZ-2026-10-15-cosmos",
+   "policyId": "NZ",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792030800,
+    "fillPrice": 1.7148,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6944,
+    "markAt": 1792369800,
+    "unrealisedCents": -4225,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792369800,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "NZ-2026-10-19-polkadot",
+   "policyId": "NZ",
+   "cgId": "polkadot",
+   "pair": "DOTUSD",
+   "status": "resting",
+   "projected": {
+    "status": "resting",
+    "fillAt": null,
+    "fillPrice": null,
+    "fillReason": null,
+    "exit": null,
+    "markPrice": 1.1074,
+    "markAt": 1792369800,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792369800,
+    "windowsExhausted": false,
+    "partialDay": false
+   }
+  }
+ ],
+ "coverage": {
+  "perPair": {
+   "ALGOUSD": {
+    "bars": 6,
+    "gaps": 0,
+    "complete": true
+   },
+   "ATOMUSD": {
+    "bars": 6,
+    "gaps": 0,
+    "complete": true
+   },
+   "DOTUSD": {
+    "bars": 1,
+    "gaps": 0,
+    "complete": true
+   }
+  }
+ },
+ "warnings": []
+}
