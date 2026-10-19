@@ -1,17 +1,20 @@
 /* radar_tools/p1-core.test.js — item 52s acceptance B: p1-core.js (P1 Practitioner arm) fixtures. Node only, deterministic, no network, no clock.
- * Run: node radar_tools/p1-core.test.js [p1-core.js] [orders-core.js] [fib-core.js] [episodes-core.js]   -> "p1-core tests: n passed, m failed". Exit 1 on any failure.
+ * Run: node radar_tools/p1-core.test.js [p1-core.js] [orders-core.js] [fib-core.js] [episodes-core.js] [capture.js]   -> "p1-core tests: n passed, m failed". Exit 1 on any failure.
+ * 52v (freeze blockers B1-B3, Astra Freeze Record Review 2026-10-18): opening-gap fixtures (full P&L), rung net-positive with the 85 bp entry charge, frozen-status calendar / identity guard through the real capture.js wrapper (vm, isolated temp files, deterministic I/O).
  * Required fixtures (IMP 52s §5): all-16-gates (five retained pass, ten omitted fail -> eligible); width-fail not filtered by a hidden screen; invalidation 95 vs stop 99 -> S = 95 rounded up; same marks / different excursions;
  * multi-rung + stop conflict in one bar (stop first); early-L all-out then late-T open -> no re-arm until both terminal; duplicate zone across three fib levels -> one rung; unavailable / bounded M -> no tier;
  * stale zone excluded before slot consumption; zero-lot partial -> not a rung; causal fib confirmation; unresolved twin -> pair unresolved; last-window fill through D+2 gets 20 holding days; horizon isolation (OrdersCore.CFG.HORIZON_BAR = 10). */
 'use strict';
 var path = require('path');
 var here = __dirname, root = path.resolve(here, '..');
-var P1 = require(path.resolve(process.argv[2] || path.join(root, 'p1-core.js')));
-var OC = require(path.resolve(process.argv[3] || path.join(root, 'orders-core.js')));
-var FIB = null; try { FIB = require(path.resolve(process.argv[4] || path.join(root, 'radar_tools', 'zones', 'fib-core.js'))); } catch (e) { FIB = null; }
-var EC = null; try { EC = require(path.resolve(process.argv[5] || path.join(root, 'episodes-core.js'))); } catch (e) { EC = null; }
+var P1_PATH = path.resolve(process.argv[2] || path.join(root, 'p1-core.js')), OC_PATH = path.resolve(process.argv[3] || path.join(root, 'orders-core.js')), FIB_PATH = path.resolve(process.argv[4] || path.join(root, 'radar_tools', 'zones', 'fib-core.js')), EC_PATH = path.resolve(process.argv[5] || path.join(root, 'episodes-core.js'));
+var CAPTURE_PATH = path.resolve(process.argv[6] || path.join(root, 'capture.js'));   // 52v B3 wrapper fixtures run the REAL fwdP1Step from this file in a vm
+var P1 = require(P1_PATH);
+var OC = require(OC_PATH);
+var FIB = null; try { FIB = require(FIB_PATH); } catch (e) { FIB = null; }
+var EC = null; try { EC = require(EC_PATH); } catch (e) { EC = null; }
 var CFG_BEFORE = JSON.stringify(OC.CFG);
-var pass = 0, fail = 0;
+var pass = 0, fail = 0, WRAPPER_ASYNC = false;
 function ok(c, name, detail) { if (c) pass++; else { fail++; console.log('FAIL ' + name + (detail !== undefined ? '  ' + JSON.stringify(detail) : '')); } }
 function eq(a, b, name) { var A = JSON.stringify(a), B = JSON.stringify(b); ok(A === B, name, { got: a, want: b }); }
 var DAY = 86400, BAR5 = 300, D0 = Date.UTC(2026, 9, 20) / 1000;   // D = 2026-10-20 00:00Z
@@ -45,8 +48,41 @@ function filledPair(plan, px, o) {
 
 // ---------- configuration ----------
 eq(P1.validateConfig(C), [], 'config: the registered constants validate');
-ok(P1.validateConfig(cfg({ expiry: 'end-D+3' })).length === 1 && P1.validateConfig(cfg({ costScenario: 'none' })).length === 1 && P1.validateConfig(cfg({ X_low: 11 })).length === 1 && P1.validateConfig(cfg({ status: 'frozen' })).length === 1, 'config: expiry, cost scenario, X_low <= X_high and frozen-without-frozenAt are rejected');
-ok(P1.isStudy(C) === false && P1.isStudy(cfg({ status: 'frozen', frozenAt: '2026-11-01T00:00:00.000Z' })) === true, 'config: unfrozen -> study false; frozen -> study true');
+ok(P1.validateConfig(cfg({ expiry: 'end-D+3' })).length === 1 && P1.validateConfig(cfg({ costScenario: 'none' })).length === 1 && P1.validateConfig(cfg({ X_low: 11 })).length === 1 && P1.validateConfig(cfg({ status: 'frozen' })).some(function (e) { return /frozenAt/.test(e); }), 'config: expiry, cost scenario, X_low <= X_high and frozen-without-frozenAt are rejected');
+var PIN = {}; P1.PINNED_REQUIRED.forEach(function (k, i) { PIN[k] = String(i).repeat(64).slice(0, 64); });   // nine well-formed (fake) sha256 values
+var FROZEN = cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({ capture: null, analysis: null }, PIN) });
+ok(P1.isStudy(C) === false && P1.isStudy(FROZEN) === true, 'config: unfrozen -> study false; frozen -> study true (declared status only; issuance is studyPhase)');
+eq(P1.validateConfig(FROZEN), [], 'config: frozen with frozenAt + nine pinned sha256 validates');
+(function () {   // 52v B3(a)
+  var e = P1.validateConfig(cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: {} }));
+  ok(e.length === 9 && P1.PINNED_REQUIRED.every(function (k) { return e.some(function (m) { return m.indexOf('pinned.' + k) === 0; }); }), 'FIXTURE B3 empty pinned with status frozen -> config rejected (one error per required identity)', e);
+  ok(P1.validateConfig(cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({}, PIN, { channelCore: 'abc' }) })).length === 1, 'B3(a): a malformed hash (channel-core) is rejected');
+  ok(P1.validateConfig(cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({}, PIN, { bookCodec: null }) })).length === 1, 'B3(a): a null hash (book-codec) is rejected when frozen');
+  eq(P1.validateConfig(cfg({ pinned: { capture: null, p1Core: null, ordersCore: null, episodesCore: null, channelCore: null, bookCore: null, bookCodec: null, sellzoneCore: null, sellzoneParams: null, fibCore: null, analysis: null } })), [], 'B3(a): unfrozen with null pinned values (the shipped p1-config shape) still validates');
+  ok(P1.PINNED_REQUIRED.indexOf('channelCore') >= 0 && P1.PINNED_REQUIRED.indexOf('bookCodec') >= 0 && P1.PINNED_FILES.channelCore === 'channel-core.js' && P1.PINNED_FILES.bookCodec === 'radar_tools/book/book-codec.js', 'identity manifest: channel-core.js and radar_tools/book/book-codec.js are required pinned identities');
+  var idOk = P1.identityCheck(FROZEN, Object.assign({}, PIN)), idBad = P1.identityCheck(FROZEN, Object.assign({}, PIN, { p1Core: 'f'.repeat(64) })), idMissing = P1.identityCheck(FROZEN, Object.assign({}, PIN, { sellzoneParams: undefined }));
+  ok(idOk.ok && !idBad.ok && idBad.mismatches.length === 1 && idBad.mismatches[0].key === 'p1Core' && !idMissing.ok && idMissing.mismatches[0].key === 'sellzoneParams', 'identityCheck: equal -> ok; one differing or missing hash -> that key mismatched');
+})();
+(function () {   // 52v B3(b): Astra's October 20 example - issuance through Dec 18 (exclusive Dec 19), fills through Dec 20 (excl. Dec 21), twenty holding days through Jan 8 (excl. Jan 9), evidence through Jan 15 (excl. Jan 16)
+  var cal = P1.deriveCalendar('2026-10-20', 20);
+  eq([cal.anchor, cal.issuanceStart, cal.issuanceEndExclusive, cal.fillEndExclusive, cal.horizonEndExclusive, cal.evidenceDeadlineExclusive], ['2026-10-20', '2026-10-20T00:00:00.000Z', '2026-12-19T00:00:00.000Z', '2026-12-21T00:00:00.000Z', '2027-01-09T00:00:00.000Z', '2027-01-16T00:00:00.000Z'], 'FIXTURE B3 calendar: Astra\'s Oct-20 anchor gives Dec 19 / Dec 21 / Jan 9 / Jan 16 exclusive bounds');
+  ok((Date.parse(cal.issuanceEndExclusive) - Date.parse(cal.issuanceStart)) / 864e5 === 60, 'calendar: exactly sixty inclusive issuance dates');
+  eq(P1.validateCalendar(cal), [], 'calendar: the derived calendar validates');
+  ok(P1.validateCalendar(Object.assign({}, cal, { horizonEndExclusive: '2027-01-10T00:00:00.000Z' })).length === 1 && P1.validateCalendar(Object.assign({}, cal, { anchor: 'nope' })).length === 1 && P1.validateCalendar(null).length === 1, 'calendar: a bound that is not the derived one, a bad anchor, or no object is rejected');
+  ok(P1.validateConfig(Object.assign({}, FROZEN, { calendar: cal })).length === 0 && P1.validateConfig(Object.assign({}, FROZEN, { calendar: Object.assign({}, cal, { fillEndExclusive: '2026-12-22T00:00:00.000Z' }) })).length === 1, 'config: a calendar written into the config must be the derived one');
+  var capAt = function (date, hh) { var t = Date.parse(date + 'T00:00:00.000Z') / 1000 + (hh == null ? 0 : hh) * 3600 + 29 * 60; return { captureId: 'x', date: date, issueSec: t, inputCutoffSec: Date.parse(date + 'T00:00:00.000Z') / 1000 }; };
+  var dev = P1.studyPhase(C, null, capAt('2026-10-20')), pre = P1.studyPhase(FROZEN, null, capAt('2026-10-19')), anchor = P1.studyPhase(FROZEN, null, capAt('2026-10-20'));
+  ok(dev.phase === 'development' && dev.study === false && dev.issue === true, 'studyPhase: unfrozen -> development issuance, study:false');
+  ok(pre.phase === 'pre-freeze' && pre.study === false && pre.issue === true && pre.calendar === null, 'studyPhase: frozen, capture before frozenAt -> development issuance (study:false), no calendar yet');
+  ok(anchor.phase === 'study-issuance' && anchor.study === true && anchor.anchorNow === true && anchor.calendar.anchor === '2026-10-20', 'studyPhase: first capture at/after frozenAt anchors the calendar and issues study pairs');
+  var late = P1.studyPhase(FROZEN, null, capAt('2026-10-22'));
+  ok(late.anchorNow && late.calendar.anchor === '2026-10-22' && late.calendar.issuanceEndExclusive === '2026-12-21T00:00:00.000Z', 'studyPhase: a missed 10-20 capture moves the anchor (and the whole calendar) to the first capture that happened');
+  var last = P1.studyPhase(FROZEN, cal, capAt('2026-12-18')), end = P1.studyPhase(FROZEN, cal, capAt('2026-12-19')), after = P1.studyPhase(FROZEN, cal, capAt('2026-12-20'));
+  ok(last.phase === 'study-issuance' && last.study && last.issue && !last.anchorNow, 'studyPhase: last issuance day (Dec 18) issues study pairs from the persisted calendar');
+  ok(end.phase === 'post-issuance' && !end.study && !end.issue && after.phase === 'post-issuance' && !after.issue, 'studyPhase: issuanceEndExclusive (Dec 19) and after -> adjudication only, nothing new');
+  var noon = cfg({ status: 'frozen', frozenAt: '2026-10-20T12:00:00.000Z', pinned: PIN }), fz = P1.studyPhase(noon, null, capAt('2026-10-20')), fz2 = P1.studyPhase(noon, null, capAt('2026-10-21'));
+  ok(fz.phase === 'pre-freeze' && fz2.anchorNow && fz2.calendar.anchor === '2026-10-21', 'studyPhase: the 00:29Z capture before a noon frozenAt is pre-freeze; the next capture anchors');
+})();
 eq(P1.chargesOf(C), { scenario: 'base', makerBp: 30, takerBp: 60, frictionBaseBp: 10, frictionAdverseBp: 25, mode: 'base' }, "config: charges come from the existing 'base' scenario");
 
 // ---------- eligibility (BLOCKS A) ----------
@@ -268,6 +304,79 @@ if (FIB) (function () {   // FIXTURE causal fib confirmation: a leg whose confir
   eq(r3.twins.T.exits[0].interval, [D0 + DAY, D0 + 2 * DAY], 'bar interval recorded when the exact execution time is unknown');
 })();
 
+// ---------- 52v B1: opening gaps are known events and come before the stop / conflict convention (Astra Freeze Record Review 2026-10-18) ----------
+(function () {
+  // Astra's case: S 95 / L 100 / T 120 / tick 0.01 / Q 45, one half-size rung at 110 (zone Mlo 4 -> fraction tier, 22 lots), an open position; fixtures assert full pair P&L and delta, not only labels.
+  var plan = P1.ladderPlan(zonesOf([zone('a', 109.5, 110.5, 4)]), fibs([110, 125, 130, 135, 140]), geo(), C), d1 = D0 + DAY;
+  eq(plan.rungs.map(function (r) { return [r.price, r.tier, r.lots]; }), [[110, 'fraction', 22]], 'setup B1: one half rung at 110 (22 of 45 lots)');
+  function legs(P, tw) { return P.twins[tw].exits.map(function (x) { return [x.reason, x.price, x.lots, x.adverse]; }); }
+  function pnlOf(P, tw) { return P1.pairResult(P)['netPnL_' + tw]; }
+  function expectPnl(P, exits) {   // independent of twinBar: entry costs from the recorded fill, each exit leg priced by OrdersCore's own rounding
+    var f = P.entry.fill, g = P.geometry, s = -(f.notionalCents + f.feeCents + f.frictionCents);
+    exits.forEach(function (x) { var n = OC.notional(x.lots, g.lotsInv, x.price), c = OC.sideCharges(n, x.kind, x.adverse, 'base'); s += n - c.feeCents - c.frictionCents; });
+    return s;
+  }
+  var A = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 121, 122, 94, 100)] }).pair, rA = P1.pairResult(A);
+  eq(legs(A, 'T'), [['gap-target', 121, 45, false]], 'FIXTURE B1 gap-through-rung-and-T: T twin exits all 45 at the 121 open (gap-target)');
+  eq(legs(A, 'L'), [['gap-target', 121, 45, false]], 'FIXTURE B1 gap-through-rung-and-T: L twin exits all 45 at the 121 open as ONE gap-target (every resting order traded through at the open; no rung record, so the ladder did not change the outcome)');
+  ok(pnlOf(A, 'L') === pnlOf(A, 'T') && pnlOf(A, 'T') === expectPnl(A, [{ price: 121, lots: 45, kind: 'maker', adverse: false }]) && rA.delta === 0 && rA.flags.affected === false && rA.terminal, 'FIXTURE B1 gap-through-rung-and-T: identical P&L, delta 0, affected false, terminal (was T +3.93 R / L -1.33 R conflict-stop)', { T: pnlOf(A, 'T'), L: pnlOf(A, 'L'), delta: rA.delta });
+  var c0 = cap(0), A2 = pairWith(plan, { quote: quote(c0.issueSec + 5, 100) });   // Astra's figures assume the fresh-ask (taker, adverse) entry at 100
+  ok(A2.entry.fill && A2.entry.fill.reason === 'fill-crossing-ask', 'setup B1: pair filled at the crossing ask (100)');
+  A2 = adj(A2, 2, { bars5: flat5(A2.submission.submittedAtSec, D0 + DAY, 101), candles: [daily(d1, 121, 122, 94, 100)] }).pair; var rA2 = P1.pairResult(A2);
+  ok(Math.abs(rA2.R_T - 3.93316) < 5e-4 && rA2.R_L === rA2.R_T && rA2.delta === 0 && legs(A2, 'L')[0][0] === 'gap-target', 'FIXTURE B1 gap-through-rung-and-T (Astra\'s numbers): T +3.93316 R and L identical (was L -1.33151 R, delta -5.26467 R)', { R_T: rA2.R_T, R_L: rA2.R_L });
+  var B = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 111, 122, 94, 100)] }).pair, rB = P1.pairResult(B);
+  eq(legs(B, 'L'), [['gap-rung', 111, 22, false], ['conflict-stop', 95, 23, true]], 'FIXTURE B1 gap-above-rung-then-stop (O111/H122/L94): L gap-rung half at 111, remainder conflict-stop at 95');
+  eq(legs(B, 'T'), [['conflict-stop', 95, 45, true]], 'FIXTURE B1 gap-above-rung-then-stop: T conflict-stop all at 95');
+  ok(pnlOf(B, 'L') === expectPnl(B, [{ price: 111, lots: 22, kind: 'maker', adverse: false }, { price: 95, lots: 23, kind: 'taker', adverse: true }]) && pnlOf(B, 'T') === expectPnl(B, [{ price: 95, lots: 45, kind: 'taker', adverse: true }]) && rB.delta > 0 && rB.flags.affected === true && rB.terminal, 'FIXTURE B1 gap-above-rung-then-stop: full P&L per leg, delta > 0, affected true', { T: pnlOf(B, 'T'), L: pnlOf(B, 'L'), delta: rB.delta });
+  var Cc = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 111, 122, 100, 100)] }).pair, rC = P1.pairResult(Cc);
+  eq(legs(Cc, 'L'), [['gap-rung', 111, 22, false], ['target', 120, 23, false]], 'FIXTURE B1 gap-above-rung-no-stop (O111/H122/L100): L gap-rung half at 111 then target at 120');
+  eq(legs(Cc, 'T'), [['target', 120, 45, false]], 'FIXTURE B1 gap-above-rung-no-stop: T target at 120');
+  ok(pnlOf(Cc, 'L') === expectPnl(Cc, [{ price: 111, lots: 22, kind: 'maker', adverse: false }, { price: 120, lots: 23, kind: 'maker', adverse: false }]) && pnlOf(Cc, 'T') === expectPnl(Cc, [{ price: 120, lots: 45, kind: 'maker', adverse: false }]) && rC.delta < 0 && rC.flags.affected === true, 'FIXTURE B1 gap-above-rung-no-stop: full P&L per leg; the half rung below T costs the ladder (delta < 0)', { delta: rC.delta });
+  var Dd = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 121, 122, 100, 100)] }).pair, rD = P1.pairResult(Dd);
+  eq([legs(Dd, 'T'), legs(Dd, 'L')], [[['gap-target', 121, 45, false]], [['gap-target', 121, 45, false]]], 'FIXTURE B1 gap-above-T-no-later-stop (O121/H122/L100): both twins gap-target all at 121');
+  ok(rD.delta === 0 && rD.flags.affected === false && rD.terminal, 'FIXTURE B1 gap-above-T-no-later-stop: delta 0, affected false');
+  var E = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 111, 115, 100, 112)] }).pair;
+  eq([legs(E, 'L'), legs(E, 'T'), E.twins.L.remainingLots, E.twins.L.closed, P1.statusOf(E)], [[['gap-rung', 111, 22, false]], [], 23, false, 'open'], 'FIXTURE B1 gap-above-partial-rung-only (O111/H115/L100, no stop): L fills the half rung at the open and stays open with 23 lots; T has no event');
+  var F = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 111, 115, 94, 100)] }).pair, rF = P1.pairResult(F);
+  eq(legs(F, 'L'), [['gap-rung', 111, 22, false], ['stop', 95, 23, false]], 'FIXTURE B1 gap-above-partial-rung-then-stop (O111/H115/L94): L gap-rung half at 111, remainder plain stop at 95 (no rung / T reachable after the open -> not a conflict)');
+  eq(legs(F, 'T'), [['stop', 95, 45, false]], 'FIXTURE B1 gap-above-partial-rung-then-stop: T plain stop at 95 (exitRules)');
+  ok(pnlOf(F, 'L') === expectPnl(F, [{ price: 111, lots: 22, kind: 'maker', adverse: false }, { price: 95, lots: 23, kind: 'taker', adverse: false }]) && rF.delta > 0 && rF.flags.affected, 'FIXTURE B1 gap-above-partial-rung-then-stop: full P&L, delta > 0', { delta: rF.delta });
+  var G = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 101, 122, 94, 100)] }).pair;
+  eq([legs(G, 'L'), legs(G, 'T')], [[['conflict-stop', 95, 45, true]], [['conflict-stop', 95, 45, true]]], 'B1 unchanged: open inside (101), stop and rung / T both reachable intrabar -> stop-first conflict on both twins (unknown intrabar order)');
+  var H = adj(filledPair(plan, 101), 2, { candles: [daily(d1, 94.5, 122, 94, 100)] }).pair;
+  eq([legs(H, 'L'), legs(H, 'T')], [[['gap-stop', 94.5, 45, true]], [['gap-stop', 94.5, 45, true]]], 'B1 unchanged: open at/below S -> gap-stop first on both twins');
+  var two = P1.ladderPlan(zonesOf([zone('a', 103.5, 104.5, 4), zone('b', 105.8, 106.2, 4)]), fibs([104, 106, 108, 112, 116]), geo(), C);
+  eq(two.rungs.map(function (r) { return [r.price, r.lots]; }), [[104, 22], [106, 11]], 'setup B1: two fraction rungs (104: 22 lots, 106: 11 lots)');
+  var I = adj(filledPair(two, 101), 2, { candles: [daily(d1, 106.5, 107, 94, 100)] }).pair;
+  eq(legs(I, 'L'), [['gap-rung', 106.5, 22, false], ['gap-rung', 106.5, 11, false], ['stop', 95, 12, false]], 'B1: an open above two rungs fills both at the open, ascending, then the remainder follows the stop convention');
+  var J = adj(filledPair(two, 101), 2, { candles: [daily(d1, 104.5, 107, 94, 100)] }).pair;
+  eq(legs(J, 'L'), [['gap-rung', 104.5, 22, false], ['conflict-stop', 95, 23, true]], 'B1: open above the first rung only; the second rung was reachable intrabar with the stop -> conflict-stop on the remainder (stop first)');
+})();
+
+// ---------- 52v B2: the rung net-positive test carries the permitted entry charge (taker + adverse friction, 85 bp) and the maker exit (40 bp), cents per leg on the allocated lots ----------
+(function () {
+  var g = geo(), lv = function (r) { return fibs([r, 130, 131, 132, 133]); }, nnp = function (p) { return p.rejected.filter(function (r) { return r.reason === 'not-net-positive'; }); };
+  eq([P1.rungNet(100, 100.9, 45, 1, C).netCents, P1.rungNet(100, 100.9, 45, 1, C).entryChargeBp, P1.rungNet(100, 100.9, 45, 1, C).exitChargeBp], [-1591, 85, 40], 'B2: rungNet reproduces Astra\'s -$15.91 round trip (45 units, L 100, rung 100.90, 85 bp in / 40 bp out, cent rounding)');
+  var x = P1.ladderPlan(zonesOf([zone('a', 100.5, 101.2, 10)]), lv(100.9), g, C);
+  ok(x.tOnly && x.rungs.length === 0 && nnp(x).length === 1 && nnp(x)[0].detail.netCents === -1591 && nnp(x)[0].detail.lots === 45 && nnp(x)[0].zoneId === 'a' && x.fallbackReason === 'no-confluence', 'FIXTURE B2 crossing-ask counterexample: pass zone Mlo 10 coincident with a fib rung at 100.90 -> rung REJECTED not-net-positive (-1591 cents on 45 units); the plan is T-only', nnp(x));
+  ok((100.9 - 100 - (100.9 + 100) * 0.004) > 0, 'FIXTURE B2 crossing-ask counterexample: the superseded 40 bp / 40 bp per-unit test would have accepted it (+$0.0964 per unit)');
+  var y = P1.ladderPlan(zonesOf([zone('a', 103.5, 104.5, 4)]), fibs([104, 106, 108, 112, 116]), g, C);
+  eq(y.rungs.map(function (r) { return [r.price, r.lots, r.netCents, r.netTest.entryChargeBp, r.netTest.exitChargeBp]; }), [[104, 22, P1.rungNet(100, 104, 22, 1, C).netCents, 85, 40]], 'FIXTURE B2 ordinary resting-fill: a rung 4 % above L is accepted; netCents recorded on its 22 allocated lots with 85 / 40 bp');
+  ok(y.rungs[0].netCents > 0 && y.rungs[0].netPerUnit > 0 && y.inputs.entryChargeBp === 85 && y.inputs.exitChargeBp === 40, 'FIXTURE B2 ordinary resting-fill: positive net; plan inputs record both charge rates');
+  var lo = P1.ladderPlan(zonesOf([zone('a', 100.8, 101.7, 10)]), lv(101.25), g, C), hi = P1.ladderPlan(zonesOf([zone('a', 100.8, 101.7, 10)]), lv(101.26), g, C);
+  ok(lo.tOnly && nnp(lo).length === 1 && nnp(lo)[0].detail.netCents === -23, 'FIXTURE B2 boundary below: rung 101.25 (all-out, 45 units) -> -23 cents -> rejected');
+  ok(hi.rungs.length === 1 && hi.rungs[0].price === 101.26 && hi.rungs[0].netCents === 22, 'FIXTURE B2 boundary just above: rung 101.26 -> +22 cents -> accepted');
+  ok((101.25 - 100 - (101.25 + 100) * 0.004) > 0, 'FIXTURE B2 boundary: the superseded test accepted 101.25 too');
+  var fr = P1.ladderPlan(zonesOf([zone('a', 100.8, 101.7, 4)]), lv(101.25), g, C), fr2 = P1.ladderPlan(zonesOf([zone('a', 100.8, 101.7, 4)]), lv(101.26), g, C);
+  ok(fr.tOnly && nnp(fr)[0].detail.lots === 22 && nnp(fr)[0].detail.netCents === -11 && fr2.rungs.length === 1 && fr2.rungs[0].lots === 22 && fr2.rungs[0].netCents === 11, 'B2: the test runs on the lots the tier allocates (fraction: 22 units) with the same rounding convention');
+  var free = P1.ladderPlan(zonesOf([zone('wide', 100.5, 104.5, 4)]), fibs([100.9, 104, 130, 131, 132]), g, C);
+  ok(free.rungs.length === 1 && free.rungs[0].price === 104 && free.rungs[0].zoneId === 'wide' && nnp(free).length === 1, 'B2: a zone whose first coincident level fails the net test is NOT consumed; it carries the next (net-positive) level');
+  var aa = P1.ladderPlan(zonesOf([zone('a', 103.5, 104.5, 4)]), fibs([104, 106, 108, 112, 116]), g, cfg({ costScenario: 'allAdverse' }));
+  ok(aa.inputs.entryChargeBp === 85 && aa.inputs.exitChargeBp === 85 && aa.rungs.length === 1 && aa.rungs[0].netCents === P1.rungNet(100, 104, 22, 1, cfg({ costScenario: 'allAdverse' })).netCents && aa.rungs[0].netCents < y.rungs[0].netCents, "B2: under 'allAdverse' both legs carry 85 bp (declared scenario, not hard-coded 40)");
+  var ne = P1.ladderPlan(zonesOf([zone('a', 99.5, 100.6, 20), zone('b', 119.5, 120.5, 20)]), fibs([100.2, 120, 108, 112, 116]), g, C);
+  ok(ne.rejected.some(function (r) { return r.reason === 'not-net-positive'; }) && ne.rejected.some(function (r) { return r.reason === 'at-or-above-target'; }), 'B2: the 52s not-net-positive fixture still rejects under the stricter test');
+})();
+
 // ---------- controller (B2) ----------
 (function () {
   var plan = P1.ladderPlan(zonesOf([zone('a', 103.5, 104.5, 4), zone('b', 105.8, 106.2, 12)]), fibs([104, 106, 108, 112, 116]), geo(), C);
@@ -294,9 +403,94 @@ if (FIB) (function () {   // FIXTURE causal fib confirmation: a leg whose confir
   ok(P1.rearm(null, { price: 99.5, activePair: false }, C).allow === true, 'controller: no prior pair -> allowed');
 })();
 
-// ---------- horizon isolation ----------
-ok(OC.CFG.HORIZON_BAR === 10 && OC.CFG.RETAIN_BARS === 20 && JSON.stringify(OC.CFG) === CFG_BEFORE, 'FIXTURE horizon isolation: OrdersCore.CFG unchanged (HORIZON_BAR 10, RETAIN_BARS 20) after every P1 call');
-ok(C.horizonHoldingDays === 20, 'the P1 horizon (20) lives in p1-config, not in OrdersCore.CFG');
+// ---------- 52v B3 through the actual wrapper: capture.js fwdP1Step in a vm, isolated files, deterministic I/O ----------
+(function () {
+  var fs = require('fs'), os = require('os'), vm = require('vm'), crypto = require('crypto');
+  if (!fs.existsSync(CAPTURE_PATH)) { ok(false, 'FIXTURE B3 wrapper: capture.js not found at ' + CAPTURE_PATH + ' (pass it as argv[6])'); return; }
+  var SZ_PATH = path.join(root, 'radar_tools', 'book', 'sellzone-core.js'), BC_PATH = path.join(root, 'radar_tools', 'book', 'book-codec.js'), BK_PATH = path.join(root, 'radar_tools', 'book', 'book-core.js'), CC_PATH = path.join(root, 'channel-core.js');
+  var SZ = require(SZ_PATH), BC = require(BC_PATH), sha = function (f) { return crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'); };
+  var logs = { out: [], err: [] }, stubs = { './universe-core.js': {}, './channel-core.js': {}, './cache-core.js': {}, './setups-core.js': {}, './exchange-map.js': {}, './exchange-ohlcv.js': {}, './episodes-core.js': EC, './orders-core.js': OC, fs: fs, path: path, crypto: crypto, child_process: {}, zlib: require('zlib') };
+  var resolveMap = { './p1-core.js': P1_PATH, './orders-core.js': OC_PATH, './episodes-core.js': EC_PATH, './channel-core.js': CC_PATH, './radar_tools/book/book-core.js': BK_PATH, './radar_tools/book/book-codec.js': BC_PATH, './radar_tools/book/sellzone-core.js': SZ_PATH, './radar_tools/zones/fib-core.js': FIB_PATH };
+  function rq(n) { return n in stubs ? stubs[n] : require(n); } rq.resolve = function (n) { return resolveMap[n] || require.resolve(n); };
+  var src = fs.readFileSync(CAPTURE_PATH, 'utf8').replace(/\nmain\(\)\.catch\([^\n]*\n?$/, '\nglobalThis.__p1 = { fwdP1Step: fwdP1Step };\n');
+  if (!/__p1 = /.test(src)) { ok(false, 'FIXTURE B3 wrapper: could not neutralise main() in capture.js'); return; }
+  var cx = vm.createContext({ require: rq, process: { env: { CG_KEY: 'fixture' }, pid: 1, argv: [], exitCode: undefined, exit: function (c) { throw new Error('exit ' + c); } }, console: { log: function () { logs.out.push(Array.prototype.join.call(arguments, ' ')); }, warn: function () {}, error: function () { logs.err.push(Array.prototype.join.call(arguments, ' ')); } },
+    fetch: function () { return Promise.reject(new Error('offline')); }, __dirname: root, Buffer: Buffer, setTimeout: setTimeout, Date: Date, JSON: JSON, Math: Math, Set: Set, Map: Map, Promise: Promise, Object: Object, Array: Array, String: String, Number: Number, RegExp: RegExp, Error: Error, isFinite: isFinite, parseInt: parseInt, parseFloat: parseFloat });
+  vm.runInContext(src, cx, { filename: 'capture.js' });
+  var step = cx.__p1.fwdP1Step, d = { fs: fs, path: path, crypto: crypto };
+  var dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-52v-')), p1dir = path.join(dataRoot, 'forward', 'p1');
+  fs.mkdirSync(p1dir, { recursive: true }); fs.mkdirSync(path.join(dataRoot, 'book'), { recursive: true });
+  fs.writeFileSync(path.join(dataRoot, 'book', 'sellzone-params.json'), JSON.stringify({ status: 'frozen', clustering: { name: 'x' }, cutoffs: { concentration: 1, material: 1 }, staleMultiplier: 2 }));
+  var pinned = { capture: null, analysis: null, p1Core: sha(P1_PATH), ordersCore: sha(OC_PATH), episodesCore: sha(EC_PATH), channelCore: sha(CC_PATH), bookCore: sha(BK_PATH), bookCodec: sha(BC_PATH), sellzoneCore: sha(SZ_PATH), fibCore: sha(FIB_PATH), sellzoneParams: sha(path.join(dataRoot, 'book', 'sellzone-params.json')) };
+  var CFGF = Object.assign({ arm: 'P1' }, cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: pinned }));
+  function writeCfg(c) { fs.writeFileSync(path.join(p1dir, 'p1-config.json'), JSON.stringify(c)); }
+  function snapshot() { var m = {}; (function walk(dir, rel) { fs.readdirSync(dir, { withFileTypes: true }).forEach(function (e) { var f = path.join(dir, e.name), r = rel + '/' + e.name; if (e.isDirectory()) walk(f, r); else m[r] = sha(f); }); })(dataRoot, 'data'); return m; }
+  function captureOn(date, cgs) {   // one canonical capture dated `date` (issue 00:29Z) with one eligible research row per cg (all gates pass, price 100 in zone [99, 100], S 95 / L 100 / T 120)
+    var t0 = Date.parse(date + 'T00:00:00.000Z') / 1000, iss = t0 + 29 * 60, research = {}, coins = {};
+    cgs.forEach(function (cg) { research[cg] = row(); coins[cg] = { pair: 'XUSD', venueEligible: true, meta: META, candles: [], quote: null }; });
+    var capture = { captureId: 'cap-' + date, generationId: 'g-' + date, date: date, issueTimeUtc: new Date(iss * 1000).toISOString(), issueSec: iss, inputCutoffSec: t0, protocolVersion: 'test' };
+    var io = { modules: { P1: P1, SZ: SZ, BC: BC, FIB: FIB }, now: function () { return iss * 1000 + 5000; }, sleep: function () { return Promise.resolve(); }, fetchKrakenDaily: function () { return Promise.resolve([]); }, fetchBuffer: function () { return Promise.resolve(null); }, bookBase: 'stub://',
+      fetchJson: function (u) { if (/cadence\.json$/.test(u)) return Promise.resolve({ version: 'stub', table: [] }); if (/AssetPairs/.test(u)) return Promise.resolve({ error: [], result: {} }); if (/Ticker/.test(u)) return Promise.resolve({ error: [], result: { XXUSD: { c: ['100.5', '1'], a: ['100.5', '1', '1'], b: ['100.4', '1', '1'] } } }); return Promise.reject(new Error('offline')); } };
+    return step(d, dataRoot, capture, { research: research, coins: coins, ev: {}, assetPairs: { XUSD: { key: 'XXUSD' } } }, io);
+  }
+  function readGen(date) { return JSON.parse(fs.readFileSync(path.join(p1dir, 'gen-g-' + date, 'pairs.json'), 'utf8')); }
+  function readOpps(date) { return JSON.parse(fs.readFileSync(path.join(p1dir, 'gen-g-' + date, 'opportunities.json'), 'utf8')); }
+  function current() { return JSON.parse(fs.readFileSync(path.join(p1dir, 'CURRENT.json'), 'utf8')); }
+  var pending = [];
+  function run(fn) { pending.push(fn); }
+  writeCfg(CFGF);
+  var all = ['c1', 'c2', 'c3', 'c4', 'c5'];
+  (async function () {
+    var r1 = await captureOn('2026-10-19', ['c1']); if (r1.status !== 'ok') { ok(false, 'B3 wrapper first capture', { r1: r1, err: logs.err.slice(-3) }); return finish(); } var g1 = readGen('2026-10-19');
+    ok(r1.status === 'ok' && r1.counts.pairsCreated === 1 && g1.phase === 'pre-freeze' && g1.pairs[0].study === false && g1.pairs[0].pairId === 'P1-2026-10-19-c1' && current().calendar === null, 'FIXTURE B3 window: capture one day before issuanceStart (frozen, before frozenAt) issues a development pair, study:false, no calendar yet', { r1: r1.status, counts: r1.counts, phase: g1.phase });
+    var r2 = await captureOn('2026-10-20', ['c1', 'c2']), g2 = readGen('2026-10-20'), o2 = readOpps('2026-10-20'), cur2 = current();
+    ok(r2.status === 'ok' && g2.phase === 'study-issuance' && cur2.calendar && cur2.calendar.anchor === '2026-10-20' && cur2.calendar.issuanceEndExclusive === '2026-12-19T00:00:00.000Z' && g2.calendar.anchor === '2026-10-20', 'FIXTURE B3 window: the first capture at/after frozenAt anchors the calendar (10-20 -> issuance end Dec 19 exclusive) and persists it in CURRENT + the generation meta', { status: r2.status, cur: cur2.calendar, phase: g2.phase });
+    var p2 = g2.pairs.filter(function (p) { return p.cgId === 'c2'; })[0], p1b = g2.pairs.filter(function (p) { return p.cgId === 'c1'; })[0], oc1 = o2.opportunities.filter(function (o) { return o.cgId === 'c1'; })[0];
+    ok(p2 && p2.study === true && p2.phase === 'study-issuance' && p1b && p1b.study === false && r2.counts.studyPairsCreated === 1, 'FIXTURE B3 window: on issuanceStart the new pair is study:true; the pre-freeze pair keeps study:false', { p2: p2 && p2.study, p1: p1b && p1b.study });
+    ok(oc1 && oc1.outcome === 'controller-blocked' && oc1.controller.blockedBy === 'development-pair' && r2.counts.blockedByDevelopmentPair === 1, 'FIXTURE B3 development-pair disclosure: the still-active development pair blocks the coin and is disclosed as blockedBy: development-pair (not relabeled, not reset)', oc1 && oc1.controller);
+    var r3 = await captureOn('2026-12-18', all.slice(0, 3)), g3 = readGen('2026-12-18'), p3 = g3.pairs.filter(function (p) { return p.cgId === 'c3'; })[0];
+    ok(r3.status === 'ok' && g3.phase === 'study-issuance' && p3 && p3.study === true && r3.counts.pairsCreated === 1 && current().calendar.anchor === '2026-10-20', 'FIXTURE B3 window: the last issuance day (Dec 18) still issues study pairs from the persisted calendar', { status: r3.status, counts: r3.counts });
+    var r4 = await captureOn('2026-12-19', all.slice(0, 4)), g4 = readGen('2026-12-19'), o4 = readOpps('2026-12-19'), oc4 = o4.opportunities.filter(function (o) { return o.cgId === 'c4'; })[0];
+    ok(r4.status === 'ok' && g4.phase === 'post-issuance' && r4.counts.pairsCreated === 0 && r4.counts.outsideIssuanceWindow === 1 && oc4.outcome === 'outside-issuance-window' && oc4.eligible === true && g4.pairs.length === 3, 'FIXTURE B3 window: issuanceEndExclusive (Dec 19) issues nothing; the eligible opportunity is recorded outside-issuance-window; the three pairs are still carried (adjudication continues)', { status: r4.status, counts: r4.counts, phase: g4.phase });
+    var r5 = await captureOn('2026-12-20', all), g5 = readGen('2026-12-20');
+    ok(r5.status === 'ok' && g5.phase === 'post-issuance' && r5.counts.pairsCreated === 0 && g5.pairs.length === 3 && g5.pairs.every(function (p) { return p.study === (p.cgId !== 'c1'); }), 'FIXTURE B3 window: one day after the window issues nothing; study labels unchanged (c1 false, c2 / c3 true)', { status: r5.status, counts: r5.counts });
+    ok(g5.pairs.every(function (p) { return p.entry.status === 'resting' || p.entry.status === 'pending-unresolved'; }), 'setup: the pairs rest (ask 100.5 > L) - evidence fetches are offline in this fixture');
+    // identity mismatch -> held
+    var before = snapshot(), curBefore = current();
+    writeCfg(Object.assign({}, CFGF, { pinned: Object.assign({}, pinned, { p1Core: 'f'.repeat(64) }) }));
+    var r6 = await captureOn('2026-12-21', all), after = snapshot(), curAfter = current();
+    var changed = Object.keys(after).filter(function (k) { return before[k] !== after[k]; }).concat(Object.keys(before).filter(function (k) { return !(k in after); }));
+    ok(r6.status === 'held' && r6.reason === 'identity-mismatch' && r6.mismatches.length === 1 && r6.mismatches[0].key === 'p1Core', 'FIXTURE B3 identity mismatch -> held (p1-core.js hash differs from pinned)', r6);
+    ok(fs.existsSync(path.join(p1dir, 'gen-g-2026-12-21', 'held.json')) && !fs.existsSync(path.join(p1dir, 'gen-g-2026-12-21', 'pairs.json')) && JSON.parse(fs.readFileSync(path.join(p1dir, 'gen-g-2026-12-21', 'held.json'), 'utf8')).held === 'identity-mismatch', 'FIXTURE B3 identity mismatch: a held record is written, no pairs / ledgers for that generation');
+    ok(changed.every(function (k) { return k.indexOf('data/forward/p1/') === 0; }) && changed.length === 3 && changed.indexOf('data/forward/p1/CURRENT.json') >= 0 && changed.indexOf('data/forward/p1/gen-g-2026-12-21/held.json') >= 0 && changed.indexOf('data/forward/p1/p1-config.json') >= 0, 'FIXTURE B3 identity mismatch: zero writes outside data/forward/p1/ (only the held record, CURRENT.held and the tampered config changed)', changed);
+    ok(curAfter.generationId === curBefore.generationId && curAfter.held && curAfter.held.reason === 'identity-mismatch' && curAfter.held.generationId === 'g-2026-12-21' && JSON.stringify(curAfter.calendar) === JSON.stringify(curBefore.calendar), 'FIXTURE B3 identity mismatch: CURRENT keeps its generation pointer and calendar; only a held marker is added', curAfter.held);
+    ok(logs.err.some(function (l) { return /^p1: HELD identity-mismatch/.test(l); }), 'FIXTURE B3 identity mismatch: logged as p1: HELD identity-mismatch');
+    writeCfg(CFGF);
+    var r7 = await captureOn('2026-12-22', all), g7 = readGen('2026-12-22');
+    ok(r7.status === 'ok' && g7.pairs.length === 3 && g7.phase === 'post-issuance' && r7.counts.pairsCreated === 0, 'FIXTURE B3 identity restored: the next capture resumes from the retained pair list (3 pairs), still outside the window', { status: r7.status, counts: r7.counts });
+    // config-level rejections through the wrapper
+    writeCfg(Object.assign({}, CFGF, { pinned: {} }));
+    var r8 = await captureOn('2026-12-23', all);
+    ok(r8.status === 'config-error' && r8.errors.length === 9 && logs.err.some(function (l) { return /CONFIGURATION ERROR.*pinned\.p1Core/.test(l); }), 'FIXTURE B3 empty pinned with status frozen -> config rejected by the wrapper (P1 step skipped)', r8);
+    writeCfg(Object.assign({}, CFGF, { calendar: Object.assign({}, current().calendar, { anchor: '2026-10-21', issuanceStart: '2026-10-21T00:00:00.000Z' }) }));
+    var r9 = await captureOn('2026-12-23', all);
+    ok(r9.status === 'config-error', 'B3: a config calendar that is not the derived one is rejected', r9);
+    writeCfg(CFGF);
+    // Astra's reproduction, isolated: frozenAt 10-20, captures dated 10-19 and 12-19 must not issue study:true pairs - covered above (10-19 -> study:false; 12-19 -> nothing). Count them explicitly:
+    var studyIssued = {}; ['2026-10-19', '2026-10-20', '2026-12-18', '2026-12-19', '2026-12-20'].forEach(function (dt) { var g = readGen(dt); studyIssued[dt] = g.pairs.filter(function (p) { return p.issueDate === dt && p.study === true; }).length; });
+    eq(studyIssued, { '2026-10-19': 0, '2026-10-20': 1, '2026-12-18': 1, '2026-12-19': 0, '2026-12-20': 0 }, 'FIXTURE B3 window summary: study issuance on 10-20 and 12-18 only (Astra\'s 10-19 / 12-19 reproduction now issues no study pair)');
+    ok(OC.CFG.HORIZON_BAR === 10 && JSON.stringify(OC.CFG) === CFG_BEFORE, 'wrapper fixtures: OrdersCore.CFG unchanged after the real fwdP1Step runs');
+    try { fs.rmSync(dataRoot, { recursive: true, force: true }); } catch (e) {}
+    finish();
+  })().catch(function (e) { ok(false, 'FIXTURE B3 wrapper threw', String(e && e.stack || e)); finish(); });
+  WRAPPER_ASYNC = true;
+})();
 
-console.log('p1-core tests: ' + pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+// ---------- horizon isolation (runs after the async wrapper fixtures finish) ----------
+function finish() {
+  ok(OC.CFG.HORIZON_BAR === 10 && OC.CFG.RETAIN_BARS === 20 && JSON.stringify(OC.CFG) === CFG_BEFORE, 'FIXTURE horizon isolation: OrdersCore.CFG unchanged (HORIZON_BAR 10, RETAIN_BARS 20) after every P1 call');
+  ok(C.horizonHoldingDays === 20, 'the P1 horizon (20) lives in p1-config, not in OrdersCore.CFG');
+  console.log('p1-core tests: ' + pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}
+if (!WRAPPER_ASYNC) finish();
