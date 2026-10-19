@@ -1,5 +1,6 @@
 /* radar_tools/p1-core.test.js — item 52s acceptance B: p1-core.js (P1 Practitioner arm) fixtures. Node only, deterministic, no network, no clock.
  * Run: node radar_tools/p1-core.test.js [p1-core.js] [orders-core.js] [fib-core.js] [episodes-core.js] [capture.js]   -> "p1-core tests: n passed, m failed". Exit 1 on any failure.
+ * 52w (Astra 52v verification review): B3a interrupted-publication recovery (fault injection at the CURRENT rename / before pair creation / mid-publication), B3b capture.js in the identity guard (ten runtime pins).
  * 52v (freeze blockers B1-B3, Astra Freeze Record Review 2026-10-18): opening-gap fixtures (full P&L), rung net-positive with the 85 bp entry charge, frozen-status calendar / identity guard through the real capture.js wrapper (vm, isolated temp files, deterministic I/O).
  * Required fixtures (IMP 52s §5): all-16-gates (five retained pass, ten omitted fail -> eligible); width-fail not filtered by a hidden screen; invalidation 95 vs stop 99 -> S = 95 rounded up; same marks / different excursions;
  * multi-rung + stop conflict in one bar (stop first); early-L all-out then late-T open -> no re-arm until both terminal; duplicate zone across three fib levels -> one rung; unavailable / bounded M -> no tier;
@@ -50,16 +51,18 @@ function filledPair(plan, px, o) {
 eq(P1.validateConfig(C), [], 'config: the registered constants validate');
 ok(P1.validateConfig(cfg({ expiry: 'end-D+3' })).length === 1 && P1.validateConfig(cfg({ costScenario: 'none' })).length === 1 && P1.validateConfig(cfg({ X_low: 11 })).length === 1 && P1.validateConfig(cfg({ status: 'frozen' })).some(function (e) { return /frozenAt/.test(e); }), 'config: expiry, cost scenario, X_low <= X_high and frozen-without-frozenAt are rejected');
 var PIN = {}; P1.PINNED_REQUIRED.forEach(function (k, i) { PIN[k] = String(i).repeat(64).slice(0, 64); });   // nine well-formed (fake) sha256 values
-var FROZEN = cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({ capture: null, analysis: null }, PIN) });
+var FROZEN = cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({ analysis: null }, PIN) });
 ok(P1.isStudy(C) === false && P1.isStudy(FROZEN) === true, 'config: unfrozen -> study false; frozen -> study true (declared status only; issuance is studyPhase)');
-eq(P1.validateConfig(FROZEN), [], 'config: frozen with frozenAt + nine pinned sha256 validates');
+eq(P1.validateConfig(FROZEN), [], 'config: frozen with frozenAt + ten pinned sha256 validates');
 (function () {   // 52v B3(a)
   var e = P1.validateConfig(cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: {} }));
-  ok(e.length === 9 && P1.PINNED_REQUIRED.every(function (k) { return e.some(function (m) { return m.indexOf('pinned.' + k) === 0; }); }), 'FIXTURE B3 empty pinned with status frozen -> config rejected (one error per required identity)', e);
+  ok(e.length === 10 && P1.PINNED_REQUIRED.every(function (k) { return e.some(function (m) { return m.indexOf('pinned.' + k) === 0; }); }), 'FIXTURE B3 empty pinned with status frozen -> config rejected (one error per required identity, ten runtime pins incl. capture)', e);
   ok(P1.validateConfig(cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({}, PIN, { channelCore: 'abc' }) })).length === 1, 'B3(a): a malformed hash (channel-core) is rejected');
   ok(P1.validateConfig(cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: Object.assign({}, PIN, { bookCodec: null }) })).length === 1, 'B3(a): a null hash (book-codec) is rejected when frozen');
   eq(P1.validateConfig(cfg({ pinned: { capture: null, p1Core: null, ordersCore: null, episodesCore: null, channelCore: null, bookCore: null, bookCodec: null, sellzoneCore: null, sellzoneParams: null, fibCore: null, analysis: null } })), [], 'B3(a): unfrozen with null pinned values (the shipped p1-config shape) still validates');
   ok(P1.PINNED_REQUIRED.indexOf('channelCore') >= 0 && P1.PINNED_REQUIRED.indexOf('bookCodec') >= 0 && P1.PINNED_FILES.channelCore === 'channel-core.js' && P1.PINNED_FILES.bookCodec === 'radar_tools/book/book-codec.js', 'identity manifest: channel-core.js and radar_tools/book/book-codec.js are required pinned identities');
+  ok(P1.PINNED_REQUIRED.length === 10 && P1.PINNED_REQUIRED.indexOf('capture') >= 0 && P1.PINNED_FILES.capture === 'capture.js' && P1.PINNED_REQUIRED.indexOf('analysis') < 0, 'FIXTURE B3b manifest: ten runtime pins including capture.js; the analysis kernel pin stays documentary');
+  ok(!P1.identityCheck(FROZEN, Object.assign({}, PIN, { capture: 'f'.repeat(64) })).ok && P1.identityCheck(FROZEN, Object.assign({}, PIN, { capture: 'f'.repeat(64) })).mismatches[0].key === 'capture', 'FIXTURE B3b identityCheck: a differing capture hash is a mismatch');
   var idOk = P1.identityCheck(FROZEN, Object.assign({}, PIN)), idBad = P1.identityCheck(FROZEN, Object.assign({}, PIN, { p1Core: 'f'.repeat(64) })), idMissing = P1.identityCheck(FROZEN, Object.assign({}, PIN, { sellzoneParams: undefined }));
   ok(idOk.ok && !idBad.ok && idBad.mismatches.length === 1 && idBad.mismatches[0].key === 'p1Core' && !idMissing.ok && idMissing.mismatches[0].key === 'sellzoneParams', 'identityCheck: equal -> ok; one differing or missing hash -> that key mismatched');
 })();
@@ -415,24 +418,28 @@ if (FIB) (function () {   // FIXTURE causal fib confirmation: a leg whose confir
   var src = fs.readFileSync(CAPTURE_PATH, 'utf8').replace(/\nmain\(\)\.catch\([^\n]*\n?$/, '\nglobalThis.__p1 = { fwdP1Step: fwdP1Step };\n');
   if (!/__p1 = /.test(src)) { ok(false, 'FIXTURE B3 wrapper: could not neutralise main() in capture.js'); return; }
   var cx = vm.createContext({ require: rq, process: { env: { CG_KEY: 'fixture' }, pid: 1, argv: [], exitCode: undefined, exit: function (c) { throw new Error('exit ' + c); } }, console: { log: function () { logs.out.push(Array.prototype.join.call(arguments, ' ')); }, warn: function () {}, error: function () { logs.err.push(Array.prototype.join.call(arguments, ' ')); } },
-    fetch: function () { return Promise.reject(new Error('offline')); }, __dirname: root, Buffer: Buffer, setTimeout: setTimeout, Date: Date, JSON: JSON, Math: Math, Set: Set, Map: Map, Promise: Promise, Object: Object, Array: Array, String: String, Number: Number, RegExp: RegExp, Error: Error, isFinite: isFinite, parseInt: parseInt, parseFloat: parseFloat });
+    fetch: function () { return Promise.reject(new Error('offline')); }, __dirname: root, __filename: CAPTURE_PATH, Buffer: Buffer, setTimeout: setTimeout, Date: Date, JSON: JSON, Math: Math, Set: Set, Map: Map, Promise: Promise, Object: Object, Array: Array, String: String, Number: Number, RegExp: RegExp, Error: Error, isFinite: isFinite, parseInt: parseInt, parseFloat: parseFloat });
   vm.runInContext(src, cx, { filename: 'capture.js' });
   var step = cx.__p1.fwdP1Step, d = { fs: fs, path: path, crypto: crypto };
   var dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-52v-')), p1dir = path.join(dataRoot, 'forward', 'p1');
   fs.mkdirSync(p1dir, { recursive: true }); fs.mkdirSync(path.join(dataRoot, 'book'), { recursive: true });
   fs.writeFileSync(path.join(dataRoot, 'book', 'sellzone-params.json'), JSON.stringify({ status: 'frozen', clustering: { name: 'x' }, cutoffs: { concentration: 1, material: 1 }, staleMultiplier: 2 }));
-  var pinned = { capture: null, analysis: null, p1Core: sha(P1_PATH), ordersCore: sha(OC_PATH), episodesCore: sha(EC_PATH), channelCore: sha(CC_PATH), bookCore: sha(BK_PATH), bookCodec: sha(BC_PATH), sellzoneCore: sha(SZ_PATH), fibCore: sha(FIB_PATH), sellzoneParams: sha(path.join(dataRoot, 'book', 'sellzone-params.json')) };
+  var pinned = { analysis: null, capture: sha(CAPTURE_PATH), p1Core: sha(P1_PATH), ordersCore: sha(OC_PATH), episodesCore: sha(EC_PATH), channelCore: sha(CC_PATH), bookCore: sha(BK_PATH), bookCodec: sha(BC_PATH), sellzoneCore: sha(SZ_PATH), fibCore: sha(FIB_PATH), sellzoneParams: sha(path.join(dataRoot, 'book', 'sellzone-params.json')) };
   var CFGF = Object.assign({ arm: 'P1' }, cfg({ status: 'frozen', frozenAt: '2026-10-20T00:00:00.000Z', pinned: pinned }));
   function writeCfg(c) { fs.writeFileSync(path.join(p1dir, 'p1-config.json'), JSON.stringify(c)); }
   function snapshot() { var m = {}; (function walk(dir, rel) { fs.readdirSync(dir, { withFileTypes: true }).forEach(function (e) { var f = path.join(dir, e.name), r = rel + '/' + e.name; if (e.isDirectory()) walk(f, r); else m[r] = sha(f); }); })(dataRoot, 'data'); return m; }
-  function captureOn(date, cgs) {   // one canonical capture dated `date` (issue 00:29Z) with one eligible research row per cg (all gates pass, price 100 in zone [99, 100], S 95 / L 100 / T 120)
+  function captureOn(date, cgs, opts) {   // one canonical capture dated `date` (issue 00:29Z) with one eligible research row per cg (all gates pass, price 100 in zone [99, 100], S 95 / L 100 / T 120)
     var t0 = Date.parse(date + 'T00:00:00.000Z') / 1000, iss = t0 + 29 * 60, research = {}, coins = {};
     cgs.forEach(function (cg) { research[cg] = row(); coins[cg] = { pair: 'XUSD', venueEligible: true, meta: META, candles: [], quote: null }; });
     var capture = { captureId: 'cap-' + date, generationId: 'g-' + date, date: date, issueTimeUtc: new Date(iss * 1000).toISOString(), issueSec: iss, inputCutoffSec: t0, protocolVersion: 'test' };
     var io = { modules: { P1: P1, SZ: SZ, BC: BC, FIB: FIB }, now: function () { return iss * 1000 + 5000; }, sleep: function () { return Promise.resolve(); }, fetchKrakenDaily: function () { return Promise.resolve([]); }, fetchBuffer: function () { return Promise.resolve(null); }, bookBase: 'stub://',
       fetchJson: function (u) { if (/cadence\.json$/.test(u)) return Promise.resolve({ version: 'stub', table: [] }); if (/AssetPairs/.test(u)) return Promise.resolve({ error: [], result: {} }); if (/Ticker/.test(u)) return Promise.resolve({ error: [], result: { XXUSD: { c: ['100.5', '1'], a: ['100.5', '1', '1'], b: ['100.4', '1', '1'] } } }); return Promise.reject(new Error('offline')); } };
-    return step(d, dataRoot, capture, { research: research, coins: coins, ev: {}, assetPairs: { XUSD: { key: 'XXUSD' } } }, io);
+    var o = opts || {}, dd = o.d || d, quoteCalls = o.quoteCalls || null;
+    if (quoteCalls) { var fj = io.fetchJson; io.fetchJson = function (u) { if (/Ticker/.test(u)) quoteCalls.push(u); return fj(u); }; }
+    return step(dd, o.root || dataRoot, capture, { research: research, coins: coins, ev: {}, assetPairs: { XUSD: { key: 'XXUSD' } } }, io);
   }
+  // 52w B3a: a deps object whose fs throws at the Nth renameSync onto CURRENT.json (the final atomic pointer publication), or at the Nth rename onto any file under the generation dir
+  function faultyDeps(match, nth) { var seen = 0, ffs = Object.create(fs); ffs.renameSync = function (a, b) { if (match.test(String(b)) && ++seen === nth) throw new Error('INJECTED interruption at rename -> ' + path.basename(b)); return fs.renameSync(a, b); }; return { fs: ffs, path: path, crypto: crypto }; }
   function readGen(date) { return JSON.parse(fs.readFileSync(path.join(p1dir, 'gen-g-' + date, 'pairs.json'), 'utf8')); }
   function readOpps(date) { return JSON.parse(fs.readFileSync(path.join(p1dir, 'gen-g-' + date, 'opportunities.json'), 'utf8')); }
   function current() { return JSON.parse(fs.readFileSync(path.join(p1dir, 'CURRENT.json'), 'utf8')); }
@@ -471,11 +478,52 @@ if (FIB) (function () {   // FIXTURE causal fib confirmation: a leg whose confir
     // config-level rejections through the wrapper
     writeCfg(Object.assign({}, CFGF, { pinned: {} }));
     var r8 = await captureOn('2026-12-23', all);
-    ok(r8.status === 'config-error' && r8.errors.length === 9 && logs.err.some(function (l) { return /CONFIGURATION ERROR.*pinned\.p1Core/.test(l); }), 'FIXTURE B3 empty pinned with status frozen -> config rejected by the wrapper (P1 step skipped)', r8);
+    ok(r8.status === 'config-error' && r8.errors.length === 10 && logs.err.some(function (l) { return /CONFIGURATION ERROR.*pinned\.p1Core/.test(l); }), 'FIXTURE B3 empty pinned with status frozen -> config rejected by the wrapper (P1 step skipped)', r8);
     writeCfg(Object.assign({}, CFGF, { calendar: Object.assign({}, current().calendar, { anchor: '2026-10-21', issuanceStart: '2026-10-21T00:00:00.000Z' }) }));
     var r9 = await captureOn('2026-12-23', all);
     ok(r9.status === 'config-error', 'B3: a config calendar that is not the derived one is rejected', r9);
     writeCfg(CFGF);
+    // ---- 52w B3a: interrupted first publication (Astra 52v verification review). Fresh world with an existing 10-19 development CURRENT. ----
+    var W2 = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-52w-')), p1dir2 = path.join(W2, 'forward', 'p1'); fs.mkdirSync(p1dir2, { recursive: true }); fs.mkdirSync(path.join(W2, 'book'), { recursive: true });
+    fs.copyFileSync(path.join(dataRoot, 'book', 'sellzone-params.json'), path.join(W2, 'book', 'sellzone-params.json'));
+    var cfg2 = function (c) { fs.writeFileSync(path.join(p1dir2, 'p1-config.json'), JSON.stringify(c || CFGF)); }, cur2 = function () { return JSON.parse(fs.readFileSync(path.join(p1dir2, 'CURRENT.json'), 'utf8')); }, gen2 = function (dt) { return JSON.parse(fs.readFileSync(path.join(p1dir2, 'gen-g-' + dt, 'pairs.json'), 'utf8')); };
+    cfg2();
+    var a0 = await captureOn('2026-10-19', ['dev'], { root: W2 });
+    ok(a0.status === 'ok' && cur2().generationId === 'g-2026-10-19' && cur2().calendar === null && !cur2().pending && gen2('2026-10-19').pairs[0].study === false, 'B3a setup: existing 10-19 development CURRENT (one development pair, no calendar, no pending marker)');
+    var qc = [], a1 = null, a1err = null;
+    try { a1 = await captureOn('2026-10-20', ['dev', 'first'], { root: W2, d: faultyDeps(/CURRENT\.json$/, 2), quoteCalls: qc }); } catch (e) { a1err = String(e.message); }
+    var c1 = cur2();
+    ok(a1 === null && /INJECTED interruption/.test(a1err || '') && fs.existsSync(path.join(p1dir2, 'gen-g-2026-10-20', 'pairs.json')) && gen2('2026-10-20').pairs.some(function (p) { return p.pairId === 'P1-2026-10-20-first' && p.study === true; }), 'FIXTURE B3a interrupted publication: all generation files written, the final CURRENT rename threw; the 10-20 study pair exists only in the unpublished generation', { a1: a1, err: a1err });
+    ok(c1.generationId === 'g-2026-10-19' && c1.calendar && c1.calendar.anchor === '2026-10-20' && c1.pending && c1.pending.generationId === 'g-2026-10-20' && qc.length === 1, 'FIXTURE B3a anchor-before-submission: CURRENT still points at 10-19 but already carries the 10-20 anchor and the pending marker, written before the one Ticker request', { cur: c1.calendar && c1.calendar.anchor, pending: c1.pending, quotes: qc.length });
+    var a2 = await captureOn('2026-10-20', ['dev', 'first'], { root: W2 }), c2 = cur2();
+    ok(a2.status === 'already-done' && a2.recovered === true && c2.generationId === 'g-2026-10-20' && !c2.pending && c2.recovered && c2.recovered.generationId === 'g-2026-10-20' && c2.calendar.anchor === '2026-10-20' && c2.counts.pairsTotal === 2 && c2.files && c2.files['pairs.json'] === sha(path.join(p1dir2, 'gen-g-2026-10-20', 'pairs.json')), 'FIXTURE B3a retry 10-20: the complete pending generation is verified and its pointer published (recovered), not a stale already-done', { a2: a2, cur: c2.generationId, pending: c2.pending });
+    var a3 = await captureOn('2026-10-21', ['dev', 'first', 'third'], { root: W2 }), g3 = gen2('2026-10-21'), c3 = cur2();
+    ok(a3.status === 'ok' && c3.calendar.anchor === '2026-10-20' && c3.calendar.issuanceEndExclusive === '2026-12-19T00:00:00.000Z' && g3.calendar.anchor === '2026-10-20', 'FIXTURE B3a 10-21 after recovery: anchor stays 10-20, issuance end stays Dec 19 exclusive (no re-anchor)', { anchor: c3.calendar.anchor, end: c3.calendar.issuanceEndExclusive });
+    ok(g3.pairs.some(function (p) { return p.pairId === 'P1-2026-10-20-first' && p.study === true; }) && g3.pairs.some(function (p) { return p.pairId === 'P1-2026-10-21-third' && p.study === true; }) && g3.pairs.length === 3 && g3.controller.first && g3.controller.first.pairId === 'P1-2026-10-20-first' && g3.counts.blockedByDevelopmentPair === 1 && c3.generationId === 'g-2026-10-21' && !c3.pending, 'FIXTURE B3a 10-21 after recovery: P1-2026-10-20-first stays in the active pair list, single controller history (first blocked by its own study pair, dev disclosed), one new study pair', { pairs: g3.pairs.map(function (p) { return p.pairId; }), ctl: Object.keys(g3.controller) });
+    // interruption BEFORE pair creation: the pending marker write itself (first CURRENT rename of the run) throws -> no generation files; retry resumes cleanly
+    var b1err = null; try { await captureOn('2026-10-22', ['dev', 'first', 'third', 'fourth'], { root: W2, d: faultyDeps(/CURRENT\.json$/, 1) }); } catch (e) { b1err = String(e.message); }
+    var cb = cur2();
+    ok(/INJECTED/.test(b1err || '') && !fs.existsSync(path.join(p1dir2, 'gen-g-2026-10-22')) && cb.generationId === 'g-2026-10-21' && !cb.pending && cb.calendar.anchor === '2026-10-20', 'FIXTURE B3a interruption before pair creation (pending-marker write): no generation files, pointer and anchor intact');
+    var b2 = await captureOn('2026-10-22', ['dev', 'first', 'third', 'fourth'], { root: W2 }), gb = gen2('2026-10-22');
+    ok(b2.status === 'ok' && b2.counts.pairsCreated === 1 && gb.pairs.length === 4 && gb.calendar.anchor === '2026-10-20' && cur2().generationId === 'g-2026-10-22', 'FIXTURE B3a retry after a pre-pair interruption resumes cleanly (anchor kept, 4 pairs)', b2);
+    // interruption mid-publication (after the pending marker and pair creation, at the ledger-T rename): pair records exist but the generation is incomplete -> HOLD recovery-required, no re-anchor, no new issuance
+    var m1err = null; try { await captureOn('2026-10-23', ['dev', 'first', 'third', 'fourth', 'fifth'], { root: W2, d: faultyDeps(/ledger-T\.json$/, 1) }); } catch (e) { m1err = String(e.message); }
+    var m2 = await captureOn('2026-10-24', ['dev', 'first', 'third', 'fourth', 'fifth'], { root: W2 }), cm = cur2();
+    ok(/INJECTED/.test(m1err || '') && m2.status === 'held' && m2.reason === 'recovery-required' && m2.generationId === 'g-2026-10-23' && cm.generationId === 'g-2026-10-22' && cm.held && cm.held.reason === 'recovery-required' && cm.calendar.anchor === '2026-10-20' && !fs.existsSync(path.join(p1dir2, 'gen-g-2026-10-24')), 'FIXTURE B3a incomplete pending generation with pair records -> HOLD recovery-required on the next capture: pointer, anchor untouched, nothing issued', { m2: m2, held: cm.held });
+    fs.rmSync(path.join(p1dir2, 'gen-g-2026-10-23'), { recursive: true, force: true }); fs.writeFileSync(path.join(p1dir2, 'CURRENT.json'), JSON.stringify(Object.assign({}, cm, { held: undefined, pending: undefined })));
+    var m3 = await captureOn('2026-10-24', ['dev', 'first', 'third', 'fourth', 'fifth'], { root: W2 });
+    ok(m3.status === 'ok' && gen2('2026-10-24').pairs.length === 5 && cur2().generationId === 'g-2026-10-24' && cur2().calendar.anchor === '2026-10-20', 'B3a: after the operator removes the incomplete generation, P1 resumes from the published pointer with the same anchor');
+    // ---- 52w B3b: capture.js identity (fresh world, first study capture) ----
+    var W3 = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-52w-')), p1dir3 = path.join(W3, 'forward', 'p1'); fs.mkdirSync(p1dir3, { recursive: true }); fs.mkdirSync(path.join(W3, 'book'), { recursive: true });
+    fs.copyFileSync(path.join(dataRoot, 'book', 'sellzone-params.json'), path.join(W3, 'book', 'sellzone-params.json'));
+    fs.writeFileSync(path.join(p1dir3, 'p1-config.json'), JSON.stringify(Object.assign({}, CFGF, { pinned: Object.assign({}, pinned, { capture: 'f'.repeat(64) }) })));
+    var k1 = await captureOn('2026-10-20', ['first'], { root: W3 });
+    ok(k1.status === 'held' && k1.reason === 'identity-mismatch' && k1.mismatches.length === 1 && k1.mismatches[0].key === 'capture' && k1.mismatches[0].actual === sha(CAPTURE_PATH) && !fs.existsSync(path.join(p1dir3, 'gen-g-2026-10-20', 'pairs.json')) && fs.existsSync(path.join(p1dir3, 'gen-g-2026-10-20', 'held.json')), 'FIXTURE B3b capture.js pinned: nine correct + pinned.capture = 64 x f on the first study capture -> HELD identity-mismatch naming capture (actual = the executing source hash), zero study pairs', k1);
+    ok(JSON.parse(fs.readFileSync(path.join(p1dir3, 'CURRENT.json'), 'utf8')).held.mismatches[0] === 'capture' && !JSON.parse(fs.readFileSync(path.join(p1dir3, 'CURRENT.json'), 'utf8')).calendar, 'FIXTURE B3b: the hold is recorded in CURRENT; no anchor was persisted by a held run');
+    fs.writeFileSync(path.join(p1dir3, 'p1-config.json'), JSON.stringify(CFGF));
+    var k2 = await captureOn('2026-10-20', ['first'], { root: W3 });
+    ok(k2.status === 'ok' && k2.counts.studyPairsCreated === 1 && JSON.parse(fs.readFileSync(path.join(p1dir3, 'CURRENT.json'), 'utf8')).calendar.anchor === '2026-10-20', 'B3b: with the correct capture hash the same first study capture issues its study pair', k2);
+    try { fs.rmSync(W2, { recursive: true, force: true }); fs.rmSync(W3, { recursive: true, force: true }); } catch (e) {}
     // Astra's reproduction, isolated: frozenAt 10-20, captures dated 10-19 and 12-19 must not issue study:true pairs - covered above (10-19 -> study:false; 12-19 -> nothing). Count them explicitly:
     var studyIssued = {}; ['2026-10-19', '2026-10-20', '2026-12-18', '2026-12-19', '2026-12-20'].forEach(function (dt) { var g = readGen(dt); studyIssued[dt] = g.pairs.filter(function (p) { return p.issueDate === dt && p.study === true; }).length; });
     eq(studyIssued, { '2026-10-19': 0, '2026-10-20': 1, '2026-12-18': 1, '2026-12-19': 0, '2026-12-20': 0 }, 'FIXTURE B3 window summary: study issuance on 10-20 and 12-18 only (Astra\'s 10-19 / 12-19 reproduction now issues no study pair)');
