@@ -1718,7 +1718,7 @@ function fwdRealGit() {
 }
 function fwdRealDeps() { return { fs, path, crypto, EC, OC, now: () => Date.now(), pid: process.pid, hooks: null, git: fwdRealGit() }; }
 
-// ===== P1 PRACTITIONER ARM (item 52s; 52v freeze blockers B3: identity guard, derived calendar, windowed issuance) — the capture-time step. I/O only; every decision rule is in p1-core.js. ========
+// ===== P1 PRACTITIONER ARM (item 52s; 52v B3: identity guard, derived calendar, windowed issuance; 52w B3a/B3b: recoverable publication, capture.js pinned) — the capture-time step. I/O only; every decision rule is in p1-core.js. ========
 // Called ONCE per canonical capture, after fwdCommitSequence returned 'canonical' (the cohort's single push is already made), inside its own try/catch, on DEEP COPIES of the capture's research rows,
 // execution context, candles and fetched evidence, plus the forward clock (the capture object). It never reads mutable cohort / shadow / episode state, never writes outside data/forward/p1/, and never
 // changes production timing (it runs after the production commit; capture.yml's own commit step carries its files). DORMANT unless data/forward/p1/p1-config.json exists and validates.
@@ -1735,7 +1735,7 @@ function p1Modules(io) {
   if (io && io.modules) return io.modules;
   return { P1: require('./p1-core.js'), SZ: require('./radar_tools/book/sellzone-core.js'), BC: require('./radar_tools/book/book-codec.js'), FIB: require('./radar_tools/zones/fib-core.js') };
 }
-// 52v B3(d): sha256 of the files P1 actually runs on (the module files require() resolves beside capture.js, and the frozen selector params under data/). io.identityFiles may override the path map (fixtures).
+// 52v B3(d) + 52w B3b: sha256 of the files P1 actually runs on (this capture.js, the module files require() resolves beside it, and the frozen selector params under data/). io.identityFiles may override the path map (fixtures).
 function p1Identity(d, io, root, P) {
   var files = (io && io.identityFiles) || null, out = { actual: {}, files: {}, errors: {} }, rq = typeof require === 'function' ? require : null;
   Object.keys(p1Modules.PINNED || {}).forEach(function (k) {
@@ -1743,13 +1743,14 @@ function p1Identity(d, io, root, P) {
     try {
       if (files && files[k]) f = files[k];
       else if (k === 'sellzoneParams') f = P.params;
+      else if (k === 'capture') f = typeof __filename === 'string' ? __filename : d.path.join(__dirname, rel);   // 52w B3b: the capture source actually executing this run
       else { f = null; if (rq && rq.resolve) { try { f = rq.resolve('./' + rel); } catch (e) { f = null; } } if (!f) f = d.path.join(__dirname, rel); }
       out.files[k] = f; out.actual[k] = p1Sha(d, d.fs.readFileSync(f));
     } catch (e) { out.errors[k] = e && e.message ? e.message : String(e); out.actual[k] = null; }
   });
   return out;
 }
-p1Modules.PINNED = { p1Core: 'p1-core.js', ordersCore: 'orders-core.js', episodesCore: 'episodes-core.js', channelCore: 'channel-core.js', bookCore: 'radar_tools/book/book-core.js', bookCodec: 'radar_tools/book/book-codec.js', sellzoneCore: 'radar_tools/book/sellzone-core.js', fibCore: 'radar_tools/zones/fib-core.js', sellzoneParams: 'data/book/sellzone-params.json' };
+p1Modules.PINNED = { capture: 'capture.js', p1Core: 'p1-core.js', ordersCore: 'orders-core.js', episodesCore: 'episodes-core.js', channelCore: 'channel-core.js', bookCore: 'radar_tools/book/book-core.js', bookCodec: 'radar_tools/book/book-codec.js', sellzoneCore: 'radar_tools/book/sellzone-core.js', fibCore: 'radar_tools/zones/fib-core.js', sellzoneParams: 'data/book/sellzone-params.json' };
 // rolling-repo depth batch at one 15-minute slot: gunzip -> codec decode -> records by pair. Cached per (venue, slot) for the run.
 async function p1Batch(d, io, base, venue, slotMs, cache) {
   var s = p1Iso(slotMs), rel = 'book/' + venue + '/' + s.slice(0, 10) + '/' + s.slice(11, 13) + s.slice(14, 16) + '.json.gz', key = venue + '|' + slotMs;
@@ -1856,20 +1857,59 @@ function p1Ledger(M, pairs, twin, meta) {
       exits: tw.exits.map(function (x) { return { reason: x.reason, price: x.price, lots: x.lots, barId: x.barId, tSec: x.tSec, interval: x.interval, holdingDay: x.holdingDay, rungK: x.rungK, pnlLeg: x.notionalCents - x.feeCents - x.frictionCents }; }),
       remainingLots: tw.remainingLots, closed: tw.closed, netPnLCents: pnl, R: pnl == null ? null : pnl / P.geometry.Bcents, unresolved: res.flags.unresolved }; }) });
 }
+// 52w B3a: is generation `id` complete and publishable? All five files present and parseable, pairs.json names this generation, its calendar (if any) equals the persisted one.
+var P1_GEN_FILES = ['opportunities.json', 'pairs.json', 'ledger-T.json', 'ledger-L.json', 'evidence-refs.json'];
+function p1VerifyGeneration(d, P, id, cur) {
+  var dir = P.gen(id), out = { complete: false, hasPairs: false, problems: [], files: {}, meta: null, counts: null }, parsed = {};
+  P1_GEN_FILES.forEach(function (f) {
+    var fp = d.path.join(dir, f);
+    if (!d.fs.existsSync(fp)) { out.problems.push(f + ' missing'); return; }
+    try { var txt = d.fs.readFileSync(fp, 'utf8'); parsed[f] = JSON.parse(txt); out.files[f] = p1Sha(d, txt); } catch (e) { out.problems.push(f + ' unreadable: ' + (e && e.message ? e.message : e)); }
+  });
+  var pj = parsed['pairs.json'];
+  out.hasPairs = !!(pj && Array.isArray(pj.pairs)) || d.fs.existsSync(d.path.join(dir, 'pairs.json'));
+  if (pj) {
+    if (pj.generationId !== id) out.problems.push('pairs.json.generationId ' + pj.generationId + ' != ' + id);
+    if (cur && cur.calendar && pj.calendar && JSON.stringify(pj.calendar) !== JSON.stringify(cur.calendar)) out.problems.push('pairs.json.calendar differs from the persisted calendar');
+    out.meta = { captureId: pj.captureId, date: pj.date, study: pj.study, phase: pj.phase, calendar: pj.calendar || null, config: pj.config || null, versions: pj.versions || null }; out.counts = pj.counts || null;
+  }
+  out.complete = out.problems.length === 0 && !!pj;
+  return out;
+}
 async function fwdP1Step(d, root, capture, frozen, io) {
   var P = p1Paths(d, root), log = function (m) { console.log('p1: ' + m); };
   if (!d.fs.existsSync(P.config)) { log('dormant (no data/forward/p1/p1-config.json)'); return { status: 'dormant' }; }
   var cfgTxt = d.fs.readFileSync(P.config, 'utf8'), cfg = JSON.parse(cfgTxt), cfgSha = p1Sha(d, cfgTxt), M = p1Modules(io);
   var errs = M.P1.validateConfig(cfg); if (errs.length) { console.error('p1: CONFIGURATION ERROR in p1-config.json - ' + errs.join('; ') + ' - P1 step skipped'); return { status: 'config-error', errors: errs }; }
   var genId = capture.generationId || capture.captureId, gdir = P.gen(genId);
-  if (d.fs.existsSync(d.path.join(gdir, 'pairs.json'))) { log('generation ' + genId + ' already has P1 records - nothing to do'); return { status: 'already-done' }; }
   io = Object.assign({ now: function () { return Date.now(); }, sleep: sleep, gunzip: function (b) { return require('zlib').gunzipSync(b); }, fetchKrakenDaily: function (t) { return EX.fetchKrakenDaily(t); }, bookBase: P1_BOOK_BASE }, io || {});
   if (!io.fetchBuffer) io.fetchBuffer = async function (u) { var r = await fetch(u); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); };
   var decisionMs = capture.issueSec * 1000, refs = [], warnings = [];
   // prior P1 state (its own CURRENT pointer; never the cohort's)
-  var cur = fwdReadJson(d, P.current), prior = cur && cur.generationId ? fwdReadJson(d, d.path.join(P.gen(cur.generationId), 'pairs.json')) : null;
+  var cur = fwdReadJson(d, P.current);
+  // 52w B3a: publication is recoverable. CURRENT carries `pending` (the generation this run is publishing, written BEFORE any submission) and the anchor/calendar is persisted at the same moment.
+  // On startup: a generation directory whose pointer was never published (interrupted final rename) is verified complete and published now; an incomplete one with pair records HOLDS P1
+  // (recovery-required: never re-anchor, never continue from the stale pointer while orphan records exist); a pending marker without pair records (interrupted before pair creation) resumes cleanly.
+  var pendingId = cur && cur.pending && cur.pending.generationId && (!cur.generationId || cur.pending.generationId !== cur.generationId) ? cur.pending.generationId : null;
+  if (!pendingId && d.fs.existsSync(d.path.join(gdir, 'pairs.json')) && (!cur || cur.generationId !== genId)) pendingId = genId;   // records for this generation exist but its pointer was never published
+  if (pendingId) {
+    var rec = p1VerifyGeneration(d, P, pendingId, cur);
+    if (rec.complete) {
+      cur = Object.assign({}, cur || {}, { generationId: pendingId, captureId: rec.meta.captureId, date: rec.meta.date, writtenAt: p1Iso(io.now()), p1Core: rec.meta.versions && rec.meta.versions.p1Core || M.P1.VERSION, configSha256: rec.meta.config && rec.meta.config.sha256 || null,
+        study: rec.meta.study, phase: rec.meta.phase || null, calendar: rec.meta.calendar || (cur && cur.calendar) || null, status: 'ok', counts: rec.counts, files: rec.files, recovered: { generationId: pendingId, at: p1Iso(io.now()), reason: 'pointer published on retry (interrupted publication)' } });
+      delete cur.pending; fwdAtomicWrite(d, P.current, JSON.stringify(cur));
+      log('RECOVERED generation ' + pendingId + ': complete records found without a published pointer - CURRENT now points at it (anchor ' + (cur.calendar ? cur.calendar.anchor : 'none') + ')');
+      if (pendingId === genId) { log('generation ' + genId + ' already has P1 records - nothing to do'); return { status: 'already-done', recovered: true }; }
+    } else if (rec.hasPairs) {
+      console.error('p1: HELD recovery-required - generation ' + pendingId + ' has pair records but is incomplete (' + rec.problems.join('; ') + '); CURRENT still points at ' + (cur && cur.generationId) + '. Restore or remove gen-' + pendingId + ' before P1 runs again. Nothing issued, nothing adjudicated.');
+      fwdAtomicWrite(d, P.current, JSON.stringify(Object.assign({}, cur || {}, { held: { reason: 'recovery-required', generationId: pendingId, problems: rec.problems, captureId: capture.captureId, date: capture.date, writtenAt: p1Iso(io.now()) } })));
+      return { status: 'held', reason: 'recovery-required', generationId: pendingId, problems: rec.problems };
+    } else { log('pending generation ' + pendingId + ' has no pair records (interrupted before pair creation) - resuming from the published pointer' + (cur && cur.calendar ? ' with the persisted anchor ' + cur.calendar.anchor : '')); }
+  }
+  if (cur && cur.generationId === genId) { log('generation ' + genId + ' already has P1 records - nothing to do'); return { status: 'already-done' }; }
+  var prior = cur && cur.generationId ? fwdReadJson(d, d.path.join(P.gen(cur.generationId), 'pairs.json')) : null;
   var pairs = prior && Array.isArray(prior.pairs) ? prior.pairs : [], controller = prior && prior.controller ? prior.controller : {};
-  if (cur && cur.generationId && !prior) warnings.push('prior pairs.json unreadable for ' + cur.generationId + ': starting from an empty pair list');
+  if (cur && cur.generationId && !prior) { console.error('p1: HELD recovery-required - CURRENT points at ' + cur.generationId + ' but its pairs.json is unreadable; nothing issued, nothing adjudicated'); return { status: 'held', reason: 'recovery-required', generationId: cur.generationId, problems: ['pairs.json unreadable'] }; }
   // 52v B3(d): identity guard. A frozen config names the sha256 of every module P1 runs on; the files actually loaded are hashed now and compared. Any mismatch -> P1 HOLDS: a held record, no issuance, no
   // adjudication, CURRENT's generation pointer untouched (the pair list is never dropped). Production is not involved either way (this step runs after the cohort's commit, on copies).
   var identity = p1Identity(d, io, root, P);
@@ -1893,6 +1933,9 @@ async function fwdP1Step(d, root, capture, frozen, io) {
   if (phase.phase === 'invalid') { console.error('p1: CONFIGURATION ERROR - study phase undeterminable (frozenAt / capture date) - P1 step skipped'); return { status: 'config-error', errors: ['study phase undeterminable'] }; }
   if (phase.anchorNow) { calendar = phase.calendar; log('frozen: first canonical capture at/after frozenAt ' + cfg.frozenAt + ' -> calendar anchored at ' + calendar.anchor + ' (issuance until ' + calendar.issuanceEndExclusive + ' exclusive)'); }
   log('phase ' + phase.phase + (phase.issue ? '' : ' - no new pairs this capture') + (study ? ' (study issuance)' : ''));
+  // 52w B3a: persist the (immutable) anchor and this run's pending marker NOW - before adjudication, before any quote request, before any pair exists. The generation pointer stays on the prior generation.
+  var pendingMark = { generationId: genId, captureId: capture.captureId, date: capture.date, startedAt: p1Iso(io.now()), phase: phase.phase, study: study };
+  fwdAtomicWrite(d, P.current, JSON.stringify(Object.assign({}, cur || {}, { calendar: calendar, pending: pendingMark })));
   // 1. adjudicate P1's own open pairs on the cohort's evidence copies + P1's own fetches
   pairs = await p1Adjudicate(d, io, M, cfg, pairs, frozen, capture, refs);
   // 2. inputs for new opportunities: frozen selector params, cadence, altname -> wsname map, fib per coin
@@ -1949,7 +1992,7 @@ async function fwdP1Step(d, root, capture, frozen, io) {
     'evidence-refs.json': Object.assign({ schemaVersion: 1, arm: 'P1' }, meta, { refs: refs }) };
   d.fs.mkdirSync(gdir, { recursive: true });
   var shas = {}; Object.keys(files).forEach(function (f) { var txt = JSON.stringify(files[f]); shas[f] = p1Sha(d, txt); fwdAtomicWrite(d, d.path.join(gdir, f), txt); });
-  fwdAtomicWrite(d, P.current, JSON.stringify({ generationId: genId, captureId: capture.captureId, date: capture.date, writtenAt: p1Iso(io.now()), p1Core: M.P1.VERSION, configSha256: cfgSha, study: study, phase: phase.phase, calendar: calendar, status: 'ok', counts: counts, files: shas }));
+  fwdAtomicWrite(d, P.current, JSON.stringify({ generationId: genId, captureId: capture.captureId, date: capture.date, writtenAt: p1Iso(io.now()), p1Core: M.P1.VERSION, configSha256: cfgSha, study: study, phase: phase.phase, calendar: calendar, status: 'ok', counts: counts, files: shas }));   // publication: pointer last, pending cleared
   log('generation ' + genId + ' | phase ' + phase.phase + ' | opportunities ' + counts.opportunities + ' | eligible ' + counts.eligible + ' | pairs created ' + counts.pairsCreated + (counts.outsideIssuanceWindow ? ' | outside window ' + counts.outsideIssuanceWindow : '') + (counts.blockedByDevelopmentPair ? ' | blocked by development pair ' + counts.blockedByDevelopmentPair : '') + ' | plans with rung ' + counts.plansWithRung + ' | T-only ' + JSON.stringify(counts.tOnlyByReason) + ' | pairs total ' + counts.pairsTotal + ' active ' + counts.pairsActive + ' unresolved ' + counts.pairsUnresolved + (warnings.length ? ' | warnings: ' + warnings.join('; ') : ''));
   return { status: 'ok', counts: counts, files: shas };
 }

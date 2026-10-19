@@ -25,7 +25,7 @@
   else root.P1Core = factory(root.OrdersCore);
 })(typeof self !== 'undefined' ? self : this, function (OC) {
   'use strict';
-  var VERSION = 'p1-core/2', SCHEMA = 1, DAY = 86400, BAR5 = 300;
+  var VERSION = 'p1-core/3', SCHEMA = 1, DAY = 86400, BAR5 = 300;
   var GATES = {
     retained: ['data.fit', 'data.price', 'struct.lifecycle', 'struct.quote-breach', 'struct.below-rail'],
     replaced: 'C2.entry-zone',
@@ -61,9 +61,9 @@
     if (cfg.calendar != null) { var ce = validateCalendar(cfg.calendar); if (ce.length) e.push('calendar: ' + ce.join('; ')); }   // 52v B3(a)/(b): the calendar is derived once from the anchor; when it is written into the config it must be the derived one
     return e;
   }
-  // 52v B3: the run-time identity manifest (Astra Freeze Record Review 2026-10-18 §2 B3 + identity manifest). Keys of cfg.pinned -> repo file; `capture` and `analysis` are documentary (not compared by the guard).
-  var PINNED_REQUIRED = ['p1Core', 'ordersCore', 'episodesCore', 'channelCore', 'bookCore', 'bookCodec', 'sellzoneCore', 'fibCore', 'sellzoneParams'];
-  var PINNED_FILES = { p1Core: 'p1-core.js', ordersCore: 'orders-core.js', episodesCore: 'episodes-core.js', channelCore: 'channel-core.js', bookCore: 'radar_tools/book/book-core.js', bookCodec: 'radar_tools/book/book-codec.js',
+  // 52v B3: the run-time identity manifest (Astra Freeze Record Review 2026-10-18 §2 B3 + identity manifest). Keys of cfg.pinned -> repo file; ten runtime pins (52w B3b adds `capture`, the issuance wrapper itself); `analysis` (the bootstrap kernel) stays documentary until analysis.
+  var PINNED_REQUIRED = ['capture', 'p1Core', 'ordersCore', 'episodesCore', 'channelCore', 'bookCore', 'bookCodec', 'sellzoneCore', 'fibCore', 'sellzoneParams'];
+  var PINNED_FILES = { capture: 'capture.js', p1Core: 'p1-core.js', ordersCore: 'orders-core.js', episodesCore: 'episodes-core.js', channelCore: 'channel-core.js', bookCore: 'radar_tools/book/book-core.js', bookCodec: 'radar_tools/book/book-codec.js',
     sellzoneCore: 'radar_tools/book/sellzone-core.js', fibCore: 'radar_tools/zones/fib-core.js', sellzoneParams: 'data/book/sellzone-params.json' };
   function isSha256(s) { return typeof s === 'string' && /^[0-9a-f]{64}$/.test(s); }
   // identityCheck: actual = { key: sha256 of the loaded file }. Any pinned key missing from `actual` or differing is a mismatch; P1 holds (the caller writes the held record and does nothing else).
