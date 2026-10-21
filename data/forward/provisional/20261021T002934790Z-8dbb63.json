@@ -1,13 +1,13 @@
 {
  "schemaVersion": 1,
- "baseGenerationId": "20261020T002942241Z-77951f",
- "baseCaptureId": "20261020T002942241Z-77951f",
+ "baseGenerationId": "20261021T002934790Z-8dbb63",
+ "baseCaptureId": "20261021T002934790Z-8dbb63",
  "baseChecksums": {
-  "orders.json": "176a9a14e8be448e6f9a169dd2df292636b4a0a5fcdac4036f07d2de0089e6cf",
-  "shadow/orders.json": "ca2c08bff57ab021f59a1f82aed27da5d14db12a984e25f2a43c3812a944a881"
+  "orders.json": "544119cd2655dfc7854b49cbbe24a10f04c12064f7ed28a82d0e4e1bea0ffdab",
+  "shadow/orders.json": "b5ada83ef00302d96d9ddf24c9bc3e505e0d20dd349c5a84bf6270db0f30238f"
  },
- "evidenceCutoffSec": 1792540800,
- "producedAt": "2026-10-21T00:07:32.091Z",
+ "evidenceCutoffSec": 1792542600,
+ "producedAt": "2026-10-21T00:37:38.410Z",
  "orders": [
   {
    "id": "N0-2026-10-15-algorand",
@@ -21,14 +21,14 @@
     "fillPrice": 0.11268,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.1137,
-    "markAt": 1792540800,
-    "unrealisedCents": 1434,
+    "markPrice": 0.11417,
+    "markAt": 1792542600,
+    "unrealisedCents": 2618,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792540800,
+    "notYetObservedFrom": 1792542600,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -43,14 +43,14 @@
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7494,
-    "markAt": 1792540800,
-    "unrealisedCents": 3251,
+    "markPrice": 1.7466,
+    "markAt": 1792542600,
+    "unrealisedCents": 2842,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792540800,
+    "notYetObservedFrom": 1792542600,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -65,14 +65,14 @@
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7494,
-    "markAt": 1792540800,
-    "unrealisedCents": 3323,
+    "markPrice": 1.7466,
+    "markAt": 1792542600,
+    "unrealisedCents": 2904,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792540800,
+    "notYetObservedFrom": 1792542600,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -87,14 +87,14 @@
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7494,
-    "markAt": 1792540800,
-    "unrealisedCents": 3381,
+    "markPrice": 1.7466,
+    "markAt": 1792542600,
+    "unrealisedCents": 2954,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792540800,
+    "notYetObservedFrom": 1792542600,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -109,14 +109,14 @@
     "fillPrice": 1.7148,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7494,
-    "markAt": 1792540800,
-    "unrealisedCents": 4300,
+    "markPrice": 1.7466,
+    "markAt": 1792542600,
+    "unrealisedCents": 3866,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792540800,
+    "notYetObservedFrom": 1792542600,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -131,12 +131,12 @@
     "fillPrice": null,
     "fillReason": null,
     "exit": null,
-    "markPrice": 1.1499,
-    "markAt": 1792540800,
+    "markPrice": 1.1564,
+    "markAt": 1792542600,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792540800,
+    "notYetObservedFrom": 1792542600,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -145,17 +145,17 @@
  "coverage": {
   "perPair": {
    "ALGOUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "ATOMUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "DOTUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    }
