@@ -1,13 +1,13 @@
 {
  "schemaVersion": 1,
- "baseGenerationId": "20261021T002934790Z-8dbb63",
- "baseCaptureId": "20261021T002934790Z-8dbb63",
+ "baseGenerationId": "20261022T002941758Z-b5564d",
+ "baseCaptureId": "20261022T002941758Z-b5564d",
  "baseChecksums": {
-  "orders.json": "544119cd2655dfc7854b49cbbe24a10f04c12064f7ed28a82d0e4e1bea0ffdab",
-  "shadow/orders.json": "b5ada83ef00302d96d9ddf24c9bc3e505e0d20dd349c5a84bf6270db0f30238f"
+  "orders.json": "4aa1ce565ee9ca879e79ebd9a9ebcccd388f8c7f48cbf306be0a392c4588de8f",
+  "shadow/orders.json": "41703ee5a81ff5fed72b32360d03fd98b953475a1cab1f90234e3c1fa4c5cc08"
  },
- "evidenceCutoffSec": 1792627200,
- "producedAt": "2026-10-22T00:07:34.899Z",
+ "evidenceCutoffSec": 1792629000,
+ "producedAt": "2026-10-22T00:37:37.588Z",
  "orders": [
   {
    "id": "N0-2026-10-15-algorand",
@@ -21,14 +21,14 @@
     "fillPrice": 0.11268,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.11311,
-    "markAt": 1792627200,
-    "unrealisedCents": -52,
+    "markPrice": 0.11393,
+    "markAt": 1792629000,
+    "unrealisedCents": 2013,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792627200,
+    "notYetObservedFrom": 1792629000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -43,14 +43,14 @@
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7488,
-    "markAt": 1792627200,
-    "unrealisedCents": 3164,
+    "markPrice": 1.7553,
+    "markAt": 1792629000,
+    "unrealisedCents": 4115,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792627200,
+    "notYetObservedFrom": 1792629000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -65,14 +65,14 @@
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7488,
-    "markAt": 1792627200,
-    "unrealisedCents": 3233,
+    "markPrice": 1.7553,
+    "markAt": 1792629000,
+    "unrealisedCents": 4205,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792627200,
+    "notYetObservedFrom": 1792629000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -87,14 +87,14 @@
     "fillPrice": 1.7203,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7488,
-    "markAt": 1792627200,
-    "unrealisedCents": 3289,
+    "markPrice": 1.7553,
+    "markAt": 1792629000,
+    "unrealisedCents": 4279,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792627200,
+    "notYetObservedFrom": 1792629000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -109,53 +109,26 @@
     "fillPrice": 1.7148,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 1.7488,
-    "markAt": 1792627200,
-    "unrealisedCents": 4207,
+    "markPrice": 1.7553,
+    "markAt": 1792629000,
+    "unrealisedCents": 5215,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792627200,
+    "notYetObservedFrom": 1792629000,
     "windowsExhausted": false,
-    "partialDay": false
-   }
-  },
-  {
-   "id": "NZ-2026-10-19-polkadot",
-   "policyId": "NZ",
-   "cgId": "polkadot",
-   "pair": "DOTUSD",
-   "status": "resting",
-   "projected": {
-    "status": "resting",
-    "fillAt": null,
-    "fillPrice": null,
-    "fillReason": null,
-    "exit": null,
-    "markPrice": 1.1434,
-    "markAt": 1792627200,
-    "unrealisedCents": null,
-    "unrealisedLabel": null,
-    "unresolvedIntervals": [],
-    "notYetObservedFrom": null,
-    "windowsExhausted": true,
-    "partialDay": false
+    "partialDay": true
    }
   }
  ],
  "coverage": {
   "perPair": {
    "ALGOUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "ATOMUSD": {
-    "bars": 288,
-    "gaps": 0,
-    "complete": true
-   },
-   "DOTUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    }
