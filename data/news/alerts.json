@@ -1,10 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-22T00:12:00Z",
-  "lastSuccessfulScanAt": "2026-10-22T00:12:00Z",
+  "generatedAt": "2026-10-22T01:14:00Z",
+  "lastSuccessfulScanAt": "2026-10-22T01:14:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
+    {
+      "eventId": "optimism:counterparty-partnership:2026-10-21",
+      "revision": 1,
+      "cgId": "optimism",
+      "symbol": "OP",
+      "headline": "Meritz Securities and the Optimism Foundation sign MoU to explore tokenized financial assets on OP Stack",
+      "eventClass": "counterparty partnership (Meritz Securities, tokenized-asset MoU)",
+      "direction": "up",
+      "relevance": "Korean broker Meritz will study issuing, settling and distributing tokenized products (incl. Korean-asset-backed) on OP Stack / OP Mainnet; exploratory only, no launch dates, no OP token terms. OP is NEAR (score 76)",
+      "sourceUrl": "https://optimism.io/blog/meritz-securities-optimism-mou-tokenized-financial-assets",
+      "sourceName": "Optimism (official blog; also Seoul Economic Daily)",
+      "publishedAt": "2026-10-21",
+      "firstDetectedAt": "2026-10-22T01:14:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-10-23T01:14:00Z",
+      "evidence": "verified"
+    },
     {
       "eventId": "polkadot:key-compromise:2026-10-21",
       "revision": 1,
@@ -164,7 +181,7 @@
       "cgId": "filecoin",
       "symbol": "FIL",
       "headline": "Filecoin vesting ends Oct 15: gross FIL emission falls ~75%",
-      "eventClass": "tokenomics change with a date (vesting ends Oct 15, 2026)",
+      "eventClass": "tokenomics change with a date (vesting ends Oct 15)",
       "direction": "up",
       "relevance": "Removes ~66.7M FIL/yr of vesting inflow",
       "sourceUrl": "https://cryptoticker.io/en/filecoin-vesting-ends-fil-emission/",
