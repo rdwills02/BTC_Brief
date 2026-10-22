@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-22T12:14:00Z",
-  "lastSuccessfulScanAt": "2026-10-22T12:14:00Z",
+  "generatedAt": "2026-10-22T13:14:00Z",
+  "lastSuccessfulScanAt": "2026-10-22T13:14:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
@@ -11,7 +11,7 @@
       "cgId": "xdce-crowd-sale",
       "symbol": "XDC",
       "headline": "Shinhan Card, SBI VC Trade and SBI XDC Network APAC to explore yen stablecoin payments between Japan and South Korea",
-      "eventClass": "counterparty partnership (SBI XDC Network APAC + SBI VC Trade + Shinhan Card MoU yen stablecoin payments)",
+      "eventClass": "counterparty partnership (SBI XDC Network APAC + SBI VC Trade + Shinhan Card MoU, yen stablecoin payments)",
       "direction": "up",
       "relevance": "SBI Holdings-announced MoU puts XDC Network infrastructure in a Japan-Korea card/stablecoin payments pilot; exploratory only, no stablecoin named, no timeline, no XDC token terms. XDC is NEAR (score 70)",
       "sourceUrl": "https://www.coindesk.com/business/2026/10/21/japanese-visitors-may-be-able-to-pay-with-yen-stablecoins-in-south-korea-under-shinhan-sbi-pact",
@@ -31,7 +31,7 @@
       "eventClass": "counterparty partnership (Meritz Securities, tokenized-asset MoU)",
       "direction": "up",
       "relevance": "Korean broker Meritz will study issuing, settling and distributing tokenized products (incl. Korean-asset-backed) on OP Stack / OP Mainnet; exploratory only, no launch dates, no OP token terms. OP is NEAR (score 76)",
-      "sourceUrl": "https://optimism.io/blog/meritz-securities-optimism-mou-tokenized-financial-assets",
+      "sourceUrl": "https://optimism.io/blog/meritz-securities-optimism-mou-tokenized-asset-mou",
       "sourceName": "Optimism (official blog; also Seoul Economic Daily)",
       "publishedAt": "2026-10-21",
       "firstDetectedAt": "2026-10-22T01:14:00Z",
@@ -115,7 +115,7 @@
       "headline": "Pyth DAO adopts the '100% Rule' (OP-PIP-136): all DAO product revenue now buys PYTH on the open market",
       "eventClass": "tokenomics change with a date (buyback: standing 100% revenue authorization, first buys Sep 30, announced Oct 8)",
       "direction": "up",
-      "relevance": "Replaces the monthly one-third-of-treasury buyback vote with a standing buyback of all DAO protocol revenue",
+      "relevance": "Replaces the monthly one-third-of-treasury buyback vote with a standing buyback of all DAO product revenue",
       "sourceUrl": "https://www.pyth.network/blog/the-100-rule-every-dollar-the-pyth-dao-earns-now-buys-pyth",
       "sourceName": "Pyth Network blog (official)",
       "publishedAt": "2026-10-08",
@@ -292,6 +292,23 @@
       "firstDetectedAt": "2026-10-08T18:12:00Z",
       "materialUpdateAt": null,
       "highlightUntil": "2026-10-09T18:12:00Z",
+      "evidence": "verified"
+    },
+    {
+      "eventId": "morpho:integration:2026-10-07",
+      "revision": 1,
+      "cgId": "morpho",
+      "symbol": "MORPHO",
+      "headline": "Ledger launches Bitcoin-backed loans in Ledger Wallet via Morpho",
+      "eventClass": "counterparty integration",
+      "direction": "up",
+      "relevance": "New distribution channel for a held coin",
+      "sourceUrl": "https://www.ledger.com/blog-ledger-wallet-october-2026",
+      "sourceName": "Ledger (release notes)",
+      "publishedAt": "2026-10-07",
+      "firstDetectedAt": "2026-10-07T17:12:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-10-08T17:12:00Z",
       "evidence": "verified"
     }
   ]
