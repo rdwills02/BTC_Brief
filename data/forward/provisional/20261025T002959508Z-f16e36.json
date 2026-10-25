@@ -1,0 +1,145 @@
+{
+ "schemaVersion": 1,
+ "baseGenerationId": "20261025T002959508Z-f16e36",
+ "baseCaptureId": "20261025T002959508Z-f16e36",
+ "baseChecksums": {
+  "orders.json": "ba575886d8e3471daf9eba8b1a644358c8e5ce8114bc87a3e7f9e72b8b424e85",
+  "shadow/orders.json": "bf01c51b9f8064901c4989814775d10548ee7959eeff3c4f2d00ba136f050fc5"
+ },
+ "evidenceCutoffSec": 1792888200,
+ "producedAt": "2026-10-25T00:37:27.254Z",
+ "orders": [
+  {
+   "id": "N0-2026-10-16-cosmos",
+   "policyId": "N0",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792122000,
+    "fillPrice": 1.7203,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6425,
+    "markAt": 1792888200,
+    "unrealisedCents": -12392,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792888200,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "N0-2026-10-23-tron",
+   "policyId": "N0",
+   "cgId": "tron",
+   "pair": "TRXUSD",
+   "status": "resting",
+   "projected": {
+    "status": "resting",
+    "fillAt": null,
+    "fillPrice": null,
+    "fillReason": null,
+    "exit": null,
+    "markPrice": 0.328967,
+    "markAt": 1792888200,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792888200,
+    "windowsExhausted": false,
+    "partialDay": false
+   }
+  },
+  {
+   "id": "N0-2026-10-25-virtual-protocol",
+   "policyId": "N0",
+   "cgId": "virtual-protocol",
+   "pair": "VIRTUALUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792888202,
+    "fillPrice": 0.6291,
+    "fillReason": "fill-crossing-ask",
+    "exit": null,
+    "markPrice": 0.6284,
+    "markAt": 1792888200,
+    "unrealisedCents": -2884,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792888202,
+    "windowsExhausted": false,
+    "partialDay": false
+   }
+  },
+  {
+   "id": "C1-2026-10-16-cosmos",
+   "policyId": "C1",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792122000,
+    "fillPrice": 1.7203,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6425,
+    "markAt": 1792888200,
+    "unrealisedCents": -12666,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792888200,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "CTRL-2026-10-16-cosmos",
+   "policyId": "CTRL",
+   "cgId": "cosmos",
+   "pair": "ATOMUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792122000,
+    "fillPrice": 1.7203,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 1.6425,
+    "markAt": 1792888200,
+    "unrealisedCents": -12890,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1792888200,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  }
+ ],
+ "coverage": {
+  "perPair": {
+   "ATOMUSD": {
+    "bars": 6,
+    "gaps": 0,
+    "complete": true
+   },
+   "TRXUSD": {
+    "bars": 6,
+    "gaps": 0,
+    "complete": true
+   },
+   "VIRTUALUSD": {
+    "bars": 0,
+    "gaps": 0,
+    "complete": false
+   }
+  }
+ },
+ "warnings": [
+  "coverage incomplete for VIRTUALUSD (0 missing 5-min bars before the cutoff)"
+ ]
+}
