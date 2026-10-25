@@ -6,7 +6,7 @@
    "status": "open",
    "openedAt": "2026-10-08",
    "openPrice": 0.711756,
-   "lastSeenAt": "2026-10-24",
+   "lastSeenAt": "2026-10-25",
    "cgId": "aster-2",
    "timeframe": "1d",
    "entryZone": [
@@ -31,9 +31,9 @@
    "invalidation": 0.672613731661823,
    "invalidationRaises": 0,
    "raisesSuppressed": 2,
-   "liveInvalidation": 0.660036584457382,
-   "liveFitId": "aster-2|1d|kraken|312|368|1792713600",
-   "liveLifecycleState": "intact",
+   "liveInvalidation": 0.6378748362115618,
+   "liveFitId": "aster-2|1d|kraken|233|369|1792800000",
+   "liveLifecycleState": "re-qualified",
    "stop": 0.670373807866052,
    "target": 0.7865963660217774,
    "netRR": 2.426613318315649,
@@ -173,9 +173,17 @@
      "high": 0.71156,
      "low": 0.68828,
      "close": 0.69477
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 0.69766,
+     "high": 0.70976,
+     "low": 0.68338,
+     "close": 0.70844
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "ASTER/usd"
@@ -395,9 +403,17 @@
      "high": 749.64,
      "low": 729.35,
      "close": 738.7
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 738.75,
+     "high": 740.56,
+     "low": 717.21,
+     "close": 738.91
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "BNB/usd"
@@ -596,9 +612,17 @@
      "high": 263.4493,
      "low": 249,
      "close": 255.0582
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 254.7655,
+     "high": 255.3618,
+     "low": 242.408,
+     "close": 250.9992
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "TAO/usd"
@@ -620,7 +644,7 @@
    "status": "open",
    "openedAt": "2026-10-16",
    "openPrice": 1.75,
-   "lastSeenAt": "2026-10-24",
+   "lastSeenAt": "2026-10-25",
    "cgId": "cosmos",
    "timeframe": "1d",
    "entryZone": [
@@ -642,8 +666,8 @@
    "invalidation": 1.6355596975696014,
    "invalidationRaises": 2,
    "raisesSuppressed": 0,
-   "liveInvalidation": 1.5865489420018783,
-   "liveFitId": "cosmos|1d|kraken|689|755|1792713600",
+   "liveInvalidation": 1.589616298619633,
+   "liveFitId": "cosmos|1d|kraken|689|756|1792800000",
    "liveLifecycleState": "intact",
    "stop": 1.5800961137928051,
    "target": 2.0695545454545456,
@@ -720,9 +744,17 @@
      "high": 1.8151,
      "low": 1.6743,
      "close": 1.7064
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 1.7045,
+     "high": 1.7045,
+     "low": 1.6025,
+     "close": 1.6402
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "ATOM/usd"
@@ -738,7 +770,7 @@
    "status": "open",
    "openedAt": "2026-10-13",
    "openPrice": 0.677736,
-   "lastSeenAt": "2026-10-24",
+   "lastSeenAt": "2026-10-25",
    "cgId": "ether-fi",
    "timeframe": "1d",
    "entryZone": [
@@ -762,8 +794,8 @@
    "invalidation": 0.6206605714285713,
    "invalidationRaises": 1,
    "raisesSuppressed": 7,
-   "liveInvalidation": 0.6198467368421049,
-   "liveFitId": "ether-fi|1d|kraken|615|755|1792713600",
+   "liveInvalidation": 0.589811256637168,
+   "liveFitId": "ether-fi|1d|kraken|615|756|1792800000",
    "liveLifecycleState": "re-qualified",
    "stop": 0.5925138836878266,
    "target": 0.8192692307692307,
@@ -864,9 +896,17 @@
      "high": 0.6684,
      "low": 0.6267,
      "close": 0.6355
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 0.6444,
+     "high": 0.6694,
+     "low": 0.6014,
+     "close": 0.621
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "ETHFI/usd"
@@ -1029,9 +1069,17 @@
      "high": 2.79,
      "low": 2.623,
      "close": 2.736
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 2.735,
+     "high": 2.744,
+     "low": 2.585,
+     "close": 2.665
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "ICP/usd"
@@ -1051,7 +1099,7 @@
    "status": "open",
    "openedAt": "2026-10-03",
    "openPrice": 546.17,
-   "lastSeenAt": "2026-10-24",
+   "lastSeenAt": "2026-10-25",
    "cgId": "monero",
    "timeframe": "1d",
    "entryZone": [
@@ -1070,12 +1118,12 @@
     1789516800,
     1790553600
    ],
-   "invalidation": 575.2859654585687,
-   "invalidationRaises": 10,
+   "invalidation": 580.6732871576535,
+   "invalidationRaises": 11,
    "raisesSuppressed": 0,
-   "liveInvalidation": 498.65924239207186,
-   "liveFitId": "monero|1d|kraken|635|755|1792713600",
-   "liveLifecycleState": "re-qualified",
+   "liveInvalidation": 580.6732871576535,
+   "liveFitId": "monero|1d|kraken|668|756|1792800000",
+   "liveLifecycleState": "broken",
    "stop": 509.2497829748193,
    "target": 637.3356521739133,
    "netRR": 2.9387559675272734,
@@ -1255,9 +1303,17 @@
      "high": 617.68,
      "low": 575.94,
      "close": 583.14
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 583.71,
+     "high": 615.56,
+     "low": 562.34,
+     "close": 615.43
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "XMR/usd"
@@ -1435,9 +1491,17 @@
      "high": 136.18,
      "low": 110.62,
      "close": 111.51
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 110.1,
+     "high": 110.32,
+     "low": 107.37,
+     "close": 109.16
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "OKB/usd"
@@ -1643,9 +1707,17 @@
      "high": 0.0789,
      "low": 0.074,
      "close": 0.0758
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 0.0759,
+     "high": 0.0762,
+     "low": 0.0706,
+     "close": 0.0744
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "XPL/usd"
@@ -1667,7 +1739,7 @@
    "status": "open",
    "openedAt": "2026-10-13",
    "openPrice": 0.491137,
-   "lastSeenAt": "2026-10-24",
+   "lastSeenAt": "2026-10-25",
    "cgId": "worldcoin-wld",
    "timeframe": "1d",
    "entryZone": [
@@ -1687,8 +1759,8 @@
    "invalidation": 0.478767483870968,
    "invalidationRaises": 6,
    "raisesSuppressed": 0,
-   "liveInvalidation": 0.478767483870968,
-   "liveFitId": "worldcoin-wld|1d|kraken|520|597|1792713600",
+   "liveInvalidation": 0.45408,
+   "liveFitId": "worldcoin-wld|1d|kraken|520|598|1792800000",
    "liveLifecycleState": "re-qualified",
    "stop": 0.4321531757703883,
    "target": 0.6399166666666669,
@@ -1789,16 +1861,26 @@
      "high": 0.5616,
      "low": 0.4732,
      "close": 0.4822
+    },
+    {
+     "id": 1792800000,
+     "date": "2026-10-24",
+     "open": 0.4807,
+     "high": 0.4842,
+     "low": 0.4567,
+     "close": 0.469
     }
    ],
-   "lastBarId": 1792713600,
+   "lastBarId": 1792800000,
    "barSource": {
     "venue": "kraken",
     "pair": "WLD/usd"
    },
    "barSourceMismatches": 0,
    "lastMismatchBarId": null,
-   "breachBarIds": [],
+   "breachBarIds": [
+    1792800000
+   ],
    "closedAt": null,
    "closeReason": null
   }
