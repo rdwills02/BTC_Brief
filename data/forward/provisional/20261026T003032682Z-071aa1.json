@@ -6,8 +6,8 @@
   "orders.json": "8d726c8f994a811fa85e032ff27b4e70f2ef34e61819d3858f30d72258570708",
   "shadow/orders.json": "0b2fd844f1a8fd3b43e1605089bf235e54c1f5ca62c8d9ae2c1086e2805648f4"
  },
- "evidenceCutoffSec": 1792974600,
- "producedAt": "2026-10-26T00:37:36.357Z",
+ "evidenceCutoffSec": 1792975500,
+ "producedAt": "2026-10-26T00:52:36.699Z",
  "orders": [
   {
    "id": "N0-2026-10-25-virtual-protocol",
@@ -21,12 +21,12 @@
     "fillPrice": 0.6291,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 0.6213,
-    "markAt": 1792974600,
-    "unrealisedCents": -6270,
+    "markPrice": 0.6207,
+    "markAt": 1792975500,
+    "unrealisedCents": -6556,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792974600,
+    "notYetObservedFrom": 1792975500,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -43,12 +43,12 @@
     "fillPrice": 21.2,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 21.2,
-    "markAt": 1792974600,
-    "unrealisedCents": -2016,
+    "markPrice": 21.22,
+    "markAt": 1792975500,
+    "unrealisedCents": -1792,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792974634,
+    "notYetObservedFrom": 1792975500,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -66,11 +66,11 @@
     "fillReason": null,
     "exit": null,
     "markPrice": 0.928,
-    "markAt": 1792974600,
+    "markAt": 1792975500,
     "unrealisedCents": null,
     "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1792974634,
+    "notYetObservedFrom": 1792975500,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -79,24 +79,21 @@
  "coverage": {
   "perPair": {
    "COMPUSD": {
-    "bars": 0,
+    "bars": 3,
     "gaps": 0,
-    "complete": false
+    "complete": true
    },
    "FILUSD": {
-    "bars": 0,
+    "bars": 3,
     "gaps": 0,
-    "complete": false
+    "complete": true
    },
    "VIRTUALUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    }
   }
  },
- "warnings": [
-  "coverage incomplete for COMPUSD (0 missing 5-min bars before the cutoff)",
-  "coverage incomplete for FILUSD (0 missing 5-min bars before the cutoff)"
- ]
+ "warnings": []
 }
