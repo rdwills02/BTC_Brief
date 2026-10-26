@@ -6,8 +6,8 @@
   "orders.json": "8d726c8f994a811fa85e032ff27b4e70f2ef34e61819d3858f30d72258570708",
   "shadow/orders.json": "0b2fd844f1a8fd3b43e1605089bf235e54c1f5ca62c8d9ae2c1086e2805648f4"
  },
- "evidenceCutoffSec": 1793000700,
- "producedAt": "2026-10-26T07:52:34.280Z",
+ "evidenceCutoffSec": 1793001600,
+ "producedAt": "2026-10-26T08:07:29.140Z",
  "orders": [
   {
    "id": "N0-2026-10-25-virtual-protocol",
@@ -22,11 +22,11 @@
     "fillReason": "fill-crossing-ask",
     "exit": null,
     "markPrice": 0.6123,
-    "markAt": 1793000700,
+    "markAt": 1793001600,
     "unrealisedCents": -10562,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793000700,
+    "notYetObservedFrom": 1793001600,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -43,12 +43,12 @@
     "fillPrice": 21.2,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 20.64,
-    "markAt": 1793000700,
-    "unrealisedCents": -8281,
+    "markPrice": 20.63,
+    "markAt": 1793001600,
+    "unrealisedCents": -8393,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793000700,
+    "notYetObservedFrom": 1793001600,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -65,12 +65,12 @@
     "fillPrice": 0.911,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.902,
-    "markAt": 1793000700,
-    "unrealisedCents": -1291,
+    "markPrice": 0.903,
+    "markAt": 1793001600,
+    "unrealisedCents": -1189,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793000700,
+    "notYetObservedFrom": 1793001600,
     "windowsExhausted": false,
     "partialDay": false
    }
@@ -79,17 +79,17 @@
  "coverage": {
   "perPair": {
    "COMPUSD": {
-    "bars": 87,
+    "bars": 90,
     "gaps": 0,
     "complete": true
    },
    "FILUSD": {
-    "bars": 87,
+    "bars": 90,
     "gaps": 0,
     "complete": true
    },
    "VIRTUALUSD": {
-    "bars": 93,
+    "bars": 96,
     "gaps": 0,
     "complete": true
    }
