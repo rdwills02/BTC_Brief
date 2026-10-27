@@ -4,38 +4,38 @@
   "candleSchemaVersion": 1,
   "configHash": "ca2768ea13dc499417791a87471a6d2a5f06bd2d1555859844a4ae0ef7cae838",
   "researchMode": false,
-  "fetchCompletedAt": "2026-10-26T00:30:33.447Z",
+  "fetchCompletedAt": "2026-10-27T00:30:43.842Z",
   "passes": {
     "grid": {
       "ok": true,
       "lastClosedCandle": "2026-10-22",
-      "updated": true
+      "updated": false
     },
     "daily": {
       "ok": true,
-      "lastClosedCandle": "2026-10-25",
+      "lastClosedCandle": "2026-10-26",
       "updated": true
     },
     "btcRegime": {
       "ok": true,
-      "lastClosedCandle": "2026-10-25",
+      "lastClosedCandle": "2026-10-26",
       "updated": true,
       "regime": {
-        "close": 80048.5,
-        "ema50": 80763.22191520644,
-        "ema50Slope": 0.005380748213584192,
+        "close": 80001.9,
+        "ema50": 80733.36615382579,
+        "ema50Slope": 0.004435477924411327,
         "aboveEma50": false,
-        "asOf": 1792886400,
-        "bars": 754
+        "asOf": 1792972800,
+        "bars": 755
       }
     },
     "research": {
       "ok": true,
-      "coins": 93,
+      "coins": 91,
       "setups": {
         "opened": 0,
-        "closed": 0,
-        "open": 5,
+        "closed": 1,
+        "open": 4,
         "openBefore": 5,
         "total": 10,
         "barsAdded": 10
