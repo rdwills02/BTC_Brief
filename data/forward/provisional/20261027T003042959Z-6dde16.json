@@ -1,13 +1,13 @@
 {
  "schemaVersion": 1,
- "baseGenerationId": "20261026T003032682Z-071aa1",
- "baseCaptureId": "20261026T003032682Z-071aa1",
+ "baseGenerationId": "20261027T003042959Z-6dde16",
+ "baseCaptureId": "20261027T003042959Z-6dde16",
  "baseChecksums": {
-  "orders.json": "8d726c8f994a811fa85e032ff27b4e70f2ef34e61819d3858f30d72258570708",
-  "shadow/orders.json": "0b2fd844f1a8fd3b43e1605089bf235e54c1f5ca62c8d9ae2c1086e2805648f4"
+  "orders.json": "0b44785779ed222baa33e9edc5b6f04809154d5cfb3e4fe00f03059ceafd6240",
+  "shadow/orders.json": "ca2441d2fe6f80e012806551e99fea4dbd83ca796c5d8dad0c3258bebf7e2333"
  },
- "evidenceCutoffSec": 1793059200,
- "producedAt": "2026-10-27T00:07:35.321Z",
+ "evidenceCutoffSec": 1793061000,
+ "producedAt": "2026-10-27T00:37:28.458Z",
  "orders": [
   {
    "id": "N0-2026-10-25-virtual-protocol",
@@ -21,14 +21,14 @@
     "fillPrice": 0.6291,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 0.6169,
-    "markAt": 1793059200,
-    "unrealisedCents": -8369,
+    "markPrice": 0.6202,
+    "markAt": 1793061000,
+    "unrealisedCents": -6795,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793059200,
+    "notYetObservedFrom": 1793061000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -43,14 +43,14 @@
     "fillPrice": 21.2,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 22.27,
-    "markAt": 1793059200,
-    "unrealisedCents": 9954,
+    "markPrice": 22.28,
+    "markAt": 1793061000,
+    "unrealisedCents": 10066,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793059200,
+    "notYetObservedFrom": 1793061000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   },
   {
@@ -58,38 +58,38 @@
    "policyId": "N0",
    "cgId": "filecoin",
    "pair": "FILUSD",
-   "status": "resting",
+   "status": "open",
    "projected": {
     "status": "open",
     "fillAt": 1792978500,
     "fillPrice": 0.911,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.912,
-    "markAt": 1793059200,
-    "unrealisedCents": -269,
+    "markPrice": 0.915,
+    "markAt": 1793061000,
+    "unrealisedCents": 37,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793059200,
+    "notYetObservedFrom": 1793061000,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   }
  ],
  "coverage": {
   "perPair": {
    "COMPUSD": {
-    "bars": 282,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "FILUSD": {
-    "bars": 282,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    },
    "VIRTUALUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    }
