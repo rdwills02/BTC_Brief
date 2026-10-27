@@ -6,8 +6,8 @@
   "orders.json": "0b44785779ed222baa33e9edc5b6f04809154d5cfb3e4fe00f03059ceafd6240",
   "shadow/orders.json": "ca2441d2fe6f80e012806551e99fea4dbd83ca796c5d8dad0c3258bebf7e2333"
  },
- "evidenceCutoffSec": 1793061000,
- "producedAt": "2026-10-27T00:37:28.458Z",
+ "evidenceCutoffSec": 1793061900,
+ "producedAt": "2026-10-27T00:52:30.852Z",
  "orders": [
   {
    "id": "N0-2026-10-25-virtual-protocol",
@@ -21,12 +21,12 @@
     "fillPrice": 0.6291,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 0.6202,
-    "markAt": 1793061000,
-    "unrealisedCents": -6795,
+    "markPrice": 0.621,
+    "markAt": 1793061900,
+    "unrealisedCents": -6413,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793061000,
+    "notYetObservedFrom": 1793061900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -44,11 +44,11 @@
     "fillReason": "fill-crossing-ask",
     "exit": null,
     "markPrice": 22.28,
-    "markAt": 1793061000,
+    "markAt": 1793061900,
     "unrealisedCents": 10066,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793061000,
+    "notYetObservedFrom": 1793061900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -65,12 +65,12 @@
     "fillPrice": 0.911,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.915,
-    "markAt": 1793061000,
-    "unrealisedCents": 37,
+    "markPrice": 0.912,
+    "markAt": 1793061900,
+    "unrealisedCents": -269,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793061000,
+    "notYetObservedFrom": 1793061900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -79,17 +79,17 @@
  "coverage": {
   "perPair": {
    "COMPUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    },
    "FILUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    },
    "VIRTUALUSD": {
-    "bars": 6,
+    "bars": 9,
     "gaps": 0,
     "complete": true
    }
