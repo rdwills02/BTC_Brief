@@ -6,8 +6,8 @@
   "orders.json": "7d7f744ceb44ddffb44e4719b448fecc44f9f2bb6b949d28f1c6af5531b6df18",
   "shadow/orders.json": "5d6c707294b77f04c992f5cd73ca9a06e9d025ca2108796160c7382a0bf3daee"
  },
- "evidenceCutoffSec": 1793285100,
- "producedAt": "2026-10-29T14:52:35.465Z",
+ "evidenceCutoffSec": 1793286000,
+ "producedAt": "2026-10-29T15:07:31.303Z",
  "orders": [
   {
    "id": "N0-2026-10-25-virtual-protocol",
@@ -21,12 +21,12 @@
     "fillPrice": 0.6291,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 0.6196,
-    "markAt": 1793285100,
-    "unrealisedCents": -7081,
+    "markPrice": 0.6189,
+    "markAt": 1793286000,
+    "unrealisedCents": -7415,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793285100,
+    "notYetObservedFrom": 1793286000,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -43,12 +43,12 @@
     "fillPrice": 21.2,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 21.72,
-    "markAt": 1793285100,
-    "unrealisedCents": 3801,
+    "markPrice": 21.61,
+    "markAt": 1793286000,
+    "unrealisedCents": 2571,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793285100,
+    "notYetObservedFrom": 1793286000,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -65,12 +65,12 @@
     "fillPrice": 0.911,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.917,
-    "markAt": 1793285100,
-    "unrealisedCents": 242,
+    "markPrice": 0.911,
+    "markAt": 1793286000,
+    "unrealisedCents": -372,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793285100,
+    "notYetObservedFrom": 1793286000,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -79,17 +79,17 @@
  "coverage": {
   "perPair": {
    "COMPUSD": {
-    "bars": 177,
+    "bars": 180,
     "gaps": 0,
     "complete": true
    },
    "FILUSD": {
-    "bars": 177,
+    "bars": 180,
     "gaps": 0,
     "complete": true
    },
    "VIRTUALUSD": {
-    "bars": 177,
+    "bars": 180,
     "gaps": 0,
     "complete": true
    }
