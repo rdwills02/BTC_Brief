@@ -1,0 +1,72 @@
+{
+ "schemaVersion": 1,
+ "baseGenerationId": "20261030T003024681Z-986fd3",
+ "baseCaptureId": "20261030T003024681Z-986fd3",
+ "baseChecksums": {
+  "orders.json": "3ac4640eb2f26047549b6f85809fddd98b20ee3d75ea720f0201018e5ec334d1",
+  "shadow/orders.json": "b4020e5a0f4857503055bd2502659dd2cb3585b01717969aa50892c6e31089c0"
+ },
+ "evidenceCutoffSec": 1793320200,
+ "producedAt": "2026-10-30T00:37:31.733Z",
+ "orders": [
+  {
+   "id": "N0-2026-10-26-compound-governance-token",
+   "policyId": "N0",
+   "cgId": "compound-governance-token",
+   "pair": "COMPUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792974634,
+    "fillPrice": 21.2,
+    "fillReason": "fill-crossing-ask",
+    "exit": null,
+    "markPrice": 20.45,
+    "markAt": 1793320200,
+    "unrealisedCents": -10407,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1793320200,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  },
+  {
+   "id": "N0-2026-10-26-filecoin",
+   "policyId": "N0",
+   "cgId": "filecoin",
+   "pair": "FILUSD",
+   "status": "open",
+   "projected": {
+    "status": "open",
+    "fillAt": 1792978500,
+    "fillPrice": 0.911,
+    "fillReason": "limit",
+    "exit": null,
+    "markPrice": 0.786,
+    "markAt": 1793320200,
+    "unrealisedCents": -13145,
+    "unrealisedLabel": "estimate",
+    "unresolvedIntervals": [],
+    "notYetObservedFrom": 1793320200,
+    "windowsExhausted": false,
+    "partialDay": true
+   }
+  }
+ ],
+ "coverage": {
+  "perPair": {
+   "COMPUSD": {
+    "bars": 6,
+    "gaps": 0,
+    "complete": true
+   },
+   "FILUSD": {
+    "bars": 6,
+    "gaps": 0,
+    "complete": true
+   }
+  }
+ },
+ "warnings": []
+}
