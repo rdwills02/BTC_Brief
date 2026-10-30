@@ -6,8 +6,8 @@
   "orders.json": "3ac4640eb2f26047549b6f85809fddd98b20ee3d75ea720f0201018e5ec334d1",
   "shadow/orders.json": "b4020e5a0f4857503055bd2502659dd2cb3585b01717969aa50892c6e31089c0"
  },
- "evidenceCutoffSec": 1793322000,
- "producedAt": "2026-10-30T01:07:29.007Z",
+ "evidenceCutoffSec": 1793322900,
+ "producedAt": "2026-10-30T01:22:31.684Z",
  "orders": [
   {
    "id": "N0-2026-10-26-compound-governance-token",
@@ -21,12 +21,12 @@
     "fillPrice": 21.2,
     "fillReason": "fill-crossing-ask",
     "exit": null,
-    "markPrice": 20.7,
-    "markAt": 1793322000,
-    "unrealisedCents": -7610,
+    "markPrice": 20.77,
+    "markAt": 1793322900,
+    "unrealisedCents": -6827,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793322000,
+    "notYetObservedFrom": 1793322900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -43,12 +43,12 @@
     "fillPrice": 0.911,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.806,
-    "markAt": 1793322000,
-    "unrealisedCents": -11102,
+    "markPrice": 0.812,
+    "markAt": 1793322900,
+    "unrealisedCents": -10489,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793322000,
+    "notYetObservedFrom": 1793322900,
     "windowsExhausted": false,
     "partialDay": true
    }
@@ -57,12 +57,12 @@
  "coverage": {
   "perPair": {
    "COMPUSD": {
-    "bars": 12,
+    "bars": 15,
     "gaps": 0,
     "complete": true
    },
    "FILUSD": {
-    "bars": 12,
+    "bars": 15,
     "gaps": 0,
     "complete": true
    }
