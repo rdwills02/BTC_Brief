@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-30T17:12:00Z",
-  "lastSuccessfulScanAt": "2026-10-30T17:12:00Z",
+  "generatedAt": "2026-10-30T18:12:00Z",
+  "lastSuccessfulScanAt": "2026-10-30T18:12:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
@@ -13,9 +13,9 @@
       "headline": "Binance confirms security breach: ~$6.3B impacted, ~$3B frozen, withdrawals paused ~45h",
       "eventClass": "exchange hack (confirmed by Binance)",
       "direction": "down",
-      "relevance": "Binance now confirms ~$6.3B impact (~$3B frozen), a compromised DevOps laptop plus additional breach points, withdrawals paused for a security rebuild (~45h to resume), no private-key leak found; BNB down ~8% to ~$693.",
+      "relevance": "Escalation from rev1 'suspected': Binance now confirms ~$6.3B impact (~$3B frozen), a compromised DevOps laptop plus additional breach points, withdrawals paused for a security rebuild (about 45h to resume), no private-key leak found; BNB down ~8% to ~$693 - direct risk to the BNB holding.",
       "sourceUrl": "https://cointelegraph.com/news/live-updates-binance-63b-hack-linked-to-north-koreas-tradertraitor",
-      "sourceName": "Cointelegraph live blog",
+      "sourceName": "Cointelegraph live blog (also Fox Business, NPR, ABC, Hacker News)",
       "publishedAt": "2026-10-29T21:48:00Z",
       "firstDetectedAt": "2026-10-29T22:15:00Z",
       "materialUpdateAt": "2026-10-30T13:25:00Z",
@@ -156,23 +156,6 @@
       "firstDetectedAt": "2026-10-20T16:20:00Z",
       "materialUpdateAt": null,
       "highlightUntil": "2026-10-21T16:20:00Z",
-      "evidence": "verified"
-    },
-    {
-      "eventId": "filecoin:network-upgrade:2026-10-19",
-      "revision": 1,
-      "cgId": "filecoin",
-      "symbol": "FIL",
-      "headline": "Binance will support the Filecoin (FIL) network upgrade & hard fork on 2026-10-19; Filecoin-network deposits/withdrawals suspended from ~11:59 UTC",
-      "eventClass": "network upgrade / hard fork with a date (block 6,470,279, ~2026-10-19 12:59 UTC)",
-      "direction": "unclear",
-      "relevance": "Dated hard fork; Binance pauses FIL-network deposits/withdrawals ~1h before the fork",
-      "sourceUrl": "https://www.binance.com/en/support/announcement/detail/c7a3ad88f7e54d6a8744057dcc090336",
-      "sourceName": "Binance (official announcement)",
-      "publishedAt": "2026-10-15T02:00:00Z",
-      "firstDetectedAt": "2026-10-15T11:11:00Z",
-      "materialUpdateAt": null,
-      "highlightUntil": "2026-10-16T11:11:00Z",
       "evidence": "verified"
     }
   ]
