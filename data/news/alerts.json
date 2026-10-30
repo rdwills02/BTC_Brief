@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-30T12:30:00Z",
-  "lastSuccessfulScanAt": "2026-10-30T12:30:00Z",
+  "generatedAt": "2026-10-30T13:25:00Z",
+  "lastSuccessfulScanAt": "2026-10-30T13:25:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
     {
       "eventId": "binancecoin:exchange-hack:2026-10-29",
-      "revision": 1,
+      "revision": 2,
       "cgId": "binancecoin",
       "symbol": "BNB",
-      "headline": "Binance investigating suspected hack as suspicious outflows reach up to $5.8 billion",
-      "eventClass": "suspected exchange hack (Binance hot-wallet outflows)",
+      "headline": "Binance confirms security breach: ~$6.3B impacted, ~$3B frozen, withdrawals paused ~45h",
+      "eventClass": "exchange hack (confirmed by Binance)",
       "direction": "down",
-      "relevance": "Billions moved out of Binance hot wallets (Ethereum/Arbitrum/Avalanche); Binance says it is investigating but has not confirmed a breach, Tether/Circle froze ~$1.6-1.8B, BNB down 5-9% - direct risk to the holding and to the BNB NEAR setup.",
-      "sourceUrl": "https://www.theblock.co/news/markets/2026-10-29-binance-investigating-hack-suspicious-outflows-5-billion-432171",
-      "sourceName": "The Block (also Crypto Briefing)",
+      "relevance": "Binance now confirms ~$6.3B impact (~$3B frozen), a compromised DevOps laptop plus additional breach points, withdrawals paused for a security rebuild (~45h to resume), no private-key leak found; BNB down ~8% to ~$693.",
+      "sourceUrl": "https://cointelegraph.com/news/live-updates-binance-63b-hack-linked-to-north-koreas-tradertraitor",
+      "sourceName": "Cointelegraph live blog",
       "publishedAt": "2026-10-29T21:48:00Z",
       "firstDetectedAt": "2026-10-29T22:15:00Z",
-      "materialUpdateAt": null,
-      "highlightUntil": "2026-10-30T22:15:00Z",
-      "evidence": "credible-unconfirmed"
+      "materialUpdateAt": "2026-10-30T13:25:00Z",
+      "highlightUntil": "2026-10-31T13:25:00Z",
+      "evidence": "verified"
     },
     {
       "eventId": "hyperliquid:infrastructure-integration:2026-10-29",
