@@ -1,13 +1,13 @@
 {
  "schemaVersion": 1,
- "baseGenerationId": "20261101T062614779Z-f809f3",
- "baseCaptureId": "20261101T062614779Z-f809f3",
+ "baseGenerationId": "20261102T002941578Z-a93e2a",
+ "baseCaptureId": "20261102T002941578Z-a93e2a",
  "baseChecksums": {
-  "orders.json": "3eabc7194541227f6294f5808ac23751929b1435de591b85ddfd23110c26bd85",
-  "shadow/orders.json": "a76accc1f8f05a29a84b04bd6d126a2d37ddd3958fb9cc7fcfe76150da8cf810"
+  "orders.json": "2323af0514b505eac61fadeeecc2d5d09ad03db367b1f8af646fa69c2c7d4fcf",
+  "shadow/orders.json": "62af21ce877bde953fdb7dce2933702aa441d4fe1d4b8f05d60423561d941a89"
  },
- "evidenceCutoffSec": 1793577600,
- "producedAt": "2026-11-02T00:07:28.172Z",
+ "evidenceCutoffSec": 1793579400,
+ "producedAt": "2026-11-02T00:37:33.427Z",
  "orders": [
   {
    "id": "N0-2026-10-26-filecoin",
@@ -21,21 +21,21 @@
     "fillPrice": 0.911,
     "fillReason": "limit",
     "exit": null,
-    "markPrice": 0.883,
-    "markAt": 1793577600,
-    "unrealisedCents": -3233,
+    "markPrice": 0.875,
+    "markAt": 1793579400,
+    "unrealisedCents": -4050,
     "unrealisedLabel": "estimate",
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793577600,
+    "notYetObservedFrom": 1793579400,
     "windowsExhausted": false,
-    "partialDay": false
+    "partialDay": true
    }
   }
  ],
  "coverage": {
   "perPair": {
    "FILUSD": {
-    "bars": 288,
+    "bars": 6,
     "gaps": 0,
     "complete": true
    }
