@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-03T16:12:00Z",
-  "lastSuccessfulScanAt": "2026-11-03T16:12:00Z",
+  "generatedAt": "2026-11-03T18:12:00Z",
+  "lastSuccessfulScanAt": "2026-11-03T18:12:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
@@ -30,7 +30,7 @@
       "headline": "THORChain pauses operations after Ethereum reorg triggers double refund",
       "eventClass": "swap pause / outage (emergency pause after Ethereum reorg caused a duplicate 10 ETH refund)",
       "direction": "down",
-      "relevance": "THORChain halted swaps across most cross-chain bridges for all users (12 of 13 chains paused per The Defiant status data); no resumption reported and no official THORChain statement found",
+      "relevance": "THORChain halted swaps across most supported chains for all users (12 of 13 chains paused per The Defiant status data); no resumption reported and no official THORChain statement found",
       "sourceUrl": "https://cryptobriefing.com/thorchain-pauses-ethereum-reorg-double-refund/",
       "sourceName": "Crypto Briefing (also TokenPost, PANews citing Chainalysis, The Defiant)",
       "publishedAt": "2026-10-31T17:58:00Z",
@@ -156,23 +156,6 @@
       "firstDetectedAt": "2026-10-21T01:12:00Z",
       "materialUpdateAt": null,
       "highlightUntil": "2026-10-22T01:12:00Z",
-      "evidence": "verified"
-    },
-    {
-      "eventId": "injective-protocol:counterparty-partnership:2026-10-20",
-      "revision": 1,
-      "cgId": "injective-protocol",
-      "symbol": "INJ",
-      "headline": "Injective partners with BDACS to bring Korean won stablecoin to RWA ecosystem",
-      "eventClass": "counterparty partnership (BDACS KRW1 won stablecoin, MoU)",
-      "direction": "up",
-      "relevance": "MoU makes BDACS KRW1 the exclusive won settlement asset for RWA on Injective; no launch date, regulatory approval needed",
-      "sourceUrl": "https://www.theblock.co/news/markets/2026-10-20-injective-partners-bdacs-418883",
-      "sourceName": "The Block",
-      "publishedAt": "2026-10-20T14:00:00Z",
-      "firstDetectedAt": "2026-10-20T16:20:00Z",
-      "materialUpdateAt": null,
-      "highlightUntil": "2026-10-21T16:20:00Z",
       "evidence": "verified"
     }
   ]
