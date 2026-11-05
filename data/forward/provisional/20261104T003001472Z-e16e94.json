@@ -6,8 +6,8 @@
   "orders.json": "443fd6d9ee5791e28d80c77a5b1e5f9facfa9cde4075cec40a3a15d865a0aab6",
   "shadow/orders.json": "2c3bfcb013c4a1b68453423acf21a373e0a1a3b4e4b3245fefad125dff72b2f2"
  },
- "evidenceCutoffSec": 1793835900,
- "producedAt": "2026-11-04T23:52:33.765Z",
+ "evidenceCutoffSec": 1793836800,
+ "producedAt": "2026-11-05T00:07:30.727Z",
  "orders": [
   {
    "id": "N0-2026-10-26-filecoin",
@@ -16,26 +16,30 @@
    "pair": "FILUSD",
    "status": "open",
    "projected": {
-    "status": "open",
+    "status": "exited",
     "fillAt": 1792978500,
     "fillPrice": 0.911,
     "fillReason": "limit",
-    "exit": null,
-    "markPrice": 0.873,
-    "markAt": 1793835900,
-    "unrealisedCents": -4255,
-    "unrealisedLabel": "estimate",
+    "exit": {
+     "reason": "horizon",
+     "at": 1793836500,
+     "price": 0.869
+    },
+    "markPrice": 0.869,
+    "markAt": 1793836800,
+    "unrealisedCents": null,
+    "unrealisedLabel": null,
     "unresolvedIntervals": [],
-    "notYetObservedFrom": 1793835900,
+    "notYetObservedFrom": null,
     "windowsExhausted": false,
-    "partialDay": true
+    "partialDay": false
    }
   }
  ],
  "coverage": {
   "perPair": {
    "FILUSD": {
-    "bars": 285,
+    "bars": 288,
     "gaps": 0,
     "complete": true
    }
