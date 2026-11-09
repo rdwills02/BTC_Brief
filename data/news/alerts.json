@@ -1,10 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-09T18:09:00Z",
-  "lastSuccessfulScanAt": "2026-11-09T18:09:00Z",
+  "generatedAt": "2026-11-09T19:25:00Z",
+  "lastSuccessfulScanAt": "2026-11-09T19:25:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
+    {
+      "eventId": "injective-protocol:chain-halt:2026-11-09",
+      "revision": 1,
+      "cgId": "injective-protocol",
+      "symbol": "INJ",
+      "headline": "Injective halts block production again, Korean exchanges freeze INJ transfers",
+      "eventClass": "chain halt (block production stopped; Upbit/Bithumb suspend INJ deposits/withdrawals)",
+      "direction": "down",
+      "relevance": "Second halt in ~10 weeks (prior Aug 31 followed a ~$4.9M exploit); no cause or restart time stated; Bithumb (from 23:00 KST, staking paused) and Upbit suspended INJ transfers, Binance withdrawals reported locked - bears directly on any INJ entry while chain is down",
+      "sourceUrl": "https://www.cryptopolitan.com/injective-halts-block-production-again/",
+      "sourceName": "Cryptopolitan (also cryptonews.net, PANews)",
+      "publishedAt": "2026-11-09T17:40:03Z",
+      "firstDetectedAt": "2026-11-09T19:25:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-11-10T19:25:00Z",
+      "evidence": "credible-unconfirmed"
+    },
     {
       "eventId": "injective-protocol:etf-launch:2026-11-05",
       "revision": 1,
@@ -14,7 +31,7 @@
       "eventClass": "ETF launch (Canary Staked INJ ETF, ticker INJC, trading on Nasdaq)",
       "direction": "up",
       "relevance": "First U.S. spot INJ ETF, staking at least 90% of holdings (1.10% sponsor fee); creates a regulated demand channel for INJ; no flow data yet",
-      "sourceUrl": "https://www.altcoinbuzz.io/canary-s-inj-etf-debuts-on-nasdaq-aiming-to-stake-90-of-its-inj",
+      "sourceUrl": "https://www.altcoinbuzz.io/canary-s-inj-etf-debuts-on-nasdaq-aiming-to-stake-90-of-its-inj-etf",
       "sourceName": "Altcoin Buzz (SEC 424B3 prospectus dated 2026-11-04 confirms INJC/Nasdaq/staking)",
       "publishedAt": "2026-11-05T00:00:00Z",
       "firstDetectedAt": "2026-11-07T01:10:00Z",
