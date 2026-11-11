@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-11T17:40:00Z",
-  "lastSuccessfulScanAt": "2026-11-11T17:40:00Z",
+  "generatedAt": "2026-11-11T20:08:00Z",
+  "lastSuccessfulScanAt": "2026-11-11T20:08:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
@@ -30,7 +30,7 @@
       "headline": "Valour launches eight new ETPs on Spotlight Stock Market including a Morpho (MORPHO) ETP",
       "eventClass": "ETP launch (Valour Morpho ETP, SEK, Spotlight Stock Market Sweden)",
       "direction": "up",
-      "relevance": "First listed ETP tracking MORPHO (SEK-denominated, Swedish Spotlight market; small regulated retail access channel; no AUM/flow data yet)",
+      "relevance": "First listed ETP tracking MORPHO (SEK-denominated, Swedish Spotlight market); small regulated retail access channel; no AUM/flow data yet",
       "sourceUrl": "https://via.ritzau.dk/pressemeddelelse/15272369/defi-technologies-inc?publisherId=90446",
       "sourceName": "DeFi Technologies / Valour press release",
       "publishedAt": "2026-11-05T12:30:00Z",
@@ -139,6 +139,23 @@
       "firstDetectedAt": "2026-10-29T12:21:00Z",
       "materialUpdateAt": null,
       "highlightUntil": "2026-10-30T12:21:00Z",
+      "evidence": "verified"
+    },
+    {
+      "eventId": "morpho:counterparty-integration:2026-10-26",
+      "revision": 1,
+      "cgId": "morpho",
+      "symbol": "MORPHO",
+      "headline": "Bitso launches Bóvedas, bringing Gauntlet-curated Morpho vaults on Base to its app (USDC and peso-pegged MXNB)",
+      "eventClass": "counterparty integration (Bitso Bóvedas on Morpho vaults)",
+      "direction": "up",
+      "relevance": "Major LatAm exchange routes USDC/MXNB deposits into Morpho vaults; variable yield, no TVL/user figures",
+      "sourceUrl": "https://thedefiant.io/news/defi/bitso-brings-morpho-lending-to-its-app-with-b-vedas",
+      "sourceName": "The Defiant",
+      "publishedAt": "2026-10-26T21:10:26Z",
+      "firstDetectedAt": "2026-10-26T22:20:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-10-27T22:20:00Z",
       "evidence": "verified"
     }
   ]
