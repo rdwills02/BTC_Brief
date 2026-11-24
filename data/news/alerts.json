@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-24T19:10:00Z",
-  "lastSuccessfulScanAt": "2026-11-24T19:10:00Z",
+  "generatedAt": "2026-11-24T20:10:00Z",
+  "lastSuccessfulScanAt": "2026-11-24T20:10:00Z",
   "coverage": "ok",
   "coverageNote": null,
   "events": [
@@ -55,6 +55,40 @@
       "materialUpdateAt": "2026-11-11T17:40:00Z",
       "highlightUntil": "2026-11-12T17:40:00Z",
       "evidence": "credible-unconfirmed"
+    },
+    {
+      "eventId": "morpho:etp-launch:2026-11-05",
+      "revision": 1,
+      "cgId": "morpho",
+      "symbol": "MORPHO",
+      "headline": "Valour launches eight new ETPs on Spotlight Stock Market including a Morpho (MORPHO) ETP",
+      "eventClass": "ETP launch (Valour Morpho ETP, SEK, Spotlight Stock Market Sweden)",
+      "direction": "up",
+      "relevance": "First listed ETP tracking MORPHO (SEK-denominated, Swedish Spotlight Stock Market); small regulated retail access channel; no AUM/flow data yet",
+      "sourceUrl": "https://via.ritzau.dk/pressemeddelelser/15272369/defi-technologies-inc?publisherId=90446",
+      "sourceName": "DeFi Technologies / Valour press release",
+      "publishedAt": "2026-11-05T12:30:00Z",
+      "firstDetectedAt": "2026-11-10T18:15:10Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-11-11T18:15:00Z",
+      "evidence": "verified"
+    },
+    {
+      "eventId": "hyperliquid:exchange-listing:2026-11-10",
+      "revision": 1,
+      "cgId": "hyperliquid",
+      "symbol": "HYPE",
+      "headline": "Upbit to list Hyperliquid (HYPE) across KRW, BTC and USDT trading pairs on Nov. 10",
+      "eventClass": "exchange listing (Upbit KRW/BTC/USDT, trading from 15:00 KST Nov 10; Bithumb unconfirmed)",
+      "direction": "up",
+      "relevance": "Actual spot listing on Upbit opens Korean KRW/BTC/USDT access to HYPE; Bithumb listing reported but not confirmed",
+      "sourceUrl": "https://crypto.news/upbit-to-list-hyperliquid-hype-across-three-trading-pairs-on-nov-10/",
+      "sourceName": "crypto.news",
+      "publishedAt": "2026-11-10T06:21:32Z",
+      "firstDetectedAt": "2026-11-10T12:11:00Z",
+      "materialUpdateAt": null,
+      "highlightUntil": "2026-11-11T12:11:00Z",
+      "evidence": "verified"
     }
   ]
 }
